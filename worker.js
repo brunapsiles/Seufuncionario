@@ -110,6 +110,16 @@ async function handleAuth(request, env, url) {
   if (request.method !== 'POST') return json({ error: 'Método não permitido.' }, 405)
   let body
   try { body = await request.json() } catch { return json({ error: 'Solicitação inválida.' }, 400) }
+
+  if (url.pathname === '/api/auth/profile') {
+    const account = await sessionUser(request, env)
+    if (!account) return json({ error: 'Sua sessão expirou. Entre novamente.' }, 401)
+    const name = typeof body.name === 'string' ? body.name.trim().replace(/\s+/g, ' ') : ''
+    if (name.length < 2 || name.length > 100) return json({ error: 'Informe um nome válido.' }, 400)
+    await env.DB.prepare('UPDATE users SET name = ? WHERE id = ?').bind(name, account.id).run()
+    return json({ user: { id: account.id, name, email: account.email } })
+  }
+
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
   const password = typeof body.password === 'string' ? body.password : ''
   if (!/^\S+@\S+\.\S+$/.test(email)) return json({ error: 'Informe um e-mail válido.' }, 400)
@@ -147,7 +157,7 @@ async function sessionUser(request, env) {
   if (!env.DB) return { id: 'local' }
   const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || ''
   if (!token) return null
-  return env.DB.prepare(`SELECT users.id FROM sessions
+  return env.DB.prepare(`SELECT users.id, users.name, users.email FROM sessions
     JOIN users ON users.id = sessions.user_id
     WHERE sessions.token_hash = ? AND sessions.expires_at > ?`).bind(await sha256(token), new Date().toISOString()).first()
 }
