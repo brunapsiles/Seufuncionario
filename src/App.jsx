@@ -348,7 +348,7 @@ function UniversalRequest({ db, update, business, setToast }) {
   const active=conversations.find(x=>x.id===db.selectedConversationId)||null
   const messages=active?.messages||[]
   useEffect(()=>{ localStorage.setItem('sf-draft',text) },[text])
-  useEffect(()=>{ endRef.current?.scrollIntoView({behavior:'smooth',block:'nearest'}) },[messages.length,busy])
+  useEffect(()=>{ const el=endRef.current?.parentElement; if(el) el.scrollTo({top:el.scrollHeight,behavior:'smooth'}) },[messages.length,busy])
   const newChat=()=>{update(d=>({...d,selectedConversationId:null}));setText('');setError('')}
   const saveMessage=message=>{const item={id:uid(),title:active?.title||'Conversa com IA',request:messages.find(x=>x.role==='user')?.content||'',result:message.content,specialist,provider:message.provider,model:message.model,businessId:business?.id||null,type:'Conversa salva',status:'Concluído',createdAt:new Date().toISOString()};update(d=>({...d,history:[item,...d.history]}));setToast('Resposta salva em Projetos e Histórico')}
   const submit = async () => {

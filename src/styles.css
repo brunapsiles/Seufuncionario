@@ -47,3 +47,15 @@ aside nav button span,.side-bottom button span{min-width:0;overflow:hidden;text-
 .md blockquote{border-left:3px solid var(--primary);margin:0 0 10px;padding:6px 12px;color:var(--muted);background:var(--surface2);border-radius:0 8px 8px 0}
 .md hr{border:0;border-top:1px solid var(--line);margin:14px 0}
 .md a{color:var(--primary);font-weight:600}
+.chat-messages{max-height:66vh}
+.message-content{padding:15px 18px}
+.chat-message .message-content{max-width:min(820px,88%)}
+.md{font-size:14.6px}
+.md h1,.md h2,.md h3,.md h4{font-family:'Manrope',sans-serif;letter-spacing:-.01em;margin:18px 0 9px}
+.md h1,.md h2{font-size:18px;padding-bottom:7px;border-bottom:1px solid var(--line)}
+.md h3{font-size:16px}
+.md h4{font-size:14.6px;color:var(--primary)}
+.md li::marker{color:var(--primary);font-weight:700}
+.md-table table{width:100%}
+.md th{font-family:'Manrope',sans-serif;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.md tr:nth-child(even) td{background:color-mix(in srgb,var(--surface2) 55%,transparent)}
