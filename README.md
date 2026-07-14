@@ -10,6 +10,7 @@ Plataforma de inteligência empresarial em português do Brasil, publicada em ht
 - **Adaptação por segmento**: as respostas se ajustam a setor, porte, estágio e objetivo do negócio cadastrado
 - Painel de tarefas, CRM de leads, controle financeiro, documentos versionados, criador de sites, estúdio de logos/imagens/vídeos com IA e trilhas de certificação
 - **Aplicativo instalável (PWA)**: funciona como site e como app no celular e no computador
+- **Sincronização multi-dispositivo**: os projetos acompanham a conta — entre de qualquer aparelho e continue de onde parou
 
 **Custo de operação: R$ 0.** O app roda no plano gratuito do Cloudflare Workers e usa provedores de IA em cascata, priorizando sempre os gratuitos (Google Gemini → Cloudflare Workers AI → xAI opcional). Se todos falharem, entrega um plano de contingência local sem inventar informações.
 

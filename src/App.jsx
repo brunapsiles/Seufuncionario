@@ -16,7 +16,7 @@ const STORAGE_KEY = 'seu-funcionario-v1'
 const AUTH_TOKEN_KEY = 'seu-funcionario-auth-token'
 
 const emptyDb = {
-  user: null, onboarding: false, selectedBusinessId: null,
+  user: null, ownerId: null, updatedAt: null, onboarding: false, selectedBusinessId: null,
   businesses: [], tasks: [], leads: [], transactions: [], documents: [], sites: [], history: [], certificates: [], conversations: [], media: [], emailDrafts: [], customSpecialists: [], selectedConversationId: null,
   journeys: {}, preferences: { theme: 'light', specialist: 'Diretor' }
 }
@@ -123,12 +123,61 @@ function endSession() {
   if (token) fetch('/api/auth/session', { method: 'DELETE', headers: { authorization: `Bearer ${token}` } }).catch(() => {})
 }
 
+function mergeMedia(localItems = [], remoteItems = []) {
+  return (remoteItems || []).map(item => {
+    if (item.localOnly && !item.url) { const local = (localItems || []).find(x => x.id === item.id); if (local?.url) return { ...local } }
+    return item
+  })
+}
+
 function useDatabase() {
   const [db, setDb] = useState(() => {
     try { return { ...emptyDb, ...JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') } } catch { return emptyDb }
   })
-  useEffect(() => localStorage.setItem(STORAGE_KEY, JSON.stringify(db)), [db])
-  const update = fn => setDb(current => typeof fn === 'function' ? fn(current) : { ...current, ...fn })
+  const syncTimer = useRef(null)
+  const pulled = useRef(false)
+  const userId = db.user?.id
+
+  useEffect(() => {
+    pulled.current = false
+    if (!userId || !localStorage.getItem(AUTH_TOKEN_KEY)) return
+    let cancelled = false
+    fetch('/api/workspace', { headers: authHeaders() })
+      .then(response => response.ok ? response.json() : null)
+      .then(payload => {
+        if (cancelled || payload === null) return
+        setDb(current => {
+          const foreign = current.ownerId && current.ownerId !== userId
+          if (payload.data) {
+            const localNewer = !foreign && current.updatedAt && payload.updatedAt && current.updatedAt > payload.updatedAt
+            if (localNewer) return { ...current, ownerId: userId }
+            return { ...emptyDb, ...payload.data, media: mergeMedia(foreign ? [] : current.media, payload.data.media), user: current.user, ownerId: userId, updatedAt: payload.updatedAt }
+          }
+          if (foreign) return { ...emptyDb, user: current.user, ownerId: userId }
+          return { ...current, ownerId: userId }
+        })
+        pulled.current = true
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [userId])
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(db))
+    if (!userId || !pulled.current || db.ownerId !== userId || !localStorage.getItem(AUTH_TOKEN_KEY)) return
+    clearTimeout(syncTimer.current)
+    syncTimer.current = setTimeout(() => {
+      const { user, ownerId, ...rest } = db
+      const data = { ...rest, media: (rest.media || []).map(item => item.url && item.url.startsWith('data:') ? { ...item, url: null, localOnly: true } : item) }
+      fetch('/api/workspace', { method: 'PUT', headers: { 'content-type': 'application/json', ...authHeaders() }, body: JSON.stringify({ data }) }).catch(() => {})
+    }, 2500)
+    return () => clearTimeout(syncTimer.current)
+  }, [db, userId])
+
+  const update = fn => setDb(current => {
+    const next = typeof fn === 'function' ? fn(current) : { ...current, ...fn }
+    return { ...next, updatedAt: new Date().toISOString() }
+  })
   return [db, update]
 }
 
@@ -154,6 +203,83 @@ function Modal({ title, children, onClose, wide = false }) {
 function Field({ label, children, hint }) { return <label className="field"><span>{label}</span>{children}{hint && <small>{hint}</small>}</label> }
 
 function Toast({ toast }) { return toast ? <div className="toast"><CheckCircle2 size={18}/>{toast}</div> : null }
+
+const INLINE_PATTERN = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g
+function renderInline(text) {
+  const nodes = []
+  let last = 0, match, key = 0
+  INLINE_PATTERN.lastIndex = 0
+  while ((match = INLINE_PATTERN.exec(text))) {
+    if (match.index > last) nodes.push(text.slice(last, match.index))
+    if (match[1]) nodes.push(<code key={key++}>{match[1].slice(1, -1)}</code>)
+    else if (match[2]) nodes.push(<strong key={key++}>{match[2].slice(2, -2)}</strong>)
+    else if (match[3]) nodes.push(<em key={key++}>{match[3].slice(1, -1)}</em>)
+    else nodes.push(<a key={key++} href={match[5]} target="_blank" rel="noreferrer">{match[4]}</a>)
+    last = match.index + match[0].length
+  }
+  if (last < text.length) nodes.push(text.slice(last))
+  return nodes
+}
+
+function Markdown({ text }) {
+  const lines = String(text || '').replace(/\r/g, '').split('\n')
+  const blocks = []
+  const paragraph = []
+  let i = 0, key = 0
+  const flush = () => { if (paragraph.length) { blocks.push(<p key={key++}>{renderInline(paragraph.join(' '))}</p>); paragraph.length = 0 } }
+  while (i < lines.length) {
+    const line = lines[i]
+    if (line.trim().startsWith('```')) {
+      flush()
+      const code = []
+      i += 1
+      while (i < lines.length && !lines[i].trim().startsWith('```')) { code.push(lines[i]); i += 1 }
+      i += 1
+      blocks.push(<pre key={key++}><code>{code.join('\n')}</code></pre>)
+      continue
+    }
+    const heading = line.match(/^(#{1,6})\s+(.*)/)
+    if (heading) { flush(); const Tag = `h${Math.min(heading[1].length, 4)}`; blocks.push(<Tag key={key++}>{renderInline(heading[2])}</Tag>); i += 1; continue }
+    if (/^(-{3,}|_{3,}|\*{3,})\s*$/.test(line.trim())) { flush(); blocks.push(<hr key={key++}/>); i += 1; continue }
+    const listStart = line.match(/^\s*([-*•]|\d+[.)])\s+/)
+    if (listStart) {
+      flush()
+      const ordered = /^\d/.test(listStart[1])
+      const items = []
+      while (i < lines.length) {
+        const item = lines[i].match(/^\s*(?:[-*•]|\d+[.)])\s+(.*)/)
+        if (!item) break
+        items.push(item[1].replace(/^\[ \]\s*/, '☐ ').replace(/^\[x\]\s*/i, '☑ '))
+        i += 1
+      }
+      const ListTag = ordered ? 'ol' : 'ul'
+      blocks.push(<ListTag key={key++}>{items.map((item, j) => <li key={j}>{renderInline(item)}</li>)}</ListTag>)
+      continue
+    }
+    if (/^\s*\|.*\|\s*$/.test(line)) {
+      flush()
+      const rows = []
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) { rows.push(lines[i].trim().replace(/^\||\|$/g, '').split('|').map(cell => cell.trim())); i += 1 }
+      const body = rows.filter(row => !row.every(cell => /^:?-{2,}:?$/.test(cell)))
+      const [head, ...rest] = body
+      blocks.push(<div className="md-table" key={key++}><table><thead><tr>{(head || []).map((cell, j) => <th key={j}>{renderInline(cell)}</th>)}</tr></thead><tbody>{rest.map((row, r) => <tr key={r}>{row.map((cell, j) => <td key={j}>{renderInline(cell)}</td>)}</tr>)}</tbody></table></div>)
+      continue
+    }
+    const quote = line.match(/^\s*>\s?(.*)/)
+    if (quote) {
+      flush()
+      const parts = []
+      while (i < lines.length) { const part = lines[i].match(/^\s*>\s?(.*)/); if (!part) break; parts.push(part[1]); i += 1 }
+      blocks.push(<blockquote key={key++}>{renderInline(parts.join(' '))}</blockquote>)
+      continue
+    }
+    if (!line.trim()) { flush(); i += 1; continue }
+    paragraph.push(line.trim())
+    i += 1
+  }
+  flush()
+  return <div className="md">{blocks}</div>
+}
 
 function Login({ update }) {
   const [mode, setMode] = useState('login')
@@ -183,7 +309,7 @@ function Login({ update }) {
       setError(reason.message === 'Failed to fetch' ? 'Não foi possível conectar ao servidor. Tente novamente.' : reason.message)
     } finally { setBusy(false) }
   }
-  return <main className="auth-shell"><div className="auth-art"><Logo/><div><span className="eyebrow light">SEU NEGÓCIO EM MOVIMENTO</span><h1>Tenha o funcionário que sua empresa precisa, <em>quando precisar.</em></h1><p>Mais de 40 funcionários especialistas — estratégia, jurídico, marketing, vendas, financeiro, TI e muito mais — coordenados por um Diretor de Inteligência.</p></div><div className="auth-chips"><span><Target/>Planeje</span><span><WandSparkles/>Crie</span><span><CheckCircle2/>Execute</span></div></div><div className="auth-form"><div className="auth-card"><span className="mobile-logo"><Logo/></span><div className="auth-tabs" role="tablist" aria-label="Acesso"><button type="button" role="tab" aria-selected={mode === 'login'} className={mode === 'login' ? 'active' : ''} onClick={() => changeMode('login')}>Entrar</button><button type="button" role="tab" aria-selected={mode === 'register'} className={mode === 'register' ? 'active' : ''} onClick={() => changeMode('register')}>Criar conta</button></div><span className="eyebrow">{mode === 'login' ? 'BEM-VINDO DE VOLTA' : 'COMECE AGORA'}</span><h2>{mode === 'login' ? 'Entre no seu espaço' : 'Crie seu espaço de trabalho'}</h2><p>{mode === 'login' ? 'Use o e-mail e a senha cadastrados para continuar.' : 'Crie sua conta gratuita. Nenhum cartão é necessário.'}</p><form onSubmit={submit}>{mode === 'register' && <Field label="Seu nome"><input required autoComplete="name" value={form.name} onChange={e => setForm({...form, name:e.target.value})} placeholder="Como podemos chamar você?"/></Field>}<Field label="E-mail"><input required autoFocus={mode === 'login'} autoComplete="email" type="email" value={form.email} onChange={e => setForm({...form, email:e.target.value})} placeholder="voce@empresa.com"/></Field><Field label="Senha" hint={mode === 'register' ? 'Mínimo de 8 caracteres' : undefined}><input required minLength="8" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} type="password" value={form.password} onChange={e => setForm({...form, password:e.target.value})} placeholder="••••••••"/></Field>{error && <div className="auth-error" role="alert"><CircleAlert/>{error}</div>}<Button className="full" type="submit" icon={ArrowUpRight} disabled={busy}>{busy ? 'Aguarde...' : mode === 'login' ? 'Entrar' : 'Criar minha conta'}</Button></form><p className="auth-switch">{mode === 'login' ? 'Ainda não tem uma conta?' : 'Já possui uma conta?'} <button type="button" onClick={() => changeMode(mode === 'login' ? 'register' : 'login')}>{mode === 'login' ? 'Criar conta gratuitamente' : 'Entrar agora'}</button></p><p className="privacy"><ShieldCheck/>Sua senha é protegida com criptografia e sua conta funciona em qualquer dispositivo. Seus projetos ficam guardados com segurança neste aparelho.</p></div></div></main>
+  return <main className="auth-shell"><div className="auth-art"><Logo/><div><span className="eyebrow light">SEU NEGÓCIO EM MOVIMENTO</span><h1>Tenha o funcionário que sua empresa precisa, <em>quando precisar.</em></h1><p>Mais de 40 funcionários especialistas — estratégia, jurídico, marketing, vendas, financeiro, TI e muito mais — coordenados por um Diretor de Inteligência.</p></div><div className="auth-chips"><span><Target/>Planeje</span><span><WandSparkles/>Crie</span><span><CheckCircle2/>Execute</span></div></div><div className="auth-form"><div className="auth-card"><span className="mobile-logo"><Logo/></span><div className="auth-tabs" role="tablist" aria-label="Acesso"><button type="button" role="tab" aria-selected={mode === 'login'} className={mode === 'login' ? 'active' : ''} onClick={() => changeMode('login')}>Entrar</button><button type="button" role="tab" aria-selected={mode === 'register'} className={mode === 'register' ? 'active' : ''} onClick={() => changeMode('register')}>Criar conta</button></div><span className="eyebrow">{mode === 'login' ? 'BEM-VINDO DE VOLTA' : 'COMECE AGORA'}</span><h2>{mode === 'login' ? 'Entre no seu espaço' : 'Crie seu espaço de trabalho'}</h2><p>{mode === 'login' ? 'Use o e-mail e a senha cadastrados para continuar.' : 'Crie sua conta gratuita. Nenhum cartão é necessário.'}</p><form onSubmit={submit}>{mode === 'register' && <Field label="Seu nome"><input required autoComplete="name" value={form.name} onChange={e => setForm({...form, name:e.target.value})} placeholder="Como podemos chamar você?"/></Field>}<Field label="E-mail"><input required autoFocus={mode === 'login'} autoComplete="email" type="email" value={form.email} onChange={e => setForm({...form, email:e.target.value})} placeholder="voce@empresa.com"/></Field><Field label="Senha" hint={mode === 'register' ? 'Mínimo de 8 caracteres' : undefined}><input required minLength="8" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} type="password" value={form.password} onChange={e => setForm({...form, password:e.target.value})} placeholder="••••••••"/></Field>{error && <div className="auth-error" role="alert"><CircleAlert/>{error}</div>}<Button className="full" type="submit" icon={ArrowUpRight} disabled={busy}>{busy ? 'Aguarde...' : mode === 'login' ? 'Entrar' : 'Criar minha conta'}</Button></form><p className="auth-switch">{mode === 'login' ? 'Ainda não tem uma conta?' : 'Já possui uma conta?'} <button type="button" onClick={() => changeMode(mode === 'login' ? 'register' : 'login')}>{mode === 'login' ? 'Criar conta gratuitamente' : 'Entrar agora'}</button></p><p className="privacy"><ShieldCheck/>Sua senha é protegida com criptografia e seus projetos ficam sincronizados com a sua conta — entre de qualquer dispositivo e continue de onde parou.</p></div></div></main>
 }
 
 function Onboarding({ db, update }) {
@@ -244,7 +370,7 @@ function UniversalRequest({ db, update, business, setToast }) {
     } finally { clearTimeout(timer); setBusy(false) }
   }
   const renderToolLink=id=>{const tool=toolCatalog.find(x=>x.id===id);if(!tool)return null;const ToolIcon=tool.icon;return <a href={tool.url} target="_blank" rel="noreferrer" key={id}><ToolIcon/><span><strong>{tool.name}</strong><small>{tool.badge}</small></span><ExternalLink/></a>}
-  return <section className="ask-card chat-card"><div className="ask-top"><div><span className="spark-dot"><Sparkles/></span><div><h2>{active?.title||'O que você precisa resolver hoje?'}</h2><p>Converse, complemente e refine sem perder o contexto.</p></div></div><div className="chat-head-actions"><span className="business-context"><Building2/>{business?.name||'Nenhum negócio selecionado'}</span><Button variant="ghost" icon={Plus} onClick={newChat}>Nova conversa</Button></div></div>{conversations.length>0&&<div className="conversation-tabs">{conversations.slice(0,5).map(c=><button className={c.id===active?.id?'active':''} key={c.id} onClick={()=>update(d=>({...d,selectedConversationId:c.id}))}><MessageSquareText/>{c.title}</button>)}</div>}<div className={`chat-messages ${messages.length?'has-messages':''}`}>{messages.length===0?<div className="chat-welcome"><Bot/><h3>Seu agente está pronto</h3><p>Peça uma análise, material, plano ou orientação. Quando uma ferramenta externa for melhor, eu mostro o caminho certo.</p></div>:messages.map(message=><div className={`chat-message ${message.role}`} key={message.id}><span className="message-avatar">{message.role==='assistant'?<Sparkles/>:db.user.name[0]}</span><div className="message-content"><small>{message.role==='assistant'?(message.degraded?'Contingência local':`${message.provider} · ${message.model}`):db.user.name}</small><pre>{message.content}</pre>{message.toolIds?.length>0&&<div className="message-tools">{message.toolIds.map(renderToolLink)}</div>}{message.role==='assistant'&&<div className="message-actions"><button onClick={()=>{navigator.clipboard?.writeText(message.content);setToast('Resposta copiada')}}><Copy/>Copiar</button><button onClick={()=>saveMessage(message)}><Save/>Salvar em projetos</button></div>}</div></div>)}{busy&&<div className="chat-message assistant"><span className="message-avatar"><Sparkles/></span><div className="typing"><i/><i/><i/><span>Consultando a melhor IA disponível...</span></div></div>}<div ref={endRef}/></div><div className="chat-composer"><textarea aria-label="Mensagem para a IA" value={text} onChange={e=>setText(e.target.value.slice(0,8000))} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();submit()}}} placeholder="Escreva sua mensagem..."/><div className="ask-actions"><div className="specialist-select"><span>Com</span><select aria-label="Funcionário" value={specialist} onChange={e=>{const v=e.target.value;if(v==='__new'){setNewEmployee(true);return}update(d=>({...d,preferences:{...d.preferences,specialist:v}}))}}><optgroup label="Equipe padrão">{specialistData.map(s=><option key={s[0]} value={s[0]}>{s[0]}</option>)}</optgroup>{(db.customSpecialists||[]).length>0&&<optgroup label="Meus funcionários">{db.customSpecialists.map(c=><option key={c.name} value={c.name}>{c.name}</option>)}</optgroup>}<option value="__new">+ Contratar novo funcionário...</option></select></div><span className="keyboard-hint">Enter envia · Shift + Enter quebra linha</span><span className="ai-live" title="Gemini Flash Lite, Gemini Flash, Gemma e Grok"><span/>Rede de IA</span><span className="counter">{text.length}/8000</span><Button icon={Send} disabled={!text.trim()||busy} onClick={submit}>{busy?'Pensando...':'Enviar'}</Button></div>{error&&<div className="ask-error"><CircleAlert/>{error}</div>}</div>{busy&&<div className="progress-line"><span/></div>}{newEmployee&&<NewEmployeeModal onClose={()=>setNewEmployee(false)} onSave={emp=>{update(d=>({...d,customSpecialists:[...(d.customSpecialists||[]).filter(x=>x.name!==emp.name),emp],preferences:{...d.preferences,specialist:emp.name}}));setNewEmployee(false);setToast(`Funcionário de ${emp.name} contratado`)}}/>}</section>
+  return <section className="ask-card chat-card"><div className="ask-top"><div><span className="spark-dot"><Sparkles/></span><div><h2>{active?.title||'O que você precisa resolver hoje?'}</h2><p>Converse, complemente e refine sem perder o contexto.</p></div></div><div className="chat-head-actions"><span className="business-context"><Building2/>{business?.name||'Nenhum negócio selecionado'}</span><Button variant="ghost" icon={Plus} onClick={newChat}>Nova conversa</Button></div></div>{conversations.length>0&&<div className="conversation-tabs">{conversations.slice(0,5).map(c=><button className={c.id===active?.id?'active':''} key={c.id} onClick={()=>update(d=>({...d,selectedConversationId:c.id}))}><MessageSquareText/>{c.title}</button>)}</div>}<div className={`chat-messages ${messages.length?'has-messages':''}`}>{messages.length===0?<div className="chat-welcome"><Bot/><h3>Seu agente está pronto</h3><p>Peça uma análise, material, plano ou orientação. Quando uma ferramenta externa for melhor, eu mostro o caminho certo.</p></div>:messages.map(message=><div className={`chat-message ${message.role}`} key={message.id}><span className="message-avatar">{message.role==='assistant'?<Sparkles/>:db.user.name[0]}</span><div className="message-content"><small>{message.role==='assistant'?(message.degraded?'Contingência local':`${message.provider} · ${message.model}`):db.user.name}</small>{message.role==='assistant'?<Markdown text={message.content}/>:<pre>{message.content}</pre>}{message.toolIds?.length>0&&<div className="message-tools">{message.toolIds.map(renderToolLink)}</div>}{message.role==='assistant'&&<div className="message-actions"><button onClick={()=>{navigator.clipboard?.writeText(message.content);setToast('Resposta copiada')}}><Copy/>Copiar</button><button onClick={()=>saveMessage(message)}><Save/>Salvar em projetos</button></div>}</div></div>)}{busy&&<div className="chat-message assistant"><span className="message-avatar"><Sparkles/></span><div className="typing"><i/><i/><i/><span>Consultando a melhor IA disponível...</span></div></div>}<div ref={endRef}/></div><div className="chat-composer"><textarea aria-label="Mensagem para a IA" value={text} onChange={e=>setText(e.target.value.slice(0,8000))} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();submit()}}} placeholder="Escreva sua mensagem..."/><div className="ask-actions"><div className="specialist-select"><span>Com</span><select aria-label="Funcionário" value={specialist} onChange={e=>{const v=e.target.value;if(v==='__new'){setNewEmployee(true);return}update(d=>({...d,preferences:{...d.preferences,specialist:v}}))}}><optgroup label="Equipe padrão">{specialistData.map(s=><option key={s[0]} value={s[0]}>{s[0]}</option>)}</optgroup>{(db.customSpecialists||[]).length>0&&<optgroup label="Meus funcionários">{db.customSpecialists.map(c=><option key={c.name} value={c.name}>{c.name}</option>)}</optgroup>}<option value="__new">+ Contratar novo funcionário...</option></select></div><span className="keyboard-hint">Enter envia · Shift + Enter quebra linha</span><span className="ai-live" title="Gemini Flash Lite, Gemini Flash, Gemma e Grok"><span/>Rede de IA</span><span className="counter">{text.length}/8000</span><Button icon={Send} disabled={!text.trim()||busy} onClick={submit}>{busy?'Pensando...':'Enviar'}</Button></div>{error&&<div className="ask-error"><CircleAlert/>{error}</div>}</div>{busy&&<div className="progress-line"><span/></div>}{newEmployee&&<NewEmployeeModal onClose={()=>setNewEmployee(false)} onSave={emp=>{update(d=>({...d,customSpecialists:[...(d.customSpecialists||[]).filter(x=>x.name!==emp.name),emp],preferences:{...d.preferences,specialist:emp.name}}));setNewEmployee(false);setToast(`Funcionário de ${emp.name} contratado`)}}/>}</section>
 }
 
 function Dashboard({ db, update, business, go, setToast }) {
@@ -367,7 +493,7 @@ function HistoryPage({db,update,business,setToast}){
   const [open,setOpen]=useState(null),[search,setSearch]=useState('')
   const items=db.history.filter(x=>(!business||x.businessId===business.id)&&x.title.toLowerCase().includes(search.toLowerCase()))
   const transform=(x,type)=>{if(type==='task')update(d=>({...d,tasks:[{id:uid(),title:x.title,description:x.result.slice(0,240),priority:'Média',status:'A fazer',due:'',area:'Estratégia',businessId:x.businessId},...d.tasks]}));else update(d=>({...d,documents:[{id:uid(),title:x.title,type:'Plano de ação',content:x.result,businessId:x.businessId,updatedAt:new Date().toISOString(),versions:[]},...d.documents]}));setToast(type==='task'?'Tarefa criada':'Documento criado')}
-  return <PageTitle eyebrow="PROJETOS E HISTÓRICO" title="Tudo o que você escolheu guardar, pronto para continuar" text="As conversas ficam no chat; somente respostas que você salvar entram aqui."><div className="toolbar"><div className="search"><Search/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Pesquisar no histórico"/></div></div>{items.length===0?<Empty icon={History} title="Seu histórico está vazio" text="No chat, use “Salvar em projetos” apenas nas respostas que quiser manter aqui."/>:<div className="history-list">{items.map(x=><article key={x.id} onClick={()=>setOpen(x.id)}><span className="doc-icon"><Sparkles/></span><span><span className="tag">{x.specialist}</span><h3>{x.title}</h3><small>{new Date(x.createdAt).toLocaleString('pt-BR')} · {x.type}{x.provider?` · ${x.provider}`:''}</small></span><ChevronRight/></article>)}</div>}{open&&(()=>{const x=db.history.find(i=>i.id===open);return <Modal wide title={x.title} onClose={()=>setOpen(null)}><div className="result"><div className="result-meta"><span><Building2/>{db.businesses.find(b=>b.id===x.businessId)?.name||'Sem negócio'}</span><span><Sparkles/>{x.specialist}</span>{x.provider&&<span><BadgeCheck/>{x.provider} · {x.model}</span>}</div><pre>{x.result}</pre><div className="modal-actions spread"><Button variant="ghost" icon={Copy} onClick={()=>{navigator.clipboard?.writeText(x.result);setToast('Resultado copiado')}}>Copiar</Button><div><Button variant="secondary" icon={ListTodo} onClick={()=>transform(x,'task')}>Virar tarefa</Button><Button icon={FileText} onClick={()=>transform(x,'doc')}>Virar documento</Button></div></div></div></Modal>})()}</PageTitle>
+  return <PageTitle eyebrow="PROJETOS E HISTÓRICO" title="Tudo o que você escolheu guardar, pronto para continuar" text="As conversas ficam no chat; somente respostas que você salvar entram aqui."><div className="toolbar"><div className="search"><Search/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Pesquisar no histórico"/></div></div>{items.length===0?<Empty icon={History} title="Seu histórico está vazio" text="No chat, use “Salvar em projetos” apenas nas respostas que quiser manter aqui."/>:<div className="history-list">{items.map(x=><article key={x.id} onClick={()=>setOpen(x.id)}><span className="doc-icon"><Sparkles/></span><span><span className="tag">{x.specialist}</span><h3>{x.title}</h3><small>{new Date(x.createdAt).toLocaleString('pt-BR')} · {x.type}{x.provider?` · ${x.provider}`:''}</small></span><ChevronRight/></article>)}</div>}{open&&(()=>{const x=db.history.find(i=>i.id===open);return <Modal wide title={x.title} onClose={()=>setOpen(null)}><div className="result"><div className="result-meta"><span><Building2/>{db.businesses.find(b=>b.id===x.businessId)?.name||'Sem negócio'}</span><span><Sparkles/>{x.specialist}</span>{x.provider&&<span><BadgeCheck/>{x.provider} · {x.model}</span>}</div><Markdown text={x.result}/><div className="modal-actions spread"><Button variant="ghost" icon={Copy} onClick={()=>{navigator.clipboard?.writeText(x.result);setToast('Resultado copiado')}}>Copiar</Button><div><Button variant="secondary" icon={ListTodo} onClick={()=>transform(x,'task')}>Virar tarefa</Button><Button icon={FileText} onClick={()=>transform(x,'doc')}>Virar documento</Button></div></div></div></Modal>})()}</PageTitle>
 }
 
 function certificateDocument(cert){

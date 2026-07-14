@@ -152,13 +152,36 @@ async function sessionUser(request, env) {
     WHERE sessions.token_hash = ? AND sessions.expires_at > ?`).bind(await sha256(token), new Date().toISOString()).first()
 }
 
-function allowed(ip) {
+function allowed(key, cap = 8) {
   const now = Date.now()
-  const item = limits.get(ip) || { start: now, count: 0 }
+  const item = limits.get(key) || { start: now, count: 0 }
   if (now - item.start > 60_000) { item.start = now; item.count = 0 }
   item.count += 1
-  limits.set(ip, item)
-  return item.count <= 8
+  limits.set(key, item)
+  return item.count <= cap
+}
+
+async function handleWorkspace(request, env, user) {
+  if (request.method === 'GET') {
+    const row = await env.DB.prepare('SELECT data, updated_at FROM workspaces WHERE user_id = ?').bind(user.id).first()
+    let data = null
+    try { data = row ? JSON.parse(row.data) : null } catch { data = null }
+    return json({ data, updatedAt: row?.updated_at || null })
+  }
+  if (request.method !== 'PUT') return json({ error: 'Método não permitido.' }, 405)
+  const ip = request.headers.get('cf-connecting-ip') || 'local'
+  if (!allowed(`ws:${ip}`, 40)) return json({ error: 'Muitas sincronizações em pouco tempo. Aguarde um instante.' }, 429)
+  let body
+  try { body = await request.json() } catch { return json({ error: 'Solicitação inválida.' }, 400) }
+  const data = body && body.data && typeof body.data === 'object' ? body.data : null
+  if (!data) return json({ error: 'Dados inválidos.' }, 400)
+  const text = JSON.stringify(data)
+  if (text.length > 900_000) return json({ error: 'O espaço de sincronização foi excedido. Exporte ou remova itens grandes do histórico.' }, 413)
+  const updatedAt = new Date().toISOString()
+  await env.DB.prepare(`INSERT INTO workspaces (user_id, data, updated_at) VALUES (?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`)
+    .bind(user.id, text, updatedAt).run()
+  return json({ ok: true, updatedAt })
 }
 
 function systemPrompt(specialist, business, customInstructions) {
@@ -368,11 +391,18 @@ export default {
       try { return await handleAuth(request, env, url) }
       catch (error) { console.error('Auth error', error); return json({ error: 'Não foi possível concluir o acesso.' }, 500) }
     }
-    if (url.pathname === '/api/ai' || url.pathname === '/api/media') {
+    if (url.pathname === '/api/ai' || url.pathname === '/api/media' || url.pathname === '/api/workspace') {
       if (url.pathname === '/api/ai' && request.method !== 'POST') return json({ error: 'Método não permitido.' }, 405)
+      if (url.pathname === '/api/workspace' && !env.DB) return json({ error: 'O serviço de contas ainda não está configurado.' }, 503)
+      let user
       try {
-        if (!(await sessionUser(request, env))) return json({ error: 'Sua sessão expirou. Entre novamente para usar a IA.' }, 401)
+        user = await sessionUser(request, env)
+        if (!user) return json({ error: 'Sua sessão expirou. Entre novamente.' }, 401)
       } catch (error) { console.error('Session check error', error); return json({ error: 'Não foi possível validar sua sessão.' }, 500) }
+      if (url.pathname === '/api/workspace') {
+        try { return await handleWorkspace(request, env, user) }
+        catch (error) { console.error('Workspace error', error); return json({ error: 'Não foi possível sincronizar seus dados.' }, 500) }
+      }
       return url.pathname === '/api/ai' ? handleAi(request, env) : handleMedia(request, env, url)
     }
     return env.ASSETS.fetch(request)
