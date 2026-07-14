@@ -6,10 +6,18 @@
     <meta name="description" content="Seu Funcionário — estratégia, marketing, vendas, organização e execução em um só lugar." />
     <meta name="theme-color" content="#6d38e0" />
     <link rel="icon" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icon-maskable.svg" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Seu Funcionário" />
     <title>Seu Funcionário</title>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('/sw.js'))
+    </script>
   </body>
 </html>

@@ -196,19 +196,38 @@ async function askXai(env, prompt, specialist, business) {
   return { content, provider: 'xAI', model, usage: data.usage || null }
 }
 
+const cloudflareModels = {
+  '@cf/openai/gpt-oss-120b': 'GPT-OSS 120B',
+  '@cf/meta/llama-3.3-70b-instruct-fp8-fast': 'Llama 3.3 70B',
+  '@cf/zai-org/glm-4.7-flash': 'GLM 4.7 Flash',
+  '@cf/meta/llama-3.2-3b-instruct': 'Llama 3.2 3B'
+}
+
+function cloudflareText(data) {
+  if (typeof data === 'string') return data
+  if (!data) return ''
+  if (Array.isArray(data.output)) {
+    const message = data.output.find(item => item.type === 'message') || data.output[data.output.length - 1]
+    const parts = Array.isArray(message?.content) ? message.content : []
+    const text = parts.map(part => part.text || '').join('')
+    if (text) return text
+  }
+  const value = data.response ?? data.result?.response ?? data.output_text ?? data.choices?.[0]?.message?.content
+  if (typeof value === 'string') return value
+  if (value && typeof value === 'object') return value.text || value.content || ''
+  return ''
+}
+
 async function askCloudflare(env, prompt, specialist, business, model) {
   if (!env.AI) throw new Error('Cloudflare Workers AI não configurado')
-  const data = await env.AI.run(model, {
-    messages: [
-      { role: 'system', content: systemPrompt(specialist, business) },
-      { role: 'user', content: prompt }
-    ],
-    max_tokens: 1600
-  })
-  const content = (typeof data === 'string' ? data : data?.response || data?.result?.response || '').trim()
+  const system = systemPrompt(specialist, business)
+  const payload = model.includes('gpt-oss')
+    ? { instructions: system, input: prompt }
+    : { messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }], max_tokens: 2048 }
+  const data = await env.AI.run(model, payload)
+  const content = cloudflareText(data).trim()
   if (!content) throw new Error(`Cloudflare ${model} retornou uma resposta vazia`)
-  const label = model.includes('glm') ? 'GLM 4.7 Flash' : 'Llama 3.2 3B'
-  return { content, provider: 'Cloudflare Workers AI', model: label, usage: data.usage || null }
+  return { content, provider: 'Cloudflare Workers AI', model: cloudflareModels[model] || model, usage: data.usage || null }
 }
 
 function localContingency(prompt, specialist, business, failures) {
@@ -241,13 +260,15 @@ async function handleAi(request, env) {
     'gemini-lite': () => askGemini(env, contextualPrompt, specialist, business, 'gemini-flash-lite-latest'),
     'gemini-flash': () => askGemini(env, contextualPrompt, specialist, business, 'gemini-flash-latest'),
     gemma: () => askGemini(env, contextualPrompt, specialist, business, 'gemma-4-26b-a4b-it'),
+    'gpt-oss': () => askCloudflare(env, contextualPrompt, specialist, business, '@cf/openai/gpt-oss-120b'),
+    llama70: () => askCloudflare(env, contextualPrompt, specialist, business, '@cf/meta/llama-3.3-70b-instruct-fp8-fast'),
     glm: () => askCloudflare(env, contextualPrompt, specialist, business, '@cf/zai-org/glm-4.7-flash'),
     llama: () => askCloudflare(env, contextualPrompt, specialist, business, '@cf/meta/llama-3.2-3b-instruct'),
     xai: () => askXai(env, contextualPrompt, specialist, business)
   }
   const order = deep
-    ? ['gemini-flash','xai','gemini-lite','gemma','glm','llama']
-    : ['gemini-lite','gemini-flash','gemma','xai','glm','llama']
+    ? ['gemini-flash','gpt-oss','llama70','gemini-lite','gemma','glm','llama','xai']
+    : ['gemini-lite','gemma','gemini-flash','gpt-oss','llama70','glm','llama','xai']
   const providers = order.map(name => [name, providerMap[name]])
   if (body.preferredProvider) providers.sort((a, b) => Number(b[0] === body.preferredProvider) - Number(a[0] === body.preferredProvider))
   for (const [providerName, run] of providers) {
