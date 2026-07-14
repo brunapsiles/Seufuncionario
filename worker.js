@@ -107,6 +107,15 @@ async function handleAuth(request, env, url) {
   return json({ error: 'Rota de acesso não encontrada.' }, 404)
 }
 
+async function sessionUser(request, env) {
+  if (!env.DB) return { id: 'local' }
+  const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || ''
+  if (!token) return null
+  return env.DB.prepare(`SELECT users.id FROM sessions
+    JOIN users ON users.id = sessions.user_id
+    WHERE sessions.token_hash = ? AND sessions.expires_at > ?`).bind(await sha256(token), new Date().toISOString()).first()
+}
+
 function allowed(ip) {
   const now = Date.now()
   const item = limits.get(ip) || { start: now, count: 0 }
@@ -293,11 +302,13 @@ export default {
       try { return await handleAuth(request, env, url) }
       catch (error) { console.error('Auth error', error); return json({ error: 'Não foi possível concluir o acesso.' }, 500) }
     }
-    if (url.pathname === '/api/ai') {
-      if (request.method !== 'POST') return json({ error: 'Método não permitido.' }, 405)
-      return handleAi(request, env)
+    if (url.pathname === '/api/ai' || url.pathname === '/api/media') {
+      if (url.pathname === '/api/ai' && request.method !== 'POST') return json({ error: 'Método não permitido.' }, 405)
+      try {
+        if (!(await sessionUser(request, env))) return json({ error: 'Sua sessão expirou. Entre novamente para usar a IA.' }, 401)
+      } catch (error) { console.error('Session check error', error); return json({ error: 'Não foi possível validar sua sessão.' }, 500) }
+      return url.pathname === '/api/ai' ? handleAi(request, env) : handleMedia(request, env, url)
     }
-    if (url.pathname === '/api/media') return handleMedia(request, env, url)
     return env.ASSETS.fetch(request)
   }
 }

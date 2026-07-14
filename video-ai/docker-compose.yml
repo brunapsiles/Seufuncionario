@@ -1,0 +1,26 @@
+services:
+  video-ai:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      API_TOKEN: ${API_TOKEN}
+      HF_HOME: /models
+      DATA_DIR: /data
+      MODEL_ID: Wan-AI/Wan2.2-TI2V-5B-Diffusers
+    volumes:
+      - wan-models:/models
+      - video-data:/data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  wan-models:
+  video-data:
+
