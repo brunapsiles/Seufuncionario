@@ -165,3 +165,8 @@ aside nav,nav{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden}
 .nav-divider{flex:none}
 :root{--font-head:'Plus Jakarta Sans','Inter',sans-serif}
 h1,h2,h3,h4,.logo{letter-spacing:-.02em}
+
+/* ===== v7 · botão Google ===== */
+.google-btn{display:flex;justify-content:center;margin:4px 0 2px;min-height:44px}
+.or-divider{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12px;margin:16px 0 4px}
+.or-divider::before,.or-divider::after{content:'';flex:1;height:1px;background:var(--line)}

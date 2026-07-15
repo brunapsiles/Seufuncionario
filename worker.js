@@ -111,6 +111,29 @@ async function handleAuth(request, env, url) {
   let body
   try { body = await request.json() } catch { return json({ error: 'Solicitação inválida.' }, 400) }
 
+  if (url.pathname === '/api/auth/google') {
+    const credential = typeof body.credential === 'string' ? body.credential : ''
+    if (!credential) return json({ error: 'Token do Google ausente.' }, 400)
+    if (!env.GOOGLE_CLIENT_ID) return json({ error: 'Login com Google ainda não está configurado.' }, 503)
+    const resp = await fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(credential))
+    if (!resp.ok) return json({ error: 'Não foi possível validar sua conta Google.' }, 401)
+    const info = await resp.json().catch(() => ({}))
+    const okIss = info.iss === 'accounts.google.com' || info.iss === 'https://accounts.google.com'
+    const emailOk = info.email && (info.email_verified === 'true' || info.email_verified === true)
+    if (!okIss || info.aud !== env.GOOGLE_CLIENT_ID || !emailOk) return json({ error: 'Conta Google inválida.' }, 401)
+    const gEmail = String(info.email).trim().toLowerCase()
+    let account = await env.DB.prepare('SELECT id, name, email FROM users WHERE email = ?').bind(gEmail).first()
+    if (!account) {
+      const id = crypto.randomUUID()
+      const gName = String(info.name || info.given_name || gEmail.split('@')[0]).trim().slice(0, 100) || 'Usuário'
+      const salt = randomHex(16)
+      await env.DB.prepare('INSERT INTO users (id, name, email, password_hash, password_salt, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(id, gName, gEmail, await passwordHash(randomHex(32), salt), salt, new Date().toISOString()).run()
+      account = { id, name: gName, email: gEmail }
+    }
+    return json({ user: { id: account.id, name: account.name, email: account.email }, token: await createSession(env, account.id) })
+  }
+
   if (url.pathname === '/api/auth/profile') {
     const account = await sessionUser(request, env)
     if (!account) return json({ error: 'Sua sessão expirou. Entre novamente.' }, 401)
@@ -454,6 +477,7 @@ async function handleMedia(request, env, url) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url)
+    if (url.pathname === '/api/config') return json({ googleClientId: env.GOOGLE_CLIENT_ID || '' })
     if (url.pathname.startsWith('/api/auth/')) {
       try { return await handleAuth(request, env, url) }
       catch (error) { console.error('Auth error', error); return json({ error: 'Não foi possível concluir o acesso.' }, 500) }
