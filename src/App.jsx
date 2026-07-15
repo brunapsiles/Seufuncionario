@@ -192,7 +192,7 @@ function useDatabase() {
 }
 
 function Logo({ compact = false }) {
-  return <div className="logo"><img className="logo-mark-img" src="/favicon.svg?v=4" alt="Seu Funcionário" width="36" height="36"/>{!compact && <span>Seu <strong>Funcionário</strong></span>}</div>
+  return <div className="logo"><img className="logo-mark-img" src="/favicon.svg?v=6" alt="Seu Funcionário" width="36" height="36"/>{!compact && <span>Seu <strong>Funcionário</strong></span>}</div>
 }
 
 function Button({ children, icon: Icon, variant = 'primary', className = '', ...props }) {
