@@ -212,3 +212,6 @@ h1,h2,h3,h4,.logo{letter-spacing:-.02em}
 .verify-card{max-width:440px;width:100%}
 .verify-card .mobile-logo{display:flex;margin-bottom:18px}
 .code-input{text-align:center;font-size:26px;letter-spacing:12px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif}
+.smart-icon.g9{background:linear-gradient(135deg,#6d38e0,#17a673)}
+.smart-icon.g10{background:linear-gradient(135deg,#f59e0b,#ed3e91)}
+.smart-icon.g11{background:linear-gradient(135deg,#0ea5e9,#f59e0b)}

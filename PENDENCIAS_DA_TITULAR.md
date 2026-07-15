@@ -1,59 +1,41 @@
 # Pendências da Titular
 
-Ações que somente você pode realizar. **Nenhuma delas bloqueia o funcionamento atual** — o app está publicado, gratuito e operante em https://seufuncionario-expo.brunapsiles.workers.dev
+Ações que somente você pode realizar. **Nenhuma delas impede o uso do app**, que está no ar em https://seufuncionario-expo.brunapsiles.workers.dev
 
-## 1. Regenerar as chaves compartilhadas em conversas (recomendado)
+## 🔴 Recomendadas agora
 
-| Item | Detalhe |
-|---|---|
-| Ação | Regenerar 3 chaves: token da Cloudflare, chave do Gemini e chave da xAI |
-| Onde | Cloudflare: dash.cloudflare.com → API Tokens · Gemini: aistudio.google.com/apikey · xAI: console.x.ai |
-| Motivo | As chaves atuais foram coladas em conversas com assistentes (Codex e Claude) e ficam nos históricos dessas plataformas |
-| O que será gerado | Novos códigos de chave |
-| Onde configurar | No terminal do projeto: `npx wrangler secret put GEMINI_API_KEY` e `npx wrangler secret put XAI_API_KEY` (ou me peça para configurar em uma nova sessão) |
-| Cuidados | Nunca cole chaves em sites que não sejam os oficiais; revogue as antigas após criar as novas |
-| Impacto se não fizer | O app continua funcionando; existe risco teórico de terceiros usarem suas cotas |
-| Alternativa gratuita | O processo é gratuito |
-| Bloqueia o lançamento? | Não |
-| Próximo passo | Após regenerar, atualizar os segredos e revogar as chaves antigas |
+### 1. Deploy automático (para o revezamento com o Codex funcionar)
+- **O que fazer:** dash.cloudflare.com → **Workers & Pages** → **seufuncionario-expo** → **Settings → Builds → Connect** → autorizar GitHub → escolher `brunapsiles/Seufuncionario`, branch `main`
+- Comandos, se pedir: Build `npm ci && npm run build` · Deploy `npx wrangler deploy`
+- **Por quê:** sem isso, o que o Codex commitar fica parado no GitHub até alguém publicar
+- **Custo:** grátis · **Tempo:** ~3 minutos
 
-## 2. Login com Google — ✅ CONFIGURADO
+### 2. Login com Google — corrigir a origem (você fará com o Codex)
+- Erro atual: "no registered origin". Na credencial que termina em `...r3td8vn0`, o endereço `https://seufuncionario-expo.brunapsiles.workers.dev` precisa estar em **"Origens JavaScript autorizadas"** (a caixa de cima, sem barra no final). Salvar e aguardar ~10 min.
 
-O login com Google já está ativo em produção (Client ID configurado como segredo `GOOGLE_CLIENT_ID`).
-Pendência mínima de segurança da sua parte:
-- A **API key** enviada durante a configuração **não é usada** pelo app. Recomenda-se **excluí-la ou restringi-la** em console.cloud.google.com → APIs e Serviços → Credenciais.
-- Login com **Apple ID** não foi incluído (exige conta paga de desenvolvedor Apple, US$ 99/ano).
+### 3. Testar o cadastro real
+- Criar uma conta no app com um e-mail seu de verdade e confirmar que o código de 6 dígitos chega (pode cair no spam nas primeiras vezes — marque "não é spam").
 
-## 3. Recuperação de senha por e-mail (escolhida por você)
+## 🟡 Opcionais / segurança
 
-| Item | Detalhe |
-|---|---|
-| Ação | Contratar um domínio próprio e conectar um serviço de envio de e-mail gratuito (ex.: Resend) |
-| Motivo | Enviar e-mail de redefinição para qualquer usuário exige um **domínio verificado**; o endereço atual `.workers.dev` não permite verificação de e-mail |
-| Configurar | Após ter domínio: criar conta no Resend (plano gratuito), verificar o domínio, e me enviar a chave para eu configurar como segredo `RESEND_API_KEY` |
-| Impacto se não fizer | Não há recuperação de senha; oriente os usuários a guardarem a senha. Posso, alternativamente, implementar um "código de recuperação" gratuito que não depende de e-mail — me avise se preferir |
-| Alternativa gratuita | Código de recuperação mostrado no cadastro (sem e-mail) |
-| Bloqueia o lançamento? | Não |
+### 4. Restringir ou regenerar chaves compartilhadas em conversas
+- Chaves que passaram por chats (Codex/Claude): token Cloudflare, Gemini, xAI, Google API key, Brevo. O app guarda todas em cofre seguro; regenerar é só uma camada extra de proteção contra terceiros.
+- Google API key: em console.cloud.google.com → Credenciais, dá para **restringir** quais APIs ela pode usar.
 
-## 4. Domínio próprio (opcional)
+### 5. Domínio próprio (ex.: seufuncionario.com.br)
+- Pago (~R$ 40/ano em registro.br). Deixa o endereço com a sua marca e habilita e-mails do seu domínio. O endereço gratuito atual continua funcionando para sempre.
 
-| Item | Detalhe |
-|---|---|
-| Ação | Comprar um domínio (ex.: seufuncionario.com.br) se quiser endereço de marca |
-| Onde | registro.br (domínios .br) ou Cloudflare Registrar |
-| Motivo | Compra de domínio exige pagamento e dados da titular |
-| Onde configurar | Cloudflare → Workers → seufuncionario-expo → Settings → Domains & Routes |
-| Impacto se não fizer | O endereço gratuito `seufuncionario-expo.brunapsiles.workers.dev` continua funcionando para sempre |
-| Alternativa gratuita | Manter o endereço workers.dev atual |
-| Bloqueia o lançamento? | Não |
+### 6. Servidor GPU para vídeo próprio (pasta `video-ai/`)
+- Pago. Sem ele, o estúdio já oferece o caminho gratuito (Hugging Face) para vídeos; imagens e logos funcionam normalmente.
 
-## 5. Servidor próprio de vídeo com GPU (opcional)
+### 7. Login com Apple
+- Exige conta de desenvolvedor Apple (US$ 99/ano). Recomendação: não fazer por enquanto.
 
-| Item | Detalhe |
-|---|---|
-| Ação | Contratar servidor GPU e publicar a pasta `video-ai/` se quiser geração de vídeo ilimitada própria |
-| Motivo | GPU não existe em plano gratuito; exige contratação paga |
-| Onde configurar | `npx wrangler secret put VIDEO_AI_URL` e `VIDEO_AI_TOKEN` |
-| Impacto se não fizer | O estúdio já oferece o caminho gratuito (Hugging Face) para vídeos; imagens e logos funcionam normalmente no plano gratuito |
-| Alternativa gratuita | Já ativa (Hugging Face ZeroGPU, com fila) |
-| Bloqueia o lançamento? | Não |
+## ✅ Já resolvidas
+
+- Conta Cloudflare conectada, app publicado e permanente
+- Chaves Gemini/xAI/Google/Brevo no cofre do servidor
+- Login com Google construído (falta só a origem — item 2)
+- Verificação de e-mail por código no cadastro (Brevo ativo)
+- Recuperação de senha por código de e-mail
+- Guia `AGENTS.md` para revezamento entre assistentes
