@@ -167,6 +167,22 @@ async function handleAuth(request, env, url) {
     return json({ ok: true })
   }
 
+  if (url.pathname === '/api/auth/forgot') {
+    const vemail = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+    if (!/^\S+@\S+\.\S+$/.test(vemail)) return json({ error: 'Informe um e-mail válido.' }, 400)
+    if (!emailEnabled(env)) return json({ error: 'A recuperação por e-mail não está configurada.' }, 503)
+    const account = await env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(vemail).first()
+    if (account) {
+      const code = sixDigitCode()
+      await env.DB.prepare(`INSERT INTO password_resets (email, code_hash, expires_at, attempts, created_at) VALUES (?, ?, ?, 0, ?)
+        ON CONFLICT(email) DO UPDATE SET code_hash = excluded.code_hash, expires_at = excluded.expires_at, attempts = 0, created_at = excluded.created_at`)
+        .bind(vemail, await sha256(code), new Date(Date.now() + 15 * 60 * 1000).toISOString(), new Date().toISOString()).run()
+      try { await sendEmail(env, vemail, 'Redefinição de senha — Seu Funcionário', codeEmailHtml(code)) }
+      catch (e) { console.error('forgot mail', e); return json({ error: 'Não foi possível enviar o e-mail agora. Tente novamente.' }, 502) }
+    }
+    return json({ ok: true })
+  }
+
   if (url.pathname === '/api/auth/google') {
     const credential = typeof body.credential === 'string' ? body.credential : ''
     if (!credential) return json({ error: 'Token do Google ausente.' }, 400)
@@ -203,6 +219,23 @@ async function handleAuth(request, env, url) {
   const password = typeof body.password === 'string' ? body.password : ''
   if (!/^\S+@\S+\.\S+$/.test(email)) return json({ error: 'Informe um e-mail válido.' }, 400)
   if (password.length < 8 || password.length > 128) return json({ error: 'A senha precisa ter entre 8 e 128 caracteres.' }, 400)
+
+  if (url.pathname === '/api/auth/reset') {
+    const code = typeof body.code === 'string' ? body.code.trim() : ''
+    if (!/^\d{6}$/.test(code)) return json({ error: 'Digite o código de 6 dígitos enviado ao seu e-mail.' }, 400)
+    const reset = await env.DB.prepare('SELECT * FROM password_resets WHERE email = ?').bind(email).first()
+    if (!reset) return json({ error: 'Solicite a recuperação novamente.' }, 404)
+    if (reset.expires_at < new Date().toISOString()) { await env.DB.prepare('DELETE FROM password_resets WHERE email = ?').bind(email).run(); return json({ error: 'O código expirou. Solicite novamente.' }, 410) }
+    if (reset.attempts >= 6) { await env.DB.prepare('DELETE FROM password_resets WHERE email = ?').bind(email).run(); return json({ error: 'Muitas tentativas. Solicite novamente.' }, 429) }
+    if (await sha256(code) !== reset.code_hash) { await env.DB.prepare('UPDATE password_resets SET attempts = attempts + 1 WHERE email = ?').bind(email).run(); return json({ error: 'Código incorreto. Confira e tente de novo.' }, 401) }
+    const account = await env.DB.prepare('SELECT id, name FROM users WHERE email = ?').bind(email).first()
+    if (!account) { await env.DB.prepare('DELETE FROM password_resets WHERE email = ?').bind(email).run(); return json({ error: 'Conta não encontrada.' }, 404) }
+    const salt = randomHex(16)
+    await env.DB.prepare('UPDATE users SET password_hash = ?, password_salt = ? WHERE id = ?').bind(await passwordHash(password, salt), salt, account.id).run()
+    await env.DB.prepare('DELETE FROM password_resets WHERE email = ?').bind(email).run()
+    await env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(account.id).run()
+    return json({ user: { id: account.id, name: account.name, email }, token: await createSession(env, account.id) })
+  }
 
   if (url.pathname === '/api/auth/register') {
     const name = typeof body.name === 'string' ? body.name.trim().replace(/\s+/g, ' ') : ''

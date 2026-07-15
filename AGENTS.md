@@ -48,5 +48,5 @@ npx wrangler d1 migrations apply seu-funcionario-db --remote   # aplica migraç�
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
 - Login Google: falta a titular corrigir a origem autorizada no Google Console
-- "Esqueci minha senha": ainda não existe — agora é viável via Brevo (seguir o padrão de `pending_signups`)
+- "Esqueci minha senha": ✅ implementado (/api/auth/forgot e /api/auth/reset, códigos via Brevo)
 - Domínio próprio e servidor GPU de vídeo: opcionais, dependem da titular
