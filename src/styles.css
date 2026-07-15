@@ -5039,6 +5039,122 @@ aside nav:hover::-webkit-scrollbar-thumb {
   }
 }
 
+/* ===== v21 · centrais completas por área ===== */
+.area-toolkit {
+  margin: 0 0 26px;
+  padding: 22px;
+  border: 1px solid color-mix(in srgb, var(--primary) 16%, var(--line));
+  border-radius: 20px;
+  background:
+    radial-gradient(
+      circle at 100% 0,
+      color-mix(in srgb, var(--pink) 10%, transparent),
+      transparent 34%
+    ),
+    color-mix(in srgb, var(--primary) 3%, var(--surface));
+}
+.area-toolkit .section-head {
+  margin-bottom: 16px;
+}
+.area-toolkit .section-head h2 {
+  margin: 5px 0 4px;
+  font-size: clamp(1.25rem, 2.6vw, 1.75rem);
+}
+.area-toolkit .section-head p {
+  margin: 0;
+  color: var(--muted);
+}
+.area-tools-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.area-tools-grid > button,
+.area-tools-grid > a {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 11px;
+  min-height: 118px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+.area-tools-grid > button:hover,
+.area-tools-grid > a:hover {
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--line));
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--primary) 9%, transparent);
+  transform: translateY(-2px);
+}
+.area-tools-grid > button > span:nth-child(2),
+.area-tools-grid > a > span:nth-child(2) {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.area-tools-grid small {
+  overflow: hidden;
+  color: var(--primary);
+  font-size: 0.67rem;
+  font-weight: 850;
+  letter-spacing: 0.035em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.area-tools-grid strong {
+  line-height: 1.2;
+}
+.area-tools-grid p {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 1px 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.area-tools-grid > button > svg,
+.area-tools-grid > a > svg {
+  width: 16px;
+  color: var(--muted);
+}
+#task-board,
+#crm-board,
+#finance-planning,
+#finance-price,
+#finance-transactions,
+#document-library,
+#site-projects {
+  scroll-margin-top: 90px;
+}
+
+@media (max-width: 1050px) {
+  .area-tools-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .area-toolkit {
+    padding: 16px;
+  }
+  .area-tools-grid {
+    grid-template-columns: 1fr;
+  }
+  .area-tools-grid > button,
+  .area-tools-grid > a {
+    min-height: 102px;
+  }
+}
+
 /* ===== v19 · construtor de sites conversacional e multipágina ===== */
 .site-repair-notice {
   display: flex;

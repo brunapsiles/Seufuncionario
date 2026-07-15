@@ -166,6 +166,82 @@ describe("fluxos de trabalho", () => {
     );
   });
 
+  it("mostra todas as ferramentas relacionadas dentro de cada área", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Financeiro" }));
+    const financeHeading = screen.getByRole("heading", {
+      name: "Tudo de Financeiro em um só lugar",
+    });
+    const financeHub = financeHeading.closest("section");
+    expect(within(financeHub).getByText("Fluxo de caixa")).toBeInTheDocument();
+    expect(
+      within(financeHub).getByText("Metas e ponto de equilíbrio"),
+    ).toBeInTheDocument();
+    expect(
+      within(financeHub).getByText("Calculadora de preço"),
+    ).toBeInTheDocument();
+    expect(within(financeHub).getByText("NFS-e Nacional")).toBeInTheDocument();
+    expect(
+      within(financeHub).getByText("Emissor NF-e Sebrae"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Marca e Marketing" }));
+    const marketingHub = screen
+      .getByRole("heading", {
+        name: "Tudo de Marca e Marketing em um só lugar",
+      })
+      .closest("section");
+    expect(
+      within(marketingHub).getByText("Gerador de posts"),
+    ).toBeInTheDocument();
+    expect(
+      within(marketingHub).getByText("Estúdio de logos e imagens"),
+    ).toBeInTheDocument();
+    expect(within(marketingHub).getByText("Canva")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Vendas e Clientes" }));
+    const salesHub = screen
+      .getByRole("heading", {
+        name: "Tudo de Vendas e Clientes em um só lugar",
+      })
+      .closest("section");
+    expect(
+      within(salesHub).getByText("CRM e funil de vendas"),
+    ).toBeInTheDocument();
+    expect(
+      within(salesHub).getByText("Roteiro e follow-up"),
+    ).toBeInTheDocument();
+    expect(within(salesHub).getByText("WhatsApp Web")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Operação" }));
+    const operationHub = screen
+      .getByRole("heading", { name: "Tudo de Operação em um só lugar" })
+      .closest("section");
+    expect(
+      within(operationHub).getByText("Tarefas e projetos"),
+    ).toBeInTheDocument();
+    expect(
+      within(operationHub).getByText("Passo a passo (POP)"),
+    ).toBeInTheDocument();
+    expect(
+      within(operationHub).getByText("Roteirizador de entregas"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Sites e Materiais" }));
+    expect(
+      screen.getByRole("heading", {
+        name: "Tudo de Sites e Materiais em um só lugar",
+      }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Documentos" }));
+    expect(
+      screen.getByRole("heading", {
+        name: "Tudo de Documentos em um só lugar",
+      }),
+    ).toBeInTheDocument();
+  });
+
   it("só conclui um marco de jornada quando existe um entregável", async () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "Começar do zero" }));

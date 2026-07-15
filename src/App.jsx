@@ -2788,13 +2788,349 @@ function PageTitle({ eyebrow, title, text, action, children }) {
   );
 }
 
-function Specialists({ db, update, business, setToast }) {
+const areaToolkits = {
+  estrategia: {
+    label: "Estratégia",
+    items: [
+      {
+        kind: "page",
+        page: "comecar",
+        title: "Jornadas guiadas",
+        description: "Valide uma ideia ou estruture o negócio por etapas.",
+        icon: Rocket,
+      },
+      {
+        kind: "ai",
+        tool: "dados",
+        title: "Análise de cenários e números",
+        description: "Transforme dados informados em padrões e decisões.",
+        icon: Filter,
+      },
+      {
+        kind: "page",
+        page: "documentos",
+        title: "Planos e diagnósticos",
+        description: "Crie e organize planos, pesquisas e relatórios.",
+        icon: FileText,
+      },
+      {
+        kind: "page",
+        page: "historico",
+        title: "Projetos e decisões",
+        description: "Continue, refine ou duplique trabalhos anteriores.",
+        icon: History,
+      },
+      { kind: "external", tool: "notion" },
+      { kind: "external", tool: "sheets" },
+    ],
+  },
+  marketing: {
+    label: "Marca e Marketing",
+    items: [
+      { kind: "ai", tool: "post" },
+      { kind: "ai", tool: "ecommerce" },
+      {
+        kind: "page",
+        page: "estudio",
+        title: "Estúdio de logos e imagens",
+        description: "Crie identidade, peças visuais, imagens e vídeos.",
+        icon: Palette,
+      },
+      {
+        kind: "page",
+        page: "sites",
+        title: "Sites e landing pages",
+        description: "Crie, edite por conversa e publique seu site.",
+        icon: Globe2,
+      },
+      { kind: "special", tool: "translate" },
+      { kind: "external", tool: "canva" },
+      { kind: "external", tool: "drive" },
+    ],
+  },
+  vendas: {
+    label: "Vendas e Clientes",
+    items: [
+      {
+        kind: "scroll",
+        target: "crm-board",
+        title: "CRM e funil de vendas",
+        description: "Cadastre leads, etapas e histórico de interações.",
+        icon: Users,
+      },
+      { kind: "ai", tool: "sales" },
+      { kind: "ai", tool: "support" },
+      { kind: "special", tool: "email" },
+      { kind: "external", tool: "whatsapp" },
+      { kind: "external", tool: "hubspot" },
+      { kind: "external", tool: "gmail" },
+      { kind: "external", tool: "outlook" },
+    ],
+  },
+  financeiro: {
+    label: "Financeiro",
+    items: [
+      {
+        kind: "scroll",
+        target: "finance-transactions",
+        title: "Fluxo de caixa",
+        description: "Registre receitas e despesas e acompanhe o saldo.",
+        icon: WalletCards,
+      },
+      {
+        kind: "scroll",
+        target: "finance-planning",
+        title: "Metas e ponto de equilíbrio",
+        description: "Planeje a receita necessária para cobrir os custos.",
+        icon: Target,
+      },
+      { kind: "ai", tool: "price" },
+      { kind: "ai", tool: "dados" },
+      { kind: "ai", tool: "compras" },
+      { kind: "external", tool: "sheets" },
+      { kind: "external", tool: "nfse" },
+      { kind: "external", tool: "nfe-sebrae" },
+      { kind: "external", tool: "nfse-api" },
+    ],
+  },
+  operacao: {
+    label: "Operação",
+    items: [
+      {
+        kind: "scroll",
+        target: "task-board",
+        title: "Tarefas e projetos",
+        description: "Planeje, delegue e acompanhe a execução.",
+        icon: ListTodo,
+      },
+      { kind: "ai", tool: "ops" },
+      { kind: "ai", tool: "rh" },
+      { kind: "ai", tool: "compras" },
+      { kind: "special", tool: "route" },
+      { kind: "external", tool: "calendar" },
+      { kind: "external", tool: "trello" },
+      { kind: "external", tool: "notion" },
+    ],
+  },
+  sites: {
+    label: "Sites e Materiais",
+    items: [
+      {
+        kind: "scroll",
+        target: "site-projects",
+        title: "Construtor de sites",
+        description: "Crie sites multipágina e edite tudo por conversa.",
+        icon: Globe2,
+      },
+      {
+        kind: "page",
+        page: "estudio",
+        title: "Logos, imagens e vídeos",
+        description: "Produza materiais visuais no Estúdio de IA.",
+        icon: ImageIcon,
+      },
+      {
+        kind: "page",
+        page: "documentos",
+        title: "Propostas e materiais",
+        description: "Crie documentos e exporte em PDF ou DOCX.",
+        icon: FileText,
+      },
+      { kind: "ai", tool: "post" },
+      { kind: "external", tool: "canva" },
+      { kind: "external", tool: "drive" },
+    ],
+  },
+  documentos: {
+    label: "Documentos",
+    items: [
+      {
+        kind: "scroll",
+        target: "document-library",
+        title: "Biblioteca e upload",
+        description: "Envie, pesquise, edite, versione e exporte arquivos.",
+        icon: Upload,
+      },
+      { kind: "ai", tool: "contract" },
+      { kind: "special", tool: "translate" },
+      {
+        kind: "page",
+        page: "estrategia",
+        title: "Analisar com um especialista",
+        description: "Use o documento como contexto em uma conversa.",
+        icon: Bot,
+      },
+      { kind: "external", tool: "drive" },
+      { kind: "external", tool: "notion" },
+    ],
+  },
+};
+
+function AreaToolkit({ area, db, update, business, setToast, go }) {
+  const [activeTool, setActiveTool] = useState("");
+  const config = areaToolkits[area];
+  if (!config) return null;
+  const resolve = (item) => {
+    if (item.kind === "external") {
+      const external = toolCatalog.find((tool) => tool.id === item.tool);
+      return external
+        ? {
+            ...item,
+            title: item.title || external.name,
+            description: item.description || external.description,
+            icon: item.icon || external.icon,
+            url: external.url,
+            badge: external.badge,
+          }
+        : null;
+    }
+    if (item.kind === "ai") {
+      const tool = aiTools[item.tool];
+      return tool
+        ? {
+            ...item,
+            title: item.title || tool.title.replace(/^.*? — /, ""),
+            description: item.description || tool.hint,
+            icon: item.icon || tool.icon,
+            badge: "Ferramenta inteligente",
+          }
+        : null;
+    }
+    const special = {
+      translate: {
+        title: "Tradutor profissional",
+        description: "Traduza textos, propostas e comunicações.",
+        icon: Languages,
+      },
+      route: {
+        title: "Roteirizador de entregas",
+        description: "Organize paradas e abra a rota no Google Maps.",
+        icon: Route,
+      },
+      email: {
+        title: "Escrever e-mail",
+        description: "Prepare a mensagem e envie pela sua própria conta.",
+        icon: Mail,
+      },
+    }[item.tool];
+    return special ? { ...item, ...special, badge: "Dentro do app" } : item;
+  };
+  const items = config.items.map(resolve).filter(Boolean);
+  const run = (item) => {
+    if (item.kind === "page") return go(item.page);
+    if (item.kind === "scroll") {
+      document.getElementById(item.target)?.scrollIntoView?.({
+        behavior: "smooth",
+        block: "start",
+      });
+      return;
+    }
+    setActiveTool(item.tool);
+  };
+  return (
+    <section className="area-toolkit">
+      <div className="section-head">
+        <div>
+          <span className="eyebrow">RECURSOS DESTA ÁREA</span>
+          <h2>Tudo de {config.label} em um só lugar</h2>
+          <p>{items.length} ferramentas e caminhos disponíveis agora.</p>
+        </div>
+      </div>
+      <div className="area-tools-grid">
+        {items.map((item, index) => {
+          const Icon = item.icon || Wrench;
+          const content = (
+            <>
+              <span className={`quick-icon q${index % 6}`}>
+                <Icon />
+              </span>
+              <span>
+                <small>
+                  {item.kind === "external"
+                    ? item.badge
+                    : item.badge || "Módulo do app"}
+                </small>
+                <strong>{item.title}</strong>
+                <p>{item.description}</p>
+              </span>
+              {item.kind === "external" ? <ExternalLink /> : <ArrowUpRight />}
+            </>
+          );
+          return item.kind === "external" ? (
+            <a
+              key={`${item.kind}-${item.tool}`}
+              href={item.url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {content}
+            </a>
+          ) : (
+            <button
+              key={`${item.kind}-${item.tool || item.page || item.target}`}
+              onClick={() => run(item)}
+            >
+              {content}
+            </button>
+          );
+        })}
+      </div>
+      {activeTool === "translate" && (
+        <TranslatorModal
+          onClose={() => setActiveTool("")}
+          setToast={setToast}
+        />
+      )}
+      {activeTool === "route" && (
+        <RouterModal onClose={() => setActiveTool("")} setToast={setToast} />
+      )}
+      {activeTool === "email" && (
+        <EmailComposer onClose={() => setActiveTool("")} setToast={setToast} />
+      )}
+      {aiTools[activeTool] && (
+        <AIToolModal
+          config={aiTools[activeTool]}
+          onClose={() => setActiveTool("")}
+          setToast={setToast}
+          update={update}
+          business={business}
+        />
+      )}
+    </section>
+  );
+}
+
+function Specialists({
+  db,
+  update,
+  business,
+  setToast,
+  go,
+  area = "estrategia",
+}) {
+  const marketing = area === "marketing";
   return (
     <PageTitle
-      eyebrow="ESPECIALISTAS DIGITAIS"
-      title="A habilidade certa para cada desafio"
-      text="Escolha um modo de trabalho. O contexto do negócio selecionado será considerado automaticamente."
+      eyebrow={marketing ? "MARCA E MARKETING" : "ESTRATÉGIA"}
+      title={
+        marketing
+          ? "Marca, conteúdo e crescimento conectados"
+          : "A habilidade certa para cada desafio"
+      }
+      text={
+        marketing
+          ? "Crie estratégia, conteúdo, materiais e presença digital sem procurar ferramentas em outras telas."
+          : "Analise, planeje e transforme decisões em projetos usando todos os recursos disponíveis."
+      }
     >
+      <AreaToolkit
+        area={area}
+        db={db}
+        update={update}
+        business={business}
+        setToast={setToast}
+        go={go}
+      />
       <UniversalRequest
         db={db}
         update={update}
@@ -2979,7 +3315,15 @@ function Tasks({ db, update, business, setToast, go }) {
         </Button>
       }
     >
-      <div className="toolbar">
+      <AreaToolkit
+        area="operacao"
+        db={db}
+        update={update}
+        business={business}
+        setToast={setToast}
+        go={go}
+      />
+      <div className="toolbar" id="task-board">
         <div className="search">
           <Search />
           <input
@@ -3372,7 +3716,7 @@ function Tasks({ db, update, business, setToast, go }) {
   );
 }
 
-function CRM({ db, update, business, setToast }) {
+function CRM({ db, update, business, setToast, go }) {
   const [modal, setModal] = useState(false),
     [editing, setEditing] = useState(null),
     [search, setSearch] = useState(""),
@@ -3506,6 +3850,15 @@ function CRM({ db, update, business, setToast }) {
         </Button>
       }
     >
+      <AreaToolkit
+        area="vendas"
+        db={db}
+        update={update}
+        business={business}
+        setToast={setToast}
+        go={go}
+      />
+      <div id="crm-board" />
       <div className="metric-row">
         <Metric icon={Users} label="Leads" value={leads.length} />
         <Metric
@@ -3769,7 +4122,7 @@ function Metric({ icon: Icon, label, value }) {
   );
 }
 
-function Finance({ db, update, business, setToast }) {
+function Finance({ db, update, business, setToast, go }) {
   const [modal, setModal] = useState(false),
     [calc, setCalc] = useState({
       materials: "",
@@ -3900,6 +4253,14 @@ function Finance({ db, update, business, setToast }) {
         </Button>
       }
     >
+      <AreaToolkit
+        area="financeiro"
+        db={db}
+        update={update}
+        business={business}
+        setToast={setToast}
+        go={go}
+      />
       <div className="metric-row">
         <Metric
           icon={ArrowUpRight}
@@ -3917,7 +4278,7 @@ function Finance({ db, update, business, setToast }) {
           value={money(revenue - expense)}
         />
       </div>
-      <section className="panel finance-planning">
+      <section className="panel finance-planning" id="finance-planning">
         <div className="panel-head">
           <div>
             <span className="eyebrow">PLANEJAMENTO</span>
@@ -3976,32 +4337,6 @@ function Finance({ db, update, business, setToast }) {
             <div className="meter">
               <span style={{ width: `${goalProgress}%` }} />
             </div>
-            <h3>Áreas que devem aparecer primeiro</h3>
-            <div className="option-grid compact">
-              {[
-                "Estratégia",
-                "Vendas",
-                "Marketing",
-                "Financeiro",
-                "Operação",
-              ].map((area) => (
-                <button
-                  key={area}
-                  className={form.areas.includes(area) ? "selected" : ""}
-                  onClick={() =>
-                    setForm({
-                      ...form,
-                      areas: form.areas.includes(area)
-                        ? form.areas.filter((item) => item !== area)
-                        : [...form.areas, area],
-                    })
-                  }
-                >
-                  {form.areas.includes(area) ? <CheckCircle2 /> : <Circle />}
-                  {area}
-                </button>
-              ))}
-            </div>
             <span>
               {monthlyGoal ? `${goalProgress}% da meta` : "Defina uma meta"}
             </span>
@@ -4020,7 +4355,7 @@ function Finance({ db, update, business, setToast }) {
         </div>
       </section>
       <div className="finance-grid">
-        <section className="panel calculator">
+        <section className="panel calculator" id="finance-price">
           <div className="panel-head">
             <div>
               <span className="eyebrow">CALCULADORA</span>
@@ -4097,7 +4432,7 @@ function Finance({ db, update, business, setToast }) {
             </small>
           </div>
         </section>
-        <section className="panel">
+        <section className="panel" id="finance-transactions">
           <div className="panel-head">
             <div>
               <span className="eyebrow">MOVIMENTAÇÕES</span>
@@ -4298,7 +4633,7 @@ export async function extractDocumentText(file) {
   };
 }
 
-function Documents({ db, update, business, setToast }) {
+function Documents({ db, update, business, setToast, go }) {
   const [modal, setModal] = useState(false),
     [editing, setEditing] = useState(null),
     [search, setSearch] = useState(""),
@@ -4526,6 +4861,15 @@ function Documents({ db, update, business, setToast }) {
         </div>
       }
     >
+      <AreaToolkit
+        area="documentos"
+        db={db}
+        update={update}
+        business={business}
+        setToast={setToast}
+        go={go}
+      />
+      <div id="document-library" />
       <input
         ref={uploadRef}
         className="visually-hidden"
@@ -4992,7 +5336,7 @@ export function parseSiteJson(content) {
   return JSON.parse(match[0]);
 }
 
-function Sites({ db, update, business, setToast }) {
+function Sites({ db, update, business, setToast, go }) {
   const [modal, setModal] = useState(false),
     [preview, setPreview] = useState(null),
     [device, setDevice] = useState("desktop"),
@@ -5680,6 +6024,15 @@ function Sites({ db, update, business, setToast }) {
         </Button>
       }
     >
+      <AreaToolkit
+        area="sites"
+        db={db}
+        update={update}
+        business={business}
+        setToast={setToast}
+        go={go}
+      />
+      <div id="site-projects" />
       {sites.length === 0 ? (
         <Empty
           icon={Globe2}
@@ -8771,6 +9124,8 @@ export default function App() {
             update={update}
             business={business}
             setToast={setToast}
+            go={go}
+            area={page}
           />
         );
       case "vendas":
@@ -8780,6 +9135,7 @@ export default function App() {
             update={update}
             business={business}
             setToast={setToast}
+            go={go}
           />
         );
       case "financeiro":
@@ -8789,6 +9145,7 @@ export default function App() {
             update={update}
             business={business}
             setToast={setToast}
+            go={go}
           />
         );
       case "operacao":
@@ -8808,6 +9165,7 @@ export default function App() {
             update={update}
             business={business}
             setToast={setToast}
+            go={go}
           />
         );
       case "documentos":
@@ -8817,6 +9175,7 @@ export default function App() {
             update={update}
             business={business}
             setToast={setToast}
+            go={go}
           />
         );
       case "ferramentas":
