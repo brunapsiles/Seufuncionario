@@ -52,9 +52,12 @@ describe("acesso à conta", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByRole("heading", { name: "Onde seu negócio está hoje?" }),
+        screen.getByRole("heading", { name: /Vamos fazer acontecer/ }),
       ).toBeInTheDocument(),
     );
+    expect(
+      screen.queryByRole("heading", { name: "Onde seu negócio está hoje?" }),
+    ).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/auth/login",
       expect.objectContaining({ method: "POST" }),
@@ -101,7 +104,7 @@ describe("acesso à conta", () => {
       ),
     );
     expect(
-      screen.getByRole("heading", { name: "Onde seu negócio está hoje?" }),
+      screen.getByRole("heading", { name: /Vamos fazer acontecer/ }),
     ).toBeInTheDocument();
   });
 });

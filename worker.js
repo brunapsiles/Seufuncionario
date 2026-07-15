@@ -894,10 +894,12 @@ function publicSiteResponse(site) {
 
 async function handlePublicSite(request, env, url) {
   if (!env.DB) return json({ error: "Publicação indisponível." }, 503);
-  const pageMatch = url.pathname.match(/^\/s\/([a-z0-9-]+)\/?$/i);
+  const pageMatch = url.pathname.match(
+    /^\/s\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/i,
+  );
   if (pageMatch && request.method === "GET") {
     const site = await env.DB.prepare(
-      "SELECT id, slug, name, html FROM public_sites WHERE slug = ? AND published = 1",
+      "SELECT id, slug, name, html, pages_json AS pagesJson FROM public_sites WHERE slug = ? AND published = 1",
     )
       .bind(pageMatch[1])
       .first();
@@ -913,7 +915,21 @@ async function handlePublicSite(request, env, url) {
           },
         },
       );
-    return publicSiteResponse(site);
+    let html = site.html;
+    if (pageMatch[2]) {
+      let pages = [];
+      try {
+        pages = JSON.parse(site.pagesJson || "[]");
+      } catch {}
+      const selected = pages.find((page) => page.slug === pageMatch[2]);
+      if (!selected)
+        return new Response("Página não encontrada.", {
+          status: 404,
+          headers: { "content-type": "text/plain; charset=utf-8" },
+        });
+      html = selected.html;
+    }
+    return publicSiteResponse({ ...site, html });
   }
 
   const leadMatch = url.pathname.match(
@@ -1023,6 +1039,22 @@ async function handleSites(request, env, user, url) {
         ? body.description.trim().slice(0, 200)
         : "";
     const html = sanitizeSiteHtml(body.html);
+    const pages = Array.isArray(body.pages)
+      ? body.pages.slice(0, 8).map((page) => ({
+          slug: siteSlug(page?.slug || "").slice(0, 50),
+          name:
+            typeof page?.name === "string"
+              ? page.name.trim().slice(0, 80)
+              : "Página",
+          html: sanitizeSiteHtml(page?.html || ""),
+        }))
+      : [];
+    const pagesJson = JSON.stringify(pages);
+    if (pagesJson.length > 900_000)
+      return json(
+        { error: "As páginas excederam o limite de publicação." },
+        413,
+      );
     if (slug.length < 3 || !name || html.length < 120)
       return json(
         { error: "Revise nome, endereço e conteúdo antes de publicar." },
@@ -1047,12 +1079,12 @@ async function handleSites(request, env, user, url) {
       );
     const now = new Date().toISOString();
     await env.DB.prepare(
-      `INSERT INTO public_sites (id, owner_id, slug, name, description, html, published, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+      `INSERT INTO public_sites (id, owner_id, slug, name, description, html, pages_json, published, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
       ON CONFLICT(id) DO UPDATE SET slug = excluded.slug, name = excluded.name, description = excluded.description,
-      html = excluded.html, published = 1, updated_at = excluded.updated_at`,
+      html = excluded.html, pages_json = excluded.pages_json, published = 1, updated_at = excluded.updated_at`,
     )
-      .bind(id, ownerId, slug, name, description, html, now, now)
+      .bind(id, ownerId, slug, name, description, html, pagesJson, now, now)
       .run();
     return json({
       ok: true,
@@ -1090,6 +1122,15 @@ function systemPrompt(specialist, business, customInstructions) {
         `Oferta: ${business.offer || "não informado"}`,
         `Objetivo: ${business.goal || "não informado"}`,
         `Tom: ${business.tone || "não informado"}`,
+        `Diferenciais: ${business.differentiators || "não informado"}`,
+        `Concorrentes e referências: ${business.competitors || "não informado"}`,
+        `Canais: ${business.channels || "não informado"}`,
+        `Site: ${business.website || "não informado"}`,
+        `Redes sociais: ${business.social || "não informado"}`,
+        `Faixa de preço: ${business.priceRange || "não informado"}`,
+        `Dificuldades: ${business.challenges || "não informado"}`,
+        `Identidade visual: ${business.visualIdentity || "não informado"}`,
+        `Áreas prioritárias: ${business.focusAreas || "não informado"}`,
       ].join("\n")
     : "Nenhum perfil de negócio foi selecionado.";
   const roster = Object.keys(specialistInstructions).filter(
@@ -1260,6 +1301,13 @@ export function configuredAiProviders(env) {
   }));
 }
 
+export function publicAiResult(result = {}) {
+  return {
+    content: typeof result.content === "string" ? result.content : "",
+    degraded: !!result.degraded,
+  };
+}
+
 const cloudflareModels = {
   "@cf/openai/gpt-oss-120b": "GPT-OSS 120B",
   "@cf/meta/llama-3.3-70b-instruct-fp8-fast": "Llama 3.3 70B",
@@ -1315,7 +1363,7 @@ async function askCloudflare(env, prompt, system, model) {
 function localContingency(prompt, specialist, business, failures) {
   const name = business?.name || "seu negócio";
   return {
-    content: `## Plano de contingência para ${name}\n\nOs provedores de IA não responderam neste momento, então o Seu Funcionário preservou seu pedido e criou este roteiro operacional seguro, sem inventar informações.\n\n**Pedido registrado:** ${prompt}\n\n### Próximas ações\n1. Defina em uma frase qual resultado precisa estar pronto e até quando.\n2. Separe os dados que você já possui dos dados que ainda precisam ser confirmados.\n3. Escolha a menor ação que produza um resultado verificável hoje.\n4. Registre o responsável, o prazo e o critério de conclusão.\n5. Tente novamente mais tarde para receber a análise completa do especialista ${specialist}.\n\n> **Modo de contingência local:** este roteiro foi produzido por regras do aplicativo, não por um modelo de IA. Seu texto foi preservado.`,
+    content: `## Plano inicial para ${name}\n\nNão consegui concluir a análise completa neste momento, mas preservei seu pedido e preparei um roteiro seguro para você continuar sem perder o trabalho.\n\n**Pedido registrado:** ${prompt}\n\n### Próximas ações\n1. Defina em uma frase qual resultado precisa estar pronto e até quando.\n2. Separe os dados que você já possui dos dados que ainda precisam ser confirmados.\n3. Escolha a menor ação que produza um resultado verificável hoje.\n4. Registre o responsável, o prazo e o critério de conclusão.\n5. Tente novamente mais tarde para receber a análise completa do especialista ${specialist}.\n\n> Seu pedido foi preservado e pode ser retomado depois.`,
     provider: "Contingência local",
     model: "regras-seguras-v1",
     degraded: true,
@@ -1406,27 +1454,29 @@ async function handleAi(request, env) {
       "Captação",
       "Riscos",
     ].includes(specialist);
-  const compatible = (config) => () =>
-    askOpenAICompatible({
-      ...config,
-      prompt: contextualPrompt,
-      system,
-    });
+  const compatible =
+    (config) =>
+    (runPrompt = contextualPrompt, runSystem = system) =>
+      askOpenAICompatible({
+        ...config,
+        prompt: runPrompt,
+        system: runSystem,
+      });
   const providerMap = {
     "gemini-lite": {
       enabled: !!env.GEMINI_API_KEY,
-      run: () =>
-        askGemini(env, contextualPrompt, system, "gemini-flash-lite-latest"),
+      run: (runPrompt = contextualPrompt, runSystem = system) =>
+        askGemini(env, runPrompt, runSystem, "gemini-flash-lite-latest"),
     },
     "gemini-flash": {
       enabled: !!env.GEMINI_API_KEY,
-      run: () =>
-        askGemini(env, contextualPrompt, system, "gemini-flash-latest"),
+      run: (runPrompt = contextualPrompt, runSystem = system) =>
+        askGemini(env, runPrompt, runSystem, "gemini-flash-latest"),
     },
     gemma: {
       enabled: !!env.GEMINI_API_KEY,
-      run: () =>
-        askGemini(env, contextualPrompt, system, "gemma-4-26b-a4b-it"),
+      run: (runPrompt = contextualPrompt, runSystem = system) =>
+        askGemini(env, runPrompt, runSystem, "gemma-4-26b-a4b-it"),
     },
     groq: {
       enabled: !!env.GROQ_API_KEY,
@@ -1492,47 +1542,38 @@ async function handleAi(request, env) {
     },
     "gpt-oss": {
       enabled: !!env.AI,
-      run: () =>
-        askCloudflare(
-          env,
-          contextualPrompt,
-          system,
-          "@cf/openai/gpt-oss-120b",
-        ),
+      run: (runPrompt = contextualPrompt, runSystem = system) =>
+        askCloudflare(env, runPrompt, runSystem, "@cf/openai/gpt-oss-120b"),
     },
     llama70: {
       enabled: !!env.AI,
-      run: () =>
+      run: (runPrompt = contextualPrompt, runSystem = system) =>
         askCloudflare(
           env,
-          contextualPrompt,
-          system,
+          runPrompt,
+          runSystem,
           "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
         ),
     },
     glm: {
       enabled: !!env.AI,
-      run: () =>
-        askCloudflare(
-          env,
-          contextualPrompt,
-          system,
-          "@cf/zai-org/glm-4.7-flash",
-        ),
+      run: (runPrompt = contextualPrompt, runSystem = system) =>
+        askCloudflare(env, runPrompt, runSystem, "@cf/zai-org/glm-4.7-flash"),
     },
     llama: {
       enabled: !!env.AI,
-      run: () =>
+      run: (runPrompt = contextualPrompt, runSystem = system) =>
         askCloudflare(
           env,
-          contextualPrompt,
-          system,
+          runPrompt,
+          runSystem,
           "@cf/meta/llama-3.2-3b-instruct",
         ),
     },
     xai: {
       enabled: body.confirmPaid === true && !!env.XAI_API_KEY,
-      run: () => askXai(env, contextualPrompt, system),
+      run: (runPrompt = contextualPrompt, runSystem = system) =>
+        askXai(env, runPrompt, runSystem),
     },
   };
   const order = deep
@@ -1576,19 +1617,55 @@ async function handleAi(request, env) {
         Number(b[0] === body.preferredProvider) -
         Number(a[0] === body.preferredProvider),
     );
+  if (specialist === "Diretor" && deep && providers.length >= 2) {
+    const councilRoles = [
+      "Estratégia e mercado: avalie objetivo, cliente, posicionamento, escolhas e riscos.",
+      "Operação e execução: transforme o pedido em entregáveis, responsáveis, dependências e critérios de conclusão.",
+      "Finanças e validação: verifique premissas, viabilidade, indicadores, custos e pontos que exigem dados reais.",
+    ];
+    const council = providers.slice(0, Math.min(3, providers.length));
+    const opinions = await Promise.allSettled(
+      council.map(([, run], index) =>
+        run(
+          `${contextualPrompt}\n\nAnalise somente pela perspectiva a seguir e entregue um parecer objetivo para o coordenador: ${councilRoles[index]}`,
+          `${system}\n\nNesta etapa você é um agente consultivo do conselho interno. Não tente sintetizar as outras áreas.`,
+        ),
+      ),
+    );
+    const validOpinions = opinions
+      .filter((item) => item.status === "fulfilled" && item.value?.content)
+      .map(
+        (item, index) =>
+          `Parecer ${index + 1}:\n${item.value.content.slice(0, 5000)}`,
+      );
+    opinions.forEach((item, index) => {
+      if (item.status === "rejected")
+        errors.push(`council-${index + 1}: ${item.reason?.message || "falha"}`);
+    });
+    if (validOpinions.length >= 2) {
+      const [, synthesize] =
+        providers[Math.min(council.length, providers.length - 1)];
+      try {
+        const result = await synthesize(
+          `Pedido original:\n${contextualPrompt}\n\nPareceres independentes:\n\n${validOpinions.join("\n\n")}\n\nProduza uma resposta única, sem mencionar conselho, agentes, modelos ou pareceres. Resolva divergências, priorize o que é executável e indique lacunas de dados sem inventar.`,
+          `${system}\n\nVocê é o coordenador final: sintetize criticamente as análises e entregue uma decisão coesa.`,
+        );
+        return json(publicAiResult(result));
+      } catch (error) {
+        errors.push(`director-synthesis: ${error.message}`);
+      }
+    }
+  }
   for (const [providerName, run] of providers) {
     try {
-      return json({
-        ...(await run()),
-        routingMode: deep ? "profundo" : "rápido",
-        fallbacksTried: errors.length,
-        providerFailures: errors,
-      });
+      const result = await run();
+      return json(publicAiResult(result));
     } catch (error) {
       errors.push(`${providerName}: ${error.message}`);
     }
   }
-  return json(localContingency(prompt, specialist, business, errors));
+  const contingency = localContingency(prompt, specialist, business, errors);
+  return json(publicAiResult({ ...contingency, degraded: true }));
 }
 
 async function handleMedia(request, env, url) {
@@ -1622,8 +1699,6 @@ async function handleMedia(request, env, url) {
       url: data.url || null,
       duration: data.duration || null,
       error: data.error || null,
-      model: data.model || "Wan2.2-TI2V-5B",
-      provider: "Seu Funcionário Video AI",
     });
   }
   if (request.method !== "POST")
@@ -1675,8 +1750,6 @@ async function handleMedia(request, env, url) {
     return json({
       status: data.status || "pending",
       requestId: data.requestId,
-      model: data.model || "Wan2.2-TI2V-5B",
-      provider: "Seu Funcionário Video AI",
       freeTier: false,
     });
   }
@@ -1699,8 +1772,6 @@ async function handleMedia(request, env, url) {
           status: "done",
           url: `data:image/jpeg;base64,${freeResult.image}`,
           mimeType: "image/jpeg",
-          model: "FLUX.1 Schnell",
-          provider: "Cloudflare Workers AI",
           freeTier: true,
         });
     } catch (error) {
@@ -1708,7 +1779,7 @@ async function handleMedia(request, env, url) {
         return json(
           {
             error:
-              "A geração gratuita está temporariamente indisponível ou a franquia diária terminou. Marque a opção de fallback xAI somente se quiser tentar usando créditos.",
+              "A geração integrada está temporariamente indisponível. Tente novamente em alguns minutos.",
           },
           503,
         );
@@ -1718,12 +1789,12 @@ async function handleMedia(request, env, url) {
     return json(
       {
         error:
-          "A geração gratuita não respondeu. Você pode tentar novamente ou permitir o fallback xAI.",
+          "A geração integrada não respondeu. Tente novamente em alguns minutos.",
       },
       503,
     );
   if (!env.XAI_API_KEY)
-    return json({ error: "O fallback xAI não está configurado." }, 503);
+    return json({ error: "A opção complementar não está disponível." }, 503);
   const response = await fetch("https://api.x.ai/v1/images/generations", {
     method: "POST",
     headers: {
@@ -1751,8 +1822,6 @@ async function handleMedia(request, env, url) {
     url: data.data?.[0]?.url || null,
     mimeType: data.data?.[0]?.mime_type || "image/jpeg",
     revisedPrompt: data.data?.[0]?.revised_prompt || "",
-    model: "grok-imagine-image",
-    provider: "xAI",
     freeTier: false,
   });
 }
@@ -1784,7 +1853,6 @@ export default {
       return json({
         googleClientId: env.GOOGLE_CLIENT_ID || "",
         videoEnabled: !!(env.VIDEO_AI_URL && env.VIDEO_AI_TOKEN),
-        aiProviders: configuredAiProviders(env),
       });
     if (url.pathname.startsWith("/api/auth/")) {
       try {

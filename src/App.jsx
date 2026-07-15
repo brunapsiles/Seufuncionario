@@ -102,6 +102,7 @@ const emptyDb = {
   tasks: [],
   leads: [],
   transactions: [],
+  financeSettings: {},
   documents: [],
   sites: [],
   history: [],
@@ -693,10 +694,11 @@ function Button({
   icon: Icon,
   variant = "primary",
   className = "",
+  type = "button",
   ...props
 }) {
   return (
-    <button className={`button ${variant} ${className}`} {...props}>
+    <button type={type} className={`button ${variant} ${className}`} {...props}>
       {Icon && <Icon size={17} />}
       <span>{children}</span>
     </button>
@@ -1445,6 +1447,8 @@ function Onboarding({ db, update }) {
         segment: form.segment.trim(),
         stage: form.stage,
         goal: form.need,
+        hasBusiness: form.hasBusiness,
+        focusAreas: form.areas.join(", "),
         city: "",
         audience: "",
         offer: "",
@@ -1516,6 +1520,17 @@ function Onboarding({ db, update }) {
             <h1>Conte um pouco sobre o negócio</h1>
             <p>Você pode completar e editar tudo depois.</p>
             <div className="form-grid">
+              <Field label="Você já possui um negócio em atividade?">
+                <select
+                  value={form.hasBusiness}
+                  onChange={(e) =>
+                    setForm({ ...form, hasBusiness: e.target.value })
+                  }
+                >
+                  <option>Sim</option>
+                  <option>Não, estou começando</option>
+                </select>
+              </Field>
               <Field label="Nome do negócio">
                 <input
                   autoFocus
@@ -1591,6 +1606,15 @@ function BusinessForm({ value, onSave, onClose }) {
       offer: "",
       goal: "",
       tone: "Profissional e acolhedor",
+      differentiators: "",
+      competitors: "",
+      channels: "",
+      website: "",
+      social: "",
+      priceRange: "",
+      challenges: "",
+      visualIdentity: "",
+      focusAreas: "",
     },
   );
   const save = (e) => {
@@ -1668,6 +1692,69 @@ function BusinessForm({ value, onSave, onClose }) {
           <input
             value={f.tone}
             onChange={(e) => setF({ ...f, tone: e.target.value })}
+          />
+        </Field>
+        <Field label="Diferenciais">
+          <textarea
+            value={f.differentiators || ""}
+            onChange={(e) => setF({ ...f, differentiators: e.target.value })}
+            placeholder="O que faz clientes escolherem este negócio?"
+          />
+        </Field>
+        <Field label="Concorrentes e referências">
+          <textarea
+            value={f.competitors || ""}
+            onChange={(e) => setF({ ...f, competitors: e.target.value })}
+            placeholder="Nomes, links ou alternativas consideradas pelo cliente"
+          />
+        </Field>
+        <Field label="Canais de venda e atendimento">
+          <input
+            value={f.channels || ""}
+            onChange={(e) => setF({ ...f, channels: e.target.value })}
+            placeholder="Ex.: loja, WhatsApp, Instagram, indicação"
+          />
+        </Field>
+        <Field label="Site">
+          <input
+            type="url"
+            value={f.website || ""}
+            onChange={(e) => setF({ ...f, website: e.target.value })}
+            placeholder="https://"
+          />
+        </Field>
+        <Field label="Redes sociais">
+          <input
+            value={f.social || ""}
+            onChange={(e) => setF({ ...f, social: e.target.value })}
+            placeholder="@perfil ou links"
+          />
+        </Field>
+        <Field label="Faixa de preço">
+          <input
+            value={f.priceRange || ""}
+            onChange={(e) => setF({ ...f, priceRange: e.target.value })}
+            placeholder="Ex.: R$ 80 a R$ 350"
+          />
+        </Field>
+        <Field label="Principais dificuldades">
+          <textarea
+            value={f.challenges || ""}
+            onChange={(e) => setF({ ...f, challenges: e.target.value })}
+          />
+        </Field>
+        <Field label="Áreas prioritárias">
+          <input
+            value={f.focusAreas || ""}
+            onChange={(e) => setF({ ...f, focusAreas: e.target.value })}
+            placeholder="Ex.: vendas, financeiro, marketing"
+          />
+        </Field>
+        <Field label="Identidade visual atual">
+          <textarea
+            value={f.visualIdentity || ""}
+            onChange={(e) => setF({ ...f, visualIdentity: e.target.value })}
+            placeholder="Cores, tipografia, símbolos e materiais existentes"
           />
         </Field>
       </div>
@@ -1748,6 +1835,7 @@ function UniversalRequest({ db, update, business, setToast }) {
   const [busy, setBusy] = useState(false);
   const [newEmployee, setNewEmployee] = useState(false);
   const [error, setError] = useState("");
+  const [revealing, setRevealing] = useState(null);
   const endRef = useRef(null);
   const specialist = db.preferences.specialist;
   const conversations = db.conversations || [];
@@ -1759,8 +1847,31 @@ function UniversalRequest({ db, update, business, setToast }) {
   }, [text]);
   useEffect(() => {
     const el = endRef.current?.parentElement;
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [messages.length, busy]);
+    if (typeof el?.scrollTo === "function")
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [messages.length, busy, revealing?.count]);
+  useEffect(() => {
+    if (!revealing?.id) return;
+    const message = messages.find((item) => item.id === revealing.id);
+    if (!message || revealing.count >= message.content.length) {
+      setRevealing(null);
+      return;
+    }
+    const step = Math.max(2, Math.ceil(message.content.length / 180));
+    const timer = setTimeout(
+      () =>
+        setRevealing((current) =>
+          current?.id === message.id
+            ? {
+                ...current,
+                count: Math.min(message.content.length, current.count + step),
+              }
+            : current,
+        ),
+      18,
+    );
+    return () => clearTimeout(timer);
+  }, [revealing, messages]);
   const newChat = () => {
     update((d) => ({ ...d, selectedConversationId: null }));
     setText("");
@@ -1773,8 +1884,6 @@ function UniversalRequest({ db, update, business, setToast }) {
       request: messages.find((x) => x.role === "user")?.content || "",
       result: message.content,
       specialist,
-      provider: message.provider,
-      model: message.model,
       businessId: business?.id || null,
       type: "Conversa salva",
       status: "Concluído",
@@ -1852,6 +1961,15 @@ function UniversalRequest({ db, update, business, setToast }) {
                 offer: business.offer,
                 goal: business.goal,
                 tone: business.tone,
+                differentiators: business.differentiators,
+                competitors: business.competitors,
+                channels: business.channels,
+                website: business.website,
+                social: business.social,
+                priceRange: business.priceRange,
+                challenges: business.challenges,
+                visualIdentity: business.visualIdentity,
+                focusAreas: business.focusAreas,
               }
             : null,
         }),
@@ -1865,8 +1983,6 @@ function UniversalRequest({ db, update, business, setToast }) {
         id: uid(),
         role: "assistant",
         content: data.content,
-        provider: data.provider,
-        model: data.model,
         degraded: !!data.degraded,
         toolIds: recommendedTools(prompt).map((x) => x.id),
         createdAt: new Date().toISOString(),
@@ -1883,11 +1999,8 @@ function UniversalRequest({ db, update, business, setToast }) {
             : x,
         ),
       }));
-      setToast(
-        data.degraded
-          ? "Plano de contingência entregue"
-          : `Resposta criada com ${data.provider}`,
-      );
+      setRevealing({ id: assistantMessage.id, count: 0 });
+      setToast(data.degraded ? "Plano inicial preparado" : "Resposta pronta");
     } catch (err) {
       setText(prompt);
       setError(
@@ -1994,13 +2107,23 @@ function UniversalRequest({ db, update, business, setToast }) {
               <div className="message-content">
                 <small>
                   {message.role === "assistant"
-                    ? message.degraded
-                      ? "Contingência local"
-                      : `${message.provider} · ${message.model}`
+                    ? "Seu Funcionário"
                     : db.user.name}
                 </small>
                 {message.role === "assistant" ? (
-                  <Markdown text={message.content} />
+                  <div
+                    className={
+                      revealing?.id === message.id ? "revealing-answer" : ""
+                    }
+                  >
+                    <Markdown
+                      text={
+                        revealing?.id === message.id
+                          ? message.content.slice(0, revealing.count)
+                          : message.content
+                      }
+                    />
+                  </div>
                 ) : (
                   <pre>{message.content}</pre>
                 )}
@@ -2009,23 +2132,24 @@ function UniversalRequest({ db, update, business, setToast }) {
                     {message.toolIds.map(renderToolLink)}
                   </div>
                 )}
-                {message.role === "assistant" && (
-                  <div className="message-actions">
-                    <button
-                      onClick={() => {
-                        navigator.clipboard?.writeText(message.content);
-                        setToast("Resposta copiada");
-                      }}
-                    >
-                      <Copy />
-                      Copiar
-                    </button>
-                    <button onClick={() => saveMessage(message)}>
-                      <Save />
-                      Salvar em projetos
-                    </button>
-                  </div>
-                )}
+                {message.role === "assistant" &&
+                  revealing?.id !== message.id && (
+                    <div className="message-actions">
+                      <button
+                        onClick={() => {
+                          navigator.clipboard?.writeText(message.content);
+                          setToast("Resposta copiada");
+                        }}
+                      >
+                        <Copy />
+                        Copiar
+                      </button>
+                      <button onClick={() => saveMessage(message)}>
+                        <Save />
+                        Salvar em projetos
+                      </button>
+                    </div>
+                  )}
               </div>
             </div>
           ))
@@ -2039,7 +2163,7 @@ function UniversalRequest({ db, update, business, setToast }) {
               <i />
               <i />
               <i />
-              <span>Consultando a melhor IA disponível...</span>
+              <span>Organizando sua resposta...</span>
             </div>
           </div>
         )}
@@ -2102,12 +2226,9 @@ function UniversalRequest({ db, update, business, setToast }) {
           <span className="keyboard-hint">
             Enter envia · Shift + Enter quebra linha
           </span>
-          <span
-            className="ai-live"
-            title="Gemini Flash Lite, Gemini Flash, Gemma e Grok"
-          >
+          <span className="ai-live" title="Assistência inteligente disponível">
             <span />
-            Rede de IA
+            Assistente online
           </span>
           <span className="counter">{text.length}/8000</span>
           <Button icon={Send} disabled={!text.trim() || busy} onClick={submit}>
@@ -2162,7 +2283,7 @@ function Dashboard({ db, update, business, go, setToast }) {
   const recent = db.history
     .filter((x) => !business || x.businessId === business.id)
     .slice(0, 3);
-  const quick = [
+  const quickBase = [
     ["Validar uma ideia", Lightbulb, "comecar"],
     ["Montar meus preços", Calculator, "financeiro"],
     ["Encontrar clientes", Users, "vendas"],
@@ -2172,6 +2293,23 @@ function Dashboard({ db, update, business, go, setToast }) {
     ["Traduzir um texto", Languages, "ferramentas"],
     ["Analisar meus números", Filter, "ferramentas"],
   ];
+  const priorityText =
+    `${business?.goal || ""} ${business?.focusAreas || ""}`.toLowerCase();
+  const recommendedPage = /preç|finance/.test(priorityText)
+    ? "financeiro"
+    : /cliente|vend/.test(priorityText)
+      ? "vendas"
+      : /site/.test(priorityText)
+        ? "sites"
+        : /marca|marketing/.test(priorityText)
+          ? "estrategia"
+          : /opera|process|tarefa/.test(priorityText)
+            ? "operacao"
+            : "comecar";
+  const quick = [...quickBase].sort(
+    (a, b) =>
+      Number(b[2] === recommendedPage) - Number(a[2] === recommendedPage),
+  );
   return (
     <>
       <div className="welcome">
@@ -2368,16 +2506,61 @@ function Dashboard({ db, update, business, go, setToast }) {
   );
 }
 
-function Journeys({ db, update }) {
+function journeyRecord(value) {
+  return Array.isArray(value)
+    ? { completed: value, evidence: {} }
+    : {
+        completed: value?.completed || [],
+        evidence: value?.evidence || {},
+      };
+}
+
+function journeyTool(step) {
+  const text = step.toLowerCase();
+  if (/preç|finance/.test(text)) return "financeiro";
+  if (/cliente|lead|vend|prospec|comercial/.test(text)) return "vendas";
+  if (/site|página/.test(text)) return "sites";
+  if (/marca|identidade|biografia|rede social|material/.test(text))
+    return "estudio";
+  if (/processo|tarefa|prioridade|atendimento/.test(text)) return "operacao";
+  if (/plano|proposta|diagnóstico|portfólio/.test(text)) return "documentos";
+  return "estrategia";
+}
+
+function Journeys({ db, update, go }) {
   const [open, setOpen] = useState(null);
-  const toggle = (id, i) =>
+  const [drafts, setDrafts] = useState({});
+  const saveMilestone = (id, i) => {
+    const key = `${id}:${i}`;
+    const evidence = String(drafts[key] || "").trim();
+    if (evidence.length < 3) return;
     update((d) => {
-      const arr = d.journeys[id] || [];
+      const record = journeyRecord(d.journeys[id]);
       return {
         ...d,
         journeys: {
           ...d.journeys,
-          [id]: arr.includes(i) ? arr.filter((x) => x !== i) : [...arr, i],
+          [id]: {
+            completed: record.completed.includes(i)
+              ? record.completed
+              : [...record.completed, i],
+            evidence: { ...record.evidence, [i]: evidence },
+          },
+        },
+      };
+    });
+  };
+  const reopenMilestone = (id, i) =>
+    update((d) => {
+      const record = journeyRecord(d.journeys[id]);
+      return {
+        ...d,
+        journeys: {
+          ...d.journeys,
+          [id]: {
+            ...record,
+            completed: record.completed.filter((index) => index !== i),
+          },
         },
       };
     });
@@ -2389,7 +2572,7 @@ function Journeys({ db, update }) {
     >
       <div className="journey-grid">
         {Object.entries(journeyData).map(([id, j]) => {
-          const done = db.journeys[id] || [];
+          const done = journeyRecord(db.journeys[id]).completed;
           const pct = Math.round((done.length / j.steps.length) * 100);
           return (
             <article className="journey-card" key={id}>
@@ -2418,19 +2601,62 @@ function Journeys({ db, update }) {
         <Modal title={journeyData[open].title} onClose={() => setOpen(null)}>
           <div className="journey-steps">
             {journeyData[open].steps.map((s, i) => {
-              const checked = (db.journeys[open] || []).includes(i);
+              const record = journeyRecord(db.journeys[open]);
+              const checked = record.completed.includes(i);
+              const key = `${open}:${i}`;
+              const evidence = record.evidence[i] || "";
               return (
-                <button
-                  className={checked ? "done" : ""}
-                  key={s}
-                  onClick={() => toggle(open, i)}
-                >
-                  {checked ? <CheckCircle2 /> : <Circle />}
-                  <span>
+                <article className={checked ? "done" : ""} key={s}>
+                  <span className="journey-check">
+                    {checked ? <CheckCircle2 /> : <Circle />}
+                  </span>
+                  <div>
                     <small>Etapa {i + 1}</small>
                     <strong>{s}</strong>
-                  </span>
-                </button>
+                    {checked ? (
+                      <>
+                        <p>{evidence}</p>
+                        <button
+                          className="text-button"
+                          onClick={() => reopenMilestone(open, i)}
+                        >
+                          Reabrir marco
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <textarea
+                          value={drafts[key] || evidence}
+                          onChange={(event) =>
+                            setDrafts({ ...drafts, [key]: event.target.value })
+                          }
+                          placeholder="Descreva o entregável, decisão ou evidência produzida nesta etapa."
+                        />
+                        <div className="milestone-actions">
+                          <Button
+                            variant="secondary"
+                            icon={Wrench}
+                            onClick={() => {
+                              setOpen(null);
+                              go(journeyTool(s));
+                            }}
+                          >
+                            Abrir ferramenta
+                          </Button>
+                          <Button
+                            icon={CheckCircle2}
+                            disabled={
+                              String(drafts[key] || evidence).trim().length < 3
+                            }
+                            onClick={() => saveMilestone(open, i)}
+                          >
+                            Validar marco
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </article>
               );
             })}
           </div>
@@ -2497,57 +2723,152 @@ function Specialists({ db, update, business, setToast }) {
   );
 }
 
-function Tasks({ db, update, business, setToast }) {
+function Tasks({ db, update, business, setToast, go }) {
   const [modal, setModal] = useState(false);
+  const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState("");
   const [view, setView] = useState("board");
-  const [form, setForm] = useState({
+  const [statusFilter, setStatusFilter] = useState("Todos");
+  const [priorityFilter, setPriorityFilter] = useState("Todas");
+  const [assigneeFilter, setAssigneeFilter] = useState("Todos");
+  const [projectFilter, setProjectFilter] = useState("Todos");
+  const [archiveFilter, setArchiveFilter] = useState("Ativas");
+  const [realMembers, setRealMembers] = useState([]);
+  const blankTask = {
     title: "",
     description: "",
     priority: "Média",
     status: "A fazer",
     due: "",
     area: "Operação",
-  });
+    assigneeType: "real",
+    assignee: "",
+    project: "",
+  };
+  const [form, setForm] = useState(blankTask);
+  const digitalCollaborators = [
+    ...specialistData.map(([name]) => name),
+    ...(db.customSpecialists || []).map((item) => item.name),
+  ];
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/collab", { headers: authHeaders() })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (!cancelled) setRealMembers(data?.members || []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const statuses = ["A fazer", "Em andamento", "Aguardando", "Concluído"];
+  const scoped = db.tasks.filter(
+    (task) => !business || task.businessId === business.id,
+  );
+  const assignees = [
+    ...new Set(scoped.map((task) => task.assignee).filter(Boolean)),
+  ];
+  const projects = [
+    ...new Set(scoped.map((task) => task.project).filter(Boolean)),
+  ];
   const items = db.tasks.filter(
     (t) =>
       (!business || t.businessId === business.id) &&
-      t.title.toLowerCase().includes(search.toLowerCase()),
+      `${t.title} ${t.description || ""} ${t.assignee || ""} ${t.project || ""}`
+        .toLowerCase()
+        .includes(search.toLowerCase()) &&
+      (statusFilter === "Todos" || t.status === statusFilter) &&
+      (priorityFilter === "Todas" || t.priority === priorityFilter) &&
+      (assigneeFilter === "Todos" || t.assignee === assigneeFilter) &&
+      (projectFilter === "Todos" || t.project === projectFilter) &&
+      (archiveFilter === "Todas" ||
+        (archiveFilter === "Arquivadas" ? !!t.archived : !t.archived)),
   );
-  const add = (e) => {
+  const openTask = (task = null) => {
+    setEditing(task?.id || null);
+    setForm(task ? { ...blankTask, ...task } : blankTask);
+    setModal(true);
+  };
+  const save = (e) => {
     e.preventDefault();
     if (!form.title.trim()) return;
+    const now = new Date().toISOString();
+    update((d) => {
+      const item = {
+        ...form,
+        title: form.title.trim(),
+        id: editing || uid(),
+        businessId: business?.id || form.businessId || null,
+        archived: !!form.archived,
+        createdAt: form.createdAt || now,
+        updatedAt: now,
+      };
+      return {
+        ...d,
+        tasks: editing
+          ? d.tasks.map((task) => (task.id === editing ? item : task))
+          : [item, ...d.tasks],
+      };
+    });
+    setModal(false);
+    setEditing(null);
+    setForm(blankTask);
+    setToast(editing ? "Tarefa atualizada" : "Tarefa criada");
+  };
+  const changeTask = (id, changes) =>
     update((d) => ({
       ...d,
-      tasks: [
-        {
-          ...form,
-          id: uid(),
-          businessId: business?.id || null,
-          archived: false,
-        },
-        ...d.tasks,
-      ],
+      tasks: d.tasks.map((task) =>
+        task.id === id
+          ? { ...task, ...changes, updatedAt: new Date().toISOString() }
+          : task,
+      ),
     }));
-    setModal(false);
-    setForm({
-      title: "",
-      description: "",
-      priority: "Média",
-      status: "A fazer",
-      due: "",
-      area: "Operação",
-    });
-    setToast("Tarefa criada");
+  const removeTask = (id) => {
+    if (!confirm("Excluir esta tarefa definitivamente?")) return;
+    update((d) => ({
+      ...d,
+      tasks: d.tasks.filter((task) => task.id !== id),
+    }));
+    setToast("Tarefa excluída");
   };
-  const statuses = ["A fazer", "Em andamento", "Aguardando", "Concluído"];
+  const startDigitalTask = (task) => {
+    const specialist = task.assignee || "Diretor";
+    const prompt = [
+      `Execute esta tarefa como ${specialist}: ${task.title}.`,
+      task.description ? `Contexto: ${task.description}` : "",
+      task.project ? `Projeto: ${task.project}.` : "",
+      task.due ? `Prazo: ${task.due}.` : "",
+      "Comece apresentando a entrega e os próximos passos concretos.",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    localStorage.setItem("sf-draft", prompt);
+    update((d) => ({
+      ...d,
+      preferences: { ...d.preferences, specialist },
+      tasks: d.tasks.map((item) =>
+        item.id === task.id
+          ? {
+              ...item,
+              status: item.status === "A fazer" ? "Em andamento" : item.status,
+              startedAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            }
+          : item,
+      ),
+    }));
+    setToast(`Tarefa encaminhada para ${specialist}`);
+    go("estrategia");
+  };
   return (
     <PageTitle
       eyebrow="OPERAÇÃO"
       title="Tarefas e projetos"
       text="Organize as próximas ações sem perder o contexto."
       action={
-        <Button icon={Plus} onClick={() => setModal(true)}>
+        <Button icon={Plus} onClick={() => openTask()}>
           Nova tarefa
         </Button>
       }
@@ -2578,13 +2899,64 @@ function Tasks({ db, update, business, setToast }) {
           </button>
         </div>
       </div>
+      <div className="filter-row">
+        <select
+          aria-label="Filtrar por status"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+        >
+          <option>Todos</option>
+          {statuses.map((status) => (
+            <option key={status}>{status}</option>
+          ))}
+        </select>
+        <select
+          aria-label="Filtrar por prioridade"
+          value={priorityFilter}
+          onChange={(e) => setPriorityFilter(e.target.value)}
+        >
+          <option>Todas</option>
+          <option>Baixa</option>
+          <option>Média</option>
+          <option>Alta</option>
+        </select>
+        <select
+          aria-label="Filtrar por responsável"
+          value={assigneeFilter}
+          onChange={(e) => setAssigneeFilter(e.target.value)}
+        >
+          <option>Todos</option>
+          {assignees.map((assignee) => (
+            <option key={assignee}>{assignee}</option>
+          ))}
+        </select>
+        <select
+          aria-label="Filtrar por projeto"
+          value={projectFilter}
+          onChange={(e) => setProjectFilter(e.target.value)}
+        >
+          <option>Todos</option>
+          {projects.map((project) => (
+            <option key={project}>{project}</option>
+          ))}
+        </select>
+        <select
+          aria-label="Filtrar arquivamento"
+          value={archiveFilter}
+          onChange={(e) => setArchiveFilter(e.target.value)}
+        >
+          <option>Ativas</option>
+          <option>Arquivadas</option>
+          <option>Todas</option>
+        </select>
+      </div>
       {items.length === 0 ? (
         <Empty
           icon={ListTodo}
           title="Nenhuma tarefa encontrada"
           text="Crie uma ação com prioridade e prazo para começar."
           action="Criar tarefa"
-          onAction={() => setModal(true)}
+          onAction={() => openTask()}
         />
       ) : view === "board" ? (
         <div className="kanban">
@@ -2602,17 +2974,31 @@ function Tasks({ db, update, business, setToast }) {
                       <span className={`priority ${t.priority.toLowerCase()}`}>
                         {t.priority}
                       </span>
-                      <button
-                        className="icon-button danger"
-                        onClick={() =>
-                          update((d) => ({
-                            ...d,
-                            tasks: d.tasks.filter((x) => x.id !== t.id),
-                          }))
-                        }
-                      >
-                        <Trash2 />
-                      </button>
+                      <span className="task-actions">
+                        <button
+                          className="icon-button"
+                          aria-label="Editar tarefa"
+                          onClick={() => openTask(t)}
+                        >
+                          <Edit3 />
+                        </button>
+                        <button
+                          className="icon-button"
+                          aria-label={t.archived ? "Desarquivar" : "Arquivar"}
+                          onClick={() =>
+                            changeTask(t.id, { archived: !t.archived })
+                          }
+                        >
+                          <Archive />
+                        </button>
+                        <button
+                          className="icon-button danger"
+                          aria-label="Excluir tarefa"
+                          onClick={() => removeTask(t.id)}
+                        >
+                          <Trash2 />
+                        </button>
+                      </span>
                     </div>
                     <h3>{t.title}</h3>
                     <p>{t.description || "Sem descrição"}</p>
@@ -2639,6 +3025,25 @@ function Tasks({ db, update, business, setToast }) {
                         ))}
                       </select>
                     </footer>
+                    {(t.project || t.assignee) && (
+                      <small className="task-context">
+                        {t.project || "Sem projeto"} ·{" "}
+                        {t.assignee || "Sem responsável"}
+                        {t.assignee &&
+                          ` · ${t.assigneeType === "digital" ? "Colaborador digital" : "Pessoa"}`}
+                      </small>
+                    )}
+                    {t.assigneeType === "digital" &&
+                      t.assignee &&
+                      !t.archived && (
+                        <button
+                          className="task-trigger"
+                          onClick={() => startDigitalTask(t)}
+                          aria-label={`Iniciar tarefa com ${t.assignee}`}
+                        >
+                          <Play /> Iniciar com {t.assignee}
+                        </button>
+                      )}
                   </article>
                 ))}
             </section>
@@ -2671,7 +3076,11 @@ function Tasks({ db, update, business, setToast }) {
               <span>
                 <strong>{t.title}</strong>
                 <small>
-                  {t.area} · {t.priority} · {t.due || "Sem prazo"}
+                  {t.area} · {t.priority} · {t.due || "Sem prazo"} ·{" "}
+                  {t.project || "Sem projeto"} ·{" "}
+                  {t.assignee || "Sem responsável"}
+                  {t.assignee &&
+                    ` · ${t.assigneeType === "digital" ? "Digital" : "Pessoa"}`}
                 </small>
               </span>
               <select
@@ -2689,13 +3098,42 @@ function Tasks({ db, update, business, setToast }) {
                   <option key={x}>{x}</option>
                 ))}
               </select>
+              <span className="task-actions">
+                {t.assigneeType === "digital" && t.assignee && !t.archived && (
+                  <button
+                    className="icon-button"
+                    aria-label={`Iniciar tarefa com ${t.assignee}`}
+                    title={`Iniciar com ${t.assignee}`}
+                    onClick={() => startDigitalTask(t)}
+                  >
+                    <Play />
+                  </button>
+                )}
+                <button
+                  className="icon-button"
+                  aria-label="Editar tarefa"
+                  onClick={() => openTask(t)}
+                >
+                  <Edit3 />
+                </button>
+                <button
+                  className="icon-button"
+                  aria-label={t.archived ? "Desarquivar" : "Arquivar"}
+                  onClick={() => changeTask(t.id, { archived: !t.archived })}
+                >
+                  <Archive />
+                </button>
+              </span>
             </article>
           ))}
         </div>
       )}
       {modal && (
-        <Modal title="Criar tarefa" onClose={() => setModal(false)}>
-          <form className="modal-body" onSubmit={add}>
+        <Modal
+          title={editing ? "Editar tarefa" : "Criar tarefa"}
+          onClose={() => setModal(false)}
+        >
+          <form className="modal-body" onSubmit={save}>
             <Field label="Título">
               <input
                 autoFocus
@@ -2753,13 +3191,72 @@ function Tasks({ db, update, business, setToast }) {
                   <option>Financeiro</option>
                 </select>
               </Field>
+              <Field label="Responsável">
+                <select
+                  value={form.assigneeType || "real"}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      assigneeType: e.target.value,
+                      assignee: "",
+                    })
+                  }
+                >
+                  <option value="real">Funcionário real</option>
+                  <option value="digital">Colaborador digital</option>
+                </select>
+              </Field>
+              {form.assigneeType === "digital" ? (
+                <Field label="Colaborador digital">
+                  <select
+                    value={form.assignee || ""}
+                    onChange={(e) =>
+                      setForm({ ...form, assignee: e.target.value })
+                    }
+                  >
+                    <option value="">Escolha quem executará</option>
+                    {digitalCollaborators.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              ) : (
+                <Field label="Nome do responsável">
+                  <input
+                    list="real-team-members"
+                    value={form.assignee || ""}
+                    onChange={(e) =>
+                      setForm({ ...form, assignee: e.target.value })
+                    }
+                    placeholder="Nome da pessoa"
+                  />
+                  <datalist id="real-team-members">
+                    {realMembers.map((member) => (
+                      <option key={member.id} value={member.name}>
+                        {member.email}
+                      </option>
+                    ))}
+                  </datalist>
+                </Field>
+              )}
+              <Field label="Projeto">
+                <input
+                  value={form.project || ""}
+                  onChange={(e) =>
+                    setForm({ ...form, project: e.target.value })
+                  }
+                  placeholder="Ex.: Lançamento de julho"
+                />
+              </Field>
             </div>
             <div className="modal-actions">
               <Button variant="ghost" onClick={() => setModal(false)}>
                 Cancelar
               </Button>
               <Button type="submit" icon={Save}>
-                Criar tarefa
+                {editing ? "Salvar alterações" : "Criar tarefa"}
               </Button>
             </div>
           </form>
@@ -2771,9 +3268,15 @@ function Tasks({ db, update, business, setToast }) {
 
 function CRM({ db, update, business, setToast }) {
   const [modal, setModal] = useState(false),
+    [editing, setEditing] = useState(null),
     [search, setSearch] = useState(""),
-    [filter, setFilter] = useState("Todos");
-  const [form, setForm] = useState({
+    [filter, setFilter] = useState("Todos"),
+    [interaction, setInteraction] = useState({
+      type: "Conversa",
+      note: "",
+      at: today(),
+    });
+  const blankLead = {
     name: "",
     company: "",
     contact: "",
@@ -2781,7 +3284,9 @@ function CRM({ db, update, business, setToast }) {
     status: "Novo",
     next: "",
     notes: "",
-  });
+    interactions: [],
+  };
+  const [form, setForm] = useState(blankLead);
   const stages = [
     "Novo",
     "Em conversa",
@@ -2799,32 +3304,90 @@ function CRM({ db, update, business, setToast }) {
           .includes(search.toLowerCase())) &&
       (filter === "Todos" || l.status === filter),
   );
-  const add = (e) => {
+  const openLead = (lead = null) => {
+    setEditing(lead?.id || null);
+    setForm(lead ? { ...blankLead, ...lead } : blankLead);
+    setInteraction({ type: "Conversa", note: "", at: today() });
+    setModal(true);
+  };
+  const save = (e) => {
     e.preventDefault();
     if (!form.name.trim()) return;
+    const now = new Date().toISOString();
+    update((d) => {
+      const previous = d.leads.find((lead) => lead.id === editing);
+      const stageChanged = previous && previous.status !== form.status;
+      const item = {
+        ...form,
+        name: form.name.trim(),
+        id: editing || uid(),
+        businessId: business?.id || form.businessId || null,
+        createdAt: form.createdAt || now,
+        updatedAt: now,
+        interactions: stageChanged
+          ? [
+              {
+                id: uid(),
+                type: "Mudança de etapa",
+                note: `${previous.status} → ${form.status}`,
+                at: today(),
+                createdAt: now,
+              },
+              ...(form.interactions || []),
+            ]
+          : form.interactions || [],
+      };
+      return {
+        ...d,
+        leads: editing
+          ? d.leads.map((lead) => (lead.id === editing ? item : lead))
+          : [item, ...d.leads],
+      };
+    });
+    setModal(false);
+    setEditing(null);
+    setForm(blankLead);
+    setToast(editing ? "Lead atualizado" : "Lead adicionado ao CRM");
+  };
+  const addInteraction = () => {
+    if (!interaction.note.trim()) return;
+    const entry = {
+      ...interaction,
+      id: uid(),
+      note: interaction.note.trim(),
+      createdAt: new Date().toISOString(),
+    };
+    setForm((current) => ({
+      ...current,
+      interactions: [entry, ...(current.interactions || [])],
+    }));
+    setInteraction({ type: "Conversa", note: "", at: today() });
+  };
+  const changeStage = (lead, status) => {
+    if (lead.status === status) return;
+    const now = new Date().toISOString();
     update((d) => ({
       ...d,
-      leads: [
-        {
-          ...form,
-          id: uid(),
-          businessId: business?.id || null,
-          createdAt: today(),
-        },
-        ...d.leads,
-      ],
+      leads: d.leads.map((item) =>
+        item.id === lead.id
+          ? {
+              ...item,
+              status,
+              updatedAt: now,
+              interactions: [
+                {
+                  id: uid(),
+                  type: "Mudança de etapa",
+                  note: `${lead.status} → ${status}`,
+                  at: today(),
+                  createdAt: now,
+                },
+                ...(item.interactions || []),
+              ],
+            }
+          : item,
+      ),
     }));
-    setModal(false);
-    setForm({
-      name: "",
-      company: "",
-      contact: "",
-      value: "",
-      status: "Novo",
-      next: "",
-      notes: "",
-    });
-    setToast("Lead adicionado ao CRM");
   };
   return (
     <PageTitle
@@ -2832,7 +3395,7 @@ function CRM({ db, update, business, setToast }) {
       title="CRM simples, acompanhamento real"
       text="Centralize contatos, conversas, propostas e próximos passos."
       action={
-        <Button icon={Plus} onClick={() => setModal(true)}>
+        <Button icon={Plus} onClick={() => openLead()}>
           Novo lead
         </Button>
       }
@@ -2880,7 +3443,7 @@ function CRM({ db, update, business, setToast }) {
           title="Nenhuma oportunidade aqui"
           text="Adicione uma pessoa ou empresa e registre o próximo contato."
           action="Adicionar lead"
-          onAction={() => setModal(true)}
+          onAction={() => openLead()}
         />
       ) : (
         <div className="crm-table">
@@ -2893,23 +3456,19 @@ function CRM({ db, update, business, setToast }) {
           </div>
           {leads.map((l) => (
             <div key={l.id}>
-              <span className="contact-cell">
+              <button
+                className="contact-cell contact-button"
+                onClick={() => openLead(l)}
+              >
                 <i>{l.name[0]}</i>
                 <span>
                   <strong>{l.name}</strong>
                   <small>{l.company || l.contact || "Sem empresa"}</small>
                 </span>
-              </span>
+              </button>
               <select
                 value={l.status}
-                onChange={(e) =>
-                  update((d) => ({
-                    ...d,
-                    leads: d.leads.map((x) =>
-                      x.id === l.id ? { ...x, status: e.target.value } : x,
-                    ),
-                  }))
-                }
+                onChange={(e) => changeStage(l, e.target.value)}
               >
                 {stages.map((x) => (
                   <option key={x}>{x}</option>
@@ -2917,24 +3476,39 @@ function CRM({ db, update, business, setToast }) {
               </select>
               <span>{l.value ? money(l.value) : "Não informado"}</span>
               <span>{l.next || "Não agendado"}</span>
-              <button
-                className="icon-button danger"
-                onClick={() =>
-                  update((d) => ({
-                    ...d,
-                    leads: d.leads.filter((x) => x.id !== l.id),
-                  }))
-                }
-              >
-                <Trash2 />
-              </button>
+              <span className="crm-actions">
+                <button
+                  className="icon-button"
+                  aria-label="Editar lead e ver interacoes"
+                  onClick={() => openLead(l)}
+                >
+                  <Edit3 />
+                </button>
+                <button
+                  className="icon-button danger"
+                  aria-label="Excluir lead"
+                  onClick={() => {
+                    if (!confirm("Excluir este lead e seu histórico?")) return;
+                    update((d) => ({
+                      ...d,
+                      leads: d.leads.filter((x) => x.id !== l.id),
+                    }));
+                  }}
+                >
+                  <Trash2 />
+                </button>
+              </span>
             </div>
           ))}
         </div>
       )}
       {modal && (
-        <Modal title="Adicionar lead" onClose={() => setModal(false)}>
-          <form className="modal-body" onSubmit={add}>
+        <Modal
+          title={editing ? "Editar lead" : "Adicionar lead"}
+          onClose={() => setModal(false)}
+          wide={!!editing}
+        >
+          <form className="modal-body" onSubmit={save}>
             <div className="form-grid">
               <Field label="Nome">
                 <input
@@ -2993,12 +3567,79 @@ function CRM({ db, update, business, setToast }) {
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
               />
             </Field>
+            {editing && (
+              <section className="interaction-panel">
+                <div className="section-head compact">
+                  <div>
+                    <span className="eyebrow">HISTÓRICO</span>
+                    <h3>Interações com o lead</h3>
+                  </div>
+                </div>
+                <div className="interaction-entry">
+                  <select
+                    value={interaction.type}
+                    onChange={(e) =>
+                      setInteraction({ ...interaction, type: e.target.value })
+                    }
+                  >
+                    <option>Conversa</option>
+                    <option>Ligação</option>
+                    <option>E-mail</option>
+                    <option>Reunião</option>
+                    <option>Proposta</option>
+                    <option>Observação</option>
+                  </select>
+                  <input
+                    type="date"
+                    value={interaction.at}
+                    onChange={(e) =>
+                      setInteraction({ ...interaction, at: e.target.value })
+                    }
+                  />
+                  <input
+                    value={interaction.note}
+                    onChange={(e) =>
+                      setInteraction({ ...interaction, note: e.target.value })
+                    }
+                    placeholder="O que aconteceu e qual foi o combinado?"
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    icon={Plus}
+                    disabled={!interaction.note.trim()}
+                    onClick={addInteraction}
+                  >
+                    Registrar
+                  </Button>
+                </div>
+                <div className="interaction-history">
+                  {(form.interactions || []).length ? (
+                    (form.interactions || []).map((entry) => (
+                      <article key={entry.id}>
+                        <span>{entry.type}</span>
+                        <strong>{entry.note}</strong>
+                        <small>
+                          {entry.at
+                            ? new Date(`${entry.at}T12:00`).toLocaleDateString(
+                                "pt-BR",
+                              )
+                            : "Sem data"}
+                        </small>
+                      </article>
+                    ))
+                  ) : (
+                    <p>Nenhuma interação registrada ainda.</p>
+                  )}
+                </div>
+              </section>
+            )}
             <div className="modal-actions">
               <Button variant="ghost" onClick={() => setModal(false)}>
                 Cancelar
               </Button>
               <Button type="submit" icon={Save}>
-                Salvar lead
+                {editing ? "Salvar alterações" : "Salvar lead"}
               </Button>
             </div>
           </form>
@@ -3031,7 +3672,21 @@ function Finance({ db, update, business, setToast }) {
       fixed: "",
       tax: "",
       margin: "",
+    }),
+    [planning, setPlanning] = useState({
+      monthlyGoal: "",
+      fixedCosts: "",
+      contributionMargin: "",
     });
+  const financeKey = business?.id || "global";
+  useEffect(() => {
+    setPlanning({
+      monthlyGoal: "",
+      fixedCosts: "",
+      contributionMargin: "",
+      ...(db.financeSettings?.[financeKey] || {}),
+    });
+  }, [financeKey]);
   const [form, setForm] = useState({
     type: "Receita",
     description: "",
@@ -3048,6 +3703,22 @@ function Finance({ db, update, business, setToast }) {
     expense = tx
       .filter((x) => x.type === "Despesa")
       .reduce((a, x) => a + Number(x.value), 0);
+  const currentMonth = today().slice(0, 7),
+    monthlyRevenue = tx
+      .filter(
+        (item) =>
+          item.type === "Receita" &&
+          String(item.date || "").startsWith(currentMonth),
+      )
+      .reduce((total, item) => total + Number(item.value || 0), 0),
+    monthlyGoal = Number(planning.monthlyGoal || 0),
+    contributionMargin = Number(planning.contributionMargin || 0),
+    breakEven = contributionMargin
+      ? Number(planning.fixedCosts || 0) / (contributionMargin / 100)
+      : 0,
+    goalProgress = monthlyGoal
+      ? Math.min(100, Math.round((monthlyRevenue / monthlyGoal) * 100))
+      : 0;
   const base =
       Number(calc.materials || 0) +
       Number(calc.hours || 0) * Number(calc.hourValue || 0) +
@@ -3067,6 +3738,50 @@ function Finance({ db, update, business, setToast }) {
     }));
     setModal(false);
     setToast("Movimentação registrada");
+  };
+  const savePlanning = () => {
+    update((d) => ({
+      ...d,
+      financeSettings: {
+        ...(d.financeSettings || {}),
+        [financeKey]: planning,
+      },
+    }));
+    setToast("Metas e ponto de equilíbrio salvos");
+  };
+  const exportReport = () => {
+    const safe = (value) => {
+      const text = String(value ?? "");
+      const protectedText = /^[=+@-]/.test(text) ? `'${text}` : text;
+      return `"${protectedText.replace(/"/g, '""')}"`;
+    };
+    const rows = [
+      ["Data", "Tipo", "Descricao", "Categoria", "Valor"],
+      ...tx.map((item) => [
+        item.date,
+        item.type,
+        item.description,
+        item.category,
+        Number(item.value || 0).toFixed(2),
+      ]),
+      [],
+      ["Resumo", "Valor"],
+      ["Receitas", revenue.toFixed(2)],
+      ["Despesas", expense.toFixed(2)],
+      ["Saldo", (revenue - expense).toFixed(2)],
+      ["Meta mensal", monthlyGoal.toFixed(2)],
+      ["Ponto de equilibrio", breakEven.toFixed(2)],
+    ];
+    const blob = new Blob(
+      [`\ufeff${rows.map((row) => row.map(safe).join(";")).join("\n")}`],
+      { type: "text/csv;charset=utf-8" },
+    );
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `relatorio-financeiro-${currentMonth}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    setToast("Relatório financeiro exportado");
   };
   return (
     <PageTitle
@@ -3096,6 +3811,108 @@ function Finance({ db, update, business, setToast }) {
           value={money(revenue - expense)}
         />
       </div>
+      <section className="panel finance-planning">
+        <div className="panel-head">
+          <div>
+            <span className="eyebrow">PLANEJAMENTO</span>
+            <h2>Meta mensal e ponto de equilíbrio</h2>
+          </div>
+          <Button variant="secondary" icon={Download} onClick={exportReport}>
+            Exportar relatório
+          </Button>
+        </div>
+        <div className="planning-grid">
+          <Field label="Meta de receita mensal (R$)">
+            <input
+              type="number"
+              min="0"
+              value={planning.monthlyGoal}
+              onChange={(e) =>
+                setPlanning({ ...planning, monthlyGoal: e.target.value })
+              }
+            />
+          </Field>
+          <Field label="Custos fixos mensais (R$)">
+            <input
+              type="number"
+              min="0"
+              value={planning.fixedCosts}
+              onChange={(e) =>
+                setPlanning({ ...planning, fixedCosts: e.target.value })
+              }
+            />
+          </Field>
+          <Field
+            label="Margem de contribuição (%)"
+            hint="Receita que sobra após custos e despesas variáveis."
+          >
+            <input
+              type="number"
+              min="0"
+              max="100"
+              value={planning.contributionMargin}
+              onChange={(e) =>
+                setPlanning({
+                  ...planning,
+                  contributionMargin: e.target.value,
+                })
+              }
+            />
+          </Field>
+          <Button icon={Save} onClick={savePlanning}>
+            Salvar planejamento
+          </Button>
+        </div>
+        <div className="planning-results">
+          <div>
+            <small>Receita neste mês</small>
+            <strong>{money(monthlyRevenue)}</strong>
+            <div className="meter">
+              <span style={{ width: `${goalProgress}%` }} />
+            </div>
+            <h3>Áreas que devem aparecer primeiro</h3>
+            <div className="option-grid compact">
+              {[
+                "Estratégia",
+                "Vendas",
+                "Marketing",
+                "Financeiro",
+                "Operação",
+              ].map((area) => (
+                <button
+                  key={area}
+                  className={form.areas.includes(area) ? "selected" : ""}
+                  onClick={() =>
+                    setForm({
+                      ...form,
+                      areas: form.areas.includes(area)
+                        ? form.areas.filter((item) => item !== area)
+                        : [...form.areas, area],
+                    })
+                  }
+                >
+                  {form.areas.includes(area) ? <CheckCircle2 /> : <Circle />}
+                  {area}
+                </button>
+              ))}
+            </div>
+            <span>
+              {monthlyGoal ? `${goalProgress}% da meta` : "Defina uma meta"}
+            </span>
+          </div>
+          <div>
+            <small>Ponto de equilíbrio estimado</small>
+            <strong>
+              {breakEven ? money(breakEven) : "Preencha os dados"}
+            </strong>
+            <span>
+              {breakEven
+                ? "Receita mensal necessária para cobrir os custos fixos."
+                : "Informe custos fixos e margem de contribuição."}
+            </span>
+          </div>
+        </div>
+      </section>
       <div className="finance-grid">
         <section className="panel calculator">
           <div className="panel-head">
@@ -3287,7 +4104,9 @@ function Finance({ db, update, business, setToast }) {
 function Documents({ db, update, business, setToast }) {
   const [modal, setModal] = useState(false),
     [editing, setEditing] = useState(null),
-    [search, setSearch] = useState("");
+    [search, setSearch] = useState(""),
+    [aiBusy, setAiBusy] = useState(false),
+    [exportBusy, setExportBusy] = useState("");
   const docs = db.documents.filter(
     (x) =>
       (!business || x.businessId === business.id) &&
@@ -3340,13 +4159,100 @@ function Documents({ db, update, business, setToast }) {
     setModal(false);
     setToast("Documento salvo");
   };
-  const download = (d) => {
-    const blob = new Blob([d.content], { type: "text/plain;charset=utf-8" }),
-      a = document.createElement("a");
+  const saveBlob = (blob, filename) => {
+    const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `${slugify(d.title)}.txt`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(a.href);
+  };
+  const download = async (d, format) => {
+    if (!format) return;
+    setExportBusy(`${d.id}:${format}`);
+    try {
+      if (format === "txt") {
+        saveBlob(
+          new Blob([`${d.title}\n\n${d.content}`], {
+            type: "text/plain;charset=utf-8",
+          }),
+          `${slugify(d.title)}.txt`,
+        );
+      } else if (format === "docx") {
+        const { Document, Packer, Paragraph, HeadingLevel } =
+          await import("docx");
+        const file = new Document({
+          sections: [
+            {
+              children: [
+                new Paragraph({ text: d.title, heading: HeadingLevel.TITLE }),
+                new Paragraph({
+                  text: d.type,
+                  heading: HeadingLevel.HEADING_2,
+                }),
+                ...String(d.content || "")
+                  .split("\n")
+                  .map((line) => new Paragraph({ text: line || " " })),
+              ],
+            },
+          ],
+        });
+        saveBlob(await Packer.toBlob(file), `${slugify(d.title)}.docx`);
+      } else {
+        const { jsPDF } = await import("jspdf");
+        const pdf = new jsPDF({ unit: "mm", format: "a4" });
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(18);
+        pdf.text(pdf.splitTextToSize(d.title, 175), 18, 20);
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(10);
+        pdf.setTextColor(95);
+        pdf.text(d.type, 18, 31);
+        pdf.setTextColor(25);
+        pdf.setFontSize(11);
+        const lines = pdf.splitTextToSize(String(d.content || ""), 175);
+        let y = 42;
+        lines.forEach((line) => {
+          if (y > 282) {
+            pdf.addPage();
+            y = 18;
+          }
+          pdf.text(line, 18, y);
+          y += 5.5;
+        });
+        pdf.save(`${slugify(d.title)}.pdf`);
+      }
+      setToast(`Documento exportado em ${format.toUpperCase()}`);
+    } catch {
+      setToast("Não foi possível exportar este documento");
+    } finally {
+      setExportBusy("");
+    }
+  };
+  const refine = async () => {
+    if (aiBusy || !form.content.trim()) return;
+    setAiBusy(true);
+    try {
+      const response = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          specialist: "Conteúdo",
+          prompt: `Aprimore o documento abaixo. Preserve todos os fatos, números e compromissos informados; corrija clareza, estrutura e linguagem. Não invente dados. Entregue somente a versão final do documento em Markdown.\n\nTítulo: ${form.title}\nTipo: ${form.type}\n\n${form.content}`,
+          business,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Falha ao aprimorar");
+      setForm((current) => ({
+        ...current,
+        content: data.content || current.content,
+      }));
+      setToast("Versão aprimorada no editor; salve para registrar a alteração");
+    } catch (error) {
+      setToast(error.message || "Não foi possível aprimorar agora");
+    } finally {
+      setAiBusy(false);
+    }
   };
   return (
     <PageTitle
@@ -3373,7 +4279,7 @@ function Documents({ db, update, business, setToast }) {
         <Empty
           icon={FileText}
           title="Nenhum documento criado"
-          text="Crie um documento editável e exporte em texto quando quiser."
+          text="Crie um documento editável, refine com assistência inteligente e exporte em PDF, DOCX ou TXT."
           action="Criar documento"
           onAction={() => open(null)}
         />
@@ -3395,10 +4301,24 @@ function Documents({ db, update, business, setToast }) {
                   <Edit3 />
                   Editar
                 </button>
-                <button onClick={() => download(d)}>
+                <label className="compact-export">
                   <Download />
-                  Baixar
-                </button>
+                  <select
+                    aria-label={`Exportar ${d.title}`}
+                    value=""
+                    disabled={exportBusy.startsWith(`${d.id}:`)}
+                    onChange={(event) => download(d, event.target.value)}
+                  >
+                    <option value="">
+                      {exportBusy.startsWith(`${d.id}:`)
+                        ? "Exportando..."
+                        : "Exportar"}
+                    </option>
+                    <option value="pdf">PDF</option>
+                    <option value="docx">DOCX</option>
+                    <option value="txt">TXT</option>
+                  </select>
+                </label>
                 <button
                   className="danger"
                   onClick={() =>
@@ -3461,6 +4381,21 @@ function Documents({ db, update, business, setToast }) {
                 placeholder="Escreva ou cole o conteúdo aqui..."
               />
             </Field>
+            <div className="editor-tools">
+              <Button
+                type="button"
+                variant="secondary"
+                icon={aiBusy ? RefreshCw : WandSparkles}
+                disabled={aiBusy || !form.content.trim()}
+                onClick={refine}
+              >
+                {aiBusy ? "Aprimorando..." : "Aprimorar texto"}
+              </Button>
+              <small>
+                O texto atual permanece no histórico quando você salva a nova
+                versão.
+              </small>
+            </div>
             {editing && (form.versions || []).length > 0 && (
               <section className="version-history">
                 <strong>Versões anteriores</strong>
@@ -3503,27 +4438,142 @@ function Documents({ db, update, business, setToast }) {
   );
 }
 
-function makeSite(form) {
-  const title = form.name || "Meu negócio";
-  const desc = form.description || "Soluções pensadas para você.";
-  const color = form.color || "#6d38e0";
-  const contact = form.contact || "#contato";
-  const services = (
-    form.services ||
-    "Atendimento personalizado\nSolução sob medida\nAcompanhamento próximo"
+export function looksLikeSiteInstruction(value) {
+  const text = String(value || "")
+    .trim()
+    .toLowerCase();
+  return (
+    /^(crie|criar|gere|gerar|faça|fazer|desenvolva|monte|construa)\b/.test(
+      text,
+    ) ||
+    /\b(o site|a página|landing page) (deve|precisa|tem que)\b/.test(text) ||
+    /\b(apresente|explique|mostre|inclua)\b.{0,80}\b(site|página|plataforma)\b/.test(
+      text,
+    )
+  );
+}
+
+const siteFallbackDescription = (form) => {
+  const name = form.name || "Nosso negócio";
+  const segment = form.segment
+    ? ` em ${String(form.segment).toLowerCase()}`
+    : "";
+  return `${name} oferece soluções${segment} com atendimento próximo, clareza e foco no que cada cliente precisa.`;
+};
+
+const siteServices = (value) => {
+  const source = Array.isArray(value)
+    ? value
+    : String(
+        value ||
+          "Atendimento personalizado\nSolução sob medida\nAcompanhamento próximo",
+      )
+        .split("\n")
+        .filter(Boolean);
+  return source.slice(0, 8).map((item) =>
+    typeof item === "string"
+      ? {
+          title: item.trim(),
+          description:
+            "Uma solução conduzida com clareza, cuidado e acompanhamento em cada etapa.",
+        }
+      : {
+          title: String(item?.title || "Solução").trim(),
+          description: String(
+            item?.description ||
+              "Converse conosco para entender como esta solução pode ajudar.",
+          ).trim(),
+        },
+  );
+};
+
+export function mergeSiteBrief(base, patch) {
+  const allowed = [
+    "name",
+    "segment",
+    "headline",
+    "description",
+    "aboutTitle",
+    "about",
+    "services",
+    "cta",
+    "contact",
+    "color",
+  ];
+  const next = { ...base };
+  allowed.forEach((key) => {
+    if (patch?.[key] !== undefined && patch[key] !== null)
+      next[key] = patch[key];
+  });
+  if (
+    !String(next.description || "").trim() ||
+    looksLikeSiteInstruction(next.description)
   )
-    .split("\n")
-    .filter(Boolean)
-    .slice(0, 6)
+    next.description = siteFallbackDescription(next);
+  if (!/^#[0-9a-f]{6}$/i.test(next.color || "")) next.color = "#6d38e0";
+  return next;
+}
+
+const sitePagePath = (slug, page = "") =>
+  `/s/${slugify(slug || "meu-site")}${page ? `/${page}` : ""}`;
+
+export function makeSite(form, page = "", siteSlug = "") {
+  const title = form.name || "Meu negócio";
+  const desc =
+    form.description && !looksLikeSiteInstruction(form.description)
+      ? form.description
+      : siteFallbackDescription(form);
+  const color = /^#[0-9a-f]{6}$/i.test(form.color || "")
+    ? form.color
+    : "#6d38e0";
+  const contact = /^(https?:|mailto:|tel:|#)/i.test(form.contact || "")
+    ? form.contact
+    : "#contato";
+  const slug = siteSlug || slugify(title);
+  const services = siteServices(form.services);
+  const cards = services
     .map(
       (service) =>
-        `<div class="card"><h3>${escapeHtml(service)}</h3><p>Converse conosco para entender como esta solução pode atender ao que você precisa.</p></div>`,
+        `<article class="card"><h3>${escapeHtml(service.title)}</h3><p>${escapeHtml(service.description)}</p></article>`,
     )
     .join("");
+  const nav = [
+    ["", "Início"],
+    ["sobre", "Sobre"],
+    ["servicos", "Serviços"],
+    ["contato", "Contato"],
+  ]
+    .map(
+      ([path, label]) =>
+        `<a${page === path ? ' aria-current="page"' : ""} href="${sitePagePath(slug, path)}">${label}</a>`,
+    )
+    .join("");
+  const about =
+    form.about ||
+    `${title} nasceu para oferecer uma experiência confiável, simples e próxima. Cada atendimento parte do contexto real do cliente para chegar a uma solução adequada.`;
+  const pageContent =
+    {
+      "": `<section class="hero"><div><span>${escapeHtml(form.segment || "Bem-vindo")}</span><h1>${escapeHtml(form.headline || title)}</h1><p>${escapeHtml(desc)}</p><a class="cta" href="${sitePagePath(slug, "contato")}">${escapeHtml(form.cta || "Quero saber mais")}</a></div></section><section class="section intro"><span class="kicker">O QUE FAZEMOS</span><h2>Soluções pensadas para necessidades reais</h2><div class="cards">${cards}</div></section>`,
+      sobre: `<section class="page-hero"><span>QUEM SOMOS</span><h1>${escapeHtml(form.aboutTitle || `Sobre ${title}`)}</h1><p>${escapeHtml(desc)}</p></section><section class="section prose"><h2>Um trabalho construído com você</h2><p>${escapeHtml(about)}</p><a class="cta" href="${sitePagePath(slug, "contato")}">Conversar com a equipe</a></section>`,
+      servicos: `<section class="page-hero"><span>NOSSAS SOLUÇÕES</span><h1>Como podemos ajudar</h1><p>Conheça as frentes de trabalho e encontre o melhor ponto de partida.</p></section><section class="section"><div class="cards">${cards}</div></section>`,
+      contato: `<section class="section contact" id="contato"><div class="contact-grid"><div><span class="kicker">CONTATO</span><h1>Vamos conversar?</h1><p>Conte o que você precisa. A mensagem chega diretamente à equipe responsável.</p>${contact !== "#contato" ? `<p><a class="cta light" href="${escapeHtml(contact)}">${escapeHtml(form.cta || "Falar agora")}</a></p>` : ""}</div><form class="lead-form" data-sf-lead-form><label>Nome<input name="name" required maxlength="100" autocomplete="name"></label><label>E-mail<input name="email" type="email" maxlength="160" autocomplete="email"></label><label>Telefone<input name="phone" maxlength="40" autocomplete="tel"></label><label>Mensagem<textarea name="message" maxlength="2000"></textarea></label><button type="submit">Enviar mensagem</button><p class="lead-status" data-sf-lead-status aria-live="polite"></p></form></div></section>`,
+    }[page] || "";
   return `<!doctype html>
-<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><meta name="description" content="${escapeHtml(desc.slice(0, 150))}"><style>
-*{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,sans-serif;color:#17152b;background:#fafaff}header{display:flex;justify-content:space-between;align-items:center;padding:24px 7%;background:#fff}header b{font-size:1.2rem}a{color:inherit}.cta,button{display:inline-block;background:${color};color:white;padding:14px 22px;border:0;border-radius:12px;text-decoration:none;font-weight:700;cursor:pointer}.hero{padding:100px 7%;background:linear-gradient(135deg,#f4f0ff,#fff0f7);min-height:66vh;display:grid;align-content:center}.hero>div{max-width:760px}.hero span{color:${color};font-weight:800;text-transform:uppercase;letter-spacing:.12em}.hero h1{font-size:clamp(2.5rem,7vw,5.5rem);line-height:1;margin:.25em 0}.hero p{font-size:1.2rem;line-height:1.7;max-width:640px}.section{padding:75px 7%}.section h2{font-size:2.2rem}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}.card{background:#fff;padding:26px;border:1px solid #e8e5f2;border-radius:18px}.contact{background:#17152b;color:#fff}.contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:50px;align-items:start;max-width:1100px;margin:auto}.lead-form{display:grid;gap:12px;background:#fff;color:#17152b;padding:26px;border-radius:18px}.lead-form label{display:grid;gap:6px;text-align:left;font-weight:700}.lead-form input,.lead-form textarea{width:100%;padding:13px;border:1px solid #d8d4e5;border-radius:10px;font:inherit}.lead-form textarea{min-height:110px;resize:vertical}.lead-status{min-height:22px;margin:0;color:#443d55;font-size:.92rem}footer{padding:28px 7%;text-align:center;color:#666}@media(max-width:700px){header{padding:18px 5%}.hero,.section{padding:64px 6%}.cards,.contact-grid{grid-template-columns:1fr}}
-</style></head><body><header><b>${escapeHtml(title)}</b><a class="cta" href="#contato">Entrar em contato</a></header><main><section class="hero"><div><span>${escapeHtml(form.segment || "Bem-vindo")}</span><h1>${escapeHtml(form.headline || title)}</h1><p>${escapeHtml(desc)}</p><a class="cta" href="#contato">${escapeHtml(form.cta || "Quero saber mais")}</a></div></section><section class="section"><h2>Como podemos ajudar</h2><div class="cards">${services}</div></section><section class="section contact" id="contato"><div class="contact-grid"><div><h2>Vamos conversar?</h2><p>Conte o que você precisa e receba os próximos passos.</p>${contact !== "#contato" ? `<p><a class="cta" href="${escapeHtml(contact)}">${escapeHtml(form.cta || "Falar agora")}</a></p>` : ""}</div><form class="lead-form" data-sf-lead-form><label>Nome<input name="name" required maxlength="100" autocomplete="name"></label><label>E-mail<input name="email" type="email" maxlength="160" autocomplete="email"></label><label>Telefone<input name="phone" maxlength="40" autocomplete="tel"></label><label>Mensagem<textarea name="message" maxlength="2000"></textarea></label><button type="submit">Enviar mensagem</button><p class="lead-status" data-sf-lead-status aria-live="polite"></p></form></div></section></main><footer>© ${new Date().getFullYear()} ${escapeHtml(title)}</footer></body></html>`;
+<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(page ? `${page[0].toUpperCase()}${page.slice(1)} · ${title}` : title)}</title><meta name="description" content="${escapeHtml(desc.slice(0, 150))}"><style>
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font-family:Inter,Arial,sans-serif;color:#17152b;background:#fafaff}header{display:flex;justify-content:space-between;align-items:center;gap:28px;padding:22px 7%;background:#fff;border-bottom:1px solid #ece9f4;position:sticky;top:0;z-index:3}header b{font-size:1.2rem}nav{display:flex;align-items:center;gap:24px}nav a{color:#57516b;text-decoration:none;font-weight:700;font-size:.93rem}nav a[aria-current=page]{color:${color}}a{color:inherit}.cta,button{display:inline-block;background:${color};color:white;padding:14px 22px;border:0;border-radius:12px;text-decoration:none;font-weight:800;cursor:pointer}.cta.light{background:#fff;color:#17152b}.hero,.page-hero{padding:100px 7%;background:linear-gradient(135deg,#f4f0ff,#fff0f7);display:grid;align-content:center}.hero{min-height:68vh}.hero>div{max-width:820px}.hero span,.page-hero span,.kicker{color:${color};font-weight:900;text-transform:uppercase;letter-spacing:.12em}.hero h1,.page-hero h1,.contact h1{font-size:clamp(2.6rem,7vw,5.4rem);line-height:1.02;margin:.25em 0}.hero p,.page-hero p{font-size:1.2rem;line-height:1.7;max-width:720px}.page-hero{min-height:48vh}.section{padding:80px 7%}.section>h2{font-size:clamp(2rem,4vw,3.4rem);max-width:780px}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:34px}.card{background:#fff;padding:28px;border:1px solid #e8e5f2;border-radius:20px;box-shadow:0 12px 35px rgba(35,25,72,.06)}.card h3{font-size:1.25rem}.card p,.prose p{color:#5d576d;line-height:1.7}.prose{max-width:920px}.prose p{font-size:1.18rem}.contact{background:#17152b;color:#fff;min-height:72vh;display:grid;align-content:center}.contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:50px;align-items:start;max-width:1150px;margin:auto}.lead-form{display:grid;gap:12px;background:#fff;color:#17152b;padding:28px;border-radius:20px}.lead-form label{display:grid;gap:6px;text-align:left;font-weight:700}.lead-form input,.lead-form textarea{width:100%;padding:13px;border:1px solid #d8d4e5;border-radius:10px;font:inherit}.lead-form textarea{min-height:110px;resize:vertical}.lead-status{min-height:22px;margin:0;color:#443d55;font-size:.92rem}footer{padding:28px 7%;text-align:center;color:#6c667a;background:#fff}@media(max-width:760px){header{padding:18px 5%;align-items:flex-start;flex-direction:column}nav{width:100%;gap:16px;overflow:auto;padding-bottom:3px}.hero,.page-hero,.section{padding:62px 6%}.cards,.contact-grid{grid-template-columns:1fr}}
+</style></head><body><header><b>${escapeHtml(title)}</b><nav aria-label="Páginas do site">${nav}</nav></header><main>${pageContent}</main><footer>© ${new Date().getFullYear()} ${escapeHtml(title)}</footer></body></html>`;
+}
+
+export function makeSitePages(form, slug) {
+  return [
+    { slug: "", name: "Início" },
+    { slug: "sobre", name: "Sobre" },
+    { slug: "servicos", name: "Serviços" },
+    { slug: "contato", name: "Contato" },
+  ].map((item) => ({
+    ...item,
+    html: makeSite(form, item.slug, slug),
+  }));
 }
 const escapeHtml = (s) =>
   String(s || "").replace(
@@ -3536,9 +4586,9 @@ const escapeHtml = (s) =>
 
 export function websiteMilestones(site) {
   const brief = site?.brief || {};
-  const serviceCount = (brief.services || "")
-    .split("\n")
-    .filter((x) => x.trim()).length;
+  const serviceCount = Array.isArray(brief.services)
+    ? brief.services.length
+    : (brief.services || "").split("\n").filter((x) => x.trim()).length;
   const reviewed = site?.reviewedDevices || [];
   return [
     {
@@ -3551,7 +4601,13 @@ export function websiteMilestones(site) {
       id: "brief",
       title: "Briefing consistente",
       text: "Informar nome, segmento e objetivo da página.",
-      done: !!(site && brief.name && brief.segment && brief.description),
+      done: !!(
+        site &&
+        brief.name &&
+        brief.segment &&
+        brief.description &&
+        !looksLikeSiteInstruction(brief.description)
+      ),
     },
     {
       id: "content",
@@ -3590,6 +4646,16 @@ export function websiteMilestones(site) {
   ];
 }
 
+export function parseSiteJson(content) {
+  const text = String(content || "")
+    .replace(/```(?:json)?/gi, "")
+    .replace(/```/g, "")
+    .trim();
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error("A resposta não trouxe alterações estruturadas.");
+  return JSON.parse(match[0]);
+}
+
 function Sites({ db, update, business, setToast }) {
   const [modal, setModal] = useState(false),
     [preview, setPreview] = useState(null),
@@ -3598,10 +4664,15 @@ function Sites({ db, update, business, setToast }) {
     [publishing, setPublishing] = useState(false),
     [siteError, setSiteError] = useState(""),
     [leads, setLeads] = useState([]),
-    [loadingLeads, setLoadingLeads] = useState(false);
+    [loadingLeads, setLoadingLeads] = useState(false),
+    [generating, setGenerating] = useState(false),
+    [siteChatText, setSiteChatText] = useState(""),
+    [siteChatBusy, setSiteChatBusy] = useState(false),
+    [previewPage, setPreviewPage] = useState("");
   const [form, setForm] = useState({
     name: business?.name || "",
     segment: business?.segment || "",
+    instructions: "",
     description: "",
     headline: "",
     services: business?.offer || "",
@@ -3612,19 +4683,49 @@ function Sites({ db, update, business, setToast }) {
   const sites = db.sites.filter(
     (x) => !business || x.businessId === business.id,
   );
-  const generate = (e) => {
+  const generate = async (e) => {
     e.preventDefault();
-    if (!form.description.trim()) return;
-    let slug = slugify(form.name);
+    if (!form.instructions.trim() || generating) return;
+    setGenerating(true);
+    setSiteError("");
+    let generatedBrief = { ...form };
+    try {
+      const response = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          specialist: "Criador de Sites",
+          business,
+          prompt: `Transforme o briefing abaixo em conteúdo público de um site profissional. O briefing é uma instrução interna e NUNCA pode aparecer literalmente nos textos do site. Não invente clientes, números, depoimentos ou fatos. Responda SOMENTE com JSON válido, sem Markdown, usando os campos: headline, description (até 240 caracteres, texto para visitantes), aboutTitle, about, services (lista de objetos com title e description), cta.\n\nNome: ${form.name}\nSegmento: ${form.segment}\nBriefing interno: ${form.instructions.slice(0, 4000)}\nServiços informados: ${String(form.services || "").slice(0, 1600)}\nTexto público informado: ${form.description.slice(0, 800)}`,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && data.content)
+        generatedBrief = mergeSiteBrief(form, parseSiteJson(data.content));
+    } catch {
+      generatedBrief = mergeSiteBrief(form, {});
+    }
+    let slug = slugify(form.name || business?.name || "meu-site");
     let n = 2;
     while (db.sites.some((x) => x.slug === slug))
       slug = `${slugify(form.name)}-${n++}`;
+    const pages = makeSitePages(generatedBrief, slug);
     const site = {
       id: uid(),
       name: form.name || "Novo site",
       slug,
-      html: makeSite(form),
-      brief: { ...form },
+      html: pages[0].html,
+      pages,
+      brief: generatedBrief,
+      chat: [
+        {
+          id: uid(),
+          role: "assistant",
+          content:
+            "Seu site foi criado com páginas de Início, Sobre, Serviços e Contato. Peça qualquer alteração por aqui.",
+          createdAt: new Date().toISOString(),
+        },
+      ],
       published: false,
       businessId: business?.id || null,
       createdAt: new Date().toISOString(),
@@ -3639,9 +4740,17 @@ function Sites({ db, update, business, setToast }) {
     update((d) => ({ ...d, sites: [site, ...d.sites] }));
     setModal(false);
     setPreview(site.id);
-    setToast("Site criado e salvo");
+    setToast("Site completo criado e salvo");
+    setGenerating(false);
   };
   const current = db.sites.find((x) => x.id === preview);
+  const selectedSitePage = current?.pages?.find(
+    (item) => item.slug === previewPage,
+  );
+  const previewHtml = selectedSitePage?.html || current?.html || "";
+  useEffect(() => {
+    setPreviewPage("");
+  }, [preview]);
   const ownerId = activeSpaceId() || db.user.id;
   const updateSite = (id, patch) =>
     update((d) => ({
@@ -3652,6 +4761,137 @@ function Sites({ db, update, business, setToast }) {
           : x,
       ),
     }));
+  const repairLegacySite = async () => {
+    if (!current) return;
+    const oldBrief = current.brief || {};
+    const brief = mergeSiteBrief(
+      {
+        ...oldBrief,
+        instructions: oldBrief.instructions || oldBrief.description || "",
+        description: siteFallbackDescription(oldBrief),
+      },
+      {},
+    );
+    const pages = makeSitePages(brief, current.slug);
+    updateSite(current.id, {
+      brief,
+      pages,
+      html: pages[0].html,
+      serverPublished: false,
+      chat: [
+        ...(current.chat || []),
+        {
+          id: uid(),
+          role: "assistant",
+          content:
+            "Separei o briefing interno do texto público e reconstruí as páginas sem exibir as instruções.",
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    });
+    if (current.published && current.serverPublished) {
+      setPublishing(true);
+      try {
+        const data = await siteRequest("publish", {
+          id: current.id,
+          slug: current.slug,
+          name: current.name,
+          description: brief.description,
+          html: pages[0].html,
+          pages,
+        });
+        updateSite(current.id, {
+          published: true,
+          serverPublished: true,
+          publicUrl: data.url,
+          publishedAt: data.publishedAt,
+        });
+        setToast("Conteúdo corrigido e publicação atualizada");
+      } catch (error) {
+        setSiteError(
+          error.message || "Corrigimos o site, mas falta republicar.",
+        );
+        setToast("Conteúdo corrigido; revise e atualize a publicação");
+      } finally {
+        setPublishing(false);
+      }
+    } else {
+      setToast("Briefing removido do conteúdo público");
+    }
+  };
+  const requestSiteChange = async () => {
+    const request = siteChatText.trim();
+    if (!current || !request || siteChatBusy) return;
+    const userMessage = {
+      id: uid(),
+      role: "user",
+      content: request,
+      createdAt: new Date().toISOString(),
+    };
+    setSiteChatText("");
+    setSiteChatBusy(true);
+    setSiteError("");
+    updateSite(current.id, {
+      chat: [...(current.chat || []), userMessage],
+    });
+    try {
+      const response = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          specialist: "Criador de Sites",
+          business,
+          prompt: `Você está editando um site existente por conversa. Altere APENAS o que o usuário pediu e preserve todo o resto. O pedido é uma instrução interna e nunca deve aparecer como texto do site. Não invente fatos. Responda SOMENTE com um objeto JSON contendo apenas os campos alterados entre: name, segment, headline, description, aboutTitle, about, services (lista de objetos com title e description), cta, contact, color.\n\nSite atual:\n${JSON.stringify(current.brief || {}).slice(0, 10000)}\n\nAlteração pedida: ${request.slice(0, 3000)}`,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok)
+        throw new Error(data.error || "Não foi possível aplicar a alteração.");
+      const patch = parseSiteJson(data.content);
+      const brief = mergeSiteBrief(current.brief || {}, patch);
+      const pages = makeSitePages(brief, current.slug);
+      updateSite(current.id, {
+        name: brief.name || current.name,
+        brief,
+        pages,
+        html: pages[0].html,
+        serverPublished: false,
+        chat: [
+          ...(current.chat || []),
+          userMessage,
+          {
+            id: uid(),
+            role: "assistant",
+            content:
+              "Alteração aplicada. Revise o resultado ao lado; você pode continuar pedindo ajustes.",
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      });
+      setToast("Alteração aplicada ao site");
+    } catch (error) {
+      setSiteError(error.message || "Não foi possível alterar o site agora.");
+      updateSite(current.id, {
+        chat: [
+          ...(current.chat || []),
+          userMessage,
+          {
+            id: uid(),
+            role: "assistant",
+            content:
+              "Não consegui aplicar essa alteração agora. Tente descrever o texto, a seção ou a cor que deseja mudar.",
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      });
+    } finally {
+      setSiteChatBusy(false);
+    }
+  };
+  useEffect(() => {
+    if (current && looksLikeSiteInstruction(current.brief?.description))
+      repairLegacySite();
+  }, [current?.id]);
   const download = (s) => {
     const blob = new Blob([s.html], { type: "text/html" }),
       a = document.createElement("a");
@@ -3692,6 +4932,7 @@ function Sites({ db, update, business, setToast }) {
           name: current.name,
           description: current.brief?.description || "",
           html: current.html,
+          pages: current.pages || [],
         });
         updateSite(current.id, {
           slug: data.slug,
@@ -3876,12 +5117,20 @@ function Sites({ db, update, business, setToast }) {
               <span>{location.origin}/s/</span>
               <input
                 value={current.slug}
-                onChange={(event) =>
+                onChange={(event) => {
+                  const nextSlug = slugify(event.target.value);
+                  const oldPath = `/s/${current.slug}`;
+                  const nextPath = `/s/${nextSlug}`;
                   updateSite(current.id, {
-                    slug: slugify(event.target.value),
+                    slug: nextSlug,
+                    html: current.html.split(oldPath).join(nextPath),
+                    pages: (current.pages || []).map((item) => ({
+                      ...item,
+                      html: item.html.split(oldPath).join(nextPath),
+                    })),
                     serverPublished: false,
-                  })
-                }
+                  });
+                }}
                 aria-label="Endereço público do site"
               />
             </div>
@@ -3924,32 +5173,123 @@ function Sites({ db, update, business, setToast }) {
             </div>
           )}
         </div>
-        {editCode ? (
-          <div className="code-editor">
-            <div>
-              <span>HTML completo</span>
-              <small>Scripts inseridos são bloqueados no preview.</small>
-            </div>
-            <textarea
-              value={current.html}
-              onChange={(e) =>
-                updateSite(current.id, {
-                  html: e.target.value,
-                  codeEdited: true,
-                  serverPublished: false,
-                })
-              }
-            />
-          </div>
-        ) : (
-          <div className={`site-preview ${device}`}>
-            <iframe
-              title={`Preview de ${current.name}`}
-              sandbox="allow-forms allow-popups"
-              srcDoc={current.html}
-            />
+        {looksLikeSiteInstruction(current.brief?.description) && (
+          <div className="site-repair-notice">
+            <CircleAlert />
+            <span>
+              Este projeto antigo parece exibir o briefing como texto público.
+            </span>
+            <Button
+              variant="ghost"
+              icon={WandSparkles}
+              onClick={repairLegacySite}
+            >
+              Corrigir conteúdo
+            </Button>
           </div>
         )}
+        <div className="site-page-list" aria-label="Páginas do site">
+          {(current.pages?.length
+            ? current.pages
+            : [
+                { slug: "", name: "Início" },
+                { slug: "sobre", name: "Sobre" },
+                { slug: "servicos", name: "Serviços" },
+                { slug: "contato", name: "Contato" },
+              ]
+          ).map((item) => (
+            <button
+              className={previewPage === item.slug ? "active" : ""}
+              key={item.slug || "home"}
+              onClick={() => setPreviewPage(item.slug)}
+            >
+              <FileText /> {item.name}
+            </button>
+          ))}
+        </div>
+        <div className="site-workspace">
+          <aside className="site-chat">
+            <header>
+              <span className="site-chat-icon">
+                <Sparkles />
+              </span>
+              <div>
+                <strong>Editar por conversa</strong>
+                <small>Peça alterações como faria com uma pessoa.</small>
+              </div>
+            </header>
+            <div className="site-chat-messages">
+              {(
+                current.chat || [
+                  {
+                    id: "welcome",
+                    role: "assistant",
+                    content:
+                      "Diga o que deseja mudar. Ex.: “deixe o título mais direto” ou “troque a cor para verde”.",
+                  },
+                ]
+              ).map((message) => (
+                <div className={message.role} key={message.id}>
+                  {message.content}
+                </div>
+              ))}
+              {siteChatBusy && (
+                <div className="assistant">Aplicando alteração...</div>
+              )}
+            </div>
+            <div className="site-chat-compose">
+              <textarea
+                value={siteChatText}
+                onChange={(event) => setSiteChatText(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    requestSiteChange();
+                  }
+                }}
+                placeholder="Ex.: mude o título e deixe o texto mais acolhedor"
+              />
+              <button
+                onClick={requestSiteChange}
+                disabled={!siteChatText.trim() || siteChatBusy}
+                aria-label="Enviar alteração do site"
+              >
+                <Send />
+              </button>
+            </div>
+          </aside>
+          {editCode ? (
+            <div className="code-editor">
+              <div>
+                <span>HTML da página inicial</span>
+                <small>Scripts inseridos são bloqueados no preview.</small>
+              </div>
+              <textarea
+                value={previewHtml}
+                onChange={(e) =>
+                  updateSite(current.id, {
+                    html: previewPage ? current.html : e.target.value,
+                    pages: (current.pages || []).map((item) =>
+                      item.slug === previewPage
+                        ? { ...item, html: e.target.value }
+                        : item,
+                    ),
+                    codeEdited: true,
+                    serverPublished: false,
+                  })
+                }
+              />
+            </div>
+          ) : (
+            <div className={`site-preview ${device}`}>
+              <iframe
+                title={`Preview de ${current.name}`}
+                sandbox="allow-forms allow-popups"
+                srcDoc={previewHtml}
+              />
+            </div>
+          )}
+        </div>
         {current.published && current.serverPublished && (
           <section className="site-leads section">
             <div className="section-head">
@@ -3997,7 +5337,7 @@ function Sites({ db, update, business, setToast }) {
     <PageTitle
       eyebrow="SITES E MATERIAIS"
       title="Crie uma presença digital de verdade"
-      text="Gere páginas completas, edite o código, visualize em diferentes telas e exporte."
+      text="Gere um site com várias páginas, edite por conversa, visualize em diferentes telas e publique."
       action={
         <Button icon={Plus} onClick={() => setModal(true)}>
           Criar site
@@ -4008,7 +5348,7 @@ function Sites({ db, update, business, setToast }) {
         <Empty
           icon={Globe2}
           title="Nenhum site criado"
-          text="Descreva seu negócio e gere uma página responsiva pronta para editar."
+          text="Descreva seu negócio e gere um site responsivo com páginas de Início, Sobre, Serviços e Contato."
           action="Criar meu primeiro site"
           onAction={() => setModal(true)}
         />
@@ -4070,15 +5410,30 @@ function Sites({ db, update, business, setToast }) {
       {modal && (
         <Modal title="Criar um site" wide onClose={() => setModal(false)}>
           <form className="modal-body" onSubmit={generate}>
-            <Field label="Descreva o site que precisa">
+            <Field
+              label="Instruções para criar o site"
+              hint="Este briefing orienta a criação e nunca será exibido aos visitantes."
+            >
               <textarea
                 required
                 autoFocus
+                value={form.instructions}
+                onChange={(e) =>
+                  setForm({ ...form, instructions: e.target.value })
+                }
+                placeholder="Ex.: Uma landing page para apresentar meus serviços de organização residencial..."
+              />
+            </Field>
+            <Field
+              label="Texto de apresentação ao visitante (opcional)"
+              hint="Se ficar vazio, o assistente criará um texto público a partir do briefing."
+            >
+              <textarea
                 value={form.description}
                 onChange={(e) =>
                   setForm({ ...form, description: e.target.value })
                 }
-                placeholder="Ex.: Uma landing page para apresentar meus serviços de organização residencial..."
+                placeholder="Ex.: Organização prática para uma casa mais leve e funcional."
               />
             </Field>
             <div className="form-grid">
@@ -4145,8 +5500,8 @@ function Sites({ db, update, business, setToast }) {
               <Button variant="ghost" onClick={() => setModal(false)}>
                 Cancelar
               </Button>
-              <Button type="submit" icon={WandSparkles}>
-                Gerar site
+              <Button type="submit" icon={WandSparkles} disabled={generating}>
+                {generating ? "Criando páginas..." : "Gerar site completo"}
               </Button>
             </div>
           </form>
@@ -4860,7 +6215,7 @@ const aiTools = {
   },
 };
 
-function AIToolModal({ config, onClose, setToast }) {
+function AIToolModal({ config, onClose, setToast, update, business }) {
   const [vals, setVals] = useState(
     Object.fromEntries(
       config.fields.map((f) => [
@@ -4873,6 +6228,75 @@ function AIToolModal({ config, onClose, setToast }) {
     [busy, setBusy] = useState(false),
     [err, setErr] = useState("");
   const set = (k, v) => setVals((s) => ({ ...s, [k]: v }));
+  const saveOutput = (destination) => {
+    const now = new Date().toISOString();
+    update((current) => {
+      if (destination === "document")
+        return {
+          ...current,
+          documents: [
+            {
+              id: uid(),
+              title: config.title,
+              type: config.docType || "Material de trabalho",
+              content: out,
+              businessId: business?.id || null,
+              updatedAt: now,
+              versions: [],
+            },
+            ...current.documents,
+          ],
+        };
+      if (destination === "task")
+        return {
+          ...current,
+          tasks: [
+            {
+              id: uid(),
+              title: `Revisar: ${config.title}`,
+              description: out.slice(0, 800),
+              priority: "Média",
+              status: "A fazer",
+              due: "",
+              area: config.specialist || "Operação",
+              assignee: "",
+              project: config.title,
+              archived: false,
+              businessId: business?.id || null,
+              createdAt: now,
+              updatedAt: now,
+            },
+            ...current.tasks,
+          ],
+        };
+      return {
+        ...current,
+        history: [
+          {
+            id: uid(),
+            title: config.title,
+            request: config.build(vals),
+            result: out,
+            specialist: config.specialist,
+            businessId: business?.id || null,
+            type: "Ferramenta inteligente",
+            status: "Concluído",
+            createdAt: now,
+            updatedAt: now,
+            archived: false,
+          },
+          ...current.history,
+        ],
+      };
+    });
+    setToast(
+      destination === "document"
+        ? "Resultado salvo em Documentos"
+        : destination === "task"
+          ? "Resultado transformado em tarefa"
+          : "Resultado salvo em Projetos",
+    );
+  };
   const Icon = config.icon;
   const run = async () => {
     const missing = config.fields.filter(
@@ -4973,6 +6397,25 @@ function AIToolModal({ config, onClose, setToast }) {
             <div className="translate-body">
               <Markdown text={out} />
             </div>
+            <div className="result-destinations">
+              <Button
+                variant="secondary"
+                icon={FileText}
+                onClick={() => saveOutput("document")}
+              >
+                Salvar documento
+              </Button>
+              <Button
+                variant="secondary"
+                icon={ListTodo}
+                onClick={() => saveOutput("task")}
+              >
+                {editing ? "Salvar alterações" : "Criar tarefa"}
+              </Button>
+              <Button icon={Save} onClick={() => saveOutput("project")}>
+                Salvar projeto
+              </Button>
+            </div>
           </div>
         )}
       </div>
@@ -4980,7 +6423,7 @@ function AIToolModal({ config, onClose, setToast }) {
   );
 }
 
-function ToolsHub({ db, update, setToast }) {
+function ToolsHub({ db, update, business, setToast }) {
   const [smart, setSmart] = useState("");
   const [search, setSearch] = useState(""),
     [category, setCategory] = useState("Todas"),
@@ -5267,6 +6710,8 @@ function ToolsHub({ db, update, setToast }) {
           config={aiTools[smart]}
           onClose={() => setSmart("")}
           setToast={setToast}
+          update={update}
+          business={business}
         />
       )}
     </PageTitle>
@@ -5278,7 +6723,6 @@ function CreativeStudio({ db, update, business, setToast }) {
     [prompt, setPrompt] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [ack, setAck] = useState(false),
     [progress, setProgress] = useState(0),
     [videoEnabled, setVideoEnabled] = useState(false);
   useEffect(() => {
@@ -5343,7 +6787,6 @@ function CreativeStudio({ db, update, business, setToast }) {
         body: JSON.stringify({
           type,
           prompt: prompt.trim(),
-          confirmPaid: ack,
           quality: type === "video" ? "advanced" : undefined,
         }),
       });
@@ -5357,8 +6800,6 @@ function CreativeStudio({ db, update, business, setToast }) {
         status: data.status,
         url: data.url || null,
         requestId: data.requestId || null,
-        model: data.model,
-        provider: data.provider || null,
         freeTier: !!data.freeTier,
         businessId: business?.id || null,
         createdAt: new Date().toISOString(),
@@ -5445,7 +6886,6 @@ function CreativeStudio({ db, update, business, setToast }) {
   }[type];
   const changeType = (next) => {
     setType(next);
-    setAck(false);
     setError("");
   };
   return (
@@ -5493,9 +6933,9 @@ function CreativeStudio({ db, update, business, setToast }) {
               <CheckCircle2 />
               {type === "video"
                 ? videoEnabled
-                  ? "Servidor de vídeo conectado"
+                  ? "Geração de vídeo disponível"
                   : "Alternativa gratuita externa disponível"
-                : "Cloudflare FLUX na cota gratuita"}
+                : "Geração visual gratuita quando disponível"}
             </span>
             <span>
               <ShieldCheck />
@@ -5511,27 +6951,14 @@ function CreativeStudio({ db, update, business, setToast }) {
               placeholder={labels.placeholder}
             />
           </Field>
-          {type !== "video" && (
-            <label className="cost-check">
-              <input
-                type="checkbox"
-                checked={ack}
-                onChange={(e) => setAck(e.target.checked)}
-              />
-              <span>
-                Se a opção gratuita falhar, permitir o provedor xAI. Esta opção
-                pode consumir créditos da conta configurada.
-              </span>
-            </label>
-          )}
           {type === "video" && (
             <>
               <div className="notice">
                 <Video />
                 <span>
                   {videoEnabled
-                    ? "Servidor GPU conectado. A geração acontece na nuvem, sem usar o seu computador."
-                    : "O servidor próprio de vídeo ainda não está conectado. Use a alternativa gratuita abaixo; ela pode ter fila e limites do provedor."}
+                    ? "A geração acontece na nuvem, sem usar o seu computador."
+                    : "A geração integrada ainda não está disponível. Use a alternativa gratuita abaixo; ela pode ter fila."}
                 </span>
               </div>
               <a
@@ -5541,11 +6968,10 @@ function CreativeStudio({ db, update, business, setToast }) {
                 rel="noreferrer"
               >
                 <ExternalLink size={17} />
-                <span>Usar LTX‑2.3 grátis no Hugging Face</span>
+                <span>Abrir gerador de vídeo gratuito</span>
               </a>
               <small>
-                Modo gratuito oficial: sujeito à fila e ao limite diário do
-                ZeroGPU.
+                Serviço externo gratuito, sujeito à disponibilidade e fila.
               </small>
             </>
           )}
@@ -5606,12 +7032,11 @@ function CreativeStudio({ db, update, business, setToast }) {
                         : "Vídeo"}
                   </span>
                   <p>{item.prompt}</p>
-                  {item.provider && (
-                    <small>
-                      {item.provider}
-                      {item.freeTier ? " · infraestrutura gratuita" : ""}
-                    </small>
-                  )}
+                  <small>
+                    {item.status === "done"
+                      ? "Material concluído"
+                      : "Em produção"}
+                  </small>
                   {item.url && (
                     <a
                       href={item.url}
@@ -5632,14 +7057,124 @@ function CreativeStudio({ db, update, business, setToast }) {
   );
 }
 
-function HistoryPage({ db, update, business, setToast }) {
+function HistoryPage({ db, update, business, setToast, go }) {
   const [open, setOpen] = useState(null),
-    [search, setSearch] = useState("");
+    [search, setSearch] = useState(""),
+    [visibility, setVisibility] = useState("Ativos"),
+    [typeFilter, setTypeFilter] = useState("Todos"),
+    [rename, setRename] = useState(""),
+    [busy, setBusy] = useState(false);
+  const types = [
+    ...new Set(db.history.map((item) => item.type).filter(Boolean)),
+  ];
   const items = db.history.filter(
     (x) =>
       (!business || x.businessId === business.id) &&
-      x.title.toLowerCase().includes(search.toLowerCase()),
+      `${x.title} ${x.result || ""}`
+        .toLowerCase()
+        .includes(search.toLowerCase()) &&
+      (visibility === "Todos" ||
+        (visibility === "Arquivados" ? !!x.archived : !x.archived)) &&
+      (typeFilter === "Todos" || x.type === typeFilter),
   );
+  const changeProject = (id, changes) =>
+    update((d) => ({
+      ...d,
+      history: d.history.map((item) =>
+        item.id === id
+          ? { ...item, ...changes, updatedAt: new Date().toISOString() }
+          : item,
+      ),
+    }));
+  const openProject = (item) => {
+    setOpen(item.id);
+    setRename(item.title);
+  };
+  const duplicate = (item) => {
+    const now = new Date().toISOString();
+    update((d) => ({
+      ...d,
+      history: [
+        {
+          ...item,
+          id: uid(),
+          title: `${item.title} (cópia)`,
+          createdAt: now,
+          updatedAt: now,
+          archived: false,
+        },
+        ...d.history,
+      ],
+    }));
+    setToast("Projeto duplicado");
+  };
+  const continueProject = (item) => {
+    const conversationId = uid();
+    const now = new Date().toISOString();
+    update((d) => ({
+      ...d,
+      selectedConversationId: conversationId,
+      conversations: [
+        {
+          id: conversationId,
+          title: item.title,
+          businessId: item.businessId,
+          specialist: item.specialist || "Diretor",
+          createdAt: now,
+          updatedAt: now,
+          messages: [
+            {
+              id: uid(),
+              role: "user",
+              content: item.request || `Continue o projeto ${item.title}`,
+              createdAt: item.createdAt || now,
+            },
+            {
+              id: uid(),
+              role: "assistant",
+              content: item.result,
+              createdAt: item.updatedAt || item.createdAt || now,
+            },
+          ],
+        },
+        ...(d.conversations || []),
+      ],
+    }));
+    setOpen(null);
+    go("inicio");
+  };
+  const refineProject = async (item) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const response = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          specialist: item.specialist || "Diretor",
+          prompt: `Revise e aprofunde o projeto abaixo. Preserve fatos e números fornecidos, elimine generalidades e acrescente próximas ações verificáveis. Entregue a versão final completa em Markdown.\n\n${item.result}`,
+          business,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Falha ao refinar");
+      changeProject(item.id, {
+        result: data.content,
+        versions: [
+          {
+            result: item.result,
+            at: new Date().toISOString(),
+          },
+          ...(item.versions || []),
+        ],
+      });
+      setToast("Projeto refinado; a versão anterior foi preservada");
+    } catch (error) {
+      setToast(error.message || "Não foi possível refinar agora");
+    } finally {
+      setBusy(false);
+    }
+  };
   const transform = (x, type) => {
     if (type === "task")
       update((d) => ({
@@ -5691,6 +7226,23 @@ function HistoryPage({ db, update, business, setToast }) {
             placeholder="Pesquisar no histórico"
           />
         </div>
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+        >
+          <option>Todos</option>
+          {types.map((type) => (
+            <option key={type}>{type}</option>
+          ))}
+        </select>
+        <select
+          value={visibility}
+          onChange={(e) => setVisibility(e.target.value)}
+        >
+          <option>Ativos</option>
+          <option>Arquivados</option>
+          <option>Todos</option>
+        </select>
       </div>
       {items.length === 0 ? (
         <Empty
@@ -5701,7 +7253,7 @@ function HistoryPage({ db, update, business, setToast }) {
       ) : (
         <div className="history-list">
           {items.map((x) => (
-            <article key={x.id} onClick={() => setOpen(x.id)}>
+            <article key={x.id} onClick={() => openProject(x)}>
               <span className="doc-icon">
                 <Sparkles />
               </span>
@@ -5710,8 +7262,29 @@ function HistoryPage({ db, update, business, setToast }) {
                 <h3>{x.title}</h3>
                 <small>
                   {new Date(x.createdAt).toLocaleString("pt-BR")} · {x.type}
-                  {x.provider ? ` · ${x.provider}` : ""}
                 </small>
+              </span>
+              <span className="project-card-actions">
+                <button
+                  aria-label="Duplicar projeto"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    duplicate(x);
+                  }}
+                >
+                  <Copy />
+                </button>
+                <button
+                  aria-label={
+                    x.archived ? "Desarquivar projeto" : "Arquivar projeto"
+                  }
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    changeProject(x.id, { archived: !x.archived });
+                  }}
+                >
+                  <Archive />
+                </button>
               </span>
               <ChevronRight />
             </article>
@@ -5724,6 +7297,23 @@ function HistoryPage({ db, update, business, setToast }) {
           return (
             <Modal wide title={x.title} onClose={() => setOpen(null)}>
               <div className="result">
+                <div className="project-title-editor">
+                  <input
+                    value={rename}
+                    onChange={(e) => setRename(e.target.value)}
+                  />
+                  <Button
+                    variant="secondary"
+                    icon={Save}
+                    disabled={!rename.trim() || rename.trim() === x.title}
+                    onClick={() => {
+                      changeProject(x.id, { title: rename.trim() });
+                      setToast("Projeto renomeado");
+                    }}
+                  >
+                    Renomear
+                  </Button>
+                </div>
                 <div className="result-meta">
                   <span>
                     <Building2 />
@@ -5734,14 +7324,13 @@ function HistoryPage({ db, update, business, setToast }) {
                     <Sparkles />
                     {x.specialist}
                   </span>
-                  {x.provider && (
-                    <span>
-                      <BadgeCheck />
-                      {x.provider} · {x.model}
-                    </span>
-                  )}
                 </div>
                 <Markdown text={x.result} />
+                {(x.versions || []).length > 0 && (
+                  <small className="version-note">
+                    {x.versions.length} versão(ões) anterior(es) preservada(s).
+                  </small>
+                )}
                 <div className="modal-actions spread">
                   <Button
                     variant="ghost"
@@ -5756,6 +7345,21 @@ function HistoryPage({ db, update, business, setToast }) {
                   <div>
                     <Button
                       variant="secondary"
+                      icon={MessageSquareText}
+                      onClick={() => continueProject(x)}
+                    >
+                      Continuar no chat
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      icon={busy ? RefreshCw : WandSparkles}
+                      disabled={busy}
+                      onClick={() => refineProject(x)}
+                    >
+                      {busy ? "Refinando..." : "Refinar"}
+                    </Button>
+                    <Button
+                      variant="secondary"
                       icon={ListTodo}
                       onClick={() => transform(x, "task")}
                     >
@@ -5763,6 +7367,39 @@ function HistoryPage({ db, update, business, setToast }) {
                     </Button>
                     <Button icon={FileText} onClick={() => transform(x, "doc")}>
                       Virar documento
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      icon={Copy}
+                      onClick={() => duplicate(x)}
+                    >
+                      Duplicar
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      icon={Archive}
+                      onClick={() => {
+                        changeProject(x.id, { archived: !x.archived });
+                        setOpen(null);
+                      }}
+                    >
+                      {x.archived ? "Desarquivar" : "Arquivar"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      icon={Trash2}
+                      onClick={() => {
+                        if (!confirm("Excluir este projeto definitivamente?"))
+                          return;
+                        update((d) => ({
+                          ...d,
+                          history: d.history.filter((item) => item.id !== x.id),
+                        }));
+                        setOpen(null);
+                        setToast("Projeto excluído");
+                      }}
+                    >
+                      Excluir
                     </Button>
                   </div>
                 </div>
@@ -6126,8 +7763,9 @@ function Businesses({ db, update, setToast }) {
   );
 }
 
-function PublicSite({ site }) {
-  if (!site || !site.published)
+function PublicSite({ site, page = "" }) {
+  const selectedPage = site?.pages?.find((item) => item.slug === page);
+  if (!site || !site.published || (page && !selectedPage))
     return (
       <main className="public-missing">
         <Logo />
@@ -6141,7 +7779,7 @@ function PublicSite({ site }) {
       className="public-frame"
       sandbox="allow-forms allow-popups allow-top-navigation-by-user-activation"
       title={site.name}
-      srcDoc={site.html}
+      srcDoc={selectedPage?.html || site.html}
     />
   );
 }
@@ -6505,20 +8143,6 @@ function AccountSettings({ db, update, setToast }) {
   const [name, setName] = useState(db.user.name);
   const [busy, setBusy] = useState(false),
     [err, setErr] = useState("");
-  const [aiProviders, setAiProviders] = useState([]);
-  useEffect(() => {
-    let active = true;
-    fetch("/api/config")
-      .then((response) => response.json())
-      .then((config) => {
-        if (active && Array.isArray(config.aiProviders))
-          setAiProviders(config.aiProviders);
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, []);
   const theme = db.preferences.theme;
   const setTheme = (t) =>
     update((d) => ({ ...d, preferences: { ...d.preferences, theme: t } }));
@@ -6559,7 +8183,6 @@ function AccountSettings({ db, update, setToast }) {
     setToast("Dados exportados");
   };
   const plugged = (db.pluggedTools || []).length;
-  const connectedAi = aiProviders.filter((provider) => provider.configured);
   return (
     <PageTitle
       eyebrow="CONFIGURAÇÕES"
@@ -6639,46 +8262,6 @@ function AccountSettings({ db, update, setToast }) {
         <section className="settings-card">
           <div className="settings-card-head">
             <span className="settings-icon">
-              <Sparkles />
-            </span>
-            <div>
-              <h2>Rede de IA gratuita</h2>
-              <p>Rotas independentes que mantêm o chat disponível.</p>
-            </div>
-          </div>
-          <div className="ai-network-summary">
-            <strong>{connectedAi.length}</strong>
-            <span>de {aiProviders.length || 8} provedores conectados</span>
-          </div>
-          <div className="provider-grid" aria-label="Provedores de IA">
-            {aiProviders.length ? (
-              aiProviders.map((provider) => (
-                <div className="provider-row" key={provider.id}>
-                  <span>
-                    {provider.name}
-                    {provider.limited && (
-                      <small>crédito gratuito muito limitado</small>
-                    )}
-                  </span>
-                  <span
-                    className={`provider-status ${provider.configured ? "connected" : "pending"}`}
-                  >
-                    {provider.configured ? "Conectado" : "Aguardando chave"}
-                  </span>
-                </div>
-              ))
-            ) : (
-              <p className="settings-note">Consultando a rede de IA...</p>
-            )}
-          </div>
-          <p className="settings-note">
-            <ShieldCheck /> O Grok não entra na fila gratuita e só pode ser
-            acionado com confirmação explícita de uso pago.
-          </p>
-        </section>
-        <section className="settings-card">
-          <div className="settings-card-head">
-            <span className="settings-icon">
               <Layers />
             </span>
             <div>
@@ -6746,7 +8329,13 @@ function AccountSettings({ db, update, setToast }) {
 }
 
 export default function App() {
-  const savedUi = (() => { try { return JSON.parse(localStorage.getItem("sf-ui") || "{}") } catch { return {} } })();
+  const savedUi = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("sf-ui") || "{}");
+    } catch {
+      return {};
+    }
+  })();
   const [db, update] = useDatabase(),
     [page, setPage] = useState("inicio"),
     [collapsed, setCollapsed] = useState(!!savedUi.collapsed),
@@ -6754,14 +8343,28 @@ export default function App() {
     [toast, setToast] = useState(""),
     [businessMenu, setBusinessMenu] = useState(false);
   const [menuHidden, setMenuHidden] = useState(!!savedUi.menuHidden);
-  const [sbw, setSbw] = useState(Math.min(380, Math.max(210, savedUi.sbw || 266)));
-  useEffect(() => { try { localStorage.setItem("sf-ui", JSON.stringify({ collapsed, menuHidden, sbw })) } catch {} }, [collapsed, menuHidden, sbw]);
+  const [sbw, setSbw] = useState(
+    Math.min(380, Math.max(210, savedUi.sbw || 266)),
+  );
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "sf-ui",
+        JSON.stringify({ collapsed, menuHidden, sbw }),
+      );
+    } catch {}
+  }, [collapsed, menuHidden, sbw]);
   const startResize = (e) => {
     e.preventDefault();
     document.body.style.userSelect = "none";
     document.body.style.cursor = "col-resize";
     const move = (ev) => setSbw(Math.min(380, Math.max(210, ev.clientX)));
-    const up = () => { document.body.style.userSelect = ""; document.body.style.cursor = ""; removeEventListener("pointermove", move); removeEventListener("pointerup", up) };
+    const up = () => {
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+      removeEventListener("pointermove", move);
+      removeEventListener("pointerup", up);
+    };
     addEventListener("pointermove", move);
     addEventListener("pointerup", up);
   };
@@ -6792,11 +8395,16 @@ export default function App() {
       return () => clearTimeout(t);
     }
   }, [toast]);
-  const publicSlug = location.pathname.match(/^\/s\/([^/]+)/)?.[1];
+  const publicMatch = location.pathname.match(/^\/s\/([^/]+)(?:\/([^/]+))?/);
+  const publicSlug = publicMatch?.[1];
   if (publicSlug)
-    return <PublicSite site={db.sites.find((x) => x.slug === publicSlug)} />;
+    return (
+      <PublicSite
+        site={db.sites.find((x) => x.slug === publicSlug)}
+        page={publicMatch?.[2] || ""}
+      />
+    );
   if (!db.user) return <Login update={update} />;
-  if (!db.onboarding) return <Onboarding db={db} update={update} />;
   const business =
     db.businesses.find((x) => x.id === db.selectedBusinessId) ||
     db.businesses[0] ||
@@ -6818,7 +8426,7 @@ export default function App() {
           />
         );
       case "comecar":
-        return <Journeys db={db} update={update} />;
+        return <Journeys db={db} update={update} go={go} />;
       case "estrategia":
       case "marketing":
         return (
@@ -6854,6 +8462,7 @@ export default function App() {
             update={update}
             business={business}
             setToast={setToast}
+            go={go}
           />
         );
       case "sites":
@@ -6875,7 +8484,14 @@ export default function App() {
           />
         );
       case "ferramentas":
-        return <ToolsHub db={db} update={update} setToast={setToast} />;
+        return (
+          <ToolsHub
+            db={db}
+            update={update}
+            business={business}
+            setToast={setToast}
+          />
+        );
       case "time":
         return <Team db={db} update={update} setToast={setToast} />;
       case "config":
@@ -6896,6 +8512,7 @@ export default function App() {
             update={update}
             business={business}
             setToast={setToast}
+            go={go}
           />
         );
       case "certificacoes":
@@ -6915,7 +8532,10 @@ export default function App() {
     }
   };
   return (
-    <div className={`app ${collapsed ? "collapsed" : ""} ${menuHidden ? "menu-hidden" : ""}`} style={{ "--sbw": `${sbw}px` }}>
+    <div
+      className={`app ${collapsed ? "collapsed" : ""} ${menuHidden ? "menu-hidden" : ""}`}
+      style={{ "--sbw": `${sbw}px` }}
+    >
       <aside className={mobile ? "open" : ""}>
         <div className="side-top">
           <Logo compact={collapsed} />

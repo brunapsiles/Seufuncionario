@@ -1,11 +1,31 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { askOpenAICompatible, configuredAiProviders } from "../worker.js";
+import {
+  askOpenAICompatible,
+  configuredAiProviders,
+  publicAiResult,
+} from "../worker.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
 describe("rede gratuita de IA", () => {
+  it("nunca expõe ao aplicativo qual infraestrutura respondeu", () => {
+    const result = publicAiResult({
+      content: "Resposta útil",
+      degraded: false,
+      provider: "Provedor interno",
+      model: "modelo-interno",
+      providerFailures: ["detalhe privado"],
+      routingMode: "deep",
+    });
+
+    expect(result).toEqual({ content: "Resposta útil", degraded: false });
+    expect(JSON.stringify(result)).not.toMatch(
+      /provider|model|failure|routing|Provedor interno|modelo-interno/i,
+    );
+  });
+
   it("informa somente o estado de configuração e nunca expõe chaves", () => {
     const providers = configuredAiProviders({
       AI: { run: vi.fn() },
