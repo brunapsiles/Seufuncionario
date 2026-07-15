@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "deploy": "npm run build && npx wrangler deploy",
+    "deploy": "npm run build && npm run deploy:cloudflare",
+    "deploy:cloudflare": "npx wrangler d1 migrations apply seu-funcionario-db --remote && npx wrangler deploy",
     "db:migrate": "npx wrangler d1 migrations apply seu-funcionario-db --remote"
   },
   "dependencies": {

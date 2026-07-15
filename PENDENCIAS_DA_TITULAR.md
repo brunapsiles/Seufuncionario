@@ -4,36 +4,38 @@ Ações que somente você pode realizar. **Nenhuma delas impede o uso do app**, 
 
 ## 🔴 Recomendadas agora
 
-### 1. Deploy automático (para o revezamento com o Codex funcionar)
-- **O que fazer:** dash.cloudflare.com → **Workers & Pages** → **seufuncionario-expo** → **Settings → Builds → Connect** → autorizar GitHub → escolher `brunapsiles/Seufuncionario`, branch `main`
-- Comandos, se pedir: Build `npm ci && npm run build` · Deploy `npx wrangler deploy`
-- **Por quê:** sem isso, o que o Codex commitar fica parado no GitHub até alguém publicar
-- **Custo:** grátis · **Tempo:** ~3 minutos
+### 1. Login com Google — corrigir a origem (você fará com o Codex)
 
-### 2. Login com Google — corrigir a origem (você fará com o Codex)
 - Erro atual: "no registered origin". Na credencial que termina em `...r3td8vn0`, o endereço `https://seufuncionario-expo.brunapsiles.workers.dev` precisa estar em **"Origens JavaScript autorizadas"** (a caixa de cima, sem barra no final). Salvar e aguardar ~10 min.
 
-### 3. Testar o cadastro real
+### 2. Testar o cadastro real
+
 - Criar uma conta no app com um e-mail seu de verdade e confirmar que o código de 6 dígitos chega (pode cair no spam nas primeiras vezes — marque "não é spam").
 
 ## 🟡 Opcionais / segurança
 
-### 4. Restringir ou regenerar chaves compartilhadas em conversas
+### 3. Restringir ou regenerar chaves compartilhadas em conversas
+
 - Chaves que passaram por chats (Codex/Claude): token Cloudflare, Gemini, xAI, Google API key, Brevo. O app guarda todas em cofre seguro; regenerar é só uma camada extra de proteção contra terceiros.
 - Google API key: em console.cloud.google.com → Credenciais, dá para **restringir** quais APIs ela pode usar.
 
-### 5. Domínio próprio (ex.: seufuncionario.com.br)
+### 4. Domínio próprio (ex.: seufuncionario.com.br)
+
 - Pago (~R$ 40/ano em registro.br). Deixa o endereço com a sua marca e habilita e-mails do seu domínio. O endereço gratuito atual continua funcionando para sempre.
 
-### 6. Servidor GPU para vídeo próprio (pasta `video-ai/`)
+### 5. Servidor GPU para vídeo próprio (pasta `video-ai/`)
+
 - Pago. Sem ele, o estúdio já oferece o caminho gratuito (Hugging Face) para vídeos; imagens e logos funcionam normalmente.
 
-### 7. Login com Apple
+### 6. Login com Apple
+
 - Exige conta de desenvolvedor Apple (US$ 99/ano). Recomendação: não fazer por enquanto.
 
 ## ✅ Já resolvidas
 
 - Conta Cloudflare conectada, app publicado e permanente
+- Deploy automático conectado ao GitHub; alterações na `main` são publicadas sem ação manual
+- Publicação real de sites e captação de contatos no banco
 - Chaves Gemini/xAI/Google/Brevo no cofre do servidor
 - Login com Google construído (falta só a origem — item 2)
 - Verificação de e-mail por código no cadastro (Brevo ativo)

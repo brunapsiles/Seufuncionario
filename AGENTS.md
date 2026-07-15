@@ -17,8 +17,8 @@ Este arquivo orienta qualquer assistente de IA que trabalhe neste projeto. A tit
 ```bash
 npm ci            # instalar
 npm run build     # build (gera dist/, que NÃO é commitado)
-npm test          # 5 testes vitest — precisam passar antes de commitar
-npx wrangler deploy                                   # publica (exige CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID)
+npm test          # 9 testes vitest — precisam passar antes de commitar
+npm run deploy:cloudflare                             # aplica migrações e publica
 npx wrangler d1 migrations apply seu-funcionario-db --remote   # aplica migrações novas
 ```
 
@@ -26,8 +26,8 @@ npx wrangler d1 migrations apply seu-funcionario-db --remote   # aplica migraç�
 
 O Cloudflare Workers Builds está conectado ao repositório `brunapsiles/Seufuncionario`.
 Todo push na branch `main` executa `npm ci && npm run build` e, em seguida,
-`npx wrangler deploy`. O diretório raiz configurado é `/`; builds de branches que
-não sejam a `main` permanecem desativados.
+`npm run deploy:cloudflare`. O diretório raiz configurado é `/`; builds de branches que
+não sejam a `main` também estão habilitados como versões de prévia.
 
 ## Segredos (JÁ configurados no cofre do Worker — nunca commitar valores)
 
@@ -50,7 +50,8 @@ não sejam a `main` permanecem desativados.
 - **IA**: cadeia de 9 camadas em `worker.js` (`providerMap`): Gemini Lite/Flash → Gemma → GPT-OSS 120B → Llama 3.3 70B → GLM (instável, pula sozinho) → Llama 3.2 → Grok → contingência local. 46 funcionários especialistas + Diretor orquestrador + funcionários dinâmicos criados pelo usuário
 - **Sync**: workspace JSON por usuário no D1 (`/api/workspace`), multi-dispositivo, espaços compartilhados com convites (`/api/collab/*`)
 - **Ferramentas inteligentes** (ToolsHub): tradutor, roteirizador (link Google Maps), calculadora de preço, gerador de posts, minuta de contrato, roteiro de vendas, vaga/entrevista RH, POP operações, respostas de atendimento — padrão `aiTools` + `AIToolModal`, fácil de estender
-- **Demais**: tarefas/kanban, CRM, financeiro, documentos, criador de sites, estúdio de mídia (FLUX grátis; vídeo via servidor próprio opcional em `video-ai/`), certificações, PWA, tema claro/escuro, página Meu Time e Configurações
+- **Sites**: editor com publicação real em `/s/:slug`, HTML higienizado, formulário público e leads por proprietário (`/api/sites/*`, `/api/public-sites/*`; migração `0006_public_sites.sql`)
+- **Demais**: tarefas/kanban, CRM, financeiro, documentos com histórico restaurável, estúdio de mídia (FLUX na cota gratuita; vídeo via servidor próprio opcional em `video-ai/`), certificações, PWA, tema claro/escuro, página Meu Time e Configurações
 
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
