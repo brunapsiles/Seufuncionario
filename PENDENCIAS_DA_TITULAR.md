@@ -17,18 +17,12 @@ Ações que somente você pode realizar. **Nenhuma delas bloqueia o funcionament
 | Bloqueia o lançamento? | Não |
 | Próximo passo | Após regenerar, atualizar os segredos e revogar as chaves antigas |
 
-## 2. Login com Google (escolhido por você)
+## 2. Login com Google — ✅ CONFIGURADO
 
-| Item | Detalhe |
-|---|---|
-| Ação | Criar um "ID do cliente OAuth" no Google Cloud Console (gratuito) |
-| Onde | console.cloud.google.com → APIs e Serviços → Credenciais → Criar credenciais → ID do cliente OAuth (tipo "Aplicativo da Web") |
-| Configurar | Adicionar `https://seufuncionario-expo.brunapsiles.workers.dev` nas origens autorizadas; me enviar o "Client ID" gerado (ele é público, não é segredo) |
-| Motivo | O Google exige que a titular crie a credencial em nome da sua conta Google |
-| Impacto se não fizer | O login por e-mail e senha continua funcionando normalmente |
-| Alternativa gratuita | O próprio Google é gratuito para esse uso |
-| Bloqueia o lançamento? | Não |
-| Observação | Login com Apple ID **não** foi incluído porque exige conta paga de desenvolvedor Apple (US$ 99/ano) |
+O login com Google já está ativo em produção (Client ID configurado como segredo `GOOGLE_CLIENT_ID`).
+Pendência mínima de segurança da sua parte:
+- A **API key** enviada durante a configuração **não é usada** pelo app. Recomenda-se **excluí-la ou restringi-la** em console.cloud.google.com → APIs e Serviços → Credenciais.
+- Login com **Apple ID** não foi incluído (exige conta paga de desenvolvedor Apple, US$ 99/ano).
 
 ## 3. Recuperação de senha por e-mail (escolhida por você)
 
