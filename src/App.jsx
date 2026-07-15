@@ -3715,7 +3715,7 @@ function Tasks({ db, update, business, setToast, go }) {
                 Cancelar
               </Button>
               <Button type="submit" icon={Save}>
-                Criar tarefa
+                {editing ? "Salvar alterações" : "Criar tarefa"}
               </Button>
             </div>
           </form>
