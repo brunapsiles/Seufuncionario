@@ -6746,12 +6746,25 @@ function AccountSettings({ db, update, setToast }) {
 }
 
 export default function App() {
+  const savedUi = (() => { try { return JSON.parse(localStorage.getItem("sf-ui") || "{}") } catch { return {} } })();
   const [db, update] = useDatabase(),
     [page, setPage] = useState("inicio"),
-    [collapsed, setCollapsed] = useState(false),
+    [collapsed, setCollapsed] = useState(!!savedUi.collapsed),
     [mobile, setMobile] = useState(false),
     [toast, setToast] = useState(""),
     [businessMenu, setBusinessMenu] = useState(false);
+  const [menuHidden, setMenuHidden] = useState(!!savedUi.menuHidden);
+  const [sbw, setSbw] = useState(Math.min(380, Math.max(210, savedUi.sbw || 266)));
+  useEffect(() => { try { localStorage.setItem("sf-ui", JSON.stringify({ collapsed, menuHidden, sbw })) } catch {} }, [collapsed, menuHidden, sbw]);
+  const startResize = (e) => {
+    e.preventDefault();
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+    const move = (ev) => setSbw(Math.min(380, Math.max(210, ev.clientX)));
+    const up = () => { document.body.style.userSelect = ""; document.body.style.cursor = ""; removeEventListener("pointermove", move); removeEventListener("pointerup", up) };
+    addEventListener("pointermove", move);
+    addEventListener("pointerup", up);
+  };
   useEffect(() => {
     document.documentElement.dataset.theme = db.preferences.theme;
   }, [db.preferences.theme]);
@@ -6902,16 +6915,26 @@ export default function App() {
     }
   };
   return (
-    <div className={`app ${collapsed ? "collapsed" : ""}`}>
+    <div className={`app ${collapsed ? "collapsed" : ""} ${menuHidden ? "menu-hidden" : ""}`} style={{ "--sbw": `${sbw}px` }}>
       <aside className={mobile ? "open" : ""}>
         <div className="side-top">
           <Logo compact={collapsed} />
-          <button
-            className="icon-button desktop-collapse"
-            onClick={() => setCollapsed(!collapsed)}
-          >
-            {collapsed ? <ChevronRight /> : <ChevronLeft />}
-          </button>
+          <span className="side-buttons">
+            <button
+              className="icon-button desktop-collapse"
+              title={collapsed ? "Expandir menu" : "Modo compacto"}
+              onClick={() => setCollapsed(!collapsed)}
+            >
+              {collapsed ? <ChevronRight /> : <ChevronLeft />}
+            </button>
+            <button
+              className="icon-button desktop-close"
+              title="Fechar menu"
+              onClick={() => setMenuHidden(true)}
+            >
+              <X />
+            </button>
+          </span>
           <button
             className="icon-button mobile-close"
             onClick={() => setMobile(false)}
@@ -6977,6 +7000,7 @@ export default function App() {
             <span>Sair</span>
           </button>
         </div>
+        <div className="sb-resize" onPointerDown={startResize} />
       </aside>
       {mobile && (
         <div className="mobile-overlay" onClick={() => setMobile(false)} />
@@ -6989,6 +7013,15 @@ export default function App() {
           >
             <Menu />
           </button>
+          {menuHidden && (
+            <button
+              className="icon-button desktop-open"
+              title="Abrir menu"
+              onClick={() => setMenuHidden(false)}
+            >
+              <Menu />
+            </button>
+          )}
           <div className="top-business">
             <span>Negócio ativo</span>
             <button onClick={() => setBusinessMenu(!businessMenu)}>
