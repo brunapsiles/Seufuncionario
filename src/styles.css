@@ -203,3 +203,12 @@ h1,h2,h3,h4,.logo{letter-spacing:-.02em}
 .smart-icon.g4{background:linear-gradient(135deg,#6d38e0,#2785ff)}
 .smart-icon.g5{background:linear-gradient(135deg,#0ea5e9,#6d38e0)}
 .translate-body{padding:14px;max-height:340px;overflow:auto}
+.smart-icon.g6{background:linear-gradient(135deg,#8b5cf6,#ed3e91)}
+.smart-icon.g7{background:linear-gradient(135deg,#f59e0b,#17a673)}
+.smart-icon.g8{background:linear-gradient(135deg,#2785ff,#17a673)}
+
+/* ===== v10 · verificação de e-mail ===== */
+.verify-shell{display:grid;place-items:center;padding:24px}
+.verify-card{max-width:440px;width:100%}
+.verify-card .mobile-logo{display:flex;margin-bottom:18px}
+.code-input{text-align:center;font-size:26px;letter-spacing:12px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif}

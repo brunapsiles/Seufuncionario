@@ -87,6 +87,31 @@ async function createSession(env, userId) {
   return token
 }
 
+function emailEnabled(env) { return !!(env.BREVO_API_KEY && env.MAIL_SENDER) }
+
+function sixDigitCode() { return String(Math.floor(100000 + Math.random() * 900000)) }
+
+function codeEmailHtml(code) {
+  return `<div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px;color:#1e1b35">
+    <div style="background:#0f0d1c;border-radius:14px;padding:20px;text-align:center">
+      <span style="color:#fff;font-size:18px;font-weight:bold">Seu Funcionário</span>
+    </div>
+    <h2 style="margin:24px 0 8px">Seu código de acesso</h2>
+    <p style="color:#555;margin:0 0 18px">Use o código abaixo para ativar sua conta. Ele expira em 15 minutos.</p>
+    <div style="font-size:34px;letter-spacing:10px;font-weight:bold;text-align:center;background:#f1eff8;border-radius:12px;padding:18px;color:#6d38e0">${code}</div>
+    <p style="color:#888;font-size:12px;margin:20px 0 0">Se você não solicitou este código, ignore este e-mail.</p>
+  </div>`
+}
+
+async function sendEmail(env, to, subject, html) {
+  const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: { 'api-key': env.BREVO_API_KEY, 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ sender: { email: env.MAIL_SENDER, name: env.MAIL_SENDER_NAME || 'Seu Funcionário' }, to: [{ email: to }], subject, htmlContent: html })
+  })
+  if (!resp.ok) { const t = await resp.text().catch(() => ''); throw new Error(`Falha no envio (${resp.status}) ${t.slice(0, 140)}`) }
+}
+
 async function handleAuth(request, env, url) {
   if (!env.DB) return json({ error: 'O serviço de contas ainda não está configurado.' }, 503)
   const ip = request.headers.get('cf-connecting-ip') || 'local-auth'
@@ -110,6 +135,37 @@ async function handleAuth(request, env, url) {
   if (request.method !== 'POST') return json({ error: 'Método não permitido.' }, 405)
   let body
   try { body = await request.json() } catch { return json({ error: 'Solicitação inválida.' }, 400) }
+
+  if (url.pathname === '/api/auth/verify') {
+    const vemail = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+    const code = typeof body.code === 'string' ? body.code.trim() : ''
+    if (!/^\d{6}$/.test(code)) return json({ error: 'Digite o código de 6 dígitos.' }, 400)
+    const p = await env.DB.prepare('SELECT * FROM pending_signups WHERE email = ?').bind(vemail).first()
+    if (!p) return json({ error: 'Cadastro não encontrado ou já concluído. Cadastre-se novamente.' }, 404)
+    if (p.expires_at < new Date().toISOString()) { await env.DB.prepare('DELETE FROM pending_signups WHERE email = ?').bind(vemail).run(); return json({ error: 'O código expirou. Cadastre-se novamente.' }, 410) }
+    if (p.attempts >= 6) { await env.DB.prepare('DELETE FROM pending_signups WHERE email = ?').bind(vemail).run(); return json({ error: 'Muitas tentativas. Cadastre-se novamente.' }, 429) }
+    if (await sha256(code) !== p.code_hash) { await env.DB.prepare('UPDATE pending_signups SET attempts = attempts + 1 WHERE email = ?').bind(vemail).run(); return json({ error: 'Código incorreto. Confira e tente de novo.' }, 401) }
+    const exists = await env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(vemail).first()
+    if (exists) { await env.DB.prepare('DELETE FROM pending_signups WHERE email = ?').bind(vemail).run(); return json({ error: 'Este e-mail já possui uma conta. Use a opção Entrar.' }, 409) }
+    const id = crypto.randomUUID()
+    await env.DB.prepare('INSERT INTO users (id, name, email, password_hash, password_salt, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(id, p.name, vemail, p.password_hash, p.password_salt, new Date().toISOString()).run()
+    await env.DB.prepare('DELETE FROM pending_signups WHERE email = ?').bind(vemail).run()
+    return json({ user: { id, name: p.name, email: vemail }, token: await createSession(env, id) }, 201)
+  }
+
+  if (url.pathname === '/api/auth/resend') {
+    const vemail = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+    const p = await env.DB.prepare('SELECT email FROM pending_signups WHERE email = ?').bind(vemail).first()
+    if (!p) return json({ error: 'Cadastro não encontrado. Cadastre-se novamente.' }, 404)
+    if (!emailEnabled(env)) return json({ error: 'Envio de e-mail não está configurado.' }, 503)
+    const code = sixDigitCode()
+    await env.DB.prepare('UPDATE pending_signups SET code_hash = ?, expires_at = ?, attempts = 0 WHERE email = ?')
+      .bind(await sha256(code), new Date(Date.now() + 15 * 60 * 1000).toISOString(), vemail).run()
+    try { await sendEmail(env, vemail, 'Seu novo código — Seu Funcionário', codeEmailHtml(code)) }
+    catch (e) { console.error('resend mail', e); return json({ error: 'Não foi possível reenviar o e-mail agora.' }, 502) }
+    return json({ ok: true })
+  }
 
   if (url.pathname === '/api/auth/google') {
     const credential = typeof body.credential === 'string' ? body.credential : ''
@@ -153,11 +209,24 @@ async function handleAuth(request, env, url) {
     if (name.length < 2 || name.length > 100) return json({ error: 'Informe um nome válido.' }, 400)
     const exists = await env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first()
     if (exists) return json({ error: 'Este e-mail já possui uma conta. Use a opção Entrar.' }, 409)
-    const user = { id: crypto.randomUUID(), name, email }
     const salt = randomHex(16)
+    const passHash = await passwordHash(password, salt)
+
+    if (emailEnabled(env)) {
+      const code = sixDigitCode()
+      await env.DB.prepare(`INSERT INTO pending_signups (email, name, password_hash, password_salt, code_hash, expires_at, attempts, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 0, ?)
+        ON CONFLICT(email) DO UPDATE SET name = excluded.name, password_hash = excluded.password_hash, password_salt = excluded.password_salt, code_hash = excluded.code_hash, expires_at = excluded.expires_at, attempts = 0, created_at = excluded.created_at`)
+        .bind(email, name, passHash, salt, await sha256(code), new Date(Date.now() + 15 * 60 * 1000).toISOString(), new Date().toISOString()).run()
+      try { await sendEmail(env, email, 'Seu código de acesso — Seu Funcionário', codeEmailHtml(code)) }
+      catch (error) { console.error('signup mail', error); return json({ error: 'Não foi possível enviar o e-mail de verificação. Confira o e-mail e tente novamente.' }, 502) }
+      return json({ pending: true, email }, 200)
+    }
+
+    const user = { id: crypto.randomUUID(), name, email }
     try {
       await env.DB.prepare('INSERT INTO users (id, name, email, password_hash, password_salt, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-        .bind(user.id, name, email, await passwordHash(password, salt), salt, new Date().toISOString()).run()
+        .bind(user.id, name, email, passHash, salt, new Date().toISOString()).run()
     } catch (error) {
       if (/unique/i.test(error.message)) return json({ error: 'Este e-mail já possui uma conta. Use a opção Entrar.' }, 409)
       throw error
