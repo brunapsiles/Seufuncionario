@@ -17,7 +17,31 @@ Ações que somente você pode realizar. **Nenhuma delas bloqueia o funcionament
 | Bloqueia o lançamento? | Não |
 | Próximo passo | Após regenerar, atualizar os segredos e revogar as chaves antigas |
 
-## 2. Domínio próprio (opcional)
+## 2. Login com Google (escolhido por você)
+
+| Item | Detalhe |
+|---|---|
+| Ação | Criar um "ID do cliente OAuth" no Google Cloud Console (gratuito) |
+| Onde | console.cloud.google.com → APIs e Serviços → Credenciais → Criar credenciais → ID do cliente OAuth (tipo "Aplicativo da Web") |
+| Configurar | Adicionar `https://seufuncionario-expo.brunapsiles.workers.dev` nas origens autorizadas; me enviar o "Client ID" gerado (ele é público, não é segredo) |
+| Motivo | O Google exige que a titular crie a credencial em nome da sua conta Google |
+| Impacto se não fizer | O login por e-mail e senha continua funcionando normalmente |
+| Alternativa gratuita | O próprio Google é gratuito para esse uso |
+| Bloqueia o lançamento? | Não |
+| Observação | Login com Apple ID **não** foi incluído porque exige conta paga de desenvolvedor Apple (US$ 99/ano) |
+
+## 3. Recuperação de senha por e-mail (escolhida por você)
+
+| Item | Detalhe |
+|---|---|
+| Ação | Contratar um domínio próprio e conectar um serviço de envio de e-mail gratuito (ex.: Resend) |
+| Motivo | Enviar e-mail de redefinição para qualquer usuário exige um **domínio verificado**; o endereço atual `.workers.dev` não permite verificação de e-mail |
+| Configurar | Após ter domínio: criar conta no Resend (plano gratuito), verificar o domínio, e me enviar a chave para eu configurar como segredo `RESEND_API_KEY` |
+| Impacto se não fizer | Não há recuperação de senha; oriente os usuários a guardarem a senha. Posso, alternativamente, implementar um "código de recuperação" gratuito que não depende de e-mail — me avise se preferir |
+| Alternativa gratuita | Código de recuperação mostrado no cadastro (sem e-mail) |
+| Bloqueia o lançamento? | Não |
+
+## 4. Domínio próprio (opcional)
 
 | Item | Detalhe |
 |---|---|
@@ -29,7 +53,7 @@ Ações que somente você pode realizar. **Nenhuma delas bloqueia o funcionament
 | Alternativa gratuita | Manter o endereço workers.dev atual |
 | Bloqueia o lançamento? | Não |
 
-## 3. Servidor próprio de vídeo com GPU (opcional)
+## 5. Servidor próprio de vídeo com GPU (opcional)
 
 | Item | Detalhe |
 |---|---|

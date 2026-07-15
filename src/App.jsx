@@ -17,7 +17,7 @@ const STORAGE_KEY = 'seu-funcionario-v1'
 const AUTH_TOKEN_KEY = 'seu-funcionario-auth-token'
 
 const emptyDb = {
-  user: null, ownerId: null, updatedAt: null, onboarding: false, selectedBusinessId: null,
+  user: null, spaceKey: null, updatedAt: null, onboarding: false, selectedBusinessId: null,
   businesses: [], tasks: [], leads: [], transactions: [], documents: [], sites: [], history: [], certificates: [], conversations: [], media: [], emailDrafts: [], customSpecialists: [], pluggedTools: [], selectedConversationId: null,
   journeys: {}, preferences: { theme: 'light', specialist: 'Diretor' }
 }
@@ -135,6 +135,8 @@ function mergeMedia(localItems = [], remoteItems = []) {
   })
 }
 
+const activeSpaceId = () => { try { return localStorage.getItem('sf-space') || '' } catch { return '' } }
+
 function useDatabase() {
   const [db, setDb] = useState(() => {
     try { return { ...emptyDb, ...JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') } } catch { return emptyDb }
@@ -142,42 +144,45 @@ function useDatabase() {
   const syncTimer = useRef(null)
   const pulled = useRef(false)
   const userId = db.user?.id
+  const space = activeSpaceId()
+  const spaceKey = space || userId
+  const wsUrl = space ? `/api/workspace?owner=${encodeURIComponent(space)}` : '/api/workspace'
 
   useEffect(() => {
     pulled.current = false
     if (!userId || !localStorage.getItem(AUTH_TOKEN_KEY)) return
     let cancelled = false
-    fetch('/api/workspace', { headers: authHeaders() })
+    fetch(wsUrl, { headers: authHeaders() })
       .then(response => response.ok ? response.json() : null)
       .then(payload => {
         if (cancelled || payload === null) return
         setDb(current => {
-          const foreign = current.ownerId && current.ownerId !== userId
+          const foreign = current.spaceKey && current.spaceKey !== spaceKey
           if (payload.data) {
             const localNewer = !foreign && current.updatedAt && payload.updatedAt && current.updatedAt > payload.updatedAt
-            if (localNewer) return { ...current, ownerId: userId }
-            return { ...emptyDb, ...payload.data, media: mergeMedia(foreign ? [] : current.media, payload.data.media), user: current.user, ownerId: userId, updatedAt: payload.updatedAt }
+            if (localNewer) return { ...current, spaceKey }
+            return { ...emptyDb, ...payload.data, media: mergeMedia(foreign ? [] : current.media, payload.data.media), user: current.user, spaceKey, updatedAt: payload.updatedAt }
           }
-          if (foreign) return { ...emptyDb, user: current.user, ownerId: userId }
-          return { ...current, ownerId: userId }
+          if (foreign) return { ...emptyDb, user: current.user, spaceKey }
+          return { ...current, spaceKey }
         })
         pulled.current = true
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [userId])
+  }, [userId, space])
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(db))
-    if (!userId || !pulled.current || db.ownerId !== userId || !localStorage.getItem(AUTH_TOKEN_KEY)) return
+    if (!userId || !pulled.current || db.spaceKey !== spaceKey || !localStorage.getItem(AUTH_TOKEN_KEY)) return
     clearTimeout(syncTimer.current)
     syncTimer.current = setTimeout(() => {
-      const { user, ownerId, ...rest } = db
+      const { user, spaceKey: _s, ...rest } = db
       const data = { ...rest, media: (rest.media || []).map(item => item.url && item.url.startsWith('data:') ? { ...item, url: null, localOnly: true } : item) }
-      fetch('/api/workspace', { method: 'PUT', headers: { 'content-type': 'application/json', ...authHeaders() }, body: JSON.stringify({ data }) }).catch(() => {})
+      fetch(wsUrl, { method: 'PUT', headers: { 'content-type': 'application/json', ...authHeaders() }, body: JSON.stringify({ data }) }).catch(() => {})
     }, 2500)
     return () => clearTimeout(syncTimer.current)
-  }, [db, userId])
+  }, [db, userId, space])
 
   const update = fn => setDb(current => {
     const next = typeof fn === 'function' ? fn(current) : { ...current, ...fn }
@@ -534,6 +539,26 @@ function Businesses({db,update,setToast}){
 
 function PublicSite({site}){if(!site||!site.published)return <main className="public-missing"><Logo/><CircleAlert/><h1>Esta página não está disponível</h1><p>O endereço pode estar incorreto ou o site foi despublicado.</p></main>;return <iframe className="public-frame" sandbox="allow-forms allow-popups allow-top-navigation-by-user-activation" title={site.name} srcDoc={site.html}/>} 
 
+function switchSpace(id, name){ try{ if(id){localStorage.setItem('sf-space',id);localStorage.setItem('sf-space-name',name||'Espaço compartilhado')}else{localStorage.removeItem('sf-space');localStorage.removeItem('sf-space-name')} }catch{} location.reload() }
+
+function Collaborators({ setToast }){
+  const [data,setData]=useState({members:[],spaces:[]})
+  const [code,setCode]=useState(''),[invite,setInvite]=useState(''),[joining,setJoining]=useState(false)
+  const active=activeSpaceId()
+  const load=()=>fetch('/api/collab',{headers:authHeaders()}).then(r=>r.ok?r.json():null).then(d=>d&&setData(d)).catch(()=>{})
+  useEffect(()=>{load()},[])
+  const createInvite=async()=>{try{const r=await fetch('/api/collab/invite',{method:'POST',headers:{'content-type':'application/json',...authHeaders()}});const d=await r.json();if(!r.ok)throw new Error(d.error||'Falha ao criar convite');setInvite(d.code);setToast('Convite criado — compartilhe o link')}catch(e){setToast(e.message)}}
+  const join=async()=>{const c=code.trim();if(c.length<4)return;setJoining(true);try{const r=await fetch('/api/collab/join',{method:'POST',headers:{'content-type':'application/json',...authHeaders()},body:JSON.stringify({code:c})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Não foi possível entrar');setCode('');load();setToast(`Você entrou no espaço de ${d.ownerName}`)}catch(e){setToast(e.message)}finally{setJoining(false)}}
+  const remove=async(id)=>{if(!confirm('Remover esta pessoa do seu espaço?'))return;await fetch('/api/collab/remove',{method:'POST',headers:{'content-type':'application/json',...authHeaders()},body:JSON.stringify({memberId:id})}).catch(()=>{});load();setToast('Colaborador removido')}
+  const inviteLink=invite?`${location.origin}/?convite=${invite}`:''
+  return <section className="section"><div className="section-head"><div><span className="eyebrow">PESSOAS</span><h2>Convide colaboradores reais</h2></div></div>
+    <div className="collab-grid">
+      <div className="collab-card"><h3><UserRound/>Convidar para o meu espaço</h3><p>Quem entrar com o convite vê e edita os mesmos projetos, tarefas e clientes.</p><Button icon={Plus} onClick={createInvite}>Gerar convite</Button>{invite&&<div className="invite-box"><span>Código <strong>{invite}</strong> · válido por 7 dias</span><button onClick={()=>{navigator.clipboard?.writeText(inviteLink);setToast('Link copiado')}}><Copy/>Copiar link do convite</button></div>}{data.members.length>0&&<div className="member-list"><small className="member-title">No seu espaço</small>{data.members.map(m=><div key={m.id}><span className="avatar">{m.name[0]}</span><span><strong>{m.name}</strong><small>{m.email}</small></span><button className="icon-button danger" title="Remover" onClick={()=>remove(m.id)}><Trash2/></button></div>)}</div>}</div>
+      <div className="collab-card"><h3><Layers/>Espaços de trabalho</h3><p>Entre com um código recebido e alterne entre o seu espaço e os compartilhados.</p><div className="join-row"><input value={code} onChange={e=>setCode(e.target.value.toUpperCase())} placeholder="Código do convite" maxLength={16}/><Button icon={ArrowUpRight} disabled={joining||code.trim().length<4} onClick={join}>{joining?'...':'Entrar'}</Button></div><div className="space-list"><button className={!active?'active':''} onClick={()=>switchSpace('')}><span className="business-avatar small"><Building2/></span><span><strong>Meu espaço</strong><small>Seus próprios projetos</small></span>{!active&&<Check/>}</button>{data.spaces.map(s=><button key={s.ownerId} className={active===s.ownerId?'active':''} onClick={()=>switchSpace(s.ownerId,s.ownerName)}><span className="business-avatar small">{s.ownerName[0]}</span><span><strong>{s.ownerName}</strong><small>{s.ownerEmail}</small></span>{active===s.ownerId&&<Check/>}</button>)}</div></div>
+    </div>
+  </section>
+}
+
 function Team({ db, update, setToast }){
   const [newEmployee,setNewEmployee]=useState(false)
   const active=db.preferences.specialist
@@ -541,6 +566,7 @@ function Team({ db, update, setToast }){
   const dismiss=name=>{if(!confirm(`Dispensar o funcionário de ${name}? O histórico de conversas é mantido.`))return;update(d=>({...d,customSpecialists:(d.customSpecialists||[]).filter(x=>x.name!==name),preferences:{...d.preferences,specialist:d.preferences.specialist===name?'Diretor':d.preferences.specialist}}));setToast('Funcionário dispensado')}
   return <PageTitle eyebrow="MEU TIME" title="Monte a sua equipe digital" text="Escolha quem assume cada conversa. Contrate especialistas sob medida para o seu negócio a qualquer momento." action={<Button icon={Plus} onClick={()=>setNewEmployee(true)}>Contratar funcionário</Button>}>
     <div className="team-hero"><span className="team-hero-icon"><Bot/></span><div><span className="eyebrow light">FUNCIONÁRIO ATIVO</span><h2>{active}</h2><p>{specialistData.find(s=>s[0]===active)?.[2]||(db.customSpecialists||[]).find(x=>x.name===active)?.instructions||'Especialista sob medida do seu time.'}</p></div></div>
+    <Collaborators setToast={setToast}/>
     {(db.customSpecialists||[]).length>0&&<section className="section"><div className="section-head"><div><span className="eyebrow">CONTRATADOS POR VOCÊ</span><h2>Funcionários sob medida</h2></div></div><div className="team-grid">{db.customSpecialists.map(c=><article className={active===c.name?'active':''} key={c.name}><span className="team-avatar custom"><Sparkle/></span><div><strong>{c.name}</strong><small>{c.instructions}</small></div><div className="team-actions"><button className={active===c.name?'chip on':'chip'} onClick={()=>select(c.name)}>{active===c.name?<><Check/>No comando</>:'Colocar no comando'}</button><button className="icon-button danger" title="Dispensar" onClick={()=>dismiss(c.name)}><Trash2/></button></div></article>)}</div></section>}
     <section className="section"><div className="section-head"><div><span className="eyebrow">EQUIPE PADRÃO</span><h2>{specialistData.length} especialistas sempre disponíveis</h2></div></div><div className="team-grid">{specialistData.map(([n,I,d],i)=><article className={active===n?'active':''} key={n}><span className={`team-avatar t${i%6}`}><I/></span><div><strong>{n}</strong><small>{d}</small></div><button className={active===n?'chip on':'chip'} onClick={()=>select(n)}>{active===n?<><Check/>No comando</>:'Colocar no comando'}</button></article>)}</div></section>
     {newEmployee&&<NewEmployeeModal onClose={()=>setNewEmployee(false)} onSave={emp=>{update(d=>({...d,customSpecialists:[...(d.customSpecialists||[]).filter(x=>x.name!==emp.name),emp],preferences:{...d.preferences,specialist:emp.name}}));setNewEmployee(false);setToast(`Funcionário de ${emp.name} contratado`)}}/>}
@@ -553,7 +579,7 @@ function AccountSettings({ db, update, setToast }){
   const theme=db.preferences.theme
   const setTheme=t=>update(d=>({...d,preferences:{...d.preferences,theme:t}}))
   const saveName=async()=>{const clean=name.trim();if(clean.length<2){setErr('Informe um nome válido.');return}setBusy(true);setErr('');try{const r=await fetch('/api/auth/profile',{method:'POST',headers:{'content-type':'application/json',...authHeaders()},body:JSON.stringify({name:clean})});const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||'Não foi possível salvar.');update(d=>({...d,user:{...d.user,name:data.user.name}}));setToast('Nome atualizado')}catch(e){setErr(e.message)}finally{setBusy(false)}}
-  const exportData=()=>{const {user,ownerId,...rest}=db;const blob=new Blob([JSON.stringify(rest,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='seu-funcionario-dados.json';a.click();URL.revokeObjectURL(a.href);setToast('Dados exportados')}
+  const exportData=()=>{const {user,spaceKey,...rest}=db;const blob=new Blob([JSON.stringify(rest,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='seu-funcionario-dados.json';a.click();URL.revokeObjectURL(a.href);setToast('Dados exportados')}
   const plugged=(db.pluggedTools||[]).length
   return <PageTitle eyebrow="CONFIGURAÇÕES" title="Sua conta" text="Gerencie seu perfil, a aparência do aplicativo e seus dados.">
     <div className="settings-grid">
@@ -568,6 +594,7 @@ function AccountSettings({ db, update, setToast }){
 export default function App(){
   const [db,update]=useDatabase(),[page,setPage]=useState('inicio'),[collapsed,setCollapsed]=useState(false),[mobile,setMobile]=useState(false),[toast,setToast]=useState(''),[businessMenu,setBusinessMenu]=useState(false)
   useEffect(()=>{document.documentElement.dataset.theme=db.preferences.theme},[db.preferences.theme])
+  useEffect(()=>{if(!db.user)return;const m=location.search.match(/[?&]convite=([^&]+)/);if(!m)return;const code=decodeURIComponent(m[1]);history.replaceState({},'',location.pathname);fetch('/api/collab/join',{method:'POST',headers:{'content-type':'application/json',...authHeaders()},body:JSON.stringify({code})}).then(r=>r.json()).then(d=>{if(d&&d.ownerId)setToast(`Você entrou no espaço de ${d.ownerName}`);else if(d&&d.error)setToast(d.error)}).catch(()=>{})},[db.user])
   useEffect(()=>{if(toast){const t=setTimeout(()=>setToast(''),2400);return()=>clearTimeout(t)}},[toast])
   const publicSlug=location.pathname.match(/^\/s\/([^/]+)/)?.[1]
   if(publicSlug)return <PublicSite site={db.sites.find(x=>x.slug===publicSlug)}/>
@@ -576,5 +603,5 @@ export default function App(){
   const business=db.businesses.find(x=>x.id===db.selectedBusinessId)||db.businesses[0]||null
   const go=p=>{setPage(p);setMobile(false)}
   const content=()=>{switch(page){case'inicio':return <Dashboard db={db} update={update} business={business} go={go} setToast={setToast}/>;case'comecar':return <Journeys db={db} update={update}/>;case'estrategia':case'marketing':return <Specialists db={db} update={update} business={business} setToast={setToast}/>;case'vendas':return <CRM db={db} update={update} business={business} setToast={setToast}/>;case'financeiro':return <Finance db={db} update={update} business={business} setToast={setToast}/>;case'operacao':return <Tasks db={db} update={update} business={business} setToast={setToast}/>;case'sites':return <Sites db={db} update={update} business={business} setToast={setToast}/>;case'documentos':return <Documents db={db} update={update} business={business} setToast={setToast}/>;case'ferramentas':return <ToolsHub db={db} update={update} setToast={setToast}/>;case'time':return <Team db={db} update={update} setToast={setToast}/>;case'config':return <AccountSettings db={db} update={update} setToast={setToast}/>;case'estudio':return <CreativeStudio db={db} update={update} business={business} setToast={setToast}/>;case'historico':return <HistoryPage db={db} update={update} business={business} setToast={setToast}/>;case'certificacoes':return <Certifications db={db} update={update} business={business} setToast={setToast} go={go}/>;case'businesses':return <Businesses db={db} update={update} setToast={setToast}/>;default:return null}}
-  return <div className={`app ${collapsed?'collapsed':''}`}><aside className={mobile?'open':''}><div className="side-top"><Logo compact={collapsed}/><button className="icon-button desktop-collapse" onClick={()=>setCollapsed(!collapsed)}>{collapsed?<ChevronRight/>:<ChevronLeft/>}</button><button className="icon-button mobile-close" onClick={()=>setMobile(false)}><X/></button></div><nav>{nav.map(([id,label,I])=><button key={id} className={page===id?'active':''} onClick={()=>go(id)} title={collapsed?label:undefined}><I/><span>{label}</span></button>)}<div className="nav-divider"/>{navSecondary.map(([id,label,I])=><button key={id} className={page===id?'active':''} onClick={()=>go(id)} title={collapsed?label:undefined}><I/><span>{label}</span></button>)}</nav><div className="side-bottom"><button onClick={()=>update(d=>({...d,preferences:{...d.preferences,theme:d.preferences.theme==='light'?'dark':'light'}}))}>{db.preferences.theme==='light'?<Moon/>:<Sun/>}<span>{db.preferences.theme==='light'?'Modo escuro':'Modo claro'}</span></button><button onClick={()=>{if(confirm('Encerrar esta sessão? Seus projetos continuarão salvos neste dispositivo.')){endSession();update(d=>({...d,user:null}))}}}><LogOut/><span>Sair</span></button></div></aside>{mobile&&<div className="mobile-overlay" onClick={()=>setMobile(false)}/>}<main className="workspace"><header className="topbar"><button className="icon-button mobile-menu" onClick={()=>setMobile(true)}><Menu/></button><div className="top-business"><span>Negócio ativo</span><button onClick={()=>setBusinessMenu(!businessMenu)}><span className="business-avatar small">{business?.name?.[0]||'+'}</span><strong>{business?.name||'Criar negócio'}</strong><ChevronRight className={businessMenu?'rotated':''}/></button>{businessMenu&&<div className="business-popover">{db.businesses.map(b=><button key={b.id} onClick={()=>{update(d=>({...d,selectedBusinessId:b.id}));setBusinessMenu(false)}}><span className="business-avatar small">{b.name[0]}</span><span><strong>{b.name}</strong><small>{b.segment||'Sem segmento'}</small></span>{business?.id===b.id&&<Check/>}</button>)}<button className="manage" onClick={()=>{go('businesses');setBusinessMenu(false)}}><Building2/>Gerenciar negócios</button></div>}</div><div className="top-actions"><button className="icon-button" onClick={()=>update(d=>({...d,preferences:{...d.preferences,theme:d.preferences.theme==='light'?'dark':'light'}}))}>{db.preferences.theme==='light'?<Moon/>:<Sun/>}</button><button className="user-chip" onClick={()=>go('config')}><span>{db.user.name[0]}</span><div><strong>{db.user.name}</strong><small>{db.user.email}</small></div></button></div></header><div className="page">{content()}</div></main><Toast toast={toast}/></div>
+  return <div className={`app ${collapsed?'collapsed':''}`}><aside className={mobile?'open':''}><div className="side-top"><Logo compact={collapsed}/><button className="icon-button desktop-collapse" onClick={()=>setCollapsed(!collapsed)}>{collapsed?<ChevronRight/>:<ChevronLeft/>}</button><button className="icon-button mobile-close" onClick={()=>setMobile(false)}><X/></button></div><nav>{nav.map(([id,label,I])=><button key={id} className={page===id?'active':''} onClick={()=>go(id)} title={collapsed?label:undefined}><I/><span>{label}</span></button>)}<div className="nav-divider"/>{navSecondary.map(([id,label,I])=><button key={id} className={page===id?'active':''} onClick={()=>go(id)} title={collapsed?label:undefined}><I/><span>{label}</span></button>)}</nav><div className="side-bottom"><button onClick={()=>update(d=>({...d,preferences:{...d.preferences,theme:d.preferences.theme==='light'?'dark':'light'}}))}>{db.preferences.theme==='light'?<Moon/>:<Sun/>}<span>{db.preferences.theme==='light'?'Modo escuro':'Modo claro'}</span></button><button onClick={()=>{if(confirm('Encerrar esta sessão? Seus projetos continuarão salvos neste dispositivo.')){endSession();update(d=>({...d,user:null}))}}}><LogOut/><span>Sair</span></button></div></aside>{mobile&&<div className="mobile-overlay" onClick={()=>setMobile(false)}/>}<main className="workspace"><header className="topbar"><button className="icon-button mobile-menu" onClick={()=>setMobile(true)}><Menu/></button><div className="top-business"><span>Negócio ativo</span><button onClick={()=>setBusinessMenu(!businessMenu)}><span className="business-avatar small">{business?.name?.[0]||'+'}</span><strong>{business?.name||'Criar negócio'}</strong><ChevronRight className={businessMenu?'rotated':''}/></button>{businessMenu&&<div className="business-popover">{db.businesses.map(b=><button key={b.id} onClick={()=>{update(d=>({...d,selectedBusinessId:b.id}));setBusinessMenu(false)}}><span className="business-avatar small">{b.name[0]}</span><span><strong>{b.name}</strong><small>{b.segment||'Sem segmento'}</small></span>{business?.id===b.id&&<Check/>}</button>)}<button className="manage" onClick={()=>{go('businesses');setBusinessMenu(false)}}><Building2/>Gerenciar negócios</button></div>}</div><div className="top-actions">{activeSpaceId()&&<button className="space-badge" onClick={()=>switchSpace('')} title="Voltar ao meu espaço"><Users/><span>{localStorage.getItem('sf-space-name')||'Espaço compartilhado'}</span><X/></button>}<button className="icon-button" onClick={()=>update(d=>({...d,preferences:{...d.preferences,theme:d.preferences.theme==='light'?'dark':'light'}}))}>{db.preferences.theme==='light'?<Moon/>:<Sun/>}</button><button className="user-chip" onClick={()=>go('config')}><span>{db.user.name[0]}</span><div><strong>{db.user.name}</strong><small>{db.user.email}</small></div></button></div></header><div className="page">{content()}</div></main><Toast toast={toast}/></div>
 }

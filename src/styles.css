@@ -120,3 +120,36 @@ input.readonly,input[readonly]{opacity:.7;cursor:not-allowed}
 .plugged-row .tool-icon{width:34px;height:34px;border-radius:10px}
 .plugged-row .tool-icon svg{width:17px;height:17px}
 .plugged-row a>svg{width:15px;height:15px;color:var(--muted)}
+
+/* ===== v5 · Colaboradores / espaços compartilhados ===== */
+.collab-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+.collab-card{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:20px}
+.collab-card h3{display:flex;align-items:center;gap:9px;font-size:15px;font-family:'Manrope',sans-serif;margin:0 0 6px}
+.collab-card h3 svg{width:18px;height:18px;color:var(--primary)}
+.collab-card>p{color:var(--muted);font-size:13px;line-height:1.5;margin:0 0 14px}
+.invite-box{margin-top:14px;padding:13px;border-radius:12px;background:var(--surface2);border:1px dashed var(--primary)}
+.invite-box span{display:block;font-size:13px;margin-bottom:8px}
+.invite-box strong{font-family:'Manrope',sans-serif;letter-spacing:.08em;color:var(--primary)}
+.invite-box button{display:inline-flex;align-items:center;gap:7px;border:0;background:var(--primary);color:#fff;border-radius:9px;padding:8px 13px;font-weight:600;font-size:13px;cursor:pointer}
+.invite-box button svg{width:15px;height:15px}
+.member-list{margin-top:16px;display:flex;flex-direction:column;gap:8px}
+.member-title{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:700}
+.member-list>div{display:flex;align-items:center;gap:11px;padding:8px;border-radius:11px;background:var(--surface2)}
+.member-list .avatar{width:34px;height:34px;flex:none;border-radius:10px;display:grid;place-items:center;font-weight:700;color:#fff;background:linear-gradient(135deg,var(--primary),#8b5cf6)}
+.member-list>div>span:not(.avatar){flex:1;display:flex;flex-direction:column}
+.member-list strong{font-size:14px}.member-list small{color:var(--muted);font-size:12px}
+.join-row{display:flex;gap:8px;margin-bottom:14px}
+.join-row input{flex:1;border:1px solid var(--line);background:var(--surface2);border-radius:10px;padding:10px 13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+.join-row .button{white-space:nowrap}
+.space-list{display:flex;flex-direction:column;gap:8px}
+.space-list button{display:flex;align-items:center;gap:11px;padding:10px;border-radius:12px;border:1px solid var(--line);background:var(--surface);cursor:pointer;text-align:left;transition:.2s}
+.space-list button:hover{border-color:var(--primary)}
+.space-list button.active{border-color:var(--primary);box-shadow:0 0 0 2px color-mix(in srgb,var(--primary) 16%,transparent)}
+.space-list button>span:not(.business-avatar){flex:1;display:flex;flex-direction:column}
+.space-list strong{font-size:14px}.space-list small{color:var(--muted);font-size:12px}
+.space-list .business-avatar.small{display:grid;place-items:center}
+.space-list .business-avatar.small svg{width:16px;height:16px}
+.space-list svg{width:17px;height:17px;color:var(--primary)}
+.space-badge{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:10px;border:0;cursor:pointer;font-weight:600;font-size:13px;color:#fff;background:linear-gradient(135deg,#ed3e91,#8b5cf6)}
+.space-badge svg{width:15px;height:15px}
+.space-badge span{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

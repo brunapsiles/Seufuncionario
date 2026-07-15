@@ -171,9 +171,17 @@ function allowed(key, cap = 8) {
   return item.count <= cap
 }
 
-async function handleWorkspace(request, env, user) {
+async function canAccessWorkspace(env, userId, ownerId) {
+  if (userId === ownerId) return true
+  const m = await env.DB.prepare('SELECT id FROM memberships WHERE owner_id = ? AND member_id = ?').bind(ownerId, userId).first()
+  return !!m
+}
+
+async function handleWorkspace(request, env, user, url) {
+  const ownerId = url.searchParams.get('owner') || user.id
+  if (!(await canAccessWorkspace(env, user.id, ownerId))) return json({ error: 'Você não tem acesso a este espaço.' }, 403)
   if (request.method === 'GET') {
-    const row = await env.DB.prepare('SELECT data, updated_at FROM workspaces WHERE user_id = ?').bind(user.id).first()
+    const row = await env.DB.prepare('SELECT data, updated_at FROM workspaces WHERE user_id = ?').bind(ownerId).first()
     let data = null
     try { data = row ? JSON.parse(row.data) : null } catch { data = null }
     return json({ data, updatedAt: row?.updated_at || null })
@@ -190,8 +198,57 @@ async function handleWorkspace(request, env, user) {
   const updatedAt = new Date().toISOString()
   await env.DB.prepare(`INSERT INTO workspaces (user_id, data, updated_at) VALUES (?, ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`)
-    .bind(user.id, text, updatedAt).run()
+    .bind(ownerId, text, updatedAt).run()
   return json({ ok: true, updatedAt })
+}
+
+async function handleCollab(request, env, user, url) {
+  const action = url.pathname.replace('/api/collab', '').replace(/^\//, '')
+  if (!action) {
+    const members = await env.DB.prepare(`SELECT users.id, users.name, users.email, memberships.role FROM memberships
+      JOIN users ON users.id = memberships.member_id WHERE memberships.owner_id = ? ORDER BY memberships.created_at`).bind(user.id).all()
+    const spaces = await env.DB.prepare(`SELECT memberships.owner_id AS ownerId, users.name AS ownerName, users.email AS ownerEmail FROM memberships
+      JOIN users ON users.id = memberships.owner_id WHERE memberships.member_id = ? ORDER BY memberships.created_at`).bind(user.id).all()
+    return json({ members: members.results || [], spaces: spaces.results || [] })
+  }
+  if (request.method !== 'POST') return json({ error: 'Método não permitido.' }, 405)
+  const ip = request.headers.get('cf-connecting-ip') || 'local'
+  if (!allowed(`collab:${ip}`, 20)) return json({ error: 'Muitas ações em pouco tempo. Aguarde um instante.' }, 429)
+  let body = {}
+  try { body = await request.json() } catch {}
+
+  if (action === 'invite') {
+    const code = randomHex(5).toUpperCase()
+    const now = new Date()
+    const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    await env.DB.prepare('INSERT INTO invites (code, owner_id, role, created_at, expires_at) VALUES (?, ?, ?, ?, ?)')
+      .bind(code, user.id, 'editor', now.toISOString(), expiresAt).run()
+    return json({ code, expiresAt })
+  }
+  if (action === 'join') {
+    const code = typeof body.code === 'string' ? body.code.trim().toUpperCase() : ''
+    if (!code) return json({ error: 'Informe o código do convite.' }, 400)
+    const invite = await env.DB.prepare('SELECT owner_id, role, expires_at FROM invites WHERE code = ?').bind(code).first()
+    if (!invite) return json({ error: 'Convite inválido ou já utilizado.' }, 404)
+    if (invite.expires_at < new Date().toISOString()) return json({ error: 'Este convite expirou. Peça um novo.' }, 410)
+    if (invite.owner_id === user.id) return json({ error: 'Você não pode entrar no seu próprio espaço.' }, 400)
+    const owner = await env.DB.prepare('SELECT name FROM users WHERE id = ?').bind(invite.owner_id).first()
+    await env.DB.prepare('INSERT OR IGNORE INTO memberships (id, owner_id, member_id, role, created_at) VALUES (?, ?, ?, ?, ?)')
+      .bind(crypto.randomUUID(), invite.owner_id, user.id, invite.role, new Date().toISOString()).run()
+    await env.DB.prepare('DELETE FROM invites WHERE code = ?').bind(code).run()
+    return json({ ownerId: invite.owner_id, ownerName: owner?.name || 'Espaço compartilhado' })
+  }
+  if (action === 'remove') {
+    const memberId = typeof body.memberId === 'string' ? body.memberId : ''
+    await env.DB.prepare('DELETE FROM memberships WHERE owner_id = ? AND member_id = ?').bind(user.id, memberId).run()
+    return json({ ok: true })
+  }
+  if (action === 'leave') {
+    const ownerId = typeof body.ownerId === 'string' ? body.ownerId : ''
+    await env.DB.prepare('DELETE FROM memberships WHERE owner_id = ? AND member_id = ?').bind(ownerId, user.id).run()
+    return json({ ok: true })
+  }
+  return json({ error: 'Ação não encontrada.' }, 404)
 }
 
 function systemPrompt(specialist, business, customInstructions) {
@@ -401,17 +458,22 @@ export default {
       try { return await handleAuth(request, env, url) }
       catch (error) { console.error('Auth error', error); return json({ error: 'Não foi possível concluir o acesso.' }, 500) }
     }
-    if (url.pathname === '/api/ai' || url.pathname === '/api/media' || url.pathname === '/api/workspace') {
+    const needsAuth = url.pathname === '/api/ai' || url.pathname === '/api/media' || url.pathname === '/api/workspace' || url.pathname.startsWith('/api/collab')
+    if (needsAuth) {
       if (url.pathname === '/api/ai' && request.method !== 'POST') return json({ error: 'Método não permitido.' }, 405)
-      if (url.pathname === '/api/workspace' && !env.DB) return json({ error: 'O serviço de contas ainda não está configurado.' }, 503)
+      if ((url.pathname === '/api/workspace' || url.pathname.startsWith('/api/collab')) && !env.DB) return json({ error: 'O serviço de contas ainda não está configurado.' }, 503)
       let user
       try {
         user = await sessionUser(request, env)
         if (!user) return json({ error: 'Sua sessão expirou. Entre novamente.' }, 401)
       } catch (error) { console.error('Session check error', error); return json({ error: 'Não foi possível validar sua sessão.' }, 500) }
       if (url.pathname === '/api/workspace') {
-        try { return await handleWorkspace(request, env, user) }
+        try { return await handleWorkspace(request, env, user, url) }
         catch (error) { console.error('Workspace error', error); return json({ error: 'Não foi possível sincronizar seus dados.' }, 500) }
+      }
+      if (url.pathname.startsWith('/api/collab')) {
+        try { return await handleCollab(request, env, user, url) }
+        catch (error) { console.error('Collab error', error); return json({ error: 'Não foi possível concluir a ação de colaboração.' }, 500) }
       }
       return url.pathname === '/api/ai' ? handleAi(request, env) : handleMedia(request, env, url)
     }
