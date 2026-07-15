@@ -1407,9 +1407,11 @@ async function handleAi(request, env) {
       : "Consultor";
   if (prompt.length < 3)
     return json({ error: "Explique um pouco mais sobre o que precisa." }, 400);
-  if (prompt.length > 8000)
+  if (prompt.length > 50000)
     return json(
-      { error: "O texto ultrapassa o limite de 8.000 caracteres." },
+      {
+        error: "O texto e os anexos ultrapassam o limite de 50.000 caracteres.",
+      },
       413,
     );
   const business =

@@ -30,6 +30,7 @@ import {
   Edit3,
   Copy,
   Download,
+  Upload,
   ExternalLink,
   Users,
   ListTodo,
@@ -1836,7 +1837,10 @@ function UniversalRequest({ db, update, business, setToast }) {
   const [newEmployee, setNewEmployee] = useState(false);
   const [error, setError] = useState("");
   const [revealing, setRevealing] = useState(null);
+  const [attachments, setAttachments] = useState([]);
+  const [attachmentBusy, setAttachmentBusy] = useState(false);
   const endRef = useRef(null);
+  const chatUploadRef = useRef(null);
   const specialist = db.preferences.specialist;
   const conversations = db.conversations || [];
   const active =
@@ -1877,6 +1881,39 @@ function UniversalRequest({ db, update, business, setToast }) {
     setText("");
     setError("");
   };
+  const attachDocuments = async (fileList) => {
+    const files = [...(fileList || [])].slice(0, 3 - attachments.length);
+    if (!files.length || attachmentBusy) return;
+    setAttachmentBusy(true);
+    setError("");
+    const next = [];
+    const failed = [];
+    for (const file of files) {
+      try {
+        const extracted = await extractDocumentText(file);
+        next.push({
+          id: uid(),
+          name: file.name,
+          size: file.size,
+          kind: extracted.kind.label,
+          content: extracted.content.slice(0, 12_000),
+        });
+      } catch (uploadError) {
+        failed.push(`${file.name}: ${uploadError.message}`);
+      }
+    }
+    if (next.length) {
+      setAttachments((current) => [...current, ...next].slice(0, 3));
+      setToast(
+        next.length === 1
+          ? "Documento anexado à conversa"
+          : `${next.length} documentos anexados`,
+      );
+    }
+    if (failed.length) setError(failed.join(" "));
+    setAttachmentBusy(false);
+    if (chatUploadRef.current) chatUploadRef.current.value = "";
+  };
   const saveMessage = (message) => {
     const item = {
       id: uid(),
@@ -1893,13 +1930,29 @@ function UniversalRequest({ db, update, business, setToast }) {
     setToast("Resposta salva em Projetos e Histórico");
   };
   const submit = async () => {
-    if (!text.trim() || busy) return;
-    const prompt = text.trim(),
+    if ((!text.trim() && !attachments.length) || busy) return;
+    const prompt =
+        text.trim() ||
+        "Analise os documentos anexados e apresente um resumo, pontos importantes e próximas ações.",
+      attachmentContext = attachments.length
+        ? `\n\nDOCUMENTOS ANEXADOS PELO USUÁRIO:\n${attachments
+            .map(
+              (item, index) =>
+                `\n--- Documento ${index + 1}: ${item.name} ---\n${item.content}`,
+            )
+            .join("\n")}`
+        : "",
+      aiPrompt = `${prompt}${attachmentContext}`.slice(0, 48_000),
       conversationId = active?.id || uid(),
       userMessage = {
         id: uid(),
         role: "user",
         content: prompt,
+        attachments: attachments.map(({ name, size, kind }) => ({
+          name,
+          size,
+          kind,
+        })),
         createdAt: new Date().toISOString(),
       };
     const previousMessages = messages;
@@ -1933,6 +1986,7 @@ function UniversalRequest({ db, update, business, setToast }) {
       };
     });
     setText("");
+    setAttachments([]);
     localStorage.setItem("sf-draft", "");
     setBusy(true);
     setError("");
@@ -1944,7 +1998,7 @@ function UniversalRequest({ db, update, business, setToast }) {
         headers: { "content-type": "application/json", ...authHeaders() },
         signal: controller.signal,
         body: JSON.stringify({
-          prompt,
+          prompt: aiPrompt,
           specialist,
           customSpecialist:
             (db.customSpecialists || []).find((x) => x.name === specialist) ||
@@ -2125,7 +2179,18 @@ function UniversalRequest({ db, update, business, setToast }) {
                     />
                   </div>
                 ) : (
-                  <pre>{message.content}</pre>
+                  <>
+                    <pre>{message.content}</pre>
+                    {message.attachments?.length > 0 && (
+                      <div className="message-attachments">
+                        {message.attachments.map((item) => (
+                          <span key={item.name}>
+                            <FileText /> {item.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
                 {message.toolIds?.length > 0 && (
                   <div className="message-tools">
@@ -2170,6 +2235,35 @@ function UniversalRequest({ db, update, business, setToast }) {
         <div ref={endRef} />
       </div>
       <div className="chat-composer">
+        <input
+          ref={chatUploadRef}
+          className="visually-hidden"
+          type="file"
+          multiple
+          accept=".pdf,.docx,.txt,.md,.markdown,.csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,text/csv"
+          aria-label="Anexar documentos ao chat"
+          onChange={(event) => attachDocuments(event.target.files)}
+        />
+        {attachments.length > 0 && (
+          <div className="chat-attachments">
+            {attachments.map((item) => (
+              <span key={item.id}>
+                <FileText />
+                <b>{item.name}</b>
+                <button
+                  aria-label={`Remover ${item.name}`}
+                  onClick={() =>
+                    setAttachments((current) =>
+                      current.filter((attachment) => attachment.id !== item.id),
+                    )
+                  }
+                >
+                  <X />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         <textarea
           aria-label="Mensagem para a IA"
           value={text}
@@ -2231,7 +2325,19 @@ function UniversalRequest({ db, update, business, setToast }) {
             Assistente online
           </span>
           <span className="counter">{text.length}/8000</span>
-          <Button icon={Send} disabled={!text.trim() || busy} onClick={submit}>
+          <Button
+            variant="ghost"
+            icon={attachmentBusy ? RefreshCw : Upload}
+            disabled={attachmentBusy || attachments.length >= 3}
+            onClick={() => chatUploadRef.current?.click()}
+          >
+            {attachmentBusy ? "Lendo..." : "Anexar documento"}
+          </Button>
+          <Button
+            icon={Send}
+            disabled={(!text.trim() && !attachments.length) || busy}
+            onClick={submit}
+          >
             {busy ? "Pensando..." : "Enviar"}
           </Button>
         </div>
@@ -4101,16 +4207,113 @@ function Finance({ db, update, business, setToast }) {
   );
 }
 
+const DOCUMENT_UPLOAD_LIMIT = 10 * 1024 * 1024;
+const DOCUMENT_TEXT_LIMIT = 300_000;
+
+export function documentFileKind(file) {
+  const extension = String(file?.name || "")
+    .toLowerCase()
+    .split(".")
+    .pop();
+  if (extension === "pdf") return { id: "pdf", label: "PDF importado" };
+  if (extension === "docx") return { id: "docx", label: "Documento Word" };
+  if (["txt", "md", "markdown", "csv"].includes(extension))
+    return {
+      id: "text",
+      label: extension === "csv" ? "Planilha CSV" : "Documento importado",
+    };
+  return null;
+}
+
+export const documentTitleFromFilename = (name) =>
+  String(name || "Documento importado")
+    .replace(/\.[^.]+$/, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim() || "Documento importado";
+
+export async function extractDocumentText(file) {
+  const kind = documentFileKind(file);
+  if (!kind)
+    throw new Error("Formato não aceito. Use PDF, DOCX, TXT, Markdown ou CSV.");
+  if (!file?.size) throw new Error("O arquivo está vazio.");
+  if (file.size > DOCUMENT_UPLOAD_LIMIT)
+    throw new Error("O arquivo ultrapassa o limite de 10 MB.");
+  const arrayBuffer = await file.arrayBuffer();
+  let text = "";
+  if (kind.id === "text") {
+    text = new TextDecoder("utf-8").decode(arrayBuffer);
+  } else if (kind.id === "docx") {
+    const module = await import("mammoth");
+    const mammoth = module.default || module;
+    const result = await mammoth.extractRawText(
+      typeof globalThis.Buffer !== "undefined"
+        ? { buffer: globalThis.Buffer.from(arrayBuffer) }
+        : { arrayBuffer },
+    );
+    text = result.value || "";
+  } else {
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    if (typeof globalThis.Worker === "undefined") {
+      globalThis.pdfjsWorker =
+        await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
+    } else {
+      const worker =
+        await import("pdfjs-dist/legacy/build/pdf.worker.min.mjs?url");
+      pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+    }
+    const loadingTask = pdfjs.getDocument({
+      data: new Uint8Array(arrayBuffer),
+    });
+    const pdf = await loadingTask.promise;
+    const pages = [];
+    for (let index = 1; index <= pdf.numPages; index += 1) {
+      const page = await pdf.getPage(index);
+      const content = await page.getTextContent();
+      pages.push(
+        content.items
+          .map((item) => ("str" in item ? item.str : ""))
+          .join(" ")
+          .trim(),
+      );
+      page.cleanup();
+    }
+    if (typeof pdf.cleanup === "function") await pdf.cleanup();
+    if (typeof loadingTask.destroy === "function") await loadingTask.destroy();
+    text = pages.filter(Boolean).join("\n\n");
+  }
+  text = String(text)
+    .replace(/\u0000/g, "")
+    .trim();
+  if (!text)
+    throw new Error(
+      kind.id === "pdf"
+        ? "Este PDF não contém texto selecionável. PDFs digitalizados precisam de OCR."
+        : "Não foi possível encontrar texto nesse arquivo.",
+    );
+  return {
+    content: text.slice(0, DOCUMENT_TEXT_LIMIT),
+    truncated: text.length > DOCUMENT_TEXT_LIMIT,
+    kind,
+  };
+}
+
 function Documents({ db, update, business, setToast }) {
   const [modal, setModal] = useState(false),
     [editing, setEditing] = useState(null),
     [search, setSearch] = useState(""),
     [aiBusy, setAiBusy] = useState(false),
-    [exportBusy, setExportBusy] = useState("");
+    [exportBusy, setExportBusy] = useState(""),
+    [uploading, setUploading] = useState(false),
+    [uploadErrors, setUploadErrors] = useState([]),
+    [dragging, setDragging] = useState(false);
+  const uploadRef = useRef(null);
   const docs = db.documents.filter(
     (x) =>
       (!business || x.businessId === business.id) &&
-      x.title.toLowerCase().includes(search.toLowerCase()),
+      `${x.title} ${x.type || ""} ${x.originalFileName || ""} ${x.content || ""}`
+        .toLowerCase()
+        .includes(search.toLowerCase()),
   );
   const [form, setForm] = useState({
     title: "",
@@ -4121,6 +4324,54 @@ function Documents({ db, update, business, setToast }) {
     setForm(d || { title: "", type: "Proposta comercial", content: "" });
     setEditing(d?.id || null);
     setModal(true);
+  };
+  const importFiles = async (fileList) => {
+    const files = [...(fileList || [])].slice(0, 10);
+    if (!files.length || uploading) return;
+    setUploading(true);
+    setUploadErrors([]);
+    const imported = [];
+    const errors = [];
+    for (const file of files) {
+      try {
+        const extracted = await extractDocumentText(file);
+        imported.push({
+          id: uid(),
+          title: documentTitleFromFilename(file.name),
+          type: extracted.kind.label,
+          content: extracted.content,
+          originalFileName: file.name,
+          originalMimeType: file.type || "application/octet-stream",
+          originalSize: file.size,
+          importedAt: new Date().toISOString(),
+          importedContentTruncated: extracted.truncated,
+          businessId: business?.id || null,
+          updatedAt: new Date().toISOString(),
+          versions: [],
+        });
+      } catch (error) {
+        errors.push({ name: file.name, message: error.message });
+      }
+    }
+    if (imported.length)
+      update((d) => ({
+        ...d,
+        documents: [...imported, ...d.documents],
+      }));
+    setUploadErrors(errors);
+    if (imported.length && !errors.length)
+      setToast(
+        imported.length === 1
+          ? "Documento importado e pronto para editar"
+          : `${imported.length} documentos importados`,
+      );
+    else if (imported.length)
+      setToast(
+        `${imported.length} importados; ${errors.length} não puderam ser lidos`,
+      );
+    else setToast("Nenhum documento pôde ser importado");
+    setUploading(false);
+    if (uploadRef.current) uploadRef.current.value = "";
   };
   const save = (e) => {
     e.preventDefault();
@@ -4260,11 +4511,73 @@ function Documents({ db, update, business, setToast }) {
       title="Crie, edite e leve seu trabalho com você"
       text="Propostas, planos, relatórios e materiais ficam organizados por negócio."
       action={
-        <Button icon={Plus} onClick={() => open(null)}>
-          Novo documento
-        </Button>
+        <div className="page-actions">
+          <Button
+            variant="secondary"
+            icon={uploading ? RefreshCw : Upload}
+            disabled={uploading}
+            onClick={() => uploadRef.current?.click()}
+          >
+            {uploading ? "Importando..." : "Enviar arquivos"}
+          </Button>
+          <Button icon={Plus} onClick={() => open(null)}>
+            Novo documento
+          </Button>
+        </div>
       }
     >
+      <input
+        ref={uploadRef}
+        className="visually-hidden"
+        type="file"
+        multiple
+        accept=".pdf,.docx,.txt,.md,.markdown,.csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,text/csv"
+        aria-label="Selecionar documentos para enviar"
+        onChange={(event) => importFiles(event.target.files)}
+      />
+      <button
+        type="button"
+        className={`document-dropzone ${dragging ? "dragging" : ""}`}
+        onClick={() => uploadRef.current?.click()}
+        onDragEnter={(event) => {
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragOver={(event) => event.preventDefault()}
+        onDragLeave={(event) => {
+          event.preventDefault();
+          if (!event.currentTarget.contains(event.relatedTarget))
+            setDragging(false);
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          setDragging(false);
+          importFiles(event.dataTransfer.files);
+        }}
+        disabled={uploading}
+      >
+        <span className="document-upload-icon">
+          {uploading ? <RefreshCw /> : <Upload />}
+        </span>
+        <span>
+          <strong>
+            {uploading
+              ? "Lendo e organizando seus arquivos..."
+              : "Arraste documentos para cá ou clique para escolher"}
+          </strong>
+          <small>PDF, DOCX, TXT, Markdown ou CSV · até 10 MB por arquivo</small>
+        </span>
+      </button>
+      {uploadErrors.length > 0 && (
+        <div className="document-upload-errors" role="alert">
+          <strong>Alguns arquivos não foram importados:</strong>
+          {uploadErrors.map((error) => (
+            <span key={`${error.name}-${error.message}`}>
+              <b>{error.name}</b>: {error.message}
+            </span>
+          ))}
+        </div>
+      )}
       <div className="toolbar">
         <div className="search">
           <Search />
@@ -4279,7 +4592,7 @@ function Documents({ db, update, business, setToast }) {
         <Empty
           icon={FileText}
           title="Nenhum documento criado"
-          text="Crie um documento editável, refine com assistência inteligente e exporte em PDF, DOCX ou TXT."
+          text="Envie um arquivo ou crie um documento editável, refine com assistência inteligente e exporte em PDF, DOCX ou TXT."
           action="Criar documento"
           onAction={() => open(null)}
         />
@@ -4293,6 +4606,14 @@ function Documents({ db, update, business, setToast }) {
               <span className="tag">{d.type}</span>
               <h3>{d.title}</h3>
               <p>{d.content.slice(0, 100) || "Documento vazio"}</p>
+              {d.originalFileName && (
+                <small className="document-source">
+                  <Upload /> {d.originalFileName} ·{" "}
+                  {d.originalSize < 1024 * 1024
+                    ? `${Math.max(1, Math.round(d.originalSize / 1024))} KB`
+                    : `${(d.originalSize / (1024 * 1024)).toFixed(1)} MB`}
+                </small>
+              )}
               <small>
                 Atualizado {new Date(d.updatedAt).toLocaleString("pt-BR")}
               </small>
@@ -4367,12 +4688,27 @@ function Documents({ db, update, business, setToast }) {
                     "Apresentação",
                     "Briefing",
                     "Plano de ação",
+                    "Documento Word",
+                    "PDF importado",
+                    "Documento importado",
+                    "Planilha CSV",
                   ].map((x) => (
                     <option key={x}>{x}</option>
                   ))}
                 </select>
               </Field>
             </div>
+            {form.originalFileName && (
+              <div className="notice document-origin-notice">
+                <Upload />
+                <span>
+                  Conteúdo importado de <strong>{form.originalFileName}</strong>
+                  {form.importedContentTruncated
+                    ? ". O texto era muito extenso e foi limitado para manter a sincronização segura."
+                    : ". Você pode editar, aprimorar e exportar normalmente."}
+                </span>
+              </div>
+            )}
             <Field label="Conteúdo">
               <textarea
                 className="editor"

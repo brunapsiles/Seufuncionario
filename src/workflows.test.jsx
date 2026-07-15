@@ -9,7 +9,14 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import App, { makeSite, makeSitePages, mergeSiteBrief } from "./App";
+import App, {
+  documentFileKind,
+  documentTitleFromFilename,
+  extractDocumentText,
+  makeSite,
+  makeSitePages,
+  mergeSiteBrief,
+} from "./App";
 
 const user = {
   id: "user-flow",
@@ -232,6 +239,54 @@ describe("fluxos de trabalho", () => {
       screen.getByText("Reunião realizada; enviar proposta na sexta."),
     ).toBeInTheDocument();
   });
+
+  it("importa um arquivo de texto para a biblioteca de documentos", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Documentos" }));
+    const bytes = new TextEncoder().encode(
+      "Proposta comercial importada com escopo e prazo.",
+    );
+    const file = {
+      name: "proposta_cliente.txt",
+      type: "text/plain",
+      size: bytes.byteLength,
+      arrayBuffer: async () => bytes.buffer,
+    };
+    fireEvent.change(
+      screen.getByLabelText("Selecionar documentos para enviar"),
+      { target: { files: [file] } },
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText("proposta cliente")).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByText(/Proposta comercial importada com escopo/),
+    ).toBeInTheDocument();
+  });
+
+  it("anexa um documento diretamente à conversa", async () => {
+    render(<App />);
+    const bytes = new TextEncoder().encode(
+      "Dados do contrato que precisam ser analisados.",
+    );
+    const file = {
+      name: "contrato_cliente.txt",
+      type: "text/plain",
+      size: bytes.byteLength,
+      arrayBuffer: async () => bytes.buffer,
+    };
+    fireEvent.change(screen.getByLabelText("Anexar documentos ao chat"), {
+      target: { files: [file] },
+    });
+
+    await waitFor(() =>
+      expect(screen.getByText("contrato_cliente.txt")).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByRole("button", { name: "Remover contrato_cliente.txt" }),
+    ).toBeInTheDocument();
+  });
 });
 
 describe("construtor de sites", () => {
@@ -272,5 +327,67 @@ describe("construtor de sites", () => {
     expect(edited.headline).toBe("Sua marca, mais viva");
     expect(edited.description).toBe(brief.description);
     expect(edited.services).toBe(brief.services);
+  });
+});
+
+describe("importação de documentos", () => {
+  it("identifica formatos e extrai texto sem armazenar o binário", async () => {
+    const bytes = new TextEncoder().encode("Conteúdo útil do documento.");
+    const file = {
+      name: "plano_de_acao.md",
+      type: "text/markdown",
+      size: bytes.byteLength,
+      arrayBuffer: async () => bytes.buffer,
+    };
+    expect(documentFileKind(file)).toEqual({
+      id: "text",
+      label: "Documento importado",
+    });
+    expect(documentTitleFromFilename(file.name)).toBe("plano de acao");
+    await expect(extractDocumentText(file)).resolves.toMatchObject({
+      content: "Conteúdo útil do documento.",
+      truncated: false,
+    });
+  });
+
+  it("extrai conteúdo de um arquivo DOCX real", async () => {
+    const { Document, Packer, Paragraph } = await import("docx");
+    const doc = new Document({
+      sections: [
+        {
+          children: [new Paragraph("Contrato de prestação de serviços")],
+        },
+      ],
+    });
+    const buffer = await Packer.toBuffer(doc);
+    const file = {
+      name: "contrato.docx",
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      size: buffer.byteLength,
+      arrayBuffer: async () =>
+        buffer.buffer.slice(
+          buffer.byteOffset,
+          buffer.byteOffset + buffer.byteLength,
+        ),
+    };
+    await expect(extractDocumentText(file)).resolves.toMatchObject({
+      content: "Contrato de prestação de serviços",
+    });
+  });
+
+  it("extrai texto selecionável de um arquivo PDF real", async () => {
+    const { jsPDF } = await import("jspdf");
+    const pdf = new jsPDF();
+    pdf.text("Relatorio financeiro mensal", 20, 20);
+    const arrayBuffer = pdf.output("arraybuffer");
+    const file = {
+      name: "relatorio.pdf",
+      type: "application/pdf",
+      size: arrayBuffer.byteLength,
+      arrayBuffer: async () => arrayBuffer,
+    };
+    await expect(extractDocumentText(file)).resolves.toMatchObject({
+      content: expect.stringContaining("Relatorio financeiro mensal"),
+    });
   });
 });
