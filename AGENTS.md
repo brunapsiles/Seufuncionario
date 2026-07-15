@@ -22,6 +22,13 @@ npx wrangler deploy                                   # publica (exige CLOUDFLAR
 npx wrangler d1 migrations apply seu-funcionario-db --remote   # aplica migrações novas
 ```
 
+## Deploy automático
+
+O Cloudflare Workers Builds está conectado ao repositório `brunapsiles/Seufuncionario`.
+Todo push na branch `main` executa `npm ci && npm run build` e, em seguida,
+`npx wrangler deploy`. O diretório raiz configurado é `/`; builds de branches que
+não sejam a `main` permanecem desativados.
+
 ## Segredos (JÁ configurados no cofre do Worker — nunca commitar valores)
 
 `GEMINI_API_KEY`, `XAI_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_API_KEY`, `BREVO_API_KEY`, `MAIL_SENDER`, `MAIL_SENDER_NAME`
