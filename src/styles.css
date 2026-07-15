@@ -196,3 +196,10 @@ h1,h2,h3,h4,.logo{letter-spacing:-.02em}
 .route-row input{flex:1;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 13px}
 .route-mode{display:flex;align-items:center;gap:10px;margin:12px 0 4px;font-size:14px;color:var(--muted)}
 .route-mode select{border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:8px 11px}
+
+/* ===== v9 · mais ferramentas inteligentes ===== */
+.smart-icon.g2{background:linear-gradient(135deg,#17a673,#0ea5e9)}
+.smart-icon.g3{background:linear-gradient(135deg,#ed3e91,#f59e0b)}
+.smart-icon.g4{background:linear-gradient(135deg,#6d38e0,#2785ff)}
+.smart-icon.g5{background:linear-gradient(135deg,#0ea5e9,#6d38e0)}
+.translate-body{padding:14px;max-height:340px;overflow:auto}
