@@ -5324,3 +5324,23 @@ aside nav:hover::-webkit-scrollbar-thumb {
     width: 100%;
   }
 }
+
+
+.side-buttons{display:flex;gap:6px;flex:none}
+.collapsed .side-buttons{flex-direction:column}
+.desktop-close{display:grid;place-items:center;width:34px;height:34px;border:1px solid var(--line);background:var(--surface2);border-radius:10px;color:var(--muted)}
+.desktop-close:hover{color:var(--red);border-color:var(--red)}
+.desktop-open{display:grid}
+.sb-resize{position:absolute;top:0;right:-3px;width:7px;height:100%;cursor:col-resize;z-index:6;border-radius:4px}
+.sb-resize:hover{background:color-mix(in srgb,var(--primary) 30%,transparent)}
+.collapsed .sb-resize{display:none}
+aside nav{scroll-behavior:smooth;padding-bottom:26px;overscroll-behavior:contain}
+aside nav::-webkit-scrollbar-thumb{background:transparent}
+aside nav:hover::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--muted) 32%,transparent)}
+@media(max-width:760px){.desktop-close,.desktop-open,.sb-resize,.side-buttons .desktop-collapse{display:none}}
+
+/* ===== v18 · ferramentas conversacionais + histórico com ações ===== */
+.tool-followup{display:flex;gap:9px;padding:12px 14px;border-top:1px solid var(--line);background:var(--surface)}
+.tool-followup input{flex:1;border:1px solid var(--line);background:var(--surface2);border-radius:10px;padding:10px 13px}
+.tool-save-row{display:flex;gap:9px;padding:0 14px 13px;background:var(--surface);flex-wrap:wrap}
+.history-extra{flex-wrap:wrap;gap:8px;justify-content:flex-start;border-top:1px solid var(--line);padding-top:14px;margin-top:2px}

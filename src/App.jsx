@@ -2076,7 +2076,7 @@ function UniversalRequest({ db, update, business, setToast }) {
         <ToolIcon />
         <span>
           <strong>{tool.name}</strong>
-          <small>{tool.badge}</small>
+          <small>Redirecionamento · {tool.badge}</small>
         </span>
         <ExternalLink />
       </a>
@@ -3636,9 +3636,18 @@ function Tasks({ db, update, business, setToast, go }) {
                   onChange={(e) => setForm({ ...form, area: e.target.value })}
                 >
                   <option>Operação</option>
+                  <option>Estratégia</option>
                   <option>Vendas</option>
                   <option>Marketing</option>
+                  <option>Atendimento</option>
                   <option>Financeiro</option>
+                  <option>Jurídico</option>
+                  <option>RH / Pessoas</option>
+                  <option>TI / Tecnologia</option>
+                  <option>Logística</option>
+                  <option>Compras</option>
+                  <option>Administrativo</option>
+                  <option>Outra</option>
                 </select>
               </Field>
               <Field label="Responsável">
@@ -3706,7 +3715,7 @@ function Tasks({ db, update, business, setToast, go }) {
                 Cancelar
               </Button>
               <Button type="submit" icon={Save}>
-                {editing ? "Salvar alterações" : "Criar tarefa"}
+                Criar tarefa
               </Button>
             </div>
           </form>
@@ -6277,6 +6286,7 @@ function EmailComposer({ onClose, setToast }) {
 function TranslatorModal({ onClose, setToast }) {
   const [text, setText] = useState(""),
     [lang, setLang] = useState("Inglês"),
+    [mode, setMode] = useState("traduzir"),
     [out, setOut] = useState(""),
     [busy, setBusy] = useState(false),
     [err, setErr] = useState("");
@@ -6304,7 +6314,10 @@ function TranslatorModal({ onClose, setToast }) {
         method: "POST",
         headers: { "content-type": "application/json", ...authHeaders() },
         body: JSON.stringify({
-          prompt: `Traduza o texto abaixo para ${lang}. Responda SOMENTE com a tradução, mantendo o tom e a formatação, sem aspas e sem comentários.\n\n${text.trim()}`,
+          prompt:
+            mode === "traduzir"
+              ? `Detecte automaticamente o idioma do texto abaixo e traduza-o para ${lang}. Responda SOMENTE com a tradução, mantendo o tom e a formatação, sem aspas e sem comentários.\n\n${text.trim()}`
+              : `A mensagem abaixo foi recebida de um cliente ou parceiro (detecte o idioma automaticamente). 1) Traduza a mensagem para português. 2) Sugira uma resposta profissional e cordial em ${lang}, pronta para enviar. 3) Mostre a tradução da resposta em português para conferência. Use títulos curtos para as três partes. Não invente informações que não estejam na mensagem.\n\n${text.trim()}`,
           specialist: "Redator",
         }),
       });
@@ -6328,7 +6341,13 @@ function TranslatorModal({ onClose, setToast }) {
           </span>
         </div>
         <div className="form-grid">
-          <Field label="Texto para traduzir">
+          <Field label="O que você precisa">
+            <select value={mode} onChange={(e) => setMode(e.target.value)}>
+              <option value="traduzir">Traduzir um texto (detecta o idioma sozinho)</option>
+              <option value="responder">Recebi uma mensagem — traduzir e sugerir resposta</option>
+            </select>
+          </Field>
+          <Field label={mode === "traduzir" ? "Texto para traduzir" : "Mensagem recebida"}>
             <textarea
               autoFocus
               value={text}
@@ -6447,7 +6466,7 @@ function RouterModal({ onClose, setToast }) {
           <Route />
           <span>
             Monte a rota com várias paradas e abra direto no Google Maps para
-            navegar. Gratuito, sem cadastro.
+            navegar. Gratuito, sem cadastro. Tempo de trajeto, trânsito e pedágios aparecem no Maps ao abrir a rota.
           </span>
         </div>
         <div className="route-list">
@@ -6904,18 +6923,17 @@ const aiTools = {
   },
 };
 
-function AIToolModal({ config, onClose, setToast, update, business }) {
+function AIToolModal({ config, db, update, onClose, setToast, business }) {
   const [vals, setVals] = useState(
     Object.fromEntries(
-      config.fields.map((f) => [
-        f.key,
-        f.type === "select" ? f.options[0] : "",
-      ]),
+      config.fields.map((f) => [f.key, f.type === "select" ? f.options[0] : ""]),
     ),
   );
   const [out, setOut] = useState(""),
     [busy, setBusy] = useState(false),
     [err, setErr] = useState("");
+  const [chat, setChat] = useState([]);
+  const [ask, setAsk] = useState("");
   const set = (k, v) => setVals((s) => ({ ...s, [k]: v }));
   const saveOutput = (destination) => {
     const now = new Date().toISOString();
@@ -6987,6 +7005,16 @@ function AIToolModal({ config, onClose, setToast, update, business }) {
     );
   };
   const Icon = config.icon;
+  const call = async (prompt, messages) => {
+    const r = await fetch("/api/ai", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ prompt, specialist: config.specialist, messages }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "Não foi possível gerar agora.");
+    return (d.content || "").trim();
+  };
   const run = async () => {
     const missing = config.fields.filter(
       (f) => f.required && !String(vals[f.key]).trim(),
@@ -6997,24 +7025,53 @@ function AIToolModal({ config, onClose, setToast, update, business }) {
     }
     setBusy(true);
     setErr("");
-    setOut("");
     try {
-      const r = await fetch("/api/ai", {
-        method: "POST",
-        headers: { "content-type": "application/json", ...authHeaders() },
-        body: JSON.stringify({
-          prompt: config.build(vals),
-          specialist: config.specialist,
-        }),
-      });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || "Não foi possível gerar agora.");
-      setOut((d.content || "").trim());
+      const prompt = config.build(vals);
+      const content = await call(prompt, []);
+      setOut(content);
+      setChat([{ role: "user", content: prompt }, { role: "assistant", content }]);
     } catch (e) {
       setErr(e.message);
     } finally {
       setBusy(false);
     }
+  };
+  const refine = async () => {
+    const q = ask.trim();
+    if (!q || busy) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const messages = [...chat, { role: "user", content: q }].slice(-10);
+      const content = await call(q, messages);
+      setOut(content);
+      setChat((c) => [...c, { role: "user", content: q }, { role: "assistant", content }]);
+      setAsk("");
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const saveDoc = () => {
+    update((d) => ({
+      ...d,
+      documents: [
+        { id: uid(), title: `${config.outTitle} — ${new Date().toLocaleDateString("pt-BR")}`, type: config.outTitle, content: out, businessId: d.selectedBusinessId || null, updatedAt: new Date().toISOString(), versions: [] },
+        ...d.documents,
+      ],
+    }));
+    setToast("Salvo em Documentos");
+  };
+  const saveTask = () => {
+    update((d) => ({
+      ...d,
+      tasks: [
+        { id: uid(), title: `${config.outTitle} — aplicar`, description: out.slice(0, 400), priority: "Média", status: "A fazer", due: "", area: config.specialist, businessId: d.selectedBusinessId || null },
+        ...d.tasks,
+      ],
+    }));
+    setToast("Tarefa criada a partir do resultado");
   };
   return (
     <Modal title={config.title} wide onClose={onClose}>
@@ -7027,26 +7084,15 @@ function AIToolModal({ config, onClose, setToast, update, business }) {
           {config.fields.map((f) => (
             <Field key={f.key} label={f.label} hint={f.hint}>
               {f.type === "textarea" ? (
-                <textarea
-                  value={vals[f.key]}
-                  onChange={(e) => set(f.key, e.target.value)}
-                  placeholder={f.placeholder}
-                />
+                <textarea value={vals[f.key]} onChange={(e) => set(f.key, e.target.value)} placeholder={f.placeholder} />
               ) : f.type === "select" ? (
-                <select
-                  value={vals[f.key]}
-                  onChange={(e) => set(f.key, e.target.value)}
-                >
+                <select value={vals[f.key]} onChange={(e) => set(f.key, e.target.value)}>
                   {f.options.map((o) => (
                     <option key={o}>{o}</option>
                   ))}
                 </select>
               ) : (
-                <input
-                  value={vals[f.key]}
-                  onChange={(e) => set(f.key, e.target.value)}
-                  placeholder={f.placeholder}
-                />
+                <input value={vals[f.key]} onChange={(e) => set(f.key, e.target.value)} placeholder={f.placeholder} />
               )}
             </Field>
           ))}
@@ -7061,12 +7107,8 @@ function AIToolModal({ config, onClose, setToast, update, business }) {
           <Button variant="ghost" onClick={onClose}>
             Fechar
           </Button>
-          <Button
-            icon={busy ? RefreshCw : Sparkles}
-            disabled={busy}
-            onClick={run}
-          >
-            {busy ? "Gerando..." : config.cta}
+          <Button icon={busy && !out ? RefreshCw : Sparkles} disabled={busy} onClick={run}>
+            {busy && !out ? "Gerando..." : out ? "Gerar de novo" : config.cta}
           </Button>
         </div>
         {out && (
@@ -7086,6 +7128,17 @@ function AIToolModal({ config, onClose, setToast, update, business }) {
             <div className="translate-body">
               <Markdown text={out} />
             </div>
+            <div className="tool-followup">
+              <input
+                value={ask}
+                onChange={(e) => setAsk(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); refine(); } }}
+                placeholder="Tire uma dúvida ou peça um ajuste (ex.: deixe mais curto, mude o tom...)"
+              />
+              <Button icon={busy ? RefreshCw : Send} disabled={busy || !ask.trim()} onClick={refine}>
+                {busy ? "..." : "Enviar"}
+              </Button>
+            </div>
             <div className="result-destinations">
               <Button
                 variant="secondary"
@@ -7099,7 +7152,7 @@ function AIToolModal({ config, onClose, setToast, update, business }) {
                 icon={ListTodo}
                 onClick={() => saveOutput("task")}
               >
-                {editing ? "Salvar alterações" : "Criar tarefa"}
+                Criar tarefa
               </Button>
               <Button icon={Save} onClick={() => saveOutput("project")}>
                 Salvar projeto
@@ -7335,7 +7388,7 @@ function ToolsHub({ db, update, business, setToast }) {
                 <span className="tag">{tool.category}</span>
                 <h3>{tool.name}</h3>
                 <p>{tool.description}</p>
-                <small>{tool.badge}</small>
+                <small>Redirecionamento · {tool.badge}</small>
               </div>
               <a href={tool.url} target="_blank" rel="noreferrer">
                 Abrir ferramenta <ExternalLink />
@@ -7397,6 +7450,7 @@ function ToolsHub({ db, update, business, setToast }) {
       {aiTools[smart] && (
         <AIToolModal
           config={aiTools[smart]}
+          db={db}
           onClose={() => setSmart("")}
           setToast={setToast}
           update={update}
@@ -7983,6 +8037,38 @@ function HistoryPage({ db, update, business, setToast, go }) {
       {open &&
         (() => {
           const x = db.history.find((i) => i.id === open);
+          const rename = () => {
+            const t = prompt("Novo nome para este item:", x.title);
+            if (!t || !t.trim()) return;
+            update((d) => ({ ...d, history: d.history.map((i) => (i.id === x.id ? { ...i, title: t.trim() } : i)) }));
+            setToast("Renomeado");
+          };
+          const duplicate = () => {
+            update((d) => ({ ...d, history: [{ ...x, id: uid(), title: `${x.title} (cópia)`, createdAt: new Date().toISOString() }, ...d.history] }));
+            setToast("Duplicado");
+          };
+          const removeItem = () => {
+            if (!confirm("Excluir este item do histórico?")) return;
+            setOpen(null);
+            update((d) => ({ ...d, history: d.history.filter((i) => i.id !== x.id) }));
+            setToast("Excluído");
+          };
+          const continueChat = () => {
+            const cid = uid();
+            update((d) => ({
+              ...d,
+              selectedConversationId: cid,
+              conversations: [
+                { id: cid, title: x.title.slice(0, 55), businessId: x.businessId, specialist: x.specialist, createdAt: new Date().toISOString(), messages: [
+                  { id: uid(), role: "user", content: x.request || x.title, createdAt: x.createdAt },
+                  { id: uid(), role: "assistant", content: x.result, provider: x.provider, model: x.model, createdAt: new Date().toISOString() },
+                ] },
+                ...(d.conversations || []),
+              ],
+            }));
+            setOpen(null);
+            setToast("Conversa retomada — abra o Início para continuar de onde parou");
+          };
           return (
             <Modal wide title={x.title} onClose={() => setOpen(null)}>
               <div className="result">
@@ -8091,6 +8177,20 @@ function HistoryPage({ db, update, business, setToast, go }) {
                       Excluir
                     </Button>
                   </div>
+                </div>
+                <div className="modal-actions history-extra">
+                  <Button variant="secondary" icon={MessageSquareText} onClick={continueChat}>
+                    Continuar no chat
+                  </Button>
+                  <Button variant="ghost" icon={Edit3} onClick={rename}>
+                    Renomear
+                  </Button>
+                  <Button variant="ghost" icon={Copy} onClick={duplicate}>
+                    Duplicar
+                  </Button>
+                  <Button variant="ghost" icon={Trash2} onClick={removeItem}>
+                    Excluir
+                  </Button>
                 </div>
               </div>
             </Modal>
