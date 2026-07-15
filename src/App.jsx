@@ -3681,6 +3681,7 @@ function Sites({ db, update, business, setToast }) {
         updateSite(current.id, {
           published: false,
           serverPublished: false,
+          publicUrl: null,
           publishedAt: null,
         });
         setToast("Site despublicado");
