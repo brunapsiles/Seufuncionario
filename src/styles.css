@@ -3720,6 +3720,61 @@ aside nav button span,
   color: var(--muted);
   font-size: 13px;
 }
+.ai-network-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin-bottom: 13px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.ai-network-summary strong {
+  color: var(--text);
+  font-size: 1.7rem;
+  line-height: 1;
+}
+.provider-grid {
+  display: grid;
+  gap: 8px;
+}
+.provider-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 90%, var(--primary) 3%);
+  font-size: 13px;
+}
+.provider-row > span:first-child {
+  min-width: 0;
+  font-weight: 650;
+}
+.provider-row small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+}
+.provider-status {
+  flex: none;
+  padding: 4px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 750;
+}
+.provider-status.connected {
+  color: #08783e;
+  background: color-mix(in srgb, #22c55e 16%, transparent);
+}
+.provider-status.pending {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--muted) 10%, transparent);
+}
 .settings-actions {
   margin-top: 16px;
   display: flex;

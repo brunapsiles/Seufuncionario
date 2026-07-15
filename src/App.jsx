@@ -5290,6 +5290,46 @@ function CreativeStudio({ db, update, business, setToast }) {
   const items = (db.media || []).filter(
     (x) => !business || x.businessId === business.id,
   );
+  useEffect(() => {
+    let active = true;
+    const savedVideos = items.filter(
+      (item) => item.type === "video" && item.requestId,
+    );
+    if (!savedVideos.length) return () => {};
+    Promise.all(
+      savedVideos.map(async (item) => {
+        const response = await fetch(
+          `/api/media?request_id=${encodeURIComponent(item.requestId)}`,
+          { headers: authHeaders() },
+        );
+        const status = await response.json().catch(() => ({}));
+        return response.ok ? { id: item.id, ...status } : null;
+      }),
+    )
+      .then((statuses) => {
+        if (!active) return;
+        const available = statuses.filter(Boolean);
+        if (!available.length) return;
+        update((current) => ({
+          ...current,
+          media: (current.media || []).map((item) => {
+            const status = available.find((entry) => entry.id === item.id);
+            if (!status) return item;
+            return {
+              ...item,
+              status: status.status || item.status,
+              url: status.url || item.url,
+              duration: status.duration || item.duration,
+            };
+          }),
+        }));
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+    // Consulta novamente sempre que o usuário volta ao estúdio ou troca de negócio.
+  }, [business?.id]);
   const generate = async () => {
     if (prompt.trim().length < 5 || busy || (type === "video" && !videoEnabled))
       return;
@@ -6465,6 +6505,20 @@ function AccountSettings({ db, update, setToast }) {
   const [name, setName] = useState(db.user.name);
   const [busy, setBusy] = useState(false),
     [err, setErr] = useState("");
+  const [aiProviders, setAiProviders] = useState([]);
+  useEffect(() => {
+    let active = true;
+    fetch("/api/config")
+      .then((response) => response.json())
+      .then((config) => {
+        if (active && Array.isArray(config.aiProviders))
+          setAiProviders(config.aiProviders);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
   const theme = db.preferences.theme;
   const setTheme = (t) =>
     update((d) => ({ ...d, preferences: { ...d.preferences, theme: t } }));
@@ -6505,6 +6559,7 @@ function AccountSettings({ db, update, setToast }) {
     setToast("Dados exportados");
   };
   const plugged = (db.pluggedTools || []).length;
+  const connectedAi = aiProviders.filter((provider) => provider.configured);
   return (
     <PageTitle
       eyebrow="CONFIGURAÇÕES"
@@ -6580,6 +6635,46 @@ function AccountSettings({ db, update, setToast }) {
               {theme === "dark" && <CheckCircle2 className="theme-check" />}
             </button>
           </div>
+        </section>
+        <section className="settings-card">
+          <div className="settings-card-head">
+            <span className="settings-icon">
+              <Sparkles />
+            </span>
+            <div>
+              <h2>Rede de IA gratuita</h2>
+              <p>Rotas independentes que mantêm o chat disponível.</p>
+            </div>
+          </div>
+          <div className="ai-network-summary">
+            <strong>{connectedAi.length}</strong>
+            <span>de {aiProviders.length || 8} provedores conectados</span>
+          </div>
+          <div className="provider-grid" aria-label="Provedores de IA">
+            {aiProviders.length ? (
+              aiProviders.map((provider) => (
+                <div className="provider-row" key={provider.id}>
+                  <span>
+                    {provider.name}
+                    {provider.limited && (
+                      <small>crédito gratuito muito limitado</small>
+                    )}
+                  </span>
+                  <span
+                    className={`provider-status ${provider.configured ? "connected" : "pending"}`}
+                  >
+                    {provider.configured ? "Conectado" : "Aguardando chave"}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <p className="settings-note">Consultando a rede de IA...</p>
+            )}
+          </div>
+          <p className="settings-note">
+            <ShieldCheck /> O Grok não entra na fila gratuita e só pode ser
+            acionado com confirmação explícita de uso pago.
+          </p>
         </section>
         <section className="settings-card">
           <div className="settings-card-head">

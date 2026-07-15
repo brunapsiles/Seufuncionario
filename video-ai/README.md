@@ -2,8 +2,8 @@
 
 Motor próprio de vídeo generativo baseado no modelo aberto Wan 2.2 TI2V 5B.
 Não usa créditos de uma API de IA, não depende do computador do usuário e não
-impõe franquia de gerações. O único custo é a infraestrutura GPU que executa o
-modelo.
+impõe franquia comercial de gerações. A capacidade real depende da GPU e do
+espaço em disco contratados para executar o modelo.
 
 ## Infraestrutura mínima
 
@@ -32,10 +32,13 @@ no volume persistente e não precisa ser baixado novamente.
 - `GET /health` — saúde, GPU e tamanho da fila.
 - `POST /v1/videos` — cria um trabalho e devolve `requestId` imediatamente.
 - `GET /v1/videos/{requestId}` — consulta progresso e URL final.
+- `DELETE /v1/videos/{requestId}` — cancela um trabalho que ainda está na fila.
 - `GET /v1/videos/{requestId}/content?sig=...` — entrega o MP4 assinado.
 
 As rotas de criação e consulta exigem `Authorization: Bearer <API_TOKEN>`.
-Os arquivos finais usam URLs assinadas e identificadores aleatórios de 128 bits.
+Os arquivos finais usam URLs assinadas com expiração e identificadores
+aleatórios de 128 bits. Trabalhos pendentes sobrevivem a reinicializações. Os
+resultados antigos são removidos automaticamente conforme `OUTPUT_TTL_HOURS`.
 
 ## Política de custo
 

@@ -1176,6 +1176,90 @@ async function askXai(env, prompt, system) {
   return { content, provider: "xAI", model, usage: data.usage || null };
 }
 
+function compatibleContent(data) {
+  const content = data?.choices?.[0]?.message?.content;
+  if (typeof content === "string") return content.trim();
+  if (Array.isArray(content))
+    return content
+      .map((part) => (typeof part === "string" ? part : part?.text || ""))
+      .join("")
+      .trim();
+  return "";
+}
+
+export async function askOpenAICompatible({
+  endpoint,
+  token,
+  model,
+  provider,
+  prompt,
+  system,
+  headers = {},
+  timeout = 7000,
+}) {
+  if (!token) throw new Error(`${provider} não configurado`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+        ...headers,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: prompt },
+        ],
+        max_tokens: 1800,
+        stream: false,
+      }),
+    });
+  } catch (error) {
+    if (error?.name === "AbortError")
+      throw new Error(`${provider} demorou mais de ${timeout / 1000}s`);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!response.ok)
+    throw new Error(`${provider} indisponível (${response.status})`);
+  const data = await response.json();
+  const content = compatibleContent(data);
+  if (!content) throw new Error(`${provider} retornou uma resposta vazia`);
+  return {
+    content,
+    provider,
+    model: data.model || model,
+    usage: data.usage || null,
+  };
+}
+
+const freeAiCatalog = [
+  { id: "google", name: "Google Gemini/Gemma", key: "GEMINI_API_KEY" },
+  { id: "cloudflare", name: "Cloudflare Workers AI", binding: "AI" },
+  { id: "groq", name: "Groq Free", key: "GROQ_API_KEY" },
+  { id: "cerebras", name: "Cerebras Free", key: "CEREBRAS_API_KEY" },
+  { id: "mistral", name: "Mistral Free", key: "MISTRAL_API_KEY" },
+  { id: "openrouter", name: "OpenRouter Free", key: "OPENROUTER_API_KEY" },
+  { id: "github", name: "GitHub Models Free", key: "GITHUB_MODELS_TOKEN" },
+  { id: "huggingface", name: "Hugging Face", key: "HF_TOKEN", limited: true },
+];
+
+export function configuredAiProviders(env) {
+  return freeAiCatalog.map((item) => ({
+    id: item.id,
+    name: item.name,
+    configured: item.binding ? !!env[item.binding] : !!env[item.key],
+    limited: !!item.limited,
+  }));
+}
+
 const cloudflareModels = {
   "@cf/openai/gpt-oss-120b": "GPT-OSS 120B",
   "@cf/meta/llama-3.3-70b-instruct-fp8-fast": "Llama 3.3 70B",
@@ -1322,54 +1406,170 @@ async function handleAi(request, env) {
       "Captação",
       "Riscos",
     ].includes(specialist);
+  const compatible = (config) => () =>
+    askOpenAICompatible({
+      ...config,
+      prompt: contextualPrompt,
+      system,
+    });
   const providerMap = {
-    "gemini-lite": () =>
-      askGemini(env, contextualPrompt, system, "gemini-flash-lite-latest"),
-    "gemini-flash": () =>
-      askGemini(env, contextualPrompt, system, "gemini-flash-latest"),
-    gemma: () => askGemini(env, contextualPrompt, system, "gemma-4-26b-a4b-it"),
-    "gpt-oss": () =>
-      askCloudflare(env, contextualPrompt, system, "@cf/openai/gpt-oss-120b"),
-    llama70: () =>
-      askCloudflare(
-        env,
-        contextualPrompt,
-        system,
-        "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-      ),
-    glm: () =>
-      askCloudflare(env, contextualPrompt, system, "@cf/zai-org/glm-4.7-flash"),
-    llama: () =>
-      askCloudflare(
-        env,
-        contextualPrompt,
-        system,
-        "@cf/meta/llama-3.2-3b-instruct",
-      ),
-    xai: () => askXai(env, contextualPrompt, system),
+    "gemini-lite": {
+      enabled: !!env.GEMINI_API_KEY,
+      run: () =>
+        askGemini(env, contextualPrompt, system, "gemini-flash-lite-latest"),
+    },
+    "gemini-flash": {
+      enabled: !!env.GEMINI_API_KEY,
+      run: () =>
+        askGemini(env, contextualPrompt, system, "gemini-flash-latest"),
+    },
+    gemma: {
+      enabled: !!env.GEMINI_API_KEY,
+      run: () =>
+        askGemini(env, contextualPrompt, system, "gemma-4-26b-a4b-it"),
+    },
+    groq: {
+      enabled: !!env.GROQ_API_KEY,
+      run: compatible({
+        endpoint: "https://api.groq.com/openai/v1/chat/completions",
+        token: env.GROQ_API_KEY,
+        model: env.GROQ_MODEL || "openai/gpt-oss-120b",
+        provider: "Groq Free",
+      }),
+    },
+    cerebras: {
+      enabled: !!env.CEREBRAS_API_KEY,
+      run: compatible({
+        endpoint: "https://api.cerebras.ai/v1/chat/completions",
+        token: env.CEREBRAS_API_KEY,
+        model: env.CEREBRAS_MODEL || "gpt-oss-120b",
+        provider: "Cerebras Free",
+      }),
+    },
+    mistral: {
+      enabled: !!env.MISTRAL_API_KEY,
+      run: compatible({
+        endpoint: "https://api.mistral.ai/v1/chat/completions",
+        token: env.MISTRAL_API_KEY,
+        model: env.MISTRAL_MODEL || "mistral-small-latest",
+        provider: "Mistral Free",
+      }),
+    },
+    openrouter: {
+      enabled: !!env.OPENROUTER_API_KEY,
+      run: compatible({
+        endpoint: "https://openrouter.ai/api/v1/chat/completions",
+        token: env.OPENROUTER_API_KEY,
+        model: "openrouter/free",
+        provider: "OpenRouter Free",
+        headers: {
+          "HTTP-Referer": "https://seufuncionario-expo.brunapsiles.workers.dev",
+          "X-Title": "Seu Funcionário",
+        },
+      }),
+    },
+    github: {
+      enabled: !!env.GITHUB_MODELS_TOKEN,
+      run: compatible({
+        endpoint: "https://models.github.ai/inference/chat/completions",
+        token: env.GITHUB_MODELS_TOKEN,
+        model: env.GITHUB_MODELS_MODEL || "openai/gpt-4.1",
+        provider: "GitHub Models Free",
+        headers: {
+          accept: "application/vnd.github+json",
+          "x-github-api-version": "2026-03-10",
+        },
+      }),
+    },
+    huggingface: {
+      enabled: !!env.HF_TOKEN,
+      run: compatible({
+        endpoint: "https://router.huggingface.co/v1/chat/completions",
+        token: env.HF_TOKEN,
+        model: env.HF_MODEL || "openai/gpt-oss-120b:cheapest",
+        provider: "Hugging Face",
+      }),
+    },
+    "gpt-oss": {
+      enabled: !!env.AI,
+      run: () =>
+        askCloudflare(
+          env,
+          contextualPrompt,
+          system,
+          "@cf/openai/gpt-oss-120b",
+        ),
+    },
+    llama70: {
+      enabled: !!env.AI,
+      run: () =>
+        askCloudflare(
+          env,
+          contextualPrompt,
+          system,
+          "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        ),
+    },
+    glm: {
+      enabled: !!env.AI,
+      run: () =>
+        askCloudflare(
+          env,
+          contextualPrompt,
+          system,
+          "@cf/zai-org/glm-4.7-flash",
+        ),
+    },
+    llama: {
+      enabled: !!env.AI,
+      run: () =>
+        askCloudflare(
+          env,
+          contextualPrompt,
+          system,
+          "@cf/meta/llama-3.2-3b-instruct",
+        ),
+    },
+    xai: {
+      enabled: body.confirmPaid === true && !!env.XAI_API_KEY,
+      run: () => askXai(env, contextualPrompt, system),
+    },
   };
   const order = deep
     ? [
+        "groq",
+        "cerebras",
         "gemini-flash",
+        "openrouter",
+        "github",
         "gpt-oss",
+        "mistral",
         "llama70",
         "gemini-lite",
         "gemma",
+        "huggingface",
         "glm",
         "llama",
         "xai",
       ]
     : [
         "gemini-lite",
-        "gemma",
-        "gemini-flash",
+        "groq",
+        "cerebras",
+        "openrouter",
+        "mistral",
+        "github",
         "gpt-oss",
+        "gemma",
         "llama70",
+        "huggingface",
         "glm",
         "llama",
         "xai",
       ];
-  const providers = order.map((name) => [name, providerMap[name]]);
+  const providers = order
+    .filter((name) => providerMap[name]?.enabled)
+    .map((name) => [name, providerMap[name].run]);
   if (body.preferredProvider)
     providers.sort(
       (a, b) =>
@@ -1408,7 +1608,12 @@ async function handleMedia(request, env, url) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok)
       return json(
-        { error: data.error?.message || "Não foi possível consultar o vídeo." },
+        {
+          error:
+            data.detail ||
+            data.error?.message ||
+            "Não foi possível consultar o vídeo.",
+        },
         response.status,
       );
     return json({
@@ -1461,7 +1666,9 @@ async function handleMedia(request, env, url) {
       return json(
         {
           error:
-            data.error?.message || `Vídeo indisponível (${response.status}).`,
+            data.detail ||
+            data.error?.message ||
+            `Vídeo indisponível (${response.status}).`,
         },
         response.status,
       );
@@ -1577,6 +1784,7 @@ export default {
       return json({
         googleClientId: env.GOOGLE_CLIENT_ID || "",
         videoEnabled: !!(env.VIDEO_AI_URL && env.VIDEO_AI_TOKEN),
+        aiProviders: configuredAiProviders(env),
       });
     if (url.pathname.startsWith("/api/auth/")) {
       try {

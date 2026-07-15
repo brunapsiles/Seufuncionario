@@ -12,7 +12,7 @@ Plataforma de inteligência empresarial em português do Brasil, publicada em ht
 - **Aplicativo instalável (PWA)**: funciona como site e como app no celular e no computador
 - **Sincronização multi-dispositivo**: os projetos acompanham a conta — entre de qualquer aparelho e continue de onde parou
 
-O núcleo foi desenhado para funcionar nas cotas gratuitas do Cloudflare e dos provedores de IA, priorizando sempre os gratuitos (Google Gemini → Cloudflare Workers AI → xAI opcional). Cotas e filas dos provedores ainda podem existir. Se todos falharem, o app entrega um plano de contingência local sem inventar informações.
+O núcleo foi desenhado para combinar as cotas gratuitas de Google, Cloudflare, Groq, Cerebras, Mistral, OpenRouter, GitHub Models e Hugging Face. Cotas e filas dos provedores ainda podem existir. O xAI não participa da cascata automática: só é acionado após confirmação explícita de uso pago. Se todas as rotas gratuitas falharem, o app entrega um plano de contingência local sem inventar informações.
 
 ## Estrutura
 
@@ -55,11 +55,19 @@ npm test       # roda os testes
 
 ### Chaves opcionais
 
-| Segredo                           | Para quê                                 | Como criar                               |
-| --------------------------------- | ---------------------------------------- | ---------------------------------------- |
-| `GEMINI_API_KEY`                  | Primeira opção do chat de IA             | `npx wrangler secret put GEMINI_API_KEY` |
-| `XAI_API_KEY`                     | Fallback pago (Grok) para chat e imagens | `npx wrangler secret put XAI_API_KEY`    |
-| `VIDEO_AI_URL` + `VIDEO_AI_TOKEN` | Servidor próprio de vídeo (`video-ai/`)  | `npx wrangler secret put ...`            |
+| Segredo                           | Para quê                                           |
+| --------------------------------- | -------------------------------------------------- |
+| `GEMINI_API_KEY`                  | Gemini e Gemma                                     |
+| `GROQ_API_KEY`                    | Groq Free                                          |
+| `CEREBRAS_API_KEY`                | Cerebras Free                                      |
+| `MISTRAL_API_KEY`                 | Mistral Free                                       |
+| `OPENROUTER_API_KEY`              | Roteador gratuito do OpenRouter                    |
+| `GITHUB_MODELS_TOKEN`             | GitHub Models, token limitado ao escopo de modelos |
+| `HF_TOKEN`                        | Hugging Face, crédito gratuito muito limitado      |
+| `XAI_API_KEY`                     | Uso pago opcional e sempre confirmado pelo usuário |
+| `VIDEO_AI_URL` + `VIDEO_AI_TOKEN` | Servidor próprio de vídeo (`video-ai/`)            |
+
+Cadastre cada segredo com `npx wrangler secret put NOME_DO_SEGREDO`. A tela **Configurações → Rede de IA gratuita** informa quais provedores estão efetivamente conectados sem devolver os tokens ao navegador.
 
 Sem as opcionais o app continua funcionando: o chat usa a cascata disponível, imagens e logos usam o FLUX na cota gratuita do Cloudflare, e o gerador de vídeo indica a alternativa gratuita no Hugging Face. O estúdio não afirma que o vídeo próprio está disponível sem `VIDEO_AI_URL` e `VIDEO_AI_TOKEN`.
 
