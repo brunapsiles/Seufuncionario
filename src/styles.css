@@ -234,3 +234,9 @@ aside nav button span{overflow:hidden;text-overflow:ellipsis}
 .conversation-tabs .tab-title{display:inline-block;max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 aside{overflow:visible}
 .desktop-collapse{z-index:5}
+
+/* ===== v14 · botão de recolher embutido no cabeçalho do menu (à prova de corte e zoom) ===== */
+.desktop-collapse{position:static;right:auto;top:auto;flex:none;width:34px;height:34px;border:1px solid var(--line);background:var(--surface2);border-radius:10px;color:var(--muted)}
+.desktop-collapse:hover{color:var(--primary);border-color:var(--primary)}
+.side-top{gap:10px}
+.collapsed .side-top{flex-direction:column;height:auto;padding:14px 8px;gap:10px;justify-content:center}
