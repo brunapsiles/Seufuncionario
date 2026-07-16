@@ -3253,10 +3253,35 @@ function Tasks({ db, update, business, setToast, go }) {
           : [item, ...d.tasks],
       };
     });
+    const wantsNotify =
+      form.assigneeType !== "digital" && form.notify && (form.notifyTo || "").trim();
     setModal(false);
     setEditing(null);
     setForm(blankTask);
-    setToast(editing ? "Tarefa atualizada" : "Tarefa criada");
+    if (wantsNotify) {
+      fetch("/api/tasks/notify", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          email: form.notifyTo.trim(),
+          title: form.title.trim(),
+          description: form.description || "",
+          due: form.due || "",
+          project: form.project || "",
+        }),
+      })
+        .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
+        .then(({ ok, d }) =>
+          setToast(
+            ok
+              ? "Tarefa salva e aviso enviado por e-mail"
+              : d.error || "Tarefa salva, mas o aviso por e-mail falhou",
+          ),
+        )
+        .catch(() => setToast("Tarefa salva, mas o aviso por e-mail falhou"));
+    } else {
+      setToast(editing ? "Tarefa atualizada" : "Tarefa criada");
+    }
   };
   const changeTask = (id, changes) =>
     update((d) => ({
@@ -3686,10 +3711,16 @@ function Tasks({ db, update, business, setToast, go }) {
                   <input
                     list="real-team-members"
                     value={form.assignee || ""}
-                    onChange={(e) =>
-                      setForm({ ...form, assignee: e.target.value })
-                    }
-                    placeholder="Nome da pessoa"
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      const member = realMembers.find((m) => m.name === value);
+                      setForm({
+                        ...form,
+                        assignee: value,
+                        notifyTo: member ? member.email : form.notifyTo || "",
+                      });
+                    }}
+                    placeholder="Nome da pessoa (ou escolha da equipe)"
                   />
                   <datalist id="real-team-members">
                     {realMembers.map((member) => (
@@ -3698,6 +3729,35 @@ function Tasks({ db, update, business, setToast, go }) {
                       </option>
                     ))}
                   </datalist>
+                </Field>
+              )}
+              {form.assigneeType !== "digital" && (
+                <Field
+                  label="Avisar por e-mail"
+                  hint="A pessoa recebe os detalhes da tarefa mesmo sem usar o app"
+                >
+                  <div className="notify-row">
+                    <label className="cost-check">
+                      <input
+                        type="checkbox"
+                        checked={!!form.notify}
+                        onChange={(e) =>
+                          setForm({ ...form, notify: e.target.checked })
+                        }
+                      />
+                      <span>Enviar aviso</span>
+                    </label>
+                    {form.notify && (
+                      <input
+                        type="email"
+                        value={form.notifyTo || ""}
+                        onChange={(e) =>
+                          setForm({ ...form, notifyTo: e.target.value })
+                        }
+                        placeholder="email@dapessoa.com"
+                      />
+                    )}
+                  </div>
                 </Field>
               )}
               <Field label="Projeto">
@@ -6407,6 +6467,59 @@ function RouterModal({ onClose, setToast }) {
   const [stops, setStops] = useState(["", ""]),
     [mode, setMode] = useState("driving"),
     [busy, setBusy] = useState(false);
+  const [sugg, setSugg] = useState({});
+  const [eta, setEta] = useState("");
+  const suggTimer = useRef(null);
+  const suggest = (i, q) => {
+    clearTimeout(suggTimer.current);
+    if (q.trim().length < 4) return;
+    suggTimer.current = setTimeout(() => {
+      fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&limit=4&countrycodes=br&q=${encodeURIComponent(q)}`,
+        { headers: { accept: "application/json" } },
+      )
+        .then((r) => (r.ok ? r.json() : []))
+        .then((list) =>
+          setSugg((cur) => ({ ...cur, [i]: (list || []).map((x) => x.display_name) })),
+        )
+        .catch(() => {});
+    }, 550);
+  };
+  const calcEta = async () => {
+    const pts = clean();
+    if (pts.length < 2) {
+      setToast("Informe ao menos origem e destino");
+      return;
+    }
+    setEta("calculando");
+    try {
+      const coords = [];
+      for (const p of pts) {
+        const r = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=${encodeURIComponent(p)}`,
+          { headers: { accept: "application/json" } },
+        );
+        const j = await r.json();
+        if (!j[0]) throw new Error(`Endereço não encontrado: ${p.slice(0, 40)}`);
+        coords.push(`${j[0].lon},${j[0].lat}`);
+      }
+      const or = await fetch(
+        `https://router.project-osrm.org/route/v1/driving/${coords.join(";")}?overview=false`,
+      );
+      const oj = await or.json();
+      const route = oj.routes && oj.routes[0];
+      if (!route) throw new Error("Não foi possível traçar a rota.");
+      const min = Math.round(route.duration / 60);
+      const h = Math.floor(min / 60);
+      const km = (route.distance / 1000).toFixed(1);
+      setEta(
+        `≈ ${h > 0 ? `${h}h${String(min % 60).padStart(2, "0")}` : `${min} min`} de carro · ${km} km (sem trânsito · dados © OpenStreetMap)`,
+      );
+    } catch (e) {
+      setEta("");
+      setToast(e.message || "Não foi possível calcular agora");
+    }
+  };
   const setStop = (i, v) => setStops((s) => s.map((x, j) => (j === i ? v : x)));
   const addStop = () =>
     setStops((s) =>
@@ -6482,8 +6595,12 @@ function RouterModal({ onClose, setToast }) {
                 )}
               </span>
               <input
+                list={`route-sugg-${i}`}
                 value={s}
-                onChange={(e) => setStop(i, e.target.value)}
+                onChange={(e) => {
+                  setStop(i, e.target.value);
+                  suggest(i, e.target.value);
+                }}
                 placeholder={
                   i === 0
                     ? "Origem (endereço de partida)"
@@ -6492,6 +6609,11 @@ function RouterModal({ onClose, setToast }) {
                       : `Parada ${i}`
                 }
               />
+              <datalist id={`route-sugg-${i}`}>
+                {(sugg[i] || []).map((opt) => (
+                  <option key={opt} value={opt} />
+                ))}
+              </datalist>
               {stops.length > 2 && (
                 <button
                   className="icon-button danger"
@@ -6507,6 +6629,11 @@ function RouterModal({ onClose, setToast }) {
           <Plus size={16} />
           Adicionar parada
         </button>
+        {eta && (
+          <div className="route-eta">
+            {eta === "calculando" ? "Calculando rota..." : eta}
+          </div>
+        )}
         <div className="route-mode">
           <span>Como vai se deslocar:</span>
           <select value={mode} onChange={(e) => setMode(e.target.value)}>
@@ -6524,6 +6651,9 @@ function RouterModal({ onClose, setToast }) {
             onClick={optimize}
           >
             {busy ? "Otimizando..." : "Sugerir melhor ordem (IA)"}
+          </Button>
+          <Button variant="secondary" icon={Clock3} onClick={calcEta}>
+            Tempo e distância
           </Button>
           <Button icon={Navigation} onClick={open}>
             Abrir rota no Maps

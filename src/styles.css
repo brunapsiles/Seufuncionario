@@ -5344,3 +5344,8 @@ aside nav:hover::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--mute
 .tool-followup input{flex:1;border:1px solid var(--line);background:var(--surface2);border-radius:10px;padding:10px 13px}
 .tool-save-row{display:flex;gap:9px;padding:0 14px 13px;background:var(--surface);flex-wrap:wrap}
 .history-extra{flex-wrap:wrap;gap:8px;justify-content:flex-start;border-top:1px solid var(--line);padding-top:14px;margin-top:2px}
+
+/* ===== v23 · aviso de tarefa por e-mail + ETA do roteirizador ===== */
+.notify-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.notify-row input[type="email"]{flex:1;min-width:200px;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 12px}
+.route-eta{margin:4px 0 8px;padding:11px 14px;border-radius:11px;background:color-mix(in srgb,var(--primary) 9%,var(--surface));border:1px solid color-mix(in srgb,var(--primary) 25%,transparent);font-weight:600;font-size:14px}
