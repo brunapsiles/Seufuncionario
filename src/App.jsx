@@ -2024,6 +2024,7 @@ function UniversalRequest({ db, update, business, setToast }) {
     let streamed = false;
     try {
       try {
+        if (specialist === "Diretor") throw { skipStream: true };
         const sres = await fetch("/api/ai/stream", {
           method: "POST",
           headers: { "content-type": "application/json", ...authHeaders() },
