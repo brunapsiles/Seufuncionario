@@ -1406,6 +1406,123 @@ function localContingency(prompt, specialist, business, failures) {
   };
 }
 
+function buildAiContext(body, env) {
+  const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+  const custom =
+    body.customSpecialist && typeof body.customSpecialist === "object"
+      ? body.customSpecialist
+      : null;
+  const customName =
+    custom && typeof custom.name === "string" ? custom.name.trim().slice(0, 48) : "";
+  const customInstructions =
+    customName && typeof custom.instructions === "string"
+      ? custom.instructions.trim().slice(0, 800)
+      : "";
+  const specialist = specialistInstructions[body.specialist]
+    ? body.specialist
+    : customInstructions && body.specialist === customName
+      ? customName
+      : "Consultor";
+  const business =
+    body.business && typeof body.business === "object" ? body.business : null;
+  const system = systemPrompt(
+    specialist,
+    business,
+    specialistInstructions[specialist] ? "" : customInstructions,
+  );
+  const previous = Array.isArray(body.messages)
+    ? body.messages
+        .slice(-9, -1)
+        .filter(
+          (item) =>
+            ["user", "assistant"].includes(item?.role) &&
+            typeof item.content === "string",
+        )
+        .map(
+          (item) =>
+            `${item.role === "user" ? "Usuário" : "Assistente"}: ${item.content.slice(0, 1800)}`,
+        )
+    : [];
+  const contextualPrompt = previous.length
+    ? `Continue a conversa considerando as mensagens anteriores abaixo. Não repita respostas já dadas.\n\n${previous.join("\n\n")}\n\nMensagem atual do usuário: ${prompt}`
+    : prompt;
+  return { prompt, specialist, system, contextualPrompt };
+}
+
+async function handleAiStream(request, env) {
+  const ip = request.headers.get("cf-connecting-ip") || "local";
+  if (!allowed(ip)) return json({ error: "Muitas solicitações em pouco tempo. Aguarde um minuto." }, 429);
+  if (!env.GEMINI_API_KEY) return json({ error: "Streaming indisponível.", fallback: true }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ error: "Solicitação inválida." }, 400); }
+  const { prompt, system, contextualPrompt } = buildAiContext(body, env);
+  if (prompt.length < 3) return json({ error: "Explique um pouco mais sobre o que precisa." }, 400);
+  if (prompt.length > 50000) return json({ error: "O texto e os anexos ultrapassam o limite." }, 413);
+  const model = env.GEMINI_MODEL || "gemini-flash-lite-latest";
+  let upstream;
+  try {
+    upstream = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: system }] },
+          contents: [{ role: "user", parts: [{ text: contextualPrompt }] }],
+          generationConfig: { maxOutputTokens: 1800 },
+        }),
+      },
+    );
+  } catch {
+    return json({ error: "Streaming indisponível.", fallback: true }, 502);
+  }
+  if (!upstream.ok || !upstream.body) return json({ error: "Streaming indisponível.", fallback: true }, 502);
+
+  const provider = model.startsWith("gemma") ? "Google Gemma" : "Google Gemini";
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const reader = upstream.body.getReader();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (obj) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+      let buffer = "";
+      let any = false;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+          for (const line of lines) {
+            const t = line.trim();
+            if (!t.startsWith("data:")) continue;
+            const payload = t.slice(5).trim();
+            if (!payload || payload === "[DONE]") continue;
+            try {
+              const j = JSON.parse(payload);
+              const text = j.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
+              if (text) { any = true; send({ t: text }); }
+            } catch {}
+          }
+        }
+      } catch (e) {
+        if (!any) { send({ error: "Falha no streaming.", fallback: true }); controller.close(); return; }
+      }
+      send({ done: true, provider, model });
+      controller.close();
+    },
+    cancel() { try { reader.cancel(); } catch {} },
+  });
+  return new Response(stream, {
+    headers: {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-store",
+      "x-accel-buffering": "no",
+    },
+  });
+}
+
 async function handleAi(request, env) {
   const ip = request.headers.get("cf-connecting-ip") || "local";
   if (!allowed(ip))
@@ -1901,6 +2018,7 @@ export default {
     }
     const needsAuth =
       url.pathname === "/api/ai" ||
+      url.pathname === "/api/ai/stream" ||
       url.pathname === "/api/media" ||
       url.pathname === "/api/workspace" ||
       url.pathname.startsWith("/api/collab") ||
@@ -1967,6 +2085,14 @@ export default {
             { error: "Não foi possível concluir a publicação." },
             500,
           );
+        }
+      }
+      if (url.pathname === "/api/ai/stream") {
+        try {
+          return await handleAiStream(request, env);
+        } catch (error) {
+          console.error("Stream error", error);
+          return json({ error: "Streaming indisponível.", fallback: true }, 500);
         }
       }
       return url.pathname === "/api/ai"

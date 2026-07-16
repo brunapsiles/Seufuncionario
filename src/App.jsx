@@ -1990,43 +1990,155 @@ function UniversalRequest({ db, update, business, setToast }) {
     localStorage.setItem("sf-draft", "");
     setBusy(true);
     setError("");
+    const aiBody = {
+      prompt: aiPrompt,
+      specialist,
+      customSpecialist:
+        (db.customSpecialists || []).find((x) => x.name === specialist) || null,
+      messages: [...previousMessages, userMessage]
+        .slice(-10)
+        .map((x) => ({ role: x.role, content: x.content })),
+      business: business
+        ? {
+            name: business.name,
+            segment: business.segment,
+            stage: business.stage,
+            audience: business.audience,
+            offer: business.offer,
+            goal: business.goal,
+            tone: business.tone,
+            differentiators: business.differentiators,
+            competitors: business.competitors,
+            channels: business.channels,
+            website: business.website,
+            social: business.social,
+            priceRange: business.priceRange,
+            challenges: business.challenges,
+            visualIdentity: business.visualIdentity,
+            focusAreas: business.focusAreas,
+          }
+        : null,
+    };
     const controller = new AbortController(),
       timer = setTimeout(() => controller.abort(), 70000);
+    let streamed = false;
     try {
+      try {
+        const sres = await fetch("/api/ai/stream", {
+          method: "POST",
+          headers: { "content-type": "application/json", ...authHeaders() },
+          signal: controller.signal,
+          body: JSON.stringify(aiBody),
+        });
+        if (
+          sres.ok &&
+          (sres.headers.get("content-type") || "").includes(
+            "text/event-stream",
+          ) &&
+          sres.body
+        ) {
+          const amId = uid();
+          const amMsg = {
+            id: amId,
+            role: "assistant",
+            content: "",
+            toolIds: recommendedTools(prompt).map((x) => x.id),
+            createdAt: new Date().toISOString(),
+          };
+          update((d) => ({
+            ...d,
+            conversations: (d.conversations || []).map((x) =>
+              x.id === conversationId
+                ? {
+                    ...x,
+                    messages: [...x.messages, amMsg],
+                    updatedAt: new Date().toISOString(),
+                  }
+                : x,
+            ),
+          }));
+          const reader = sres.body.getReader();
+          const dec = new TextDecoder();
+          let buf = "",
+            acc = "",
+            prov = null,
+            mdl = null;
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += dec.decode(value, { stream: true });
+            const chunks = buf.split("\n\n");
+            buf = chunks.pop() || "";
+            for (const chunk of chunks) {
+              const line = chunk
+                .split("\n")
+                .find((l) => l.startsWith("data:"));
+              if (!line) continue;
+              try {
+                const j = JSON.parse(line.slice(5).trim());
+                if (j.t) {
+                  acc += j.t;
+                  const cur = acc;
+                  update((d) => ({
+                    ...d,
+                    conversations: (d.conversations || []).map((x) =>
+                      x.id === conversationId
+                        ? {
+                            ...x,
+                            messages: x.messages.map((m) =>
+                              m.id === amId ? { ...m, content: cur } : m,
+                            ),
+                          }
+                        : x,
+                    ),
+                  }));
+                } else if (j.done) {
+                  prov = j.provider;
+                  mdl = j.model;
+                }
+              } catch {}
+            }
+          }
+          if (acc.trim()) {
+            update((d) => ({
+              ...d,
+              conversations: (d.conversations || []).map((x) =>
+                x.id === conversationId
+                  ? {
+                      ...x,
+                      messages: x.messages.map((m) =>
+                        m.id === amId ? { ...m, provider: prov, model: mdl } : m,
+                      ),
+                      updatedAt: new Date().toISOString(),
+                    }
+                  : x,
+              ),
+            }));
+            setToast("Resposta pronta");
+            streamed = true;
+          } else {
+            update((d) => ({
+              ...d,
+              conversations: (d.conversations || []).map((x) =>
+                x.id === conversationId
+                  ? {
+                      ...x,
+                      messages: x.messages.filter((m) => m.id !== amId),
+                    }
+                  : x,
+              ),
+            }));
+          }
+        }
+      } catch (streamErr) {
+        if (streamErr.name === "AbortError") throw streamErr;
+      }
+      if (!streamed) {
       const response = await fetch("/api/ai", {
         method: "POST",
         headers: { "content-type": "application/json", ...authHeaders() },
         signal: controller.signal,
-        body: JSON.stringify({
-          prompt: aiPrompt,
-          specialist,
-          customSpecialist:
-            (db.customSpecialists || []).find((x) => x.name === specialist) ||
-            null,
-          messages: [...previousMessages, userMessage]
-            .slice(-10)
-            .map((x) => ({ role: x.role, content: x.content })),
-          business: business
-            ? {
-                name: business.name,
-                segment: business.segment,
-                stage: business.stage,
-                audience: business.audience,
-                offer: business.offer,
-                goal: business.goal,
-                tone: business.tone,
-                differentiators: business.differentiators,
-                competitors: business.competitors,
-                channels: business.channels,
-                website: business.website,
-                social: business.social,
-                priceRange: business.priceRange,
-                challenges: business.challenges,
-                visualIdentity: business.visualIdentity,
-                focusAreas: business.focusAreas,
-              }
-            : null,
-        }),
+        body: JSON.stringify(aiBody),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok)
@@ -2055,6 +2167,7 @@ function UniversalRequest({ db, update, business, setToast }) {
       }));
       setRevealing({ id: assistantMessage.id, count: 0 });
       setToast(data.degraded ? "Plano inicial preparado" : "Resposta pronta");
+      }
     } catch (err) {
       setText(prompt);
       setError(
