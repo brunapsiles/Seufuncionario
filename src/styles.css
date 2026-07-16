@@ -5382,3 +5382,17 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   flex-direction: column; background: none; box-shadow: none; padding-left: 0;
 }
 @media (max-width: 760px) { .side-buttons { display: none; } }
+
+/* ===== v25 · controles do menu no rodapé; logo do cabeçalho sempre inteira ===== */
+.side-top .logo { flex: 1; min-width: 0; overflow: hidden; }
+.side-top .logo span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-controls { display: flex; gap: 8px; padding-top: 10px; margin-top: 4px; border-top: 1px solid var(--line); }
+.side-controls .icon-button {
+  flex: 1; height: 34px; display: grid; place-items: center;
+  background: var(--surface2); border: 1px solid var(--line); border-radius: 10px; color: var(--muted);
+}
+.side-controls .desktop-collapse { position: static; right: auto; top: auto; }
+.side-controls .desktop-collapse:hover { color: var(--primary); border-color: var(--primary); }
+.side-controls .desktop-close:hover { color: var(--red); border-color: var(--red); }
+.collapsed .side-controls { flex-direction: column; }
+@media (max-width: 760px) { .side-controls { display: none; } }

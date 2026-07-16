@@ -9464,22 +9464,6 @@ export default function App() {
       <aside className={mobile ? "open" : ""}>
         <div className="side-top">
           <Logo compact={collapsed} />
-          <span className="side-buttons">
-            <button
-              className="icon-button desktop-collapse"
-              title={collapsed ? "Expandir menu" : "Modo compacto"}
-              onClick={() => setCollapsed(!collapsed)}
-            >
-              {collapsed ? <ChevronRight /> : <ChevronLeft />}
-            </button>
-            <button
-              className="icon-button desktop-close"
-              title="Fechar menu"
-              onClick={() => setMenuHidden(true)}
-            >
-              <X />
-            </button>
-          </span>
           <button
             className="icon-button mobile-close"
             onClick={() => setMobile(false)}
@@ -9544,6 +9528,22 @@ export default function App() {
             <LogOut />
             <span>Sair</span>
           </button>
+          <div className="side-controls">
+            <button
+              className="icon-button desktop-collapse"
+              title={collapsed ? "Expandir menu" : "Modo compacto"}
+              onClick={() => setCollapsed(!collapsed)}
+            >
+              {collapsed ? <ChevronRight /> : <ChevronLeft />}
+            </button>
+            <button
+              className="icon-button desktop-close"
+              title="Fechar menu"
+              onClick={() => setMenuHidden(true)}
+            >
+              <X />
+            </button>
+          </div>
         </div>
         <div className="sb-resize" onPointerDown={startResize} />
       </aside>
