@@ -5202,7 +5202,9 @@ aside nav:hover::-webkit-scrollbar-thumb {
   gap: 14px;
   align-items: stretch;
 }
-.site-workspace > .site-preview,
+.site-workspace > .site-preview {
+  min-width: 0;
+}
 .site-workspace > .code-editor {
   min-width: 0;
   width: 100%;
