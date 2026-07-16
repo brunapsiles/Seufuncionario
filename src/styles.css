@@ -5349,3 +5349,36 @@ aside nav:hover::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--mute
 .notify-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .notify-row input[type="email"]{flex:1;min-width:200px;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 12px}
 .route-eta{margin:4px 0 8px;padding:11px 14px;border-radius:11px;background:color-mix(in srgb,var(--primary) 9%,var(--surface));border:1px solid color-mix(in srgb,var(--primary) 25%,transparent);font-weight:600;font-size:14px}
+
+/* ===== v24 · logo do menu sempre inteira; botões aparecem no hover ===== */
+.side-top { position: relative; }
+.side-top .logo { flex: 1; min-width: 0; }
+.side-top .logo span { overflow: visible; text-overflow: clip; white-space: nowrap; }
+.side-buttons {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  flex-direction: row;
+  gap: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .15s;
+  background: var(--surface);
+  padding-left: 10px;
+  box-shadow: -12px 0 12px -6px var(--surface);
+}
+aside:hover .side-buttons,
+aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
+.desktop-collapse, .side-buttons .desktop-collapse {
+  position: static; right: auto; top: auto;
+  display: grid; place-items: center;
+  width: 32px; height: 32px;
+  background: var(--surface2); border: 1px solid var(--line); border-radius: 10px; color: var(--muted);
+}
+.desktop-collapse:hover { color: var(--primary); border-color: var(--primary); }
+.collapsed .side-buttons {
+  position: static; transform: none; opacity: 1; pointer-events: auto;
+  flex-direction: column; background: none; box-shadow: none; padding-left: 0;
+}
+@media (max-width: 760px) { .side-buttons { display: none; } }
