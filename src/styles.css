@@ -2527,6 +2527,16 @@ aside nav button.active {
   .site-preview {
     padding: 8px;
   }
+  .list-editor-row {
+    grid-template-columns: 1fr;
+  }
+  .list-editor-row.testimonial-row {
+    grid-template-areas: "name" "role" "quote" "remove";
+    grid-template-columns: 1fr;
+  }
+  .list-editor-row .icon-button {
+    justify-self: end;
+  }
   .spread,
   .spread > div {
     flex-direction: column;
@@ -2650,6 +2660,69 @@ aside nav button.active {
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--surface);
+}
+.site-customize-panel {
+  padding: 15px;
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.site-visual-editor {
+  display: grid;
+  gap: 16px;
+}
+.theme-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.theme-picker button {
+  border: 2px solid transparent;
+  border-radius: 12px;
+  width: 120px;
+  height: 60px;
+  padding: 6px 8px;
+  display: flex;
+  align-items: flex-end;
+  font-size: 11px;
+  font-weight: 700;
+  color: #17152b;
+  text-shadow: 0 1px 4px rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+}
+.theme-picker button.active {
+  border-color: var(--accent, #6d38e0);
+}
+.list-editor {
+  display: grid;
+  gap: 10px;
+}
+.list-editor-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+.list-editor-row.testimonial-row {
+  grid-template-columns: 1fr 1fr auto;
+  grid-template-areas: "name role remove" "quote quote remove";
+}
+.list-editor-row.testimonial-row input:first-child {
+  grid-area: name;
+}
+.list-editor-row.testimonial-row input:nth-child(2) {
+  grid-area: role;
+}
+.list-editor-row.testimonial-row textarea {
+  grid-area: quote;
+  min-height: 60px;
+}
+.list-editor-row.testimonial-row button {
+  grid-area: remove;
+}
+.list-editor-row .icon-button {
+  align-self: start;
 }
 .slug-editor {
   display: flex;

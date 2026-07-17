@@ -5362,6 +5362,7 @@ export function mergeSiteBrief(base, patch) {
     "cta",
     "contact",
     "color",
+    "faq",
   ];
   const next = { ...base };
   allowed.forEach((key) => {
@@ -5380,6 +5381,109 @@ export function mergeSiteBrief(base, patch) {
 const sitePagePath = (slug, page = "") =>
   `/s/${slugify(slug || "meu-site")}${page ? `/${page}` : ""}`;
 
+export const SITE_THEMES = [
+  {
+    id: "moderno",
+    label: "Moderno",
+    swatch: "linear-gradient(135deg,#f4f0ff,#fff0f7)",
+  },
+  {
+    id: "escuro",
+    label: "Minimalista escuro",
+    swatch: "linear-gradient(135deg,#181430,#0f0d1a)",
+  },
+  {
+    id: "vibrante",
+    label: "Vibrante",
+    swatch: "linear-gradient(135deg,#ff6b57,#ffb648)",
+  },
+];
+
+const themeTokens = (theme, color) =>
+  ({
+    moderno: {
+      bg: "#fafaff",
+      text: "#17152b",
+      muted: "#5d576d",
+      heroBg: "linear-gradient(135deg,#f4f0ff,#fff0f7)",
+      heroText: "#17152b",
+      headerBg: "#fff",
+      headerBorder: "#ece9f4",
+      navText: "#57516b",
+      cardBg: "#fff",
+      cardBorder: "#e8e5f2",
+      contactBg: "#17152b",
+      contactText: "#fff",
+      font: "Inter,Arial,sans-serif",
+      radius: "20px",
+    },
+    escuro: {
+      bg: "#100e1c",
+      text: "#f4f2fb",
+      muted: "#b6b0c7",
+      heroBg: "linear-gradient(135deg,#1a1630,#100e1c)",
+      heroText: "#fff",
+      headerBg: "#151225",
+      headerBorder: "#26213c",
+      navText: "#c9c4da",
+      cardBg: "#1a1630",
+      cardBorder: "#2a2542",
+      contactBg: "#000",
+      contactText: "#fff",
+      font: "'Poppins',Inter,Arial,sans-serif",
+      radius: "16px",
+    },
+    vibrante: {
+      bg: "#fffaf2",
+      text: "#20160a",
+      muted: "#6f5c40",
+      heroBg: `linear-gradient(135deg, ${color}, #ff7a44)`,
+      heroText: "#fff",
+      headerBg: "#fff",
+      headerBorder: "#ffe3cc",
+      navText: "#6f5c40",
+      cardBg: "#fff",
+      cardBorder: "#ffe3cc",
+      contactBg: color,
+      contactText: "#fff",
+      font: "'Poppins',Inter,Arial,sans-serif",
+      radius: "26px",
+    },
+  })[theme] || themeTokens("moderno", color);
+
+const isSafeImageUrl = (value) => /^https:\/\/\S+$/i.test(String(value || "").trim());
+
+const siteGallery = (value) =>
+  (Array.isArray(value) ? value : [])
+    .filter((item) => item && isSafeImageUrl(item.url))
+    .slice(0, 8)
+    .map((item) => ({
+      url: String(item.url).trim(),
+      caption: String(item.caption || "").trim().slice(0, 120),
+    }));
+
+const siteTestimonials = (value) =>
+  (Array.isArray(value) ? value : [])
+    .filter((item) => item && String(item.quote || "").trim())
+    .slice(0, 6)
+    .map((item) => ({
+      name: String(item.name || "Cliente").trim().slice(0, 60) || "Cliente",
+      role: String(item.role || "").trim().slice(0, 60),
+      quote: String(item.quote || "").trim().slice(0, 400),
+    }));
+
+const siteFaq = (value) =>
+  (Array.isArray(value) ? value : [])
+    .filter(
+      (item) =>
+        item && String(item.question || "").trim() && String(item.answer || "").trim(),
+    )
+    .slice(0, 6)
+    .map((item) => ({
+      question: String(item.question).trim().slice(0, 160),
+      answer: String(item.answer).trim().slice(0, 400),
+    }));
+
 export function makeSite(form, page = "", siteSlug = "") {
   const title = form.name || "Meu negócio";
   const desc =
@@ -5394,6 +5498,11 @@ export function makeSite(form, page = "", siteSlug = "") {
     : "#contato";
   const slug = siteSlug || slugify(title);
   const services = siteServices(form.services);
+  const t = themeTokens(form.theme, color);
+  const heroImg = isSafeImageUrl(form.heroImage) ? String(form.heroImage).trim() : "";
+  const gallery = siteGallery(form.gallery);
+  const testimonials = siteTestimonials(form.testimonials);
+  const faq = siteFaq(form.faq);
   const cards = services
     .map(
       (service) =>
@@ -5414,16 +5523,44 @@ export function makeSite(form, page = "", siteSlug = "") {
   const about =
     form.about ||
     `${title} nasceu para oferecer uma experiência confiável, simples e próxima. Cada atendimento parte do contexto real do cliente para chegar a uma solução adequada.`;
+  const heroText = `<span>${escapeHtml(form.segment || "Bem-vindo")}</span><h1>${escapeHtml(form.headline || title)}</h1><p>${escapeHtml(desc)}</p><a class="cta" href="${sitePagePath(slug, "contato")}">${escapeHtml(form.cta || "Quero saber mais")}</a>`;
+  const heroSection = heroImg
+    ? `<section class="hero heroImg"><div>${heroText}</div><img src="${escapeHtml(heroImg)}" alt="${escapeHtml(title)}" loading="lazy"></section>`
+    : `<section class="hero"><div>${heroText}</div></section>`;
+  const gallerySection = gallery.length
+    ? `<section class="section gallery"><span class="kicker">GALERIA</span><h2>Um pouco do nosso trabalho</h2><div class="gallery-grid">${gallery
+        .map(
+          (g) =>
+            `<figure><img src="${escapeHtml(g.url)}" alt="${escapeHtml(g.caption || title)}" loading="lazy">${g.caption ? `<figcaption>${escapeHtml(g.caption)}</figcaption>` : ""}</figure>`,
+        )
+        .join("")}</div></section>`
+    : "";
+  const testimonialsSection = testimonials.length
+    ? `<section class="section testimonials"><span class="kicker">QUEM JÁ CONFIOU</span><h2>O que dizem sobre a gente</h2><div class="cards testi-cards">${testimonials
+        .map(
+          (item) =>
+            `<article class="card testi"><p>&ldquo;${escapeHtml(item.quote)}&rdquo;</p><footer><strong>${escapeHtml(item.name)}</strong>${item.role ? `<span>${escapeHtml(item.role)}</span>` : ""}</footer></article>`,
+        )
+        .join("")}</div></section>`
+    : "";
+  const faqSection = faq.length
+    ? `<section class="section faq"><span class="kicker">PERGUNTAS FREQUENTES</span><h2>Dúvidas comuns</h2><div class="faq-list">${faq
+        .map(
+          (item) =>
+            `<details><summary>${escapeHtml(item.question)}</summary><p>${escapeHtml(item.answer)}</p></details>`,
+        )
+        .join("")}</div></section>`
+    : "";
   const pageContent =
     {
-      "": `<section class="hero"><div><span>${escapeHtml(form.segment || "Bem-vindo")}</span><h1>${escapeHtml(form.headline || title)}</h1><p>${escapeHtml(desc)}</p><a class="cta" href="${sitePagePath(slug, "contato")}">${escapeHtml(form.cta || "Quero saber mais")}</a></div></section><section class="section intro"><span class="kicker">O QUE FAZEMOS</span><h2>Soluções pensadas para necessidades reais</h2><div class="cards">${cards}</div></section>`,
-      sobre: `<section class="page-hero"><span>QUEM SOMOS</span><h1>${escapeHtml(form.aboutTitle || `Sobre ${title}`)}</h1><p>${escapeHtml(desc)}</p></section><section class="section prose"><h2>Um trabalho construído com você</h2><p>${escapeHtml(about)}</p><a class="cta" href="${sitePagePath(slug, "contato")}">Conversar com a equipe</a></section>`,
-      servicos: `<section class="page-hero"><span>NOSSAS SOLUÇÕES</span><h1>Como podemos ajudar</h1><p>Conheça as frentes de trabalho e encontre o melhor ponto de partida.</p></section><section class="section"><div class="cards">${cards}</div></section>`,
+      "": `${heroSection}<section class="section intro"><span class="kicker">O QUE FAZEMOS</span><h2>Soluções pensadas para necessidades reais</h2><div class="cards">${cards}</div></section>${gallerySection}`,
+      sobre: `<section class="page-hero"><span>QUEM SOMOS</span><h1>${escapeHtml(form.aboutTitle || `Sobre ${title}`)}</h1><p>${escapeHtml(desc)}</p></section><section class="section prose"><h2>Um trabalho construído com você</h2><p>${escapeHtml(about)}</p><a class="cta" href="${sitePagePath(slug, "contato")}">Conversar com a equipe</a></section>${testimonialsSection}`,
+      servicos: `<section class="page-hero"><span>NOSSAS SOLUÇÕES</span><h1>Como podemos ajudar</h1><p>Conheça as frentes de trabalho e encontre o melhor ponto de partida.</p></section><section class="section"><div class="cards">${cards}</div></section>${faqSection}`,
       contato: `<section class="section contact" id="contato"><div class="contact-grid"><div><span class="kicker">CONTATO</span><h1>Vamos conversar?</h1><p>Conte o que você precisa. A mensagem chega diretamente à equipe responsável.</p>${contact !== "#contato" ? `<p><a class="cta light" href="${escapeHtml(contact)}">${escapeHtml(form.cta || "Falar agora")}</a></p>` : ""}</div><form class="lead-form" data-sf-lead-form><label>Nome<input name="name" required maxlength="100" autocomplete="name"></label><label>E-mail<input name="email" type="email" maxlength="160" autocomplete="email"></label><label>Telefone<input name="phone" maxlength="40" autocomplete="tel"></label><label>Mensagem<textarea name="message" maxlength="2000"></textarea></label><button type="submit">Enviar mensagem</button><p class="lead-status" data-sf-lead-status aria-live="polite"></p></form></div></section>`,
     }[page] || "";
   return `<!doctype html>
 <html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(page ? `${page[0].toUpperCase()}${page.slice(1)} · ${title}` : title)}</title><meta name="description" content="${escapeHtml(desc.slice(0, 150))}"><style>
-*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font-family:Inter,Arial,sans-serif;color:#17152b;background:#fafaff}header{display:flex;justify-content:space-between;align-items:center;gap:28px;padding:22px 7%;background:#fff;border-bottom:1px solid #ece9f4;position:sticky;top:0;z-index:3}header b{font-size:1.2rem}nav{display:flex;align-items:center;gap:24px}nav a{color:#57516b;text-decoration:none;font-weight:700;font-size:.93rem}nav a[aria-current=page]{color:${color}}a{color:inherit}.cta,button{display:inline-block;background:${color};color:white;padding:14px 22px;border:0;border-radius:12px;text-decoration:none;font-weight:800;cursor:pointer}.cta.light{background:#fff;color:#17152b}.hero,.page-hero{padding:100px 7%;background:linear-gradient(135deg,#f4f0ff,#fff0f7);display:grid;align-content:center}.hero{min-height:68vh}.hero>div{max-width:820px}.hero span,.page-hero span,.kicker{color:${color};font-weight:900;text-transform:uppercase;letter-spacing:.12em}.hero h1,.page-hero h1,.contact h1{font-size:clamp(2.6rem,7vw,5.4rem);line-height:1.02;margin:.25em 0}.hero p,.page-hero p{font-size:1.2rem;line-height:1.7;max-width:720px}.page-hero{min-height:48vh}.section{padding:80px 7%}.section>h2{font-size:clamp(2rem,4vw,3.4rem);max-width:780px}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:34px}.card{background:#fff;padding:28px;border:1px solid #e8e5f2;border-radius:20px;box-shadow:0 12px 35px rgba(35,25,72,.06)}.card h3{font-size:1.25rem}.card p,.prose p{color:#5d576d;line-height:1.7}.prose{max-width:920px}.prose p{font-size:1.18rem}.contact{background:#17152b;color:#fff;min-height:72vh;display:grid;align-content:center}.contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:50px;align-items:start;max-width:1150px;margin:auto}.lead-form{display:grid;gap:12px;background:#fff;color:#17152b;padding:28px;border-radius:20px}.lead-form label{display:grid;gap:6px;text-align:left;font-weight:700}.lead-form input,.lead-form textarea{width:100%;padding:13px;border:1px solid #d8d4e5;border-radius:10px;font:inherit}.lead-form textarea{min-height:110px;resize:vertical}.lead-status{min-height:22px;margin:0;color:#443d55;font-size:.92rem}footer{padding:28px 7%;text-align:center;color:#6c667a;background:#fff}@media(max-width:760px){header{padding:18px 5%;align-items:flex-start;flex-direction:column}nav{width:100%;gap:16px;overflow:auto;padding-bottom:3px}.hero,.page-hero,.section{padding:62px 6%}.cards,.contact-grid{grid-template-columns:1fr}}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font-family:${t.font};color:${t.text};background:${t.bg}}header{display:flex;justify-content:space-between;align-items:center;gap:28px;padding:22px 7%;background:${t.headerBg};border-bottom:1px solid ${t.headerBorder};position:sticky;top:0;z-index:3}header b{font-size:1.2rem}nav{display:flex;align-items:center;gap:24px}nav a{color:${t.navText};text-decoration:none;font-weight:700;font-size:.93rem}nav a[aria-current=page]{color:${color}}a{color:inherit}.cta,button{display:inline-block;background:${color};color:white;padding:14px 22px;border:0;border-radius:12px;text-decoration:none;font-weight:800;cursor:pointer}.cta.light{background:#fff;color:#17152b}.hero,.page-hero{padding:100px 7%;background:${t.heroBg};color:${t.heroText};display:grid;align-content:center}.hero{min-height:68vh}.hero>div{max-width:820px}.hero.heroImg{grid-template-columns:1.1fr .9fr;align-items:center;gap:44px;max-width:1280px;margin:0 auto}.hero.heroImg>div{max-width:none}.hero.heroImg img{width:100%;height:380px;object-fit:cover;border-radius:${t.radius}}.hero span,.page-hero span,.kicker{color:${color};font-weight:900;text-transform:uppercase;letter-spacing:.12em}.hero h1,.page-hero h1,.contact h1{font-size:clamp(2.6rem,7vw,5.4rem);line-height:1.02;margin:.25em 0}.hero p,.page-hero p{font-size:1.2rem;line-height:1.7;max-width:720px}.page-hero{min-height:48vh}.section{padding:80px 7%}.section>h2{font-size:clamp(2rem,4vw,3.4rem);max-width:780px}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:34px}.card{background:${t.cardBg};padding:28px;border:1px solid ${t.cardBorder};border-radius:${t.radius};box-shadow:0 12px 35px rgba(35,25,72,.06)}.card h3{font-size:1.25rem}.card p,.prose p{color:${t.muted};line-height:1.7}.prose{max-width:920px}.prose p{font-size:1.18rem}.testi p{font-size:1.05rem;font-style:italic;color:${t.text}}.testi footer{margin-top:14px;display:flex;flex-direction:column;gap:2px}.testi footer span{color:${t.muted};font-size:.88rem}.gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-top:34px}.gallery-grid figure{margin:0;border-radius:${t.radius};overflow:hidden;background:${t.cardBg}}.gallery-grid img{width:100%;height:220px;object-fit:cover;display:block}.gallery-grid figcaption{padding:10px 14px;font-size:.85rem;color:${t.muted}}.faq-list{margin-top:34px;display:grid;gap:12px;max-width:820px}.faq-list details{background:${t.cardBg};border:1px solid ${t.cardBorder};border-radius:14px;padding:16px 20px}.faq-list summary{cursor:pointer;font-weight:800}.faq-list p{margin:12px 0 0;color:${t.muted};line-height:1.6}.contact{background:${t.contactBg};color:${t.contactText};min-height:72vh;display:grid;align-content:center}.contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:50px;align-items:start;max-width:1150px;margin:auto}.lead-form{display:grid;gap:12px;background:#fff;color:#17152b;padding:28px;border-radius:20px}.lead-form label{display:grid;gap:6px;text-align:left;font-weight:700}.lead-form input,.lead-form textarea{width:100%;padding:13px;border:1px solid #d8d4e5;border-radius:10px;font:inherit}.lead-form textarea{min-height:110px;resize:vertical}.lead-status{min-height:22px;margin:0;color:#443d55;font-size:.92rem}footer{padding:28px 7%;text-align:center;color:${t.muted};background:${t.headerBg}}@media(max-width:760px){header{padding:18px 5%;align-items:flex-start;flex-direction:column}nav{width:100%;gap:16px;overflow:auto;padding-bottom:3px}.hero,.page-hero,.section{padding:62px 6%}.cards,.contact-grid,.gallery-grid{grid-template-columns:1fr}.hero.heroImg{grid-template-columns:1fr}.hero.heroImg img{height:240px}}
 </style></head><body><header><b>${escapeHtml(title)}</b><nav aria-label="Páginas do site">${nav}</nav></header><main>${pageContent}</main><footer>© ${new Date().getFullYear()} ${escapeHtml(title)}</footer></body></html>`;
 }
 
@@ -5519,6 +5656,150 @@ export function parseSiteJson(content) {
   return JSON.parse(match[0]);
 }
 
+function SiteVisualEditor({ brief, onChange }) {
+  const gallery = brief.gallery || [];
+  const testimonials = brief.testimonials || [];
+  const patchList = (key, list) => onChange({ [key]: list });
+  return (
+    <div className="site-visual-editor">
+      <Field label="Estilo visual">
+        <div className="theme-picker">
+          {SITE_THEMES.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={(brief.theme || "moderno") === item.id ? "active" : ""}
+              style={{ background: item.swatch }}
+              onClick={() => onChange({ theme: item.id })}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </Field>
+      <Field
+        label="Imagem de capa (URL, opcional)"
+        hint="Use um link https:// de uma imagem sua. Fica ao lado do título na página inicial."
+      >
+        <input
+          value={brief.heroImage || ""}
+          onChange={(e) => onChange({ heroImage: e.target.value })}
+          placeholder="https://..."
+        />
+      </Field>
+      <Field label="Galeria de fotos (opcional)">
+        <div className="list-editor">
+          {gallery.map((item, i) => (
+            <div className="list-editor-row" key={i}>
+              <input
+                value={item.url}
+                onChange={(e) =>
+                  patchList(
+                    "gallery",
+                    gallery.map((g, x) => (x === i ? { ...g, url: e.target.value } : g)),
+                  )
+                }
+                placeholder="URL da imagem (https://...)"
+              />
+              <input
+                value={item.caption}
+                onChange={(e) =>
+                  patchList(
+                    "gallery",
+                    gallery.map((g, x) =>
+                      x === i ? { ...g, caption: e.target.value } : g,
+                    ),
+                  )
+                }
+                placeholder="Legenda (opcional)"
+              />
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => patchList("gallery", gallery.filter((_, x) => x !== i))}
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          ))}
+          <Button
+            variant="ghost"
+            icon={Plus}
+            onClick={() => patchList("gallery", [...gallery, { url: "", caption: "" }])}
+          >
+            Adicionar foto
+          </Button>
+        </div>
+      </Field>
+      <Field label="Depoimentos de clientes (opcional)">
+        <div className="list-editor">
+          {testimonials.map((item, i) => (
+            <div className="list-editor-row testimonial-row" key={i}>
+              <input
+                value={item.name}
+                onChange={(e) =>
+                  patchList(
+                    "testimonials",
+                    testimonials.map((t, x) =>
+                      x === i ? { ...t, name: e.target.value } : t,
+                    ),
+                  )
+                }
+                placeholder="Nome do cliente"
+              />
+              <input
+                value={item.role}
+                onChange={(e) =>
+                  patchList(
+                    "testimonials",
+                    testimonials.map((t, x) =>
+                      x === i ? { ...t, role: e.target.value } : t,
+                    ),
+                  )
+                }
+                placeholder="Cargo ou empresa (opcional)"
+              />
+              <textarea
+                value={item.quote}
+                onChange={(e) =>
+                  patchList(
+                    "testimonials",
+                    testimonials.map((t, x) =>
+                      x === i ? { ...t, quote: e.target.value } : t,
+                    ),
+                  )
+                }
+                placeholder="O que o cliente disse"
+              />
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() =>
+                  patchList("testimonials", testimonials.filter((_, x) => x !== i))
+                }
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          ))}
+          <Button
+            variant="ghost"
+            icon={Plus}
+            onClick={() =>
+              patchList("testimonials", [
+                ...testimonials,
+                { name: "", role: "", quote: "" },
+              ])
+            }
+          >
+            Adicionar depoimento
+          </Button>
+        </div>
+      </Field>
+    </div>
+  );
+}
+
 function Sites({ db, update, business, setToast, go }) {
   const [modal, setModal] = useState(false),
     [preview, setPreview] = useState(null),
@@ -5531,6 +5812,7 @@ function Sites({ db, update, business, setToast, go }) {
     [generating, setGenerating] = useState(false),
     [siteChatText, setSiteChatText] = useState(""),
     [siteChatBusy, setSiteChatBusy] = useState(false),
+    [customizing, setCustomizing] = useState(false),
     [previewPage, setPreviewPage] = useState("");
   const [form, setForm] = useState({
     name: business?.name || "",
@@ -5542,6 +5824,11 @@ function Sites({ db, update, business, setToast, go }) {
     cta: "Falar com a gente",
     contact: "#contato",
     color: "#6d38e0",
+    theme: "moderno",
+    heroImage: "",
+    gallery: [],
+    testimonials: [],
+    faq: [],
   });
   const sites = db.sites.filter(
     (x) => !business || x.businessId === business.id,
@@ -5559,7 +5846,7 @@ function Sites({ db, update, business, setToast, go }) {
         body: JSON.stringify({
           specialist: "Criador de Sites",
           business,
-          prompt: `Transforme o briefing abaixo em conteúdo público de um site profissional. O briefing é uma instrução interna e NUNCA pode aparecer literalmente nos textos do site. Não invente clientes, números, depoimentos ou fatos. Responda SOMENTE com JSON válido, sem Markdown, usando os campos: headline, description (até 240 caracteres, texto para visitantes), aboutTitle, about, services (lista de objetos com title e description), cta.\n\nNome: ${form.name}\nSegmento: ${form.segment}\nBriefing interno: ${form.instructions.slice(0, 4000)}\nServiços informados: ${String(form.services || "").slice(0, 1600)}\nTexto público informado: ${form.description.slice(0, 800)}`,
+          prompt: `Transforme o briefing abaixo em conteúdo público de um site profissional. O briefing é uma instrução interna e NUNCA pode aparecer literalmente nos textos do site. Não invente clientes, números, depoimentos ou fatos. Responda SOMENTE com JSON válido, sem Markdown, usando os campos: headline, description (até 240 caracteres, texto para visitantes), aboutTitle, about, services (lista de objetos com title e description), cta, faq (lista de 3 a 5 objetos com question e answer, dúvidas genéricas sobre como funciona o atendimento, sem inventar preços, prazos ou números específicos).\n\nNome: ${form.name}\nSegmento: ${form.segment}\nBriefing interno: ${form.instructions.slice(0, 4000)}\nServiços informados: ${String(form.services || "").slice(0, 1600)}\nTexto público informado: ${form.description.slice(0, 800)}`,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -5624,6 +5911,17 @@ function Sites({ db, update, business, setToast, go }) {
           : x,
       ),
     }));
+  const updateBrief = (patch) => {
+    if (!current) return;
+    const brief = { ...(current.brief || {}), ...patch };
+    const pages = makeSitePages(brief, current.slug);
+    updateSite(current.id, {
+      brief,
+      pages,
+      html: pages[0].html,
+      serverPublished: false,
+    });
+  };
   const repairLegacySite = async () => {
     if (!current) return;
     const oldBrief = current.brief || {};
@@ -5704,7 +6002,7 @@ function Sites({ db, update, business, setToast, go }) {
         body: JSON.stringify({
           specialist: "Criador de Sites",
           business,
-          prompt: `Você está editando um site existente por conversa. Altere APENAS o que o usuário pediu e preserve todo o resto. O pedido é uma instrução interna e nunca deve aparecer como texto do site. Não invente fatos. Responda SOMENTE com um objeto JSON contendo apenas os campos alterados entre: name, segment, headline, description, aboutTitle, about, services (lista de objetos com title e description), cta, contact, color.\n\nSite atual:\n${JSON.stringify(current.brief || {}).slice(0, 10000)}\n\nAlteração pedida: ${request.slice(0, 3000)}`,
+          prompt: `Você está editando um site existente por conversa. Altere APENAS o que o usuário pediu e preserve todo o resto. O pedido é uma instrução interna e nunca deve aparecer como texto do site. Não invente fatos. Responda SOMENTE com um objeto JSON contendo apenas os campos alterados entre: name, segment, headline, description, aboutTitle, about, services (lista de objetos com title e description), cta, contact, color, faq (lista de objetos com question e answer, sem inventar preços, prazos ou números específicos).\n\nSite atual:\n${JSON.stringify(current.brief || {}).slice(0, 10000)}\n\nAlteração pedida: ${request.slice(0, 3000)}`,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -5954,6 +6252,13 @@ function Sites({ db, update, business, setToast, go }) {
           <div>
             <Button
               variant="ghost"
+              icon={Palette}
+              onClick={() => setCustomizing(!customizing)}
+            >
+              {customizing ? "Fechar personalização" : "Personalizar visual"}
+            </Button>
+            <Button
+              variant="ghost"
               icon={Edit3}
               onClick={() => setEditCode(!editCode)}
             >
@@ -5974,6 +6279,11 @@ function Sites({ db, update, business, setToast, go }) {
             </Button>
           </div>
         </div>
+        {customizing && (
+          <div className="site-customize-panel">
+            <SiteVisualEditor brief={current.brief || {}} onChange={updateBrief} />
+          </div>
+        )}
         <div className="site-public-panel">
           <Field label="Endereço público">
             <div className="slug-editor">
@@ -6361,11 +6671,15 @@ function Sites({ db, update, business, setToast, go }) {
                 onChange={(e) => setForm({ ...form, services: e.target.value })}
               />
             </Field>
+            <SiteVisualEditor
+              brief={form}
+              onChange={(patch) => setForm({ ...form, ...patch })}
+            />
             <div className="notice">
               <ShieldCheck />
               <span>
-                O gerador não adiciona depoimentos, clientes, números ou imagens
-                inventadas.
+                O texto é gerado pelo assistente a partir do briefing; fotos e
+                depoimentos são sempre os que você enviar aqui, nunca inventados.
               </span>
             </div>
             <div className="modal-actions">

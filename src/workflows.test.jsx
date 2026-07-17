@@ -404,6 +404,53 @@ describe("construtor de sites", () => {
     expect(edited.description).toBe(brief.description);
     expect(edited.services).toBe(brief.services);
   });
+
+  it("aplica o tema escolhido, imagem de capa, galeria, depoimentos e FAQ", () => {
+    const brief = {
+      name: "Estúdio Aurora",
+      segment: "Design",
+      headline: "Design que aproxima",
+      description: "Identidades claras para marcas em crescimento.",
+      services: "Marca\nSite",
+      color: "#6d38e0",
+      theme: "escuro",
+      heroImage: "https://exemplo.com/capa.jpg",
+      gallery: [{ url: "https://exemplo.com/foto1.jpg", caption: "Projeto 1" }],
+      testimonials: [
+        { name: "Cliente Feliz", role: "CEO", quote: "Trabalho excelente!" },
+      ],
+      faq: [{ question: "Como funciona?", answer: "Conversamos e planejamos juntos." }],
+    };
+    const home = makeSite(brief, "", "estudio-aurora");
+    expect(home).toContain("#100e1c");
+    expect(home).toContain("https://exemplo.com/capa.jpg");
+    expect(home).toContain("https://exemplo.com/foto1.jpg");
+    expect(home).toContain("Projeto 1");
+    const about = makeSite(brief, "sobre", "estudio-aurora");
+    expect(about).toContain("Cliente Feliz");
+    expect(about).toContain("Trabalho excelente!");
+    const services = makeSite(brief, "servicos", "estudio-aurora");
+    expect(services).toContain("Como funciona?");
+    expect(services).toContain("Conversamos e planejamos juntos.");
+  });
+
+  it("ignora imagens com URL insegura e não deixa a edição por IA alterar fotos ou depoimentos", () => {
+    const brief = {
+      name: "Estúdio Aurora",
+      heroImage: "javascript:alert(1)",
+      gallery: [{ url: "javascript:alert(1)", caption: "malicioso" }],
+      testimonials: [],
+    };
+    const home = makeSite(brief, "", "estudio-aurora");
+    expect(home).not.toContain("javascript:alert");
+    expect(home).not.toContain("<img");
+    const edited = mergeSiteBrief(brief, {
+      heroImage: "https://outro.com/fake.jpg",
+      gallery: [{ url: "https://outro.com/fake.jpg" }],
+    });
+    expect(edited.heroImage).toBe(brief.heroImage);
+    expect(edited.gallery).toBe(brief.gallery);
+  });
 });
 
 describe("importação de documentos", () => {
