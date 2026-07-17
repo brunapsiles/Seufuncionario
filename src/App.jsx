@@ -4395,6 +4395,10 @@ function Tasks({ db, update, business, setToast, go }) {
         slots: isMission ? Number(form.slots) || 1 : 1,
         points: isMission ? Number(form.points) || 0 : 0,
         reward: isMission ? Number(form.reward) || 0 : 0,
+        rewardStatus:
+          isMission && Number(form.reward) > 0
+            ? form.rewardStatus || "prevista"
+            : form.rewardStatus || "",
         assignees: Array.isArray(form.assignees) ? form.assignees : [],
         interested: Array.isArray(form.interested) ? form.interested : [],
         deliveries: Array.isArray(form.deliveries) ? form.deliveries : [],
@@ -4526,6 +4530,8 @@ function Tasks({ db, update, business, setToast, go }) {
     changeTask(task.id, {
       missionStatus: approved ? "aprovada" : "correcao_solicitada",
       status: approved ? "Concluído" : task.status,
+      rewardStatus:
+        approved && Number(task.reward) > 0 ? "aprovada" : task.rewardStatus,
       deliveries: (task.deliveries || []).map((d, i) =>
         i === (task.deliveries || []).length - 1
           ? { ...d, status: approved ? "aprovada" : "correcao_solicitada", feedback }
@@ -8034,6 +8040,104 @@ function Metric({ icon: Icon, label, value }) {
   );
 }
 
+const REWARD_STATUS_LABELS = {
+  prevista: "Prevista",
+  aguardando_aprovacao: "Aguardando aprovação",
+  aprovada: "Aprovada",
+  pendente_pagamento: "Pendente de pagamento",
+  paga: "Paga",
+  cancelada: "Cancelada",
+};
+
+function RewardsPanel({ db, update, business, setToast }) {
+  const [launchToFinance, setLaunchToFinance] = useState({});
+  const rewardTasks = db.tasks.filter(
+    (t) =>
+      (!business || t.businessId === business.id) &&
+      Number(t.reward) > 0 &&
+      (t.ownerId === db.user.id ||
+        t.assigneeId === db.user.id ||
+        (t.assignees || []).some((a) => a.userId === db.user.id)),
+  );
+  const markPaid = (task) => {
+    update((d) => ({
+      ...d,
+      tasks: d.tasks.map((t) =>
+        t.id === task.id
+          ? {
+              ...t,
+              rewardStatus: "paga",
+              paidAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            }
+          : t,
+      ),
+      transactions: launchToFinance[task.id]
+        ? [
+            {
+              id: uid(),
+              type: "Despesa",
+              description: `Recompensa: ${task.title}`,
+              value: task.reward,
+              date: today(),
+              category: "Recompensas e pagamentos",
+              businessId: business?.id || null,
+            },
+            ...d.transactions,
+          ]
+        : d.transactions,
+    }));
+    setToast("Recompensa marcada como paga");
+  };
+  if (!rewardTasks.length) return null;
+  return (
+    <section className="panel" id="finance-rewards">
+      <div className="panel-head">
+        <div>
+          <span className="eyebrow">RECOMPENSAS E PAGAMENTOS</span>
+          <h2>Valores de missões e tarefas</h2>
+        </div>
+      </div>
+      <div className="member-list">
+        {rewardTasks.map((t) => {
+          const status = t.rewardStatus || "prevista";
+          const isOwner = t.ownerId === db.user.id;
+          return (
+            <div key={t.id}>
+              <span>
+                <strong>{t.title}</strong>
+                <small>
+                  {REWARD_STATUS_LABELS[status] || status} · {money(t.reward)}
+                </small>
+              </span>
+              {isOwner && status === "aprovada" && (
+                <span className="task-actions">
+                  <label className="cost-check">
+                    <input
+                      type="checkbox"
+                      checked={!!launchToFinance[t.id]}
+                      onChange={(e) =>
+                        setLaunchToFinance((c) => ({
+                          ...c,
+                          [t.id]: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Lançar no Financeiro</span>
+                  </label>
+                  <Button variant="secondary" onClick={() => markPaid(t)}>
+                    Marcar como paga
+                  </Button>
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function Finance({ db, update, business, setToast, go }) {
   const [modal, setModal] = useState(false),
     [calc, setCalc] = useState({
@@ -8390,6 +8494,7 @@ function Finance({ db, update, business, setToast, go }) {
             />
           )}
         </section>
+        <RewardsPanel db={db} update={update} business={business} setToast={setToast} />
       </div>
       {modal && (
         <Modal title="Registrar movimentação" onClose={() => setModal(false)}>

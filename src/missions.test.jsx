@@ -113,6 +113,10 @@ describe("tarefas tratadas como missão", () => {
     fireEvent.change(within(dialog).getByLabelText("Pontos"), {
       target: { value: "10" },
     });
+    fireEvent.change(
+      within(dialog).getByLabelText("Recompensa financeira (opcional)"),
+      { target: { value: "50" } },
+    );
     fireEvent.click(
       within(dialog).getByRole("button", { name: "Criar tarefa" }),
     );
@@ -151,5 +155,13 @@ describe("tarefas tratadas como missão", () => {
         "Concluído",
       ),
     ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Financeiro" }));
+    await screen.findByText("Valores de missões e tarefas");
+    expect(screen.getByText(/Aprovada\s·\sR\$\s50,00/)).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Marcar como paga" }),
+    );
+    expect(await screen.findByText(/Paga\s·\sR\$\s50,00/)).toBeInTheDocument();
   });
 });
