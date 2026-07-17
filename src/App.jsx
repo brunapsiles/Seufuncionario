@@ -106,6 +106,7 @@ const emptyDb = {
   products: [],
   orders: [],
   timeEntries: [],
+  contacts: [],
   transactions: [],
   financeSettings: {},
   documents: [],
@@ -132,6 +133,7 @@ export const hasAnyWorkspaceData = (db) =>
   (db?.tasks || []).length > 0 ||
   (db?.leads || []).length > 0 ||
   (db?.appointments || []).length > 0 ||
+  (db?.contacts || []).length > 0 ||
   (db?.products || []).length > 0 ||
   (db?.orders || []).length > 0 ||
   (db?.timeEntries || []).length > 0 ||
@@ -146,6 +148,7 @@ const nav = [
   ["estrategia", "Estratégia", Target],
   ["marketing", "Marca e Marketing", Megaphone],
   ["vendas", "Vendas e Clientes", Handshake],
+  ["contatos", "Contatos", Users],
   ["agendamentos", "Agendamentos", CalendarDays],
   ["produtos", "Produtos e Pedidos", ShoppingBag],
   ["horas", "Horas e Faturamento", Clock3],
@@ -506,6 +509,54 @@ export const contactLinks = (contact) => {
 
 const whatsappLink = (phone, message) =>
   `https://wa.me/${phone}${message ? `?text=${encodeURIComponent(message)}` : ""}`;
+
+// Constrói a agenda de contatos automaticamente a partir do uso do CRM,
+// Agendamentos e Pedidos, sem exigir nenhum passo extra do usuário.
+export const upsertContact = (contacts, { name, contact, company, businessId }) => {
+  const trimmedName = String(name || "").trim();
+  const trimmedContact = String(contact || "").trim();
+  if (!trimmedName && !trimmedContact) return contacts;
+  const { phone, email } = contactLinks(trimmedContact);
+  const now = new Date().toISOString();
+  const idx = contacts.findIndex((c) => {
+    if (phone && c.phone === phone) return true;
+    if (email && c.email === email) return true;
+    if (!phone && !email && trimmedName)
+      return c.name.toLowerCase() === trimmedName.toLowerCase();
+    return false;
+  });
+  if (idx === -1) {
+    if (!trimmedName) return contacts;
+    return [
+      {
+        id: uid(),
+        name: trimmedName,
+        phone,
+        email,
+        rawContact: trimmedContact,
+        company: company || "",
+        notes: "",
+        businessId: businessId || null,
+        createdAt: now,
+        updatedAt: now,
+      },
+      ...contacts,
+    ];
+  }
+  return contacts.map((c, i) =>
+    i === idx
+      ? {
+          ...c,
+          name: trimmedName || c.name,
+          phone: phone || c.phone,
+          email: email || c.email,
+          rawContact: trimmedContact || c.rawContact,
+          company: company || c.company,
+          updatedAt: now,
+        }
+      : c,
+  );
+};
 
 const toolBadgeLabel = (tool) =>
   tool.badge === "Redirecionamento" ? tool.badge : `Redirecionamento · ${tool.badge}`;
@@ -4659,6 +4710,12 @@ function CRM({ db, update, business, setToast, go }) {
         leads: editing
           ? d.leads.map((lead) => (lead.id === editing ? item : lead))
           : [item, ...d.leads],
+        contacts: upsertContact(d.contacts || [], {
+          name: item.name,
+          contact: item.contact,
+          company: item.company,
+          businessId: item.businessId,
+        }),
       };
     });
     setModal(false);
@@ -5077,6 +5134,11 @@ function Appointments({ db, update, business, setToast, go }) {
       appointments: editing
         ? (d.appointments || []).map((a) => (a.id === editing ? item : a))
         : [item, ...(d.appointments || [])],
+      contacts: upsertContact(d.contacts || [], {
+        name: item.clientName,
+        contact: item.clientContact,
+        businessId: item.businessId,
+      }),
     }));
     setModal(false);
     setToast(editing ? "Agendamento atualizado" : "Agendamento criado");
@@ -5341,6 +5403,203 @@ function Appointments({ db, update, business, setToast, go }) {
   );
 }
 
+function Contacts({ db, update, business, setToast, go }) {
+  const [modal, setModal] = useState(false),
+    [editing, setEditing] = useState(null),
+    [search, setSearch] = useState(""),
+    [emailContact, setEmailContact] = useState(null);
+  const blankContact = { name: "", rawContact: "", company: "", notes: "" };
+  const [form, setForm] = useState(blankContact);
+  const contacts = (db.contacts || [])
+    .filter((c) => !business || c.businessId === business.id)
+    .filter(
+      (c) =>
+        !search ||
+        `${c.name} ${c.company || ""} ${c.rawContact || ""}`
+          .toLowerCase()
+          .includes(search.toLowerCase()),
+    )
+    .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  const openContact = (item = null) => {
+    setEditing(item?.id || null);
+    setForm(item ? { ...blankContact, ...item } : blankContact);
+    setModal(true);
+  };
+  const save = (e) => {
+    e.preventDefault();
+    if (!form.name.trim()) return;
+    const now = new Date().toISOString();
+    const { phone, email } = contactLinks(form.rawContact);
+    const item = {
+      ...form,
+      name: form.name.trim(),
+      phone,
+      email,
+      id: editing || uid(),
+      businessId: business?.id || null,
+      createdAt: form.createdAt || now,
+      updatedAt: now,
+    };
+    update((d) => ({
+      ...d,
+      contacts: editing
+        ? (d.contacts || []).map((c) => (c.id === editing ? item : c))
+        : [item, ...(d.contacts || [])],
+    }));
+    setModal(false);
+    setToast(editing ? "Contato atualizado" : "Contato adicionado");
+  };
+  const removeContact = (id) => {
+    if (!confirm("Excluir este contato?")) return;
+    update((d) => ({
+      ...d,
+      contacts: (d.contacts || []).filter((c) => c.id !== id),
+    }));
+  };
+  return (
+    <PageTitle
+      eyebrow="CONTATOS"
+      title="Todas as pessoas em um só lugar"
+      text="Reúne automaticamente quem você cadastra no CRM, em Agendamentos e em Pedidos — também dá para adicionar direto por aqui."
+      action={
+        <Button icon={Plus} onClick={() => openContact()}>
+          Novo contato
+        </Button>
+      }
+    >
+      <div className="toolbar">
+        <div className="search">
+          <Search />
+          <input
+            type="search"
+            placeholder="Buscar por nome, empresa ou contato"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Buscar contatos"
+          />
+        </div>
+      </div>
+      {contacts.length === 0 ? (
+        <Empty
+          icon={Users}
+          title="Nenhum contato ainda"
+          text="Cadastre um contato ou use o CRM, Agendamentos e Pedidos — eles aparecem aqui automaticamente."
+          action="Novo contato"
+          onAction={() => openContact()}
+        />
+      ) : (
+        <div className="data-list">
+          {contacts.map((c) => (
+            <article key={c.id}>
+              <span>
+                <strong>{c.name}</strong>
+                <small>
+                  {c.company || "Sem empresa"}
+                  {c.rawContact && ` · ${c.rawContact}`}
+                </small>
+              </span>
+              <span className="task-actions">
+                {c.phone && (
+                  <a
+                    className="icon-button"
+                    aria-label={`Enviar WhatsApp para ${c.name}`}
+                    title="Enviar WhatsApp"
+                    href={whatsappLink(c.phone, `Olá ${c.name}, tudo bem?`)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <MessageSquareText />
+                  </a>
+                )}
+                {c.email && (
+                  <button
+                    className="icon-button"
+                    aria-label={`Enviar e-mail para ${c.name}`}
+                    title="Enviar e-mail"
+                    onClick={() => setEmailContact(c)}
+                  >
+                    <Mail />
+                  </button>
+                )}
+                <button
+                  className="icon-button"
+                  aria-label={`Editar ${c.name}`}
+                  onClick={() => openContact(c)}
+                >
+                  <Edit3 />
+                </button>
+                <button
+                  className="icon-button danger"
+                  aria-label={`Excluir ${c.name}`}
+                  onClick={() => removeContact(c.id)}
+                >
+                  <Trash2 />
+                </button>
+              </span>
+            </article>
+          ))}
+        </div>
+      )}
+      {modal && (
+        <Modal
+          title={editing ? "Editar contato" : "Novo contato"}
+          onClose={() => setModal(false)}
+        >
+          <form className="modal-body" onSubmit={save}>
+            <Field label="Nome">
+              <input
+                required
+                autoFocus
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+              />
+            </Field>
+            <div className="form-grid">
+              <Field label="Empresa (opcional)">
+                <input
+                  value={form.company}
+                  onChange={(e) => setForm({ ...form, company: e.target.value })}
+                />
+              </Field>
+              <Field label="WhatsApp ou e-mail">
+                <input
+                  value={form.rawContact}
+                  onChange={(e) => setForm({ ...form, rawContact: e.target.value })}
+                  placeholder="(11) 98888-7777"
+                />
+              </Field>
+            </div>
+            <Field label="Observações">
+              <textarea
+                value={form.notes}
+                onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              />
+            </Field>
+            <div className="modal-actions">
+              <Button variant="ghost" onClick={() => setModal(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" icon={Save}>
+                {editing ? "Salvar alterações" : "Salvar contato"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {emailContact && (
+        <EmailComposer
+          onClose={() => setEmailContact(null)}
+          setToast={setToast}
+          initial={{
+            to: emailContact.email,
+            subject: `Contato${business?.name ? ` - ${business.name}` : ""}`,
+          }}
+        />
+      )}
+    </PageTitle>
+  );
+}
+
 const orderStatuses = [
   "Novo",
   "Preparando",
@@ -5496,6 +5755,11 @@ function Catalog({ db, update, business, setToast, go }) {
             const line = orderForm.items.find((i) => i.productId === p.id);
             return line ? { ...p, stock: Math.max(0, p.stock - line.quantity) } : p;
           }),
+      contacts: upsertContact(d.contacts || [], {
+        name: item.clientName,
+        contact: item.clientContact,
+        businessId: item.businessId,
+      }),
     }));
     setOrderModal(false);
     setToast(
@@ -11836,6 +12100,16 @@ export default function App() {
       case "vendas":
         return (
           <CRM
+            db={db}
+            update={update}
+            business={business}
+            setToast={setToast}
+            go={go}
+          />
+        );
+      case "contatos":
+        return (
+          <Contacts
             db={db}
             update={update}
             business={business}

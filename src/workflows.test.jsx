@@ -23,6 +23,7 @@ import App, {
   makeSitePages,
   mergeSiteBrief,
   sendGmailReal,
+  upsertContact,
 } from "./App";
 
 const user = {
@@ -359,6 +360,52 @@ describe("fluxos de trabalho", () => {
     expect(
       screen.getByText("Reunião realizada; enviar proposta na sexta."),
     ).toBeInTheDocument();
+  });
+
+  it("CRM e Agendamentos alimentam a mesma agenda de contatos, sem duplicar", async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Vendas e Clientes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Novo lead" }));
+    fireEvent.change(screen.getByLabelText("Nome"), {
+      target: { value: "Ana Souza" },
+    });
+    fireEvent.change(screen.getByLabelText("E-mail ou telefone"), {
+      target: { value: "(11) 98888-7777" },
+    });
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "Adicionar lead" })).getByRole(
+        "button",
+        { name: "Salvar lead" },
+      ),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
+    expect(await screen.findByText("Ana Souza")).toBeInTheDocument();
+    expect(screen.getAllByRole("article")).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Agendamentos" }));
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Novo agendamento" })[0],
+    );
+    let dialog = await screen.findByRole("dialog", { name: "Novo agendamento" });
+    fireEvent.change(within(dialog).getByLabelText("Serviço ou motivo"), {
+      target: { value: "Retorno" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Cliente"), {
+      target: { value: "Ana S." },
+    });
+    fireEvent.change(within(dialog).getByLabelText("WhatsApp ou e-mail"), {
+      target: { value: "(11) 98888-7777" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Salvar agendamento" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
+    expect(await screen.findByText("Ana S.")).toBeInTheDocument();
+    expect(screen.queryByText("Ana Souza")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("article")).toHaveLength(1);
   });
 
   it("importa um arquivo de texto para a biblioteca de documentos", async () => {
@@ -820,6 +867,53 @@ describe("integrações reais com ferramentas externas", () => {
     await expect(
       sendGmailReal("", { to: "cliente@empresa.com" }),
     ).rejects.toThrow(/configurada/i);
+  });
+});
+
+describe("agenda de contatos unificada", () => {
+  it("cria um contato novo quando não há nenhum correspondente", () => {
+    const result = upsertContact([], {
+      name: "Ana Souza",
+      contact: "(11) 98888-7777",
+      company: "Ateliê Ana",
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      name: "Ana Souza",
+      phone: "5511988887777",
+      email: "",
+      company: "Ateliê Ana",
+    });
+  });
+
+  it("atualiza (não duplica) um contato já existente pelo telefone", () => {
+    const existing = [
+      {
+        id: "c1",
+        name: "Ana",
+        phone: "5511988887777",
+        email: "",
+        rawContact: "(11) 98888-7777",
+        company: "",
+        notes: "Cliente antiga",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ];
+    const result = upsertContact(existing, {
+      name: "Ana Souza",
+      contact: "(11) 98888-7777",
+      company: "Ateliê Ana",
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe("Ana Souza");
+    expect(result[0].company).toBe("Ateliê Ana");
+    expect(result[0].notes).toBe("Cliente antiga"); // não apaga o que já existia
+  });
+
+  it("ignora quando não há nome nem contato", () => {
+    const existing = [];
+    expect(upsertContact(existing, { name: "", contact: "" })).toBe(existing);
   });
 });
 
