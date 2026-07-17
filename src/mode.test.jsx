@@ -67,26 +67,50 @@ const seedLoggedIn = (db) => {
     localStorage.setItem(`seu-funcionario-v2:${user.id}`, JSON.stringify(db));
 };
 
-const BUSINESS_ONLY_NAV = [
-  "Vendas e Clientes",
-  "Produtos e Pedidos",
-  "Financeiro",
-  "Horas e Faturamento",
-  "Sites e Materiais",
+// O modo employee personaliza sugestões e rótulos, mas nunca restringe
+// acesso: os dois modos têm o mesmo conjunto completo de páginas.
+const ALL_NAV = [
+  "Início",
   "Começar do zero",
   "Estratégia",
   "Marca e Marketing",
-];
-const SHARED_NAV = [
-  "Início",
-  "Operação",
+  "Vendas e Clientes",
   "Agendamentos",
+  "Produtos e Pedidos",
+  "Horas e Faturamento",
+  "Financeiro",
+  "Operação",
+  "Sites e Materiais",
   "Documentos",
   "Ferramentas",
   "Estúdio de IA",
   "Projetos",
   "Certificações",
 ];
+
+const employeeDb = (overrides = {}) =>
+  baseDb({
+    preferences: {
+      theme: "light",
+      specialist: "Diretor",
+      mode: "employee",
+      modeChosen: true,
+    },
+    ...overrides,
+  });
+
+const businessDb = (overrides = {}) =>
+  baseDb({
+    selectedBusinessId: business.id,
+    businesses: [business],
+    preferences: {
+      theme: "light",
+      specialist: "Diretor",
+      mode: "business",
+      modeChosen: true,
+    },
+    ...overrides,
+  });
 
 describe("modos de uso: business e employee", () => {
   beforeEach(() => {
@@ -116,11 +140,11 @@ describe("modos de uso: business e employee", () => {
     expect(
       screen.queryByText("Como você pretende usar o Seu Funcionário?"),
     ).not.toBeInTheDocument();
-    for (const label of BUSINESS_ONLY_NAV)
+    for (const label of ALL_NAV)
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
   });
 
-  it("2. conta nova mostra a pergunta de onboarding e aplica o modo escolhido", async () => {
+  it("2. conta nova mostra a pergunta de onboarding e o modo escolhido não restringe acesso", async () => {
     seedLoggedIn(baseDb()); // workspace recém-criado, sem nenhum dado ainda
     render(<App />);
 
@@ -138,27 +162,16 @@ describe("modos de uso: business e employee", () => {
       await screen.findByRole("heading", { name: /Vamos fazer acontecer/ }),
     ).toBeInTheDocument();
     expect(screen.getByText("Meu trabalho")).toBeInTheDocument();
-    for (const label of BUSINESS_ONLY_NAV)
-      expect(
-        screen.queryByRole("button", { name: label }),
-      ).not.toBeInTheDocument();
+    // modo funcionário tem todos os acessos: nenhum item de navegação some
+    for (const label of ALL_NAV)
+      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
   });
 
-  it("3. alterar o modo em Configurações atualiza a navegação imediatamente", async () => {
-    seedLoggedIn(
-      baseDb({
-        selectedBusinessId: business.id,
-        businesses: [business],
-        preferences: {
-          theme: "light",
-          specialist: "Diretor",
-          mode: "business",
-          modeChosen: true,
-        },
-      }),
-    );
+  it("3. alterar o modo em Configurações troca o rótulo do cabeçalho sem remover acessos", async () => {
+    seedLoggedIn(businessDb());
     render(<App />);
     await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
+    expect(screen.getByText("Negócio ativo")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Configurações" }));
     const modeCard = screen
@@ -170,65 +183,31 @@ describe("modos de uso: business e employee", () => {
       }),
     );
 
-    expect(
-      screen.queryByRole("button", { name: "Vendas e Clientes" }),
-    ).not.toBeInTheDocument();
     expect(screen.getByText("Meu trabalho")).toBeInTheDocument();
+    for (const label of ALL_NAV)
+      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
   });
 
-  it("4. navegação do modo funcionário esconde módulos de negócio e mantém os pessoais", async () => {
-    seedLoggedIn(
-      baseDb({
-        preferences: {
-          theme: "light",
-          specialist: "Diretor",
-          mode: "employee",
-          modeChosen: true,
-        },
-      }),
-    );
+  it("4. modo funcionário tem acesso total à navegação (nada é escondido)", async () => {
+    seedLoggedIn(employeeDb());
     render(<App />);
     await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
 
-    for (const label of BUSINESS_ONLY_NAV)
-      expect(
-        screen.queryByRole("button", { name: label }),
-      ).not.toBeInTheDocument();
-    for (const label of SHARED_NAV)
+    for (const label of ALL_NAV)
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
   });
 
   it("5. modo negócio preserva todos os módulos originais", async () => {
-    seedLoggedIn(
-      baseDb({
-        selectedBusinessId: business.id,
-        businesses: [business],
-        preferences: {
-          theme: "light",
-          specialist: "Diretor",
-          mode: "business",
-          modeChosen: true,
-        },
-      }),
-    );
+    seedLoggedIn(businessDb());
     render(<App />);
     await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
 
-    for (const label of [...BUSINESS_ONLY_NAV, ...SHARED_NAV])
+    for (const label of ALL_NAV)
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
   });
 
   it("6. campo Cliente é opcional em Agendamentos no modo funcionário", async () => {
-    seedLoggedIn(
-      baseDb({
-        preferences: {
-          theme: "light",
-          specialist: "Diretor",
-          mode: "employee",
-          modeChosen: true,
-        },
-      }),
-    );
+    seedLoggedIn(employeeDb());
     render(<App />);
     await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
 
@@ -253,18 +232,7 @@ describe("modos de uso: business e employee", () => {
   });
 
   it("7. campo Cliente continua obrigatório em Agendamentos no modo negócio", async () => {
-    seedLoggedIn(
-      baseDb({
-        selectedBusinessId: business.id,
-        businesses: [business],
-        preferences: {
-          theme: "light",
-          specialist: "Diretor",
-          mode: "business",
-          modeChosen: true,
-        },
-      }),
-    );
+    seedLoggedIn(businessDb());
     render(<App />);
     await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
 
@@ -283,23 +251,14 @@ describe("modos de uso: business e employee", () => {
       within(dialog).getByRole("button", { name: "Salvar agendamento" }),
     );
 
-    // sem preencher Cliente, o pedido não deve ser salvo (modal permanece aberto)
+    // sem preencher Cliente, o agendamento não deve ser salvo (modal permanece aberto)
     expect(
       screen.getByRole("dialog", { name: "Novo agendamento" }),
     ).toBeInTheDocument();
   });
 
   it("8. a preferência de modo persiste entre recarregamentos", async () => {
-    seedLoggedIn(
-      baseDb({
-        preferences: {
-          theme: "light",
-          specialist: "Diretor",
-          mode: "employee",
-          modeChosen: true,
-        },
-      }),
-    );
+    seedLoggedIn(employeeDb());
     const { unmount } = render(<App />);
     await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
     expect(screen.getByText("Meu trabalho")).toBeInTheDocument();
@@ -308,24 +267,12 @@ describe("modos de uso: business e employee", () => {
     render(<App />);
     await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
     expect(screen.getByText("Meu trabalho")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Vendas e Clientes" }),
-    ).not.toBeInTheDocument();
+    for (const label of ALL_NAV)
+      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
   });
 
-  it("9. a troca entre modos é reversível sem perda de itens de navegação", async () => {
-    seedLoggedIn(
-      baseDb({
-        selectedBusinessId: business.id,
-        businesses: [business],
-        preferences: {
-          theme: "light",
-          specialist: "Diretor",
-          mode: "business",
-          modeChosen: true,
-        },
-      }),
-    );
+  it("9. a troca entre modos é reversível e nunca remove itens de navegação", async () => {
+    seedLoggedIn(businessDb());
     render(<App />);
     await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
 
@@ -338,9 +285,9 @@ describe("modos de uso: business e employee", () => {
         name: "Me ajudar no meu trabalho",
       }),
     );
-    expect(
-      screen.queryByRole("button", { name: "Vendas e Clientes" }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByText("Meu trabalho")).toBeInTheDocument();
+    for (const label of ALL_NAV)
+      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Configurações" }));
     fireEvent.click(
@@ -348,21 +295,13 @@ describe("modos de uso: business e employee", () => {
         name: "Administrar meu negócio",
       }),
     );
-    for (const label of [...BUSINESS_ONLY_NAV, ...SHARED_NAV])
+    expect(screen.getByText("Negócio ativo")).toBeInTheDocument();
+    for (const label of ALL_NAV)
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
   });
 
-  it("10. o menu mobile abre e mostra a navegação do modo funcionário em largura de celular", async () => {
-    seedLoggedIn(
-      baseDb({
-        preferences: {
-          theme: "light",
-          specialist: "Diretor",
-          mode: "employee",
-          modeChosen: true,
-        },
-      }),
-    );
+  it("10. o menu mobile abre e mostra a navegação completa no modo funcionário", async () => {
+    seedLoggedIn(employeeDb());
     render(<App />);
     await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
 
@@ -372,13 +311,9 @@ describe("modos de uso: business e employee", () => {
 
     const aside = document.querySelector("aside.open");
     expect(aside).toBeTruthy();
-    for (const label of SHARED_NAV)
+    for (const label of ALL_NAV)
       expect(
         within(aside).getByRole("button", { name: label }),
       ).toBeInTheDocument();
-    for (const label of BUSINESS_ONLY_NAV)
-      expect(
-        within(aside).queryByRole("button", { name: label }),
-      ).not.toBeInTheDocument();
   });
 });

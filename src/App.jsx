@@ -164,21 +164,9 @@ const navSecondary = [
   ["config", "Configurações", Settings],
 ];
 
-export const EMPLOYEE_NAV_IDS = [
-  "inicio",
-  "operacao",
-  "agendamentos",
-  "documentos",
-  "ferramentas",
-  "estudio",
-  "historico",
-  "certificacoes",
-];
-
-export const navForMode = (mode) =>
-  mode === "employee"
-    ? nav.filter(([id]) => EMPLOYEE_NAV_IDS.includes(id))
-    : nav;
+// O modo employee personaliza sugestões e rótulos, mas nunca restringe
+// acesso: os dois modos navegam pelo mesmo conjunto completo de páginas.
+export const navForMode = () => nav;
 
 const toolCatalog = [
   {
@@ -11967,58 +11955,46 @@ export default function App() {
               <Menu />
             </button>
           )}
-          {isEmployeeMode ? (
-            <div className="top-business top-business-neutral">
-              <span>Meu trabalho</span>
-              <span className="employee-identity">
-                <span className="business-avatar small">
-                  {db.user.name?.[0] || "V"}
-                </span>
-                <strong>{db.user.name}</strong>
+          <div className="top-business">
+            <span>{isEmployeeMode ? "Meu trabalho" : "Negócio ativo"}</span>
+            <button onClick={() => setBusinessMenu(!businessMenu)}>
+              <span className="business-avatar small">
+                {business?.name?.[0] || "+"}
               </span>
-            </div>
-          ) : (
-            <div className="top-business">
-              <span>Negócio ativo</span>
-              <button onClick={() => setBusinessMenu(!businessMenu)}>
-                <span className="business-avatar small">
-                  {business?.name?.[0] || "+"}
-                </span>
-                <strong>{business?.name || "Criar negócio"}</strong>
-                <ChevronRight className={businessMenu ? "rotated" : ""} />
-              </button>
-              {businessMenu && (
-                <div className="business-popover">
-                  {db.businesses.map((b) => (
-                    <button
-                      key={b.id}
-                      onClick={() => {
-                        update((d) => ({ ...d, selectedBusinessId: b.id }));
-                        setBusinessMenu(false);
-                      }}
-                    >
-                      <span className="business-avatar small">{b.name[0]}</span>
-                      <span>
-                        <strong>{b.name}</strong>
-                        <small>{b.segment || "Sem segmento"}</small>
-                      </span>
-                      {business?.id === b.id && <Check />}
-                    </button>
-                  ))}
+              <strong>{business?.name || "Criar negócio"}</strong>
+              <ChevronRight className={businessMenu ? "rotated" : ""} />
+            </button>
+            {businessMenu && (
+              <div className="business-popover">
+                {db.businesses.map((b) => (
                   <button
-                    className="manage"
+                    key={b.id}
                     onClick={() => {
-                      go("businesses");
+                      update((d) => ({ ...d, selectedBusinessId: b.id }));
                       setBusinessMenu(false);
                     }}
                   >
-                    <Building2 />
-                    Gerenciar negócios
+                    <span className="business-avatar small">{b.name[0]}</span>
+                    <span>
+                      <strong>{b.name}</strong>
+                      <small>{b.segment || "Sem segmento"}</small>
+                    </span>
+                    {business?.id === b.id && <Check />}
                   </button>
-                </div>
-              )}
-            </div>
-          )}
+                ))}
+                <button
+                  className="manage"
+                  onClick={() => {
+                    go("businesses");
+                    setBusinessMenu(false);
+                  }}
+                >
+                  <Building2 />
+                  Gerenciar negócios
+                </button>
+              </div>
+            )}
+          </div>
           <div className="top-actions">
             {activeSpaceId() && (
               <button

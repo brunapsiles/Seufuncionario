@@ -617,11 +617,6 @@ aside nav button.active {
 .rotated {
   transform: rotate(90deg);
 }
-.top-business-neutral .employee-identity {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
 .business-avatar {
   width: 42px;
   height: 42px;
