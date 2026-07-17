@@ -140,6 +140,11 @@ h3,
   background: transparent;
   border: 1px solid var(--line);
 }
+.button.danger {
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--red) 25%, var(--line));
+}
 .button.full {
   width: 100%;
 }
@@ -4180,6 +4185,26 @@ aside nav button span,
   gap: 13px;
   align-items: center;
   margin-bottom: 16px;
+}
+.legal-text h3 {
+  margin: 22px 0 8px;
+  font-size: 15px;
+}
+.legal-text h3:first-child {
+  margin-top: 0;
+}
+.legal-text p,
+.legal-text ul {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.legal-text ul {
+  padding-left: 20px;
+  margin: 8px 0;
+}
+.legal-text li {
+  margin-bottom: 6px;
 }
 .settings-icon {
   width: 44px;

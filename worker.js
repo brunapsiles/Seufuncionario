@@ -291,6 +291,39 @@ async function handleAuth(request, env, url) {
       : json({ error: "Sua sessão expirou. Entre novamente." }, 401);
   }
 
+  if (url.pathname === "/api/auth/account") {
+    if (request.method !== "DELETE")
+      return json({ error: "Método não permitido." }, 405);
+    const account = await sessionUser(request, env);
+    if (!account)
+      return json({ error: "Sua sessão expirou. Entre novamente." }, 401);
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(
+        account.id,
+      ),
+      env.DB.prepare("DELETE FROM workspaces WHERE user_id = ?").bind(
+        account.id,
+      ),
+      env.DB.prepare(
+        "DELETE FROM memberships WHERE owner_id = ? OR member_id = ?",
+      ).bind(account.id, account.id),
+      env.DB.prepare("DELETE FROM invites WHERE owner_id = ?").bind(
+        account.id,
+      ),
+      env.DB.prepare("DELETE FROM public_site_leads WHERE owner_id = ?").bind(
+        account.id,
+      ),
+      env.DB.prepare("DELETE FROM public_sites WHERE owner_id = ?").bind(
+        account.id,
+      ),
+      env.DB.prepare("DELETE FROM error_logs WHERE user_id = ?").bind(
+        account.id,
+      ),
+      env.DB.prepare("DELETE FROM users WHERE id = ?").bind(account.id),
+    ]);
+    return json({ ok: true });
+  }
+
   if (request.method !== "POST")
     return json({ error: "Método não permitido." }, 405);
   let body;
