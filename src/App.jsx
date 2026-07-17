@@ -600,6 +600,54 @@ export const addBusinessDays = (ymd, days) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 };
 
+export const DEFAULT_LEVELS = [
+  { name: "Iniciante", minPoints: 0 },
+  { name: "Assistente", minPoints: 50 },
+  { name: "Colaborador", minPoints: 150 },
+  { name: "Colaborador confiável", minPoints: 300 },
+  { name: "Especialista", minPoints: 600 },
+];
+
+const isApprovedMission = (task, userId) =>
+  task.isMission &&
+  Number(task.points) > 0 &&
+  task.missionStatus === "aprovada" &&
+  (task.assigneeId === userId ||
+    (task.assignees || []).some((a) => a.userId === userId));
+
+export const computeUserPoints = (tasks, userId) =>
+  (tasks || [])
+    .filter((t) => isApprovedMission(t, userId))
+    .reduce((sum, t) => sum + Number(t.points || 0), 0);
+
+export const levelForPoints = (points, levels = DEFAULT_LEVELS) =>
+  [...levels]
+    .sort((a, b) => a.minPoints - b.minPoints)
+    .reduce((current, level) => (points >= level.minPoints ? level : current), levels[0]);
+
+export const computeAchievements = (tasks, userId) => {
+  const approved = (tasks || []).filter((t) => isApprovedMission(t, userId));
+  const onTime = approved.filter(
+    (t) => t.due && t.deliveries?.length && t.deliveries[0].createdAt?.slice(0, 10) <= t.due,
+  );
+  const noCorrections = approved.filter(
+    (t) => (t.deliveries || []).every((d) => d.status !== "correcao_solicitada"),
+  );
+  const achievements = [];
+  if (approved.length >= 1)
+    achievements.push({ id: "primeira-entrega", label: "Primeira entrega" });
+  if (approved.length >= 5)
+    achievements.push({ id: "cinco-tarefas", label: "5 missões concluídas" });
+  if (onTime.length >= 1)
+    achievements.push({ id: "entrega-no-prazo", label: "Entrega no prazo" });
+  if (noCorrections.length >= 1 && approved.length >= 1)
+    achievements.push({
+      id: "sem-correcoes",
+      label: "Entrega aprovada sem correções",
+    });
+  return achievements;
+};
+
 export const businessDaysBetween = (fromYmd, toYmd) => {
   const [fy, fm, fd] = String(fromYmd || "").split("-").map(Number);
   const [ty, tm, td] = String(toYmd || "").split("-").map(Number);
@@ -3406,8 +3454,31 @@ function Dashboard({ db, update, business, go, setToast }) {
     (a, b) =>
       Number(b[2] === recommendedPage) - Number(a[2] === recommendedPage),
   );
+  const gamificationEnabled = db.preferences.gamificationEnabled !== false;
+  const myPoints = computeUserPoints(db.tasks, db.user.id);
+  const myLevel = levelForPoints(myPoints, db.levels || DEFAULT_LEVELS);
+  const myAchievements = computeAchievements(db.tasks, db.user.id);
   return (
     <>
+      {gamificationEnabled && myPoints > 0 && (
+        <div className="progress-card">
+          <div>
+            <span className="eyebrow">MEU PROGRESSO</span>
+            <h2>
+              {myLevel.name} · {myPoints} pontos
+            </h2>
+          </div>
+          {myAchievements.length > 0 && (
+            <div className="achievement-chips">
+              {myAchievements.map((a) => (
+                <span key={a.id} className="chip on">
+                  <Award size={14} /> {a.label}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       <div className="welcome">
         <div>
           <span className="eyebrow">CENTRAL DE TRABALHO</span>
@@ -13814,6 +13885,33 @@ function AccountSettings({ db, update, setToast, go }) {
             </button>
           </div>
           <small>Seus dados não são apagados nem ocultados ao trocar de modo.</small>
+        </section>
+        <section className="settings-card">
+          <div className="settings-card-head">
+            <span className="settings-icon">
+              <Award />
+            </span>
+            <div>
+              <h2>Gamificação</h2>
+              <p>Pontos, níveis e conquistas de missões concluídas.</p>
+            </div>
+          </div>
+          <label className="cost-check">
+            <input
+              type="checkbox"
+              checked={db.preferences.gamificationEnabled !== false}
+              onChange={(e) =>
+                update((d) => ({
+                  ...d,
+                  preferences: {
+                    ...d.preferences,
+                    gamificationEnabled: e.target.checked,
+                  },
+                }))
+              }
+            />
+            <span>Mostrar pontos, nível e conquistas no painel</span>
+          </label>
         </section>
         <section className="settings-card">
           <div className="settings-card-head">
