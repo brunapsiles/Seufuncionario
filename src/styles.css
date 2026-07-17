@@ -2972,6 +2972,20 @@ aside nav button.active {
   padding-top: 8px;
   margin-top: 4px;
 }
+.variant-rows {
+  display: grid;
+  gap: 8px;
+}
+.variant-picker {
+  margin-top: 8px;
+  width: 100%;
+}
+.variant-row {
+  display: grid;
+  grid-template-columns: 1fr 100px 100px auto;
+  gap: 8px;
+  align-items: center;
+}
 .slug-editor {
   display: flex;
   align-items: center;

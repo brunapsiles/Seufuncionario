@@ -692,6 +692,81 @@ describe("fluxos de trabalho", () => {
     expect(screen.queryAllByRole("article")).toHaveLength(0);
   });
 
+  it("produto com variações calcula preço/estoque agregados e dá baixa na variação certa", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Produtos e Pedidos" }));
+    await screen.findByText("Nenhum produto cadastrado");
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Novo produto" })[0],
+    );
+    let dialog = await screen.findByRole("dialog", { name: "Novo produto" });
+    fireEvent.change(within(dialog).getByLabelText("Nome do produto"), {
+      target: { value: "Camiseta" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Adicionar variação" }),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Adicionar variação" }),
+    );
+    const nameInputs = within(dialog).getAllByLabelText("Nome da variação");
+    fireEvent.change(nameInputs[0], { target: { value: "P" } });
+    fireEvent.change(nameInputs[1], { target: { value: "M" } });
+    fireEvent.change(within(dialog).getByLabelText("Preço da variação P"), {
+      target: { value: "50" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Estoque da variação P"), {
+      target: { value: "5" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Preço da variação M"), {
+      target: { value: "55" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Estoque da variação M"), {
+      target: { value: "3" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Salvar produto" }),
+    );
+
+    expect(await screen.findByText("Camiseta")).toBeInTheDocument();
+    expect(screen.getByText(/A partir de R\$ 50,00/)).toBeInTheDocument();
+    expect(screen.getByText(/8 un em estoque/)).toBeInTheDocument();
+    expect(screen.getByText(/2 variações/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Pedidos" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Novo pedido" })[0]);
+    dialog = await screen.findByRole("dialog", { name: "Novo pedido" });
+    fireEvent.change(within(dialog).getByLabelText("Cliente"), {
+      target: { value: "Joana" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Escolher produto"), {
+      target: {
+        value: within(dialog).getByText(/Camiseta/).closest("option").value,
+      },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Escolha a variação"), {
+      target: {
+        value: within(dialog).getByText(/M · R\$ 55,00/).closest("option")
+          .value,
+      },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Quantidade"), {
+      target: { value: "2" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Adicionar" }));
+    expect(
+      within(dialog).getByText("2x Camiseta - M"),
+    ).toBeInTheDocument();
+    expect(within(dialog).getAllByText("R$ 110,00")).toHaveLength(2);
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Salvar pedido" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Catálogo" }));
+    expect(await screen.findByText(/6 un em estoque/)).toBeInTheDocument();
+  });
+
   it("registra horas trabalhadas e fatura lançando a receita no Financeiro", async () => {
     render(<App />);
     fireEvent.click(

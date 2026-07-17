@@ -5753,6 +5753,7 @@ function Catalog({ db, update, business, setToast, go }) {
     stock: "",
     lowStockAlert: "5",
     unit: "un",
+    variants: [],
   };
   const [productForm, setProductForm] = useState(blankProduct);
   const blankOrder = {
@@ -5766,6 +5767,7 @@ function Catalog({ db, update, business, setToast, go }) {
   };
   const [orderForm, setOrderForm] = useState(blankOrder);
   const [pickProduct, setPickProduct] = useState("");
+  const [pickVariant, setPickVariant] = useState("");
   const [pickQty, setPickQty] = useState("1");
   const blankZone = { name: "", fee: "", etaMinutes: "" };
   const [zoneForm, setZoneForm] = useState(blankZone);
@@ -5799,10 +5801,38 @@ function Catalog({ db, update, business, setToast, go }) {
     setProductForm(item ? { ...blankProduct, ...item } : blankProduct);
     setProductModal(true);
   };
+  const addVariantRow = () =>
+    setProductForm((current) => ({
+      ...current,
+      variants: [
+        ...(current.variants || []),
+        { id: uid(), name: "", price: "", stock: "" },
+      ],
+    }));
+  const updateVariantRow = (id, field, value) =>
+    setProductForm((current) => ({
+      ...current,
+      variants: (current.variants || []).map((v) =>
+        v.id === id ? { ...v, [field]: value } : v,
+      ),
+    }));
+  const removeVariantRow = (id) =>
+    setProductForm((current) => ({
+      ...current,
+      variants: (current.variants || []).filter((v) => v.id !== id),
+    }));
   const saveProduct = (e) => {
     e.preventDefault();
     if (!productForm.name.trim()) return;
     const now = new Date().toISOString();
+    const variants = (productForm.variants || [])
+      .filter((v) => v.name.trim())
+      .map((v) => ({
+        id: v.id || uid(),
+        name: v.name.trim(),
+        price: Number(v.price) || 0,
+        stock: Number(v.stock) || 0,
+      }));
     const item = {
       ...productForm,
       name: productForm.name.trim(),
@@ -5810,6 +5840,7 @@ function Catalog({ db, update, business, setToast, go }) {
       cost: Number(productForm.cost) || 0,
       stock: Number(productForm.stock) || 0,
       lowStockAlert: Number(productForm.lowStockAlert) || 0,
+      variants,
       id: editingProduct || uid(),
       businessId: business?.id || null,
       createdAt: productForm.createdAt || now,
@@ -5831,11 +5862,20 @@ function Catalog({ db, update, business, setToast, go }) {
       products: (d.products || []).filter((p) => p.id !== id),
     }));
   };
+  const productPriceLabel = (p) =>
+    (p.variants || []).length > 0
+      ? `A partir de ${money(Math.min(...p.variants.map((v) => v.price)))}`
+      : money(p.price);
+  const productStockTotal = (p) =>
+    (p.variants || []).length > 0
+      ? p.variants.reduce((sum, v) => sum + v.stock, 0)
+      : p.stock;
 
   const openOrder = (item = null) => {
     setEditingOrder(item?.id || null);
     setOrderForm(item ? { ...blankOrder, ...item } : blankOrder);
     setPickProduct("");
+    setPickVariant("");
     setPickQty("1");
     setOrderModal(true);
   };
@@ -5843,25 +5883,52 @@ function Catalog({ db, update, business, setToast, go }) {
     const product = products.find((p) => p.id === pickProduct);
     const qty = Number(pickQty) || 0;
     if (!product || qty <= 0) return;
+    const hasVariants = (product.variants || []).length > 0;
+    const variant = hasVariants
+      ? product.variants.find((v) => v.id === pickVariant)
+      : null;
+    if (hasVariants && !variant) return;
+    const price = variant ? variant.price : product.price;
+    const name = variant ? `${product.name} - ${variant.name}` : product.name;
     setOrderForm((current) => {
-      const existing = current.items.find((i) => i.productId === product.id);
+      const existing = current.items.find(
+        (i) =>
+          i.productId === product.id &&
+          (i.variantId || null) === (variant?.id || null),
+      );
       const items = existing
         ? current.items.map((i) =>
-            i.productId === product.id ? { ...i, quantity: i.quantity + qty } : i,
+            i.productId === product.id &&
+            (i.variantId || null) === (variant?.id || null)
+              ? { ...i, quantity: i.quantity + qty }
+              : i,
           )
         : [
             ...current.items,
-            { productId: product.id, name: product.name, price: product.price, quantity: qty },
+            {
+              productId: product.id,
+              variantId: variant?.id || null,
+              name,
+              price,
+              quantity: qty,
+            },
           ];
       return { ...current, items };
     });
     setPickProduct("");
+    setPickVariant("");
     setPickQty("1");
   };
-  const removeItemFromOrder = (productId) =>
+  const removeItemFromOrder = (productId, variantId) =>
     setOrderForm((current) => ({
       ...current,
-      items: current.items.filter((i) => i.productId !== productId),
+      items: current.items.filter(
+        (i) =>
+          !(
+            i.productId === productId &&
+            (i.variantId || null) === (variantId || null)
+          ),
+      ),
     }));
   const orderTotal = (items) =>
     (items || []).reduce((sum, i) => sum + i.price * i.quantity, 0);
@@ -5894,8 +5961,21 @@ function Catalog({ db, update, business, setToast, go }) {
       products: editingOrder
         ? d.products
         : (d.products || []).map((p) => {
-            const line = orderForm.items.find((i) => i.productId === p.id);
-            return line ? { ...p, stock: Math.max(0, p.stock - line.quantity) } : p;
+            const lines = orderForm.items.filter((i) => i.productId === p.id);
+            if (!lines.length) return p;
+            if ((p.variants || []).length > 0) {
+              return {
+                ...p,
+                variants: p.variants.map((v) => {
+                  const line = lines.find((i) => i.variantId === v.id);
+                  return line
+                    ? { ...v, stock: Math.max(0, v.stock - line.quantity) }
+                    : v;
+                }),
+              };
+            }
+            const line = lines[0];
+            return { ...p, stock: Math.max(0, p.stock - line.quantity) };
           }),
       contacts:
         item.channel === "Mesa"
@@ -6037,14 +6117,17 @@ function Catalog({ db, update, business, setToast, go }) {
             {filteredProducts.map((p) => (
               <article key={p.id}>
                 <span
-                  className={`status-dot ${p.stock <= 0 ? "cancelado" : p.stock <= (p.lowStockAlert || 0) ? "faltou" : "concluído"}`}
+                  className={`status-dot ${productStockTotal(p) <= 0 ? "cancelado" : productStockTotal(p) <= (p.lowStockAlert || 0) ? "faltou" : "concluído"}`}
                 />
                 <span>
                   <strong>{p.name}</strong>
                   <small>
-                    {p.category || "Sem categoria"} · {money(p.price)} ·{" "}
-                    {p.stock} {p.unit || "un"} em estoque
-                    {p.stock <= (p.lowStockAlert || 0) && " · Estoque baixo"}
+                    {p.category || "Sem categoria"} · {productPriceLabel(p)} ·{" "}
+                    {productStockTotal(p)} {p.unit || "un"} em estoque
+                    {(p.variants || []).length > 0 &&
+                      ` · ${p.variants.length} variações`}
+                    {productStockTotal(p) <= (p.lowStockAlert || 0) &&
+                      " · Estoque baixo"}
                   </small>
                 </span>
                 <span className="task-actions">
@@ -6205,6 +6288,55 @@ function Catalog({ db, update, business, setToast, go }) {
                 />
               </Field>
             </div>
+            <div className="field">
+              <span>Variações (opcional — tamanho, cor...)</span>
+              <div className="variant-rows">
+                {(productForm.variants || []).map((v) => (
+                  <div key={v.id} className="variant-row">
+                    <input
+                      value={v.name}
+                      onChange={(e) =>
+                        updateVariantRow(v.id, "name", e.target.value)
+                      }
+                      placeholder="Nome da variação (ex.: G, Azul)"
+                      aria-label="Nome da variação"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={v.price}
+                      onChange={(e) =>
+                        updateVariantRow(v.id, "price", e.target.value)
+                      }
+                      placeholder="Preço"
+                      aria-label={`Preço da variação ${v.name || ""}`}
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      value={v.stock}
+                      onChange={(e) =>
+                        updateVariantRow(v.id, "stock", e.target.value)
+                      }
+                      placeholder="Estoque"
+                      aria-label={`Estoque da variação ${v.name || ""}`}
+                    />
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label="Remover variação"
+                      onClick={() => removeVariantRow(v.id)}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+                <Button type="button" variant="secondary" onClick={addVariantRow}>
+                  Adicionar variação
+                </Button>
+              </div>
+            </div>
             <div className="modal-actions">
               <Button variant="ghost" onClick={() => setProductModal(false)}>
                 Cancelar
@@ -6290,13 +6422,16 @@ function Catalog({ db, update, business, setToast, go }) {
               <div className="order-item-picker">
                 <select
                   value={pickProduct}
-                  onChange={(e) => setPickProduct(e.target.value)}
+                  onChange={(e) => {
+                    setPickProduct(e.target.value);
+                    setPickVariant("");
+                  }}
                   aria-label="Escolher produto"
                 >
                   <option value="">Escolha um produto</option>
                   {products.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} · {money(p.price)}
+                      {p.name} · {productPriceLabel(p)}
                     </option>
                   ))}
                 </select>
@@ -6311,11 +6446,33 @@ function Catalog({ db, update, business, setToast, go }) {
                   Adicionar
                 </Button>
               </div>
+              {(() => {
+                const selected = products.find((p) => p.id === pickProduct);
+                if (!selected || !(selected.variants || []).length) return null;
+                return (
+                  <select
+                    className="variant-picker"
+                    value={pickVariant}
+                    onChange={(e) => setPickVariant(e.target.value)}
+                    aria-label="Escolha a variação"
+                  >
+                    <option value="">Escolha a variação</option>
+                    {selected.variants.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name} · {money(v.price)}
+                      </option>
+                    ))}
+                  </select>
+                );
+              })()}
             </Field>
             {orderForm.items.length > 0 && (
               <div className="order-items">
                 {orderForm.items.map((i) => (
-                  <div key={i.productId} className="order-item-row">
+                  <div
+                    key={`${i.productId}-${i.variantId || "base"}`}
+                    className="order-item-row"
+                  >
                     <span>
                       {i.quantity}x {i.name}
                     </span>
@@ -6324,7 +6481,7 @@ function Catalog({ db, update, business, setToast, go }) {
                       type="button"
                       className="icon-button"
                       aria-label={`Remover ${i.name} do pedido`}
-                      onClick={() => removeItemFromOrder(i.productId)}
+                      onClick={() => removeItemFromOrder(i.productId, i.variantId)}
                     >
                       <Trash2 size={16} />
                     </button>
