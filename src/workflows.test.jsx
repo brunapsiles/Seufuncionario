@@ -557,6 +557,76 @@ describe("fluxos de trabalho", () => {
     expect(await screen.findByText(/7 un em estoque/)).toBeInTheDocument();
   });
 
+  it("calcula o total do pedido de delivery somando a taxa da zona de entrega", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Produtos e Pedidos" }));
+    await screen.findByText("Nenhum produto cadastrado");
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Novo produto" })[0],
+    );
+    let dialog = await screen.findByRole("dialog", { name: "Novo produto" });
+    fireEvent.change(within(dialog).getByLabelText("Nome do produto"), {
+      target: { value: "Marmita" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Preço de venda"), {
+      target: { value: "20" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Estoque atual"), {
+      target: { value: "10" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Salvar produto" }),
+    );
+    expect(await screen.findByText("Marmita")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Pedidos" }));
+    fireEvent.click(screen.getByRole("button", { name: "Zonas de entrega" }));
+    dialog = await screen.findByRole("dialog", { name: "Zonas de entrega" });
+    fireEvent.change(within(dialog).getByLabelText("Nome da zona"), {
+      target: { value: "Centro" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Taxa de entrega"), {
+      target: { value: "8" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Adicionar zona" }),
+    );
+    expect(within(dialog).getByText("Centro")).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Fechar" }));
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Novo pedido" })[0]);
+    dialog = await screen.findByRole("dialog", { name: "Novo pedido" });
+    fireEvent.change(within(dialog).getByLabelText("Cliente"), {
+      target: { value: "Marina" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Canal"), {
+      target: { value: "Delivery" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Zona de entrega"), {
+      target: {
+        value: within(dialog).getByText(/Centro/).closest("option").value,
+      },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Escolher produto"), {
+      target: {
+        value: within(dialog).getByText(/Marmita/).closest("option").value,
+      },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Quantidade"), {
+      target: { value: "2" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Adicionar" }));
+    expect(within(dialog).getByText("Taxa de entrega")).toBeInTheDocument();
+    expect(within(dialog).getByText("R$ 8,00")).toBeInTheDocument();
+    expect(within(dialog).getByText("R$ 48,00")).toBeInTheDocument();
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Salvar pedido" }),
+    );
+
+    expect(await screen.findByText(/Marina · R\$ 48,00/)).toBeInTheDocument();
+  });
+
   it("registra horas trabalhadas e fatura lançando a receita no Financeiro", async () => {
     render(<App />);
     fireEvent.click(

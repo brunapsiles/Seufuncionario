@@ -107,6 +107,7 @@ const emptyDb = {
   orders: [],
   timeEntries: [],
   contacts: [],
+  deliveryZones: [],
   transactions: [],
   financeSettings: {},
   documents: [],
@@ -5741,7 +5742,9 @@ function Catalog({ db, update, business, setToast, go }) {
     [productModal, setProductModal] = useState(false),
     [editingProduct, setEditingProduct] = useState(null),
     [orderModal, setOrderModal] = useState(false),
-    [editingOrder, setEditingOrder] = useState(null);
+    [editingOrder, setEditingOrder] = useState(null),
+    [zoneModal, setZoneModal] = useState(false),
+    [editingZone, setEditingZone] = useState(null);
   const blankProduct = {
     name: "",
     category: "",
@@ -5759,16 +5762,22 @@ function Catalog({ db, update, business, setToast, go }) {
     status: "Novo",
     notes: "",
     items: [],
+    deliveryZoneId: "",
   };
   const [orderForm, setOrderForm] = useState(blankOrder);
   const [pickProduct, setPickProduct] = useState("");
   const [pickQty, setPickQty] = useState("1");
+  const blankZone = { name: "", fee: "", etaMinutes: "" };
+  const [zoneForm, setZoneForm] = useState(blankZone);
 
   const products = (db.products || []).filter(
     (p) => !business || p.businessId === business.id,
   );
   const orders = (db.orders || []).filter(
     (o) => !business || o.businessId === business.id,
+  );
+  const zones = (db.deliveryZones || []).filter(
+    (z) => !business || z.businessId === business.id,
   );
   const filteredProducts = products.filter(
     (p) =>
@@ -5856,14 +5865,22 @@ function Catalog({ db, update, business, setToast, go }) {
     }));
   const orderTotal = (items) =>
     (items || []).reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const deliveryFeeFor = (zoneId) =>
+    zones.find((z) => z.id === zoneId)?.fee || 0;
   const saveOrder = (e) => {
     e.preventDefault();
     if (!orderForm.clientName.trim() || !orderForm.items.length) return;
     const now = new Date().toISOString();
+    const deliveryFee =
+      orderForm.channel === "Delivery"
+        ? deliveryFeeFor(orderForm.deliveryZoneId)
+        : 0;
     const item = {
       ...orderForm,
+      deliveryZoneId: orderForm.channel === "Delivery" ? orderForm.deliveryZoneId : "",
+      deliveryFee,
       clientName: orderForm.clientName.trim(),
-      total: orderTotal(orderForm.items),
+      total: orderTotal(orderForm.items) + deliveryFee,
       id: editingOrder || uid(),
       businessId: business?.id || null,
       createdAt: orderForm.createdAt || now,
@@ -5912,6 +5929,47 @@ function Catalog({ db, update, business, setToast, go }) {
     window.open(whatsappLink(phone, message), "_blank", "noopener");
   };
 
+  const openZone = (item = null) => {
+    setEditingZone(item?.id || null);
+    setZoneForm(item ? { ...blankZone, ...item } : blankZone);
+    setZoneModal(true);
+  };
+  const saveZone = (e) => {
+    e.preventDefault();
+    if (!zoneForm.name.trim()) return;
+    const now = new Date().toISOString();
+    const item = {
+      ...zoneForm,
+      name: zoneForm.name.trim(),
+      fee: Number(zoneForm.fee) || 0,
+      etaMinutes: Number(zoneForm.etaMinutes) || 0,
+      id: editingZone || uid(),
+      businessId: business?.id || null,
+      createdAt: zoneForm.createdAt || now,
+      updatedAt: now,
+    };
+    update((d) => ({
+      ...d,
+      deliveryZones: editingZone
+        ? (d.deliveryZones || []).map((z) => (z.id === editingZone ? item : z))
+        : [item, ...(d.deliveryZones || [])],
+    }));
+    setEditingZone(item.id);
+    setZoneForm(item);
+    setToast(editingZone ? "Zona de entrega atualizada" : "Zona de entrega cadastrada");
+  };
+  const removeZone = (id) => {
+    if (!confirm("Excluir esta zona de entrega?")) return;
+    update((d) => ({
+      ...d,
+      deliveryZones: (d.deliveryZones || []).filter((z) => z.id !== id),
+    }));
+    if (editingZone === id) {
+      setEditingZone(null);
+      setZoneForm(blankZone);
+    }
+  };
+
   return (
     <PageTitle
       eyebrow="PRODUTOS E PEDIDOS"
@@ -5951,6 +6009,15 @@ function Catalog({ db, update, business, setToast, go }) {
             Pedidos
           </button>
         </div>
+        {view === "pedidos" && (
+          <Button
+            variant="secondary"
+            icon={MapPin}
+            onClick={() => setZoneModal(true)}
+          >
+            Zonas de entrega
+          </Button>
+        )}
       </div>
 
       {view === "produtos" ? (
@@ -6173,6 +6240,24 @@ function Catalog({ db, update, business, setToast, go }) {
                   ))}
                 </select>
               </Field>
+              {orderForm.channel === "Delivery" && (
+                <Field label="Zona de entrega">
+                  <select
+                    value={orderForm.deliveryZoneId}
+                    onChange={(e) =>
+                      setOrderForm({ ...orderForm, deliveryZoneId: e.target.value })
+                    }
+                  >
+                    <option value="">A combinar (sem taxa)</option>
+                    {zones.map((z) => (
+                      <option key={z.id} value={z.id}>
+                        {z.name} · {money(z.fee)}
+                        {z.etaMinutes ? ` · ${z.etaMinutes} min` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
               <Field label="Status">
                 <select
                   value={orderForm.status}
@@ -6228,9 +6313,23 @@ function Catalog({ db, update, business, setToast, go }) {
                     </button>
                   </div>
                 ))}
+                {orderForm.channel === "Delivery" &&
+                  deliveryFeeFor(orderForm.deliveryZoneId) > 0 && (
+                    <div className="order-item-row">
+                      <span>Taxa de entrega</span>
+                      <span>{money(deliveryFeeFor(orderForm.deliveryZoneId))}</span>
+                    </div>
+                  )}
                 <div className="order-item-row order-total">
                   <span>Total</span>
-                  <span>{money(orderTotal(orderForm.items))}</span>
+                  <span>
+                    {money(
+                      orderTotal(orderForm.items) +
+                        (orderForm.channel === "Delivery"
+                          ? deliveryFeeFor(orderForm.deliveryZoneId)
+                          : 0),
+                    )}
+                  </span>
                 </div>
               </div>
             )}
@@ -6249,6 +6348,105 @@ function Catalog({ db, update, business, setToast, go }) {
               </Button>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {zoneModal && (
+        <Modal
+          title="Zonas de entrega"
+          wide
+          onClose={() => {
+            setZoneModal(false);
+            setEditingZone(null);
+            setZoneForm(blankZone);
+          }}
+        >
+          <form className="modal-body" onSubmit={saveZone}>
+            <div className="form-grid">
+              <Field label="Nome da zona">
+                <input
+                  required
+                  autoFocus
+                  value={zoneForm.name}
+                  onChange={(e) => setZoneForm({ ...zoneForm, name: e.target.value })}
+                  placeholder="Centro, Zona Sul, até 5 km..."
+                />
+              </Field>
+              <Field label="Taxa de entrega">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={zoneForm.fee}
+                  onChange={(e) => setZoneForm({ ...zoneForm, fee: e.target.value })}
+                />
+              </Field>
+              <Field label="Tempo estimado (minutos)">
+                <input
+                  type="number"
+                  min="0"
+                  value={zoneForm.etaMinutes}
+                  onChange={(e) =>
+                    setZoneForm({ ...zoneForm, etaMinutes: e.target.value })
+                  }
+                />
+              </Field>
+            </div>
+            <div className="modal-actions">
+              {editingZone && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setEditingZone(null);
+                    setZoneForm(blankZone);
+                  }}
+                >
+                  Cancelar edição
+                </Button>
+              )}
+              <Button type="submit" icon={Save}>
+                {editingZone ? "Salvar alterações" : "Adicionar zona"}
+              </Button>
+            </div>
+          </form>
+          {zones.length === 0 ? (
+            <Empty
+              icon={MapPin}
+              title="Nenhuma zona de entrega cadastrada"
+              text="Cadastre zonas com taxa fixa para calcular o total do pedido automaticamente."
+            />
+          ) : (
+            <div className="data-list">
+              {zones.map((z) => (
+                <article key={z.id}>
+                  <span>
+                    <strong>{z.name}</strong>
+                    <small>
+                      {money(z.fee)}
+                      {z.etaMinutes ? ` · ${z.etaMinutes} min` : ""}
+                    </small>
+                  </span>
+                  <span className="task-actions">
+                    <button
+                      className="icon-button"
+                      aria-label={`Editar ${z.name}`}
+                      onClick={() => openZone(z)}
+                    >
+                      <Edit3 />
+                    </button>
+                    <button
+                      className="icon-button danger"
+                      aria-label={`Excluir ${z.name}`}
+                      onClick={() => removeZone(z.id)}
+                    >
+                      <Trash2 />
+                    </button>
+                  </span>
+                </article>
+              ))}
+            </div>
+          )}
         </Modal>
       )}
     </PageTitle>
