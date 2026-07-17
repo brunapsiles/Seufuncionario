@@ -10,9 +10,12 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App, {
+  addDaysYmd,
+  contactLinks,
   documentFileKind,
   documentTitleFromFilename,
   extractDocumentText,
+  googleCalendarUrl,
   makeSite,
   makeSitePages,
   mergeSiteBrief,
@@ -363,6 +366,18 @@ describe("fluxos de trabalho", () => {
       screen.getByRole("button", { name: "Remover contrato_cliente.txt" }),
     ).toBeInTheDocument();
   });
+
+  it('abre o modal de criação ao clicar em "Criar meu primeiro site"', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Sites e Materiais" }));
+    expect(await screen.findByText("Nenhum site criado")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Criar meu primeiro site" }),
+    );
+    expect(
+      await screen.findByRole("dialog", { name: "Criar um site" }),
+    ).toBeInTheDocument();
+  });
 });
 
 describe("construtor de sites", () => {
@@ -480,6 +495,44 @@ describe("construtor de sites", () => {
     const home = makeSite(brief, "", "estudio-aurora");
     expect(home).toContain("hero-decor");
     expect(home).not.toContain("<img");
+  });
+});
+
+describe("integrações reais com ferramentas externas", () => {
+  it("reconhece telefone e e-mail no campo de contato do lead", () => {
+    expect(contactLinks("(11) 98888-7777")).toEqual({
+      phone: "5511988887777",
+      email: "",
+    });
+    expect(contactLinks("cliente@empresa.com")).toEqual({
+      phone: "",
+      email: "cliente@empresa.com",
+    });
+    expect(contactLinks("55 11 98888-7777")).toEqual({
+      phone: "5511988887777",
+      email: "",
+    });
+    expect(contactLinks("")).toEqual({ phone: "", email: "" });
+    expect(contactLinks("abc")).toEqual({ phone: "", email: "" });
+  });
+
+  it("monta o link do Google Agenda a partir do prazo da tarefa", () => {
+    const url = googleCalendarUrl({
+      title: "Enviar proposta",
+      due: "2026-03-10",
+      project: "Campanha de março",
+      assignee: "Bruna",
+    });
+    expect(url).toContain("calendar.google.com/calendar/render?action=TEMPLATE");
+    expect(url).toContain("text=Enviar%20proposta");
+    expect(url).toContain("dates=20260310/20260311");
+    expect(url).toContain(encodeURIComponent("Campanha de março"));
+    expect(googleCalendarUrl({ title: "Sem prazo" })).toBe("");
+  });
+
+  it("soma dias preservando o fuso (sem pular dia)", () => {
+    expect(addDaysYmd("2026-01-31", 1)).toBe("20260201");
+    expect(addDaysYmd("2026-12-31", 1)).toBe("20270101");
   });
 });
 

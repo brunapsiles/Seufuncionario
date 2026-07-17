@@ -219,7 +219,7 @@ const toolCatalog = [
     category: "Arquivos",
     description: "Armazene e compartilhe documentos e materiais.",
     url: "https://drive.google.com/",
-    badge: "Plano gratuito",
+    badge: "Redirecionamento",
     keywords: "arquivo documento drive compartilhar",
     icon: Archive,
   },
@@ -239,7 +239,7 @@ const toolCatalog = [
     category: "Design",
     description: "Crie apresentações, posts e materiais visuais.",
     url: "https://www.canva.com/",
-    badge: "Plano gratuito",
+    badge: "Redirecionamento",
     keywords: "design logo post apresentação imagem canva",
     icon: Palette,
   },
@@ -249,7 +249,7 @@ const toolCatalog = [
     category: "Organização",
     description: "Organize tarefas e projetos em quadros visuais.",
     url: "https://trello.com/",
-    badge: "Plano gratuito",
+    badge: "Redirecionamento",
     keywords: "tarefa projeto quadro kanban trello",
     icon: ListTodo,
   },
@@ -259,7 +259,7 @@ const toolCatalog = [
     category: "Organização",
     description: "Centralize documentos, processos e conhecimento.",
     url: "https://www.notion.so/",
-    badge: "Plano gratuito",
+    badge: "Redirecionamento",
     keywords: "documento processo wiki organização notion",
     icon: FileText,
   },
@@ -455,6 +455,43 @@ const slugify = (s) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
+
+export const contactLinks = (contact) => {
+  const value = String(contact || "").trim();
+  if (!value) return { phone: "", email: "" };
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return { phone: "", email: value };
+  const digits = value.replace(/\D/g, "");
+  if (digits.length < 10) return { phone: "", email: "" };
+  return { phone: digits.length <= 11 ? `55${digits}` : digits, email: "" };
+};
+
+const whatsappLink = (phone, message) =>
+  `https://wa.me/${phone}${message ? `?text=${encodeURIComponent(message)}` : ""}`;
+
+const toolBadgeLabel = (tool) =>
+  tool.badge === "Redirecionamento" ? tool.badge : `Redirecionamento · ${tool.badge}`;
+
+export const addDaysYmd = (ymd, days) => {
+  const [y, m, d] = String(ymd || "").split("-").map(Number);
+  if (!y || !m || !d) return "";
+  const dt = new Date(Date.UTC(y, m - 1, d + days));
+  return `${dt.getUTCFullYear()}${String(dt.getUTCMonth() + 1).padStart(2, "0")}${String(dt.getUTCDate()).padStart(2, "0")}`;
+};
+
+export const googleCalendarUrl = (task) => {
+  if (!task?.due) return "";
+  const start = addDaysYmd(task.due, 0);
+  const end = addDaysYmd(task.due, 1);
+  if (!start || !end) return "";
+  const details = [
+    task.description,
+    task.project ? `Projeto: ${task.project}` : "",
+    task.assignee ? `Respons\u00e1vel: ${task.assignee}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(task.title || "Tarefa")}&dates=${start}/${end}&details=${encodeURIComponent(details)}`;
+};
 
 const userStorageKey = (id) => `${STORAGE_PREFIX}${id}`;
 const cleanDb = (user) => ({
@@ -2190,7 +2227,7 @@ function UniversalRequest({ db, update, business, setToast }) {
         <ToolIcon />
         <span>
           <strong>{tool.name}</strong>
-          <small>Redirecionamento · {tool.badge}</small>
+          <small>{toolBadgeLabel(tool)}</small>
         </span>
         <ExternalLink />
       </a>
@@ -3564,6 +3601,18 @@ function Tasks({ db, update, business, setToast, go }) {
                         {t.priority}
                       </span>
                       <span className="task-actions">
+                        {t.due && (
+                          <a
+                            className="icon-button"
+                            aria-label={`Adicionar "${t.title}" ao Google Agenda`}
+                            title="Adicionar ao Google Agenda"
+                            href={googleCalendarUrl(t)}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <CalendarDays />
+                          </a>
+                        )}
                         <button
                           className="icon-button"
                           aria-label="Editar tarefa"
@@ -3697,6 +3746,18 @@ function Tasks({ db, update, business, setToast, go }) {
                   >
                     <Play />
                   </button>
+                )}
+                {t.due && (
+                  <a
+                    className="icon-button"
+                    aria-label={`Adicionar "${t.title}" ao Google Agenda`}
+                    title="Adicionar ao Google Agenda"
+                    href={googleCalendarUrl(t)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <CalendarDays />
+                  </a>
                 )}
                 <button
                   className="icon-button"
@@ -3904,6 +3965,7 @@ function CRM({ db, update, business, setToast, go }) {
     [editing, setEditing] = useState(null),
     [search, setSearch] = useState(""),
     [filter, setFilter] = useState("Todos"),
+    [emailLead, setEmailLead] = useState(null),
     [interaction, setInteraction] = useState({
       type: "Conversa",
       note: "",
@@ -4119,6 +4181,31 @@ function CRM({ db, update, business, setToast, go }) {
               <span>{l.value ? money(l.value) : "Não informado"}</span>
               <span>{l.next || "Não agendado"}</span>
               <span className="crm-actions">
+                {contactLinks(l.contact).phone && (
+                  <a
+                    className="icon-button"
+                    aria-label={`Enviar WhatsApp para ${l.name}`}
+                    title="Enviar WhatsApp"
+                    href={whatsappLink(
+                      contactLinks(l.contact).phone,
+                      `Olá ${l.name}, tudo bem? Aqui é da equipe${business?.name ? ` da ${business.name}` : ""}.`,
+                    )}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <MessageSquareText />
+                  </a>
+                )}
+                {contactLinks(l.contact).email && (
+                  <button
+                    className="icon-button"
+                    aria-label={`Enviar e-mail para ${l.name}`}
+                    title="Enviar e-mail"
+                    onClick={() => setEmailLead(l)}
+                  >
+                    <Mail />
+                  </button>
+                )}
                 <button
                   className="icon-button"
                   aria-label="Editar lead e ver interacoes"
@@ -4286,6 +4373,16 @@ function CRM({ db, update, business, setToast, go }) {
             </div>
           </form>
         </Modal>
+      )}
+      {emailLead && (
+        <EmailComposer
+          onClose={() => setEmailLead(null)}
+          setToast={setToast}
+          initial={{
+            to: emailLead.contact,
+            subject: `Contato${business?.name ? ` - ${business.name}` : ""}`,
+          }}
+        />
       )}
     </PageTitle>
   );
@@ -6784,8 +6881,12 @@ function Sites({ db, update, business, setToast, go }) {
   );
 }
 
-function EmailComposer({ onClose, setToast }) {
-  const [form, setForm] = useState({ to: "", subject: "", body: "" });
+function EmailComposer({ onClose, setToast, initial }) {
+  const [form, setForm] = useState({
+    to: initial?.to || "",
+    subject: initial?.subject || "",
+    body: initial?.body || "",
+  });
   const params = () =>
     `to=${encodeURIComponent(form.to)}&su=${encodeURIComponent(form.subject)}&body=${encodeURIComponent(form.body)}`;
   const openGmail = () => {
@@ -8033,7 +8134,7 @@ function ToolsHub({ db, update, business, setToast }) {
                 <span className="tag">{tool.category}</span>
                 <h3>{tool.name}</h3>
                 <p>{tool.description}</p>
-                <small>Redirecionamento · {tool.badge}</small>
+                <small>{toolBadgeLabel(tool)}</small>
               </div>
               <a href={tool.url} target="_blank" rel="noreferrer">
                 Abrir ferramenta <ExternalLink />
