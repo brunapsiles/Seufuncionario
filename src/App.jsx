@@ -86,6 +86,7 @@ import {
   Route,
   MapPin,
   Navigation,
+  Truck,
 } from "lucide-react";
 
 const LEGACY_STORAGE_KEY = "seu-funcionario-v1";
@@ -108,6 +109,8 @@ const emptyDb = {
   timeEntries: [],
   contacts: [],
   deliveryZones: [],
+  vehicles: [],
+  trips: [],
   transactions: [],
   financeSettings: {},
   documents: [],
@@ -138,6 +141,8 @@ export const hasAnyWorkspaceData = (db) =>
   (db?.products || []).length > 0 ||
   (db?.orders || []).length > 0 ||
   (db?.timeEntries || []).length > 0 ||
+  (db?.vehicles || []).length > 0 ||
+  (db?.trips || []).length > 0 ||
   (db?.documents || []).length > 0 ||
   (db?.sites || []).length > 0 ||
   (db?.conversations || []).length > 0 ||
@@ -152,6 +157,7 @@ const nav = [
   ["contatos", "Contatos", Users],
   ["agendamentos", "Agendamentos", CalendarDays],
   ["produtos", "Produtos e Pedidos", ShoppingBag],
+  ["frota", "Frota e Fretes", Truck],
   ["horas", "Horas e Faturamento", Clock3],
   ["financeiro", "Financeiro", WalletCards],
   ["operacao", "Operação", Workflow],
@@ -6627,6 +6633,549 @@ function Catalog({ db, update, business, setToast, go }) {
   );
 }
 
+const vehicleStatuses = ["Ativo", "Manutenção", "Inativo"];
+const tripStatuses = ["Agendado", "Em rota", "Entregue", "Cancelado"];
+
+function Fleet({ db, update, business, setToast, go }) {
+  const [view, setView] = useState("frota"),
+    [search, setSearch] = useState(""),
+    [vehicleModal, setVehicleModal] = useState(false),
+    [editingVehicle, setEditingVehicle] = useState(null),
+    [tripModal, setTripModal] = useState(false),
+    [editingTrip, setEditingTrip] = useState(null);
+  const blankVehicle = {
+    plate: "",
+    model: "",
+    type: "Caminhão",
+    capacityKg: "",
+    status: "Ativo",
+    driverName: "",
+    driverContact: "",
+    nextMaintenanceDate: "",
+    notes: "",
+  };
+  const [vehicleForm, setVehicleForm] = useState(blankVehicle);
+  const blankTrip = {
+    vehicleId: "",
+    driverName: "",
+    origin: "",
+    destination: "",
+    cargoDescription: "",
+    weightKg: "",
+    freightValue: "",
+    cteNumber: "",
+    cteValue: "",
+    status: "Agendado",
+    scheduledDate: today(),
+    notes: "",
+  };
+  const [tripForm, setTripForm] = useState(blankTrip);
+
+  const vehicles = (db.vehicles || []).filter(
+    (v) => !business || v.businessId === business.id,
+  );
+  const trips = (db.trips || []).filter(
+    (t) => !business || t.businessId === business.id,
+  );
+  const filteredVehicles = vehicles.filter(
+    (v) =>
+      !search ||
+      `${v.plate} ${v.model} ${v.driverName}`
+        .toLowerCase()
+        .includes(search.toLowerCase()),
+  );
+  const filteredTrips = trips
+    .filter(
+      (t) =>
+        !search ||
+        `${t.origin} ${t.destination} ${t.driverName}`
+          .toLowerCase()
+          .includes(search.toLowerCase()),
+    )
+    .sort((a, b) => (b.scheduledDate || "").localeCompare(a.scheduledDate || ""));
+  const maintenanceDue = (v) =>
+    v.nextMaintenanceDate &&
+    v.nextMaintenanceDate <= addDaysYmdDashed(today(), 7);
+
+  const openVehicle = (item = null) => {
+    setEditingVehicle(item?.id || null);
+    setVehicleForm(item ? { ...blankVehicle, ...item } : blankVehicle);
+    setVehicleModal(true);
+  };
+  const saveVehicle = (e) => {
+    e.preventDefault();
+    if (!vehicleForm.plate.trim()) return;
+    const now = new Date().toISOString();
+    const item = {
+      ...vehicleForm,
+      plate: vehicleForm.plate.trim().toUpperCase(),
+      model: vehicleForm.model.trim(),
+      capacityKg: Number(vehicleForm.capacityKg) || 0,
+      id: editingVehicle || uid(),
+      businessId: business?.id || null,
+      createdAt: vehicleForm.createdAt || now,
+      updatedAt: now,
+    };
+    update((d) => ({
+      ...d,
+      vehicles: editingVehicle
+        ? (d.vehicles || []).map((v) => (v.id === editingVehicle ? item : v))
+        : [item, ...(d.vehicles || [])],
+    }));
+    setVehicleModal(false);
+    setToast(editingVehicle ? "Veículo atualizado" : "Veículo cadastrado");
+  };
+  const removeVehicle = (id) => {
+    if (!confirm("Excluir este veículo da frota?")) return;
+    update((d) => ({
+      ...d,
+      vehicles: (d.vehicles || []).filter((v) => v.id !== id),
+    }));
+  };
+
+  const openTrip = (item = null) => {
+    setEditingTrip(item?.id || null);
+    setTripForm(item ? { ...blankTrip, ...item } : blankTrip);
+    setTripModal(true);
+  };
+  const saveTrip = (e) => {
+    e.preventDefault();
+    if (!tripForm.origin.trim() || !tripForm.destination.trim()) return;
+    const now = new Date().toISOString();
+    const item = {
+      ...tripForm,
+      origin: tripForm.origin.trim(),
+      destination: tripForm.destination.trim(),
+      weightKg: Number(tripForm.weightKg) || 0,
+      freightValue: Number(tripForm.freightValue) || 0,
+      cteValue: Number(tripForm.cteValue) || 0,
+      id: editingTrip || uid(),
+      businessId: business?.id || null,
+      createdAt: tripForm.createdAt || now,
+      updatedAt: now,
+    };
+    update((d) => ({
+      ...d,
+      trips: editingTrip
+        ? (d.trips || []).map((t) => (t.id === editingTrip ? item : t))
+        : [item, ...(d.trips || [])],
+    }));
+    setTripModal(false);
+    setToast(editingTrip ? "Frete atualizado" : "Frete registrado");
+  };
+  const removeTrip = (id) => {
+    if (!confirm("Excluir este frete?")) return;
+    update((d) => ({ ...d, trips: (d.trips || []).filter((t) => t.id !== id) }));
+  };
+  const changeTripStatus = (item, status) =>
+    update((d) => ({
+      ...d,
+      trips: (d.trips || []).map((t) =>
+        t.id === item.id ? { ...t, status, updatedAt: new Date().toISOString() } : t,
+      ),
+    }));
+  const vehicleLabel = (id) => {
+    const v = vehicles.find((x) => x.id === id);
+    return v ? `${v.plate} · ${v.model}` : "Sem veículo definido";
+  };
+
+  return (
+    <PageTitle
+      eyebrow="FROTA E FRETES"
+      title="Veículos e fretes em um só lugar"
+      text="Cadastre a frota, acompanhe manutenções e registre fretes com controle de CT-e."
+      action={
+        <Button
+          icon={Plus}
+          onClick={() => (view === "frota" ? openVehicle() : openTrip())}
+        >
+          {view === "frota" ? "Novo veículo" : "Novo frete"}
+        </Button>
+      }
+    >
+      <div className="toolbar">
+        <div className="search">
+          <Search />
+          <input
+            type="search"
+            placeholder={view === "frota" ? "Buscar veículo" : "Buscar frete"}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Buscar"
+          />
+        </div>
+        <div className="view-toggle">
+          <button
+            className={view === "frota" ? "active" : ""}
+            onClick={() => setView("frota")}
+          >
+            Frota
+          </button>
+          <button
+            className={view === "fretes" ? "active" : ""}
+            onClick={() => setView("fretes")}
+          >
+            Fretes
+          </button>
+        </div>
+      </div>
+
+      {view === "frota" ? (
+        filteredVehicles.length === 0 ? (
+          <Empty
+            icon={Truck}
+            title="Nenhum veículo cadastrado"
+            text="Cadastre os veículos da frota para vinculá-los aos fretes."
+            action="Novo veículo"
+            onAction={() => openVehicle()}
+          />
+        ) : (
+          <div className="data-list">
+            {filteredVehicles.map((v) => (
+              <article key={v.id}>
+                <span
+                  className={`status-dot ${v.status === "Inativo" ? "cancelado" : maintenanceDue(v) ? "faltou" : "concluído"}`}
+                />
+                <span>
+                  <strong>
+                    {v.plate} · {v.model || "Sem modelo"}
+                  </strong>
+                  <small>
+                    {v.type} · {v.status}
+                    {v.driverName && ` · Motorista: ${v.driverName}`}
+                    {maintenanceDue(v) && " · Manutenção próxima"}
+                  </small>
+                </span>
+                <span className="task-actions">
+                  <button
+                    className="icon-button"
+                    aria-label={`Editar ${v.plate}`}
+                    onClick={() => openVehicle(v)}
+                  >
+                    <Edit3 />
+                  </button>
+                  <button
+                    className="icon-button danger"
+                    aria-label={`Excluir ${v.plate}`}
+                    onClick={() => removeVehicle(v.id)}
+                  >
+                    <Trash2 />
+                  </button>
+                </span>
+              </article>
+            ))}
+          </div>
+        )
+      ) : filteredTrips.length === 0 ? (
+        <Empty
+          icon={Route}
+          title="Nenhum frete registrado"
+          text="Registre fretes vinculando veículo, rota e o CT-e correspondente."
+          action="Novo frete"
+          onAction={() => openTrip()}
+        />
+      ) : (
+        <div className="data-list">
+          {filteredTrips.map((t) => (
+            <article key={t.id}>
+              <span>
+                <strong>
+                  {t.origin} → {t.destination}
+                </strong>
+                <small>
+                  {vehicleLabel(t.vehicleId)}
+                  {t.cteNumber && ` · CT-e ${t.cteNumber}`} ·{" "}
+                  {t.scheduledDate}
+                </small>
+              </span>
+              <select
+                value={t.status}
+                onChange={(e) => changeTripStatus(t, e.target.value)}
+              >
+                {tripStatuses.map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
+              </select>
+              <span className="task-actions">
+                <button
+                  className="icon-button"
+                  aria-label={`Editar frete ${t.origin} para ${t.destination}`}
+                  onClick={() => openTrip(t)}
+                >
+                  <Edit3 />
+                </button>
+                <button
+                  className="icon-button danger"
+                  aria-label={`Excluir frete ${t.origin} para ${t.destination}`}
+                  onClick={() => removeTrip(t.id)}
+                >
+                  <Trash2 />
+                </button>
+              </span>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {vehicleModal && (
+        <Modal
+          title={editingVehicle ? "Editar veículo" : "Novo veículo"}
+          onClose={() => setVehicleModal(false)}
+        >
+          <form className="modal-body" onSubmit={saveVehicle}>
+            <div className="form-grid">
+              <Field label="Placa">
+                <input
+                  required
+                  autoFocus
+                  value={vehicleForm.plate}
+                  onChange={(e) =>
+                    setVehicleForm({ ...vehicleForm, plate: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Modelo">
+                <input
+                  value={vehicleForm.model}
+                  onChange={(e) =>
+                    setVehicleForm({ ...vehicleForm, model: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Tipo">
+                <input
+                  value={vehicleForm.type}
+                  onChange={(e) =>
+                    setVehicleForm({ ...vehicleForm, type: e.target.value })
+                  }
+                  placeholder="Caminhão, Van, Moto..."
+                />
+              </Field>
+              <Field label="Capacidade (kg)">
+                <input
+                  type="number"
+                  min="0"
+                  value={vehicleForm.capacityKg}
+                  onChange={(e) =>
+                    setVehicleForm({ ...vehicleForm, capacityKg: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Status">
+                <select
+                  value={vehicleForm.status}
+                  onChange={(e) =>
+                    setVehicleForm({ ...vehicleForm, status: e.target.value })
+                  }
+                >
+                  {vehicleStatuses.map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Motorista">
+                <input
+                  value={vehicleForm.driverName}
+                  onChange={(e) =>
+                    setVehicleForm({ ...vehicleForm, driverName: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="WhatsApp do motorista">
+                <input
+                  value={vehicleForm.driverContact}
+                  onChange={(e) =>
+                    setVehicleForm({
+                      ...vehicleForm,
+                      driverContact: e.target.value,
+                    })
+                  }
+                  placeholder="(11) 98888-7777"
+                />
+              </Field>
+              <Field label="Próxima manutenção">
+                <input
+                  type="date"
+                  value={vehicleForm.nextMaintenanceDate}
+                  onChange={(e) =>
+                    setVehicleForm({
+                      ...vehicleForm,
+                      nextMaintenanceDate: e.target.value,
+                    })
+                  }
+                />
+              </Field>
+            </div>
+            <Field label="Observações">
+              <textarea
+                value={vehicleForm.notes}
+                onChange={(e) =>
+                  setVehicleForm({ ...vehicleForm, notes: e.target.value })
+                }
+              />
+            </Field>
+            <div className="modal-actions">
+              <Button variant="ghost" onClick={() => setVehicleModal(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" icon={Save}>
+                {editingVehicle ? "Salvar alterações" : "Salvar veículo"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {tripModal && (
+        <Modal
+          title={editingTrip ? "Editar frete" : "Novo frete"}
+          wide
+          onClose={() => setTripModal(false)}
+        >
+          <form className="modal-body" onSubmit={saveTrip}>
+            <div className="form-grid">
+              <Field label="Veículo">
+                <select
+                  value={tripForm.vehicleId}
+                  onChange={(e) =>
+                    setTripForm({ ...tripForm, vehicleId: e.target.value })
+                  }
+                >
+                  <option value="">A definir</option>
+                  {vehicles.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.plate} · {v.model}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Motorista">
+                <input
+                  value={tripForm.driverName}
+                  onChange={(e) =>
+                    setTripForm({ ...tripForm, driverName: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Origem">
+                <input
+                  required
+                  autoFocus
+                  value={tripForm.origin}
+                  onChange={(e) =>
+                    setTripForm({ ...tripForm, origin: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Destino">
+                <input
+                  required
+                  value={tripForm.destination}
+                  onChange={(e) =>
+                    setTripForm({ ...tripForm, destination: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Peso da carga (kg)">
+                <input
+                  type="number"
+                  min="0"
+                  value={tripForm.weightKg}
+                  onChange={(e) =>
+                    setTripForm({ ...tripForm, weightKg: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Valor do frete">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={tripForm.freightValue}
+                  onChange={(e) =>
+                    setTripForm({ ...tripForm, freightValue: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Data programada">
+                <input
+                  type="date"
+                  value={tripForm.scheduledDate}
+                  onChange={(e) =>
+                    setTripForm({ ...tripForm, scheduledDate: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Status">
+                <select
+                  value={tripForm.status}
+                  onChange={(e) =>
+                    setTripForm({ ...tripForm, status: e.target.value })
+                  }
+                >
+                  {tripStatuses.map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <Field label="Descrição da carga">
+              <input
+                value={tripForm.cargoDescription}
+                onChange={(e) =>
+                  setTripForm({ ...tripForm, cargoDescription: e.target.value })
+                }
+              />
+            </Field>
+            <div className="form-grid">
+              <Field label="Número do CT-e (registro manual)">
+                <input
+                  value={tripForm.cteNumber}
+                  onChange={(e) =>
+                    setTripForm({ ...tripForm, cteNumber: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Valor do CT-e">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={tripForm.cteValue}
+                  onChange={(e) =>
+                    setTripForm({ ...tripForm, cteValue: e.target.value })
+                  }
+                />
+              </Field>
+            </div>
+            <p className="settings-note">
+              <CircleAlert />A emissão oficial do CT-e é feita no seu emissor
+              fiscal homologado. Aqui você só registra o número e o valor
+              para controle interno do frete.
+            </p>
+            <Field label="Observações">
+              <textarea
+                value={tripForm.notes}
+                onChange={(e) =>
+                  setTripForm({ ...tripForm, notes: e.target.value })
+                }
+              />
+            </Field>
+            <div className="modal-actions">
+              <Button variant="ghost" onClick={() => setTripModal(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" icon={Save}>
+                {editingTrip ? "Salvar alterações" : "Salvar frete"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </PageTitle>
+  );
+}
+
 function TimeTracking({ db, update, business, setToast, go }) {
   const [modal, setModal] = useState(false),
     [editing, setEditing] = useState(null),
@@ -12758,6 +13307,16 @@ export default function App() {
       case "produtos":
         return (
           <Catalog
+            db={db}
+            update={update}
+            business={business}
+            setToast={setToast}
+            go={go}
+          />
+        );
+      case "frota":
+        return (
+          <Fleet
             db={db}
             update={update}
             business={business}

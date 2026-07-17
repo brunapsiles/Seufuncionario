@@ -767,6 +767,69 @@ describe("fluxos de trabalho", () => {
     expect(await screen.findByText(/6 un em estoque/)).toBeInTheDocument();
   });
 
+  it("cadastra veículo, registra frete com CT-e e atualiza o status", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Frota e Fretes" }));
+    expect(
+      await screen.findByText("Nenhum veículo cadastrado"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Novo veículo" })[0]);
+    let dialog = await screen.findByRole("dialog", { name: "Novo veículo" });
+    fireEvent.change(within(dialog).getByLabelText("Placa"), {
+      target: { value: "abc1d23" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Modelo"), {
+      target: { value: "Volvo FH" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Motorista"), {
+      target: { value: "Carlos" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Salvar veículo" }),
+    );
+    expect(await screen.findByText(/ABC1D23 · Volvo FH/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Fretes" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Novo frete" })[0]);
+    dialog = await screen.findByRole("dialog", { name: "Novo frete" });
+    fireEvent.change(within(dialog).getByLabelText("Veículo"), {
+      target: {
+        value: within(dialog).getByText(/ABC1D23/).closest("option").value,
+      },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Origem"), {
+      target: { value: "São Paulo" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Destino"), {
+      target: { value: "Curitiba" },
+    });
+    fireEvent.change(
+      within(dialog).getByLabelText("Número do CT-e (registro manual)"),
+      { target: { value: "12345" } },
+    );
+    fireEvent.change(within(dialog).getByLabelText("Valor do CT-e"), {
+      target: { value: "500" },
+    });
+    expect(
+      within(dialog).getByText(
+        /A emissão oficial do CT-e é feita no seu emissor fiscal homologado/,
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Salvar frete" }),
+    );
+
+    expect(
+      await screen.findByText(/São Paulo → Curitiba/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/CT-e 12345/)).toBeInTheDocument();
+
+    const statusSelect = screen.getByDisplayValue("Agendado");
+    fireEvent.change(statusSelect, { target: { value: "Entregue" } });
+    expect(screen.getByDisplayValue("Entregue")).toBeInTheDocument();
+  });
+
   it("registra horas trabalhadas e fatura lançando a receita no Financeiro", async () => {
     render(<App />);
     fireEvent.click(
