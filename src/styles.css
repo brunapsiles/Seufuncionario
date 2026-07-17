@@ -1315,6 +1315,50 @@ aside nav button.active {
 .status-dot.faltou {
   background: #a66313;
 }
+.deadline-calc-wrap {
+  grid-column: 1 / -1;
+}
+.link-button {
+  border: 0;
+  background: transparent;
+  color: var(--accent, #6d38e0);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 0;
+  cursor: pointer;
+  text-align: left;
+}
+.deadline-calc {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface2);
+}
+.deadline-calc small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+.urgency {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 800;
+  font-style: normal;
+  text-transform: uppercase;
+}
+.urgency.warning {
+  color: #a66313;
+  background: #fff0d8;
+}
+.urgency.danger {
+  color: #c53854;
+  background: #ffe6eb;
+}
 .kanban h3 {
   font-size: 14px;
   margin: 10px 0 5px;

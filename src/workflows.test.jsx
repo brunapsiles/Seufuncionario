@@ -10,7 +10,9 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App, {
+  addBusinessDays,
   addDaysYmd,
+  businessDaysBetween,
   contactLinks,
   createGoogleCalendarEventReal,
   documentFileKind,
@@ -139,6 +141,29 @@ describe("fluxos de trabalho", () => {
       target: { value: "Arquivadas" },
     });
     expect(screen.getByText("Preparar lançamento final")).toBeInTheDocument();
+  });
+
+  it("calcula o prazo em dias úteis dentro do formulário de tarefa", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Operação" }));
+    fireEvent.click(screen.getByRole("button", { name: "Nova tarefa" }));
+    const dialog = screen.getByRole("dialog", { name: "Criar tarefa" });
+    fireEvent.change(within(dialog).getByLabelText("Título"), {
+      target: { value: "Protocolar contestação" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Calcular em dias úteis" }),
+    );
+    fireEvent.change(within(dialog).getByLabelText("Data base do prazo"), {
+      target: { value: "2024-01-01" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Dias úteis"), {
+      target: { value: "5" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Usar como prazo" }),
+    );
+    expect(within(dialog).getByLabelText("Prazo")).toHaveValue("2024-01-08");
   });
 
   it("delega uma tarefa a um colaborador digital e abre a execução no chat", () => {
@@ -681,6 +706,19 @@ describe("integrações reais com ferramentas externas", () => {
   it("soma dias preservando o fuso (sem pular dia)", () => {
     expect(addDaysYmd("2026-01-31", 1)).toBe("20260201");
     expect(addDaysYmd("2026-12-31", 1)).toBe("20270101");
+  });
+
+  it("calcula prazo em dias úteis pulando sábado e domingo", () => {
+    // 2024-01-01 é uma segunda-feira (referência conhecida)
+    expect(addBusinessDays("2024-01-05", 1)).toBe("2024-01-08"); // sexta + 1 dia útil = segunda
+    expect(addBusinessDays("2024-01-01", 5)).toBe("2024-01-08"); // segunda + 5 dias úteis = próxima segunda
+  });
+
+  it("conta dias úteis entre duas datas sem contar fim de semana", () => {
+    expect(businessDaysBetween("2024-01-01", "2024-01-08")).toBe(5);
+    expect(businessDaysBetween("2024-01-05", "2024-01-08")).toBe(1);
+    expect(businessDaysBetween("2024-01-08", "2024-01-01")).toBe(-5);
+    expect(businessDaysBetween("2024-01-05", "2024-01-05")).toBe(0);
   });
 
   describe("com permissão do Google concedida", () => {

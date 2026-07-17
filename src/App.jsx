@@ -495,6 +495,39 @@ const addDaysYmdDashed = (ymd, days) => {
   return s ? `${s.y}-${String(s.m).padStart(2, "0")}-${String(s.d).padStart(2, "0")}` : "";
 };
 
+export const addBusinessDays = (ymd, days) => {
+  const [y, m, d] = String(ymd || "").split("-").map(Number);
+  if (!y || !m || !d || !Number.isFinite(days)) return "";
+  const date = new Date(y, m - 1, d);
+  let remaining = Math.abs(days);
+  const step = days >= 0 ? 1 : -1;
+  while (remaining > 0) {
+    date.setDate(date.getDate() + step);
+    const day = date.getDay();
+    if (day !== 0 && day !== 6) remaining--;
+  }
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
+
+export const businessDaysBetween = (fromYmd, toYmd) => {
+  const [fy, fm, fd] = String(fromYmd || "").split("-").map(Number);
+  const [ty, tm, td] = String(toYmd || "").split("-").map(Number);
+  if (!fy || !fm || !fd || !ty || !tm || !td) return null;
+  const from = new Date(fy, fm - 1, fd);
+  const to = new Date(ty, tm - 1, td);
+  if (from.getTime() === to.getTime()) return 0;
+  const step = to > from ? 1 : -1;
+  let count = 0;
+  const cursor = new Date(from);
+  while (cursor.getTime() !== to.getTime()) {
+    cursor.setDate(cursor.getDate() + step);
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) count += step;
+  }
+  return count;
+};
+
 const localDateTimeParts = (ymd, hm, addMinutes = 0) => {
   const [y, mo, d] = String(ymd || "").split("-").map(Number);
   const [h, mi] = String(hm || "0:0").split(":").map(Number);
@@ -3515,6 +3548,20 @@ function Specialists({
   );
 }
 
+const taskUrgency = (task) => {
+  if (!task?.due || task.status === "Concluído") return null;
+  const diff = businessDaysBetween(today(), task.due);
+  if (diff === null) return null;
+  if (diff < 0) return { text: "Prazo vencido", tone: "danger" };
+  if (diff === 0) return { text: "Vence hoje", tone: "danger" };
+  if (diff <= 2)
+    return {
+      text: diff === 1 ? "Vence em 1 dia útil" : `Vence em ${diff} dias úteis`,
+      tone: "warning",
+    };
+  return null;
+};
+
 function Tasks({ db, update, business, setToast, go }) {
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -3526,6 +3573,7 @@ function Tasks({ db, update, business, setToast, go }) {
   const [projectFilter, setProjectFilter] = useState("Todos");
   const [archiveFilter, setArchiveFilter] = useState("Ativas");
   const [realMembers, setRealMembers] = useState([]);
+  const [deadlineCalc, setDeadlineCalc] = useState({ open: false, base: today(), days: "5" });
   const [googleId, setGoogleId] = useState("");
   useEffect(() => {
     fetch("/api/config")
@@ -3595,7 +3643,12 @@ function Tasks({ db, update, business, setToast, go }) {
   const openTask = (task = null) => {
     setEditing(task?.id || null);
     setForm(task ? { ...blankTask, ...task } : blankTask);
+    setDeadlineCalc({ open: false, base: today(), days: "5" });
     setModal(true);
+  };
+  const applyDeadlineCalc = () => {
+    const due = addBusinessDays(deadlineCalc.base, Number(deadlineCalc.days) || 0);
+    if (due) setForm((current) => ({ ...current, due }));
   };
   const save = (e) => {
     e.preventDefault();
@@ -3856,6 +3909,11 @@ function Tasks({ db, update, business, setToast, go }) {
                       <span>
                         <Clock3 />
                         {t.due || "Sem prazo"}
+                        {taskUrgency(t) && (
+                          <em className={`urgency ${taskUrgency(t).tone}`}>
+                            {taskUrgency(t).text}
+                          </em>
+                        )}
                       </span>
                       <select
                         value={t.status}
@@ -3931,6 +3989,11 @@ function Tasks({ db, update, business, setToast, go }) {
                   {t.assignee || "Sem responsável"}
                   {t.assignee &&
                     ` · ${t.assigneeType === "digital" ? "Digital" : "Pessoa"}`}
+                  {taskUrgency(t) && (
+                    <em className={`urgency ${taskUrgency(t).tone}`}>
+                      {taskUrgency(t).text}
+                    </em>
+                  )}
                 </small>
               </span>
               <select
@@ -4040,6 +4103,45 @@ function Tasks({ db, update, business, setToast, go }) {
                   onChange={(e) => setForm({ ...form, due: e.target.value })}
                 />
               </Field>
+              <div className="deadline-calc-wrap">
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() =>
+                    setDeadlineCalc((c) => ({ ...c, open: !c.open }))
+                  }
+                >
+                  {deadlineCalc.open ? "Fechar calculadora" : "Calcular em dias úteis"}
+                </button>
+                {deadlineCalc.open && (
+                  <div className="deadline-calc">
+                    <input
+                      type="date"
+                      aria-label="Data base do prazo"
+                      value={deadlineCalc.base}
+                      onChange={(e) =>
+                        setDeadlineCalc((c) => ({ ...c, base: e.target.value }))
+                      }
+                    />
+                    <input
+                      type="number"
+                      min="1"
+                      aria-label="Dias úteis"
+                      value={deadlineCalc.days}
+                      onChange={(e) =>
+                        setDeadlineCalc((c) => ({ ...c, days: e.target.value }))
+                      }
+                    />
+                    <Button type="button" variant="secondary" onClick={applyDeadlineCalc}>
+                      Usar como prazo
+                    </Button>
+                    <small>
+                      Conta apenas dias úteis (sem sábado e domingo). Feriados
+                      nacionais não são descontados automaticamente.
+                    </small>
+                  </div>
+                )}
+              </div>
               <Field label="Área">
                 <select
                   value={form.area}
