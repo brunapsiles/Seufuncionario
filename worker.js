@@ -705,7 +705,7 @@ async function handleWorkspace(request, env, user, url) {
     return json({ error: "Você não tem acesso a este espaço." }, 403);
   if (request.method === "GET") {
     const row = await env.DB.prepare(
-      "SELECT data, updated_at FROM workspaces WHERE user_id = ?",
+      "SELECT data, updated_at, revision FROM workspaces WHERE user_id = ?",
     )
       .bind(ownerId)
       .first();
@@ -715,7 +715,11 @@ async function handleWorkspace(request, env, user, url) {
     } catch {
       data = null;
     }
-    return json({ data, updatedAt: row?.updated_at || null });
+    return json({
+      data,
+      updatedAt: row?.updated_at || null,
+      revision: Number.isInteger(row?.revision) ? row.revision : 0,
+    });
   }
   if (request.method !== "PUT")
     return json({ error: "Método não permitido." }, 405);
@@ -734,6 +738,9 @@ async function handleWorkspace(request, env, user, url) {
   const data =
     body && body.data && typeof body.data === "object" ? body.data : null;
   if (!data) return json({ error: "Dados inválidos." }, 400);
+  const baseRevision = body.revision ?? 0;
+  if (!Number.isInteger(baseRevision) || baseRevision < 0)
+    return json({ error: "Revisão de workspace inválida." }, 400);
   const text = JSON.stringify(data);
   if (text.length > 900_000)
     return json(
@@ -744,13 +751,41 @@ async function handleWorkspace(request, env, user, url) {
       413,
     );
   const updatedAt = new Date().toISOString();
-  await env.DB.prepare(
-    `INSERT INTO workspaces (user_id, data, updated_at) VALUES (?, ?, ?)
-    ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`,
+  const updated = await env.DB.prepare(
+    `INSERT INTO workspaces (user_id, data, updated_at, revision)
+    VALUES (?, ?, ?, 1)
+    ON CONFLICT(user_id) DO UPDATE SET
+      data = excluded.data,
+      updated_at = excluded.updated_at,
+      revision = workspaces.revision + 1
+    WHERE workspaces.revision = ?
+    RETURNING revision, updated_at`,
   )
-    .bind(ownerId, text, updatedAt)
-    .run();
-  return json({ ok: true, updatedAt });
+    .bind(ownerId, text, updatedAt, baseRevision)
+    .first();
+  if (!updated) {
+    const current = await env.DB.prepare(
+      "SELECT revision, updated_at FROM workspaces WHERE user_id = ?",
+    )
+      .bind(ownerId)
+      .first();
+    return json(
+      {
+        error:
+          "Este espaço foi alterado em outra aba ou dispositivo. Sua versão local não foi enviada.",
+        serverRevision: Number.isInteger(current?.revision)
+          ? current.revision
+          : 0,
+        serverUpdatedAt: current?.updated_at || null,
+      },
+      409,
+    );
+  }
+  return json({
+    ok: true,
+    updatedAt: updated.updated_at,
+    revision: updated.revision,
+  });
 }
 
 const escMail = (v) =>

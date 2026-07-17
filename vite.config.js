@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   test: {
+    include: ['src/**/*.test.{js,jsx}'],
     // A interface completa e os parsers de documentos tornam alguns fluxos
     // jsdom mais pesados. Dez segundos evita falhas intermitentes sem esconder
     // travamentos reais.

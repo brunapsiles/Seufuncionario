@@ -737,6 +737,43 @@ export const createGoogleCalendarEventReal = async (clientId, task) => {
 };
 
 const userStorageKey = (id) => `${STORAGE_PREFIX}${id}`;
+const WORKSPACE_REVISION_PREFIX = "sf-workspace-revision:";
+const WORKSPACE_CONFLICT_PREFIX = "sf-workspace-conflict:";
+
+export function readWorkspaceRevision(spaceKey) {
+  try {
+    const value = Number(
+      localStorage.getItem(`${WORKSPACE_REVISION_PREFIX}${spaceKey}`),
+    );
+    return Number.isInteger(value) && value >= 0 ? value : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function storeWorkspaceRevision(spaceKey, revision) {
+  try {
+    localStorage.setItem(
+      `${WORKSPACE_REVISION_PREFIX}${spaceKey}`,
+      String(revision),
+    );
+  } catch {}
+}
+
+function preserveWorkspaceConflict(spaceKey, data, baseRevision, conflict) {
+  try {
+    localStorage.setItem(
+      `${WORKSPACE_CONFLICT_PREFIX}${spaceKey}`,
+      JSON.stringify({
+        data,
+        baseRevision,
+        serverRevision: conflict.serverRevision,
+        serverUpdatedAt: conflict.serverUpdatedAt,
+        savedAt: new Date().toISOString(),
+      }),
+    );
+  } catch {}
+}
 const cleanDb = (user) => ({
   ...emptyDb,
   user: user || null,
@@ -837,8 +874,15 @@ const activeSpaceId = () => {
 
 function useDatabase() {
   const [db, setDb] = useState(loadInitialDb);
+  const [workspaceConflict, setWorkspaceConflict] = useState(null);
   const syncTimer = useRef(null);
+  const syncChain = useRef(Promise.resolve());
   const pulled = useRef(false);
+  const skipSyncDb = useRef(null);
+  const revisionRef = useRef(0);
+  const conflictRef = useRef(false);
+  const dbRef = useRef(db);
+  dbRef.current = db;
   const userId = db.user?.id;
   const space = activeSpaceId();
   const spaceKey = space || userId;
@@ -872,12 +916,49 @@ function useDatabase() {
 
   useEffect(() => {
     pulled.current = false;
+    conflictRef.current = false;
+    setWorkspaceConflict(null);
     if (!userId || !localStorage.getItem(AUTH_TOKEN_KEY)) return;
+    const localRevision = readWorkspaceRevision(spaceKey);
+    revisionRef.current = localRevision;
     let cancelled = false;
     fetch(wsUrl, { headers: authHeaders() })
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
         if (cancelled || payload === null) return;
+        const serverRevision =
+          Number.isInteger(payload.revision) && payload.revision >= 0
+            ? payload.revision
+            : 0;
+        const current = dbRef.current;
+        const foreign = current.spaceKey && current.spaceKey !== spaceKey;
+        const localNewer =
+          !foreign &&
+          current.updatedAt &&
+          payload.updatedAt &&
+          current.updatedAt > payload.updatedAt;
+        if (payload.data && localNewer && localRevision !== serverRevision) {
+          const conflict = {
+            error:
+              "Existem alterações mais recentes neste espaço feitas em outra aba ou dispositivo.",
+            serverRevision,
+            serverUpdatedAt: payload.updatedAt,
+          };
+          const { user: _user, spaceKey: _space, ...localData } = current;
+          preserveWorkspaceConflict(
+            spaceKey,
+            localData,
+            localRevision,
+            conflict,
+          );
+          conflictRef.current = true;
+          setWorkspaceConflict(conflict);
+          setDb({ ...current, spaceKey });
+          pulled.current = true;
+          return;
+        }
+        revisionRef.current = serverRevision;
+        storeWorkspaceRevision(spaceKey, serverRevision);
         setDb((current) => {
           const foreign = current.spaceKey && current.spaceKey !== spaceKey;
           if (payload.data) {
@@ -887,7 +968,7 @@ function useDatabase() {
               payload.updatedAt &&
               current.updatedAt > payload.updatedAt;
             if (localNewer) return { ...current, spaceKey };
-            return {
+            const next = {
               ...emptyDb,
               ...payload.data,
               media: mergeMedia(
@@ -898,8 +979,14 @@ function useDatabase() {
               spaceKey,
               updatedAt: payload.updatedAt,
             };
+            skipSyncDb.current = next;
+            return next;
           }
-          if (foreign) return { ...emptyDb, user: current.user, spaceKey };
+          if (foreign) {
+            const next = { ...emptyDb, user: current.user, spaceKey };
+            skipSyncDb.current = next;
+            return next;
+          }
           return { ...current, spaceKey };
         });
         pulled.current = true;
@@ -922,8 +1009,13 @@ function useDatabase() {
       !localStorage.getItem(AUTH_TOKEN_KEY)
     )
       return;
+    if (skipSyncDb.current === db) {
+      skipSyncDb.current = null;
+      return;
+    }
     clearTimeout(syncTimer.current);
     syncTimer.current = setTimeout(() => {
+      if (conflictRef.current) return;
       const { user, spaceKey: _s, ...rest } = db;
       const data = {
         ...rest,
@@ -933,11 +1025,36 @@ function useDatabase() {
             : item,
         ),
       };
-      fetch(wsUrl, {
-        method: "PUT",
-        headers: { "content-type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ data }),
-      }).catch(() => {});
+      syncChain.current = syncChain.current
+        .catch(() => {})
+        .then(async () => {
+          if (conflictRef.current) return;
+          const baseRevision = revisionRef.current;
+          const response = await fetch(wsUrl, {
+            method: "PUT",
+            headers: { "content-type": "application/json", ...authHeaders() },
+            body: JSON.stringify({ data, revision: baseRevision }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (response.status === 409) {
+            preserveWorkspaceConflict(
+              spaceKey,
+              data,
+              baseRevision,
+              payload,
+            );
+            conflictRef.current = true;
+            setWorkspaceConflict(payload);
+            return;
+          }
+          if (!response.ok) return;
+          const revision = Number(payload.revision);
+          if (Number.isInteger(revision) && revision >= 0) {
+            revisionRef.current = revision;
+            storeWorkspaceRevision(spaceKey, revision);
+          }
+        })
+        .catch(() => {});
     }, 2500);
     return () => clearTimeout(syncTimer.current);
   }, [db, userId, space]);
@@ -948,7 +1065,7 @@ function useDatabase() {
         typeof fn === "function" ? fn(current) : { ...current, ...fn };
       return { ...next, updatedAt: new Date().toISOString() };
     });
-  return [db, update];
+  return [db, update, workspaceConflict];
 }
 
 function Logo({ compact = false }) {
@@ -11586,7 +11703,7 @@ export default function App() {
       return {};
     }
   })();
-  const [db, update] = useDatabase(),
+  const [db, update, workspaceConflict] = useDatabase(),
     [page, setPage] = useState("inicio"),
     [collapsed, setCollapsed] = useState(!!savedUi.collapsed),
     [mobile, setMobile] = useState(false),
@@ -11939,6 +12056,19 @@ export default function App() {
         <div className="mobile-overlay" onClick={() => setMobile(false)} />
       )}
       <main className="workspace">
+        {workspaceConflict && (
+          <div className="workspace-conflict" role="alert">
+            <CircleAlert />
+            <div>
+              <strong>Alterações encontradas em outro dispositivo ou aba</strong>
+              <span>
+                Esta versão não foi enviada e continua salva neste navegador.
+                Nenhum dado remoto foi substituído; não fazemos merge
+                automático.
+              </span>
+            </div>
+          </div>
+        )}
         <header className="topbar">
           <button
             className="icon-button mobile-menu"

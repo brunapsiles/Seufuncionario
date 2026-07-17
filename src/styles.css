@@ -575,6 +575,30 @@ aside nav button.active {
   grid-column: 2;
   min-width: 0;
 }
+.workspace-conflict {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 32px;
+  border-bottom: 1px solid #e6b451;
+  background: #fff4d6;
+  color: #5f4200;
+}
+.workspace-conflict svg {
+  width: 20px;
+  flex: 0 0 20px;
+}
+.workspace-conflict div {
+  display: grid;
+  gap: 2px;
+}
+.workspace-conflict span {
+  font-size: 13px;
+  line-height: 1.4;
+}
 .topbar {
   height: 72px;
   background: color-mix(in srgb, var(--surface) 93%, transparent);
