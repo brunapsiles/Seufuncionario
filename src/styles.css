@@ -4502,6 +4502,10 @@ input[readonly] {
   line-height: 1.5;
   margin: 0 0 14px;
 }
+.invite-form {
+  display: grid;
+  gap: 12px;
+}
 .invite-box {
   margin-top: 14px;
   padding: 13px;

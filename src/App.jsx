@@ -2072,6 +2072,210 @@ function Login({ update }) {
   );
 }
 
+function enterSharedSpace(ownerId, ownerName) {
+  try {
+    localStorage.setItem("sf-space", ownerId);
+    localStorage.setItem("sf-space-name", ownerName || "Espaço compartilhado");
+  } catch {}
+  history.replaceState({}, "", "/");
+  location.reload();
+}
+
+function AcceptInvite({ db, update, token }) {
+  const [state, setState] = useState({ status: "loading" });
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [accepted, setAccepted] = useState(null);
+
+  useEffect(() => {
+    fetch(`/api/collab/invite-info?token=${encodeURIComponent(token)}`)
+      .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
+      .then(({ ok, d }) => {
+        if (!ok) return setState({ status: "error", message: d.error });
+        setState({ status: "ready", invite: d });
+      })
+      .catch(() => setState({ status: "error", message: "Não foi possível carregar o convite." }));
+  }, [token]);
+
+  const accept = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const r = await fetch("/api/collab/invite/accept", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify(
+          state.invite.hasAccount ? { token } : { token, password },
+        ),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Não foi possível aceitar o convite.");
+      if (d.token) {
+        localStorage.setItem(AUTH_TOKEN_KEY, d.token);
+        update(() => startUserSession(d.user));
+      }
+      setAccepted({ ownerId: d.ownerId, ownerName: d.ownerName });
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (accepted)
+    return (
+      <main className="auth-shell verify-shell">
+        <div className="auth-card verify-card">
+          <span className="mobile-logo">
+            <Logo />
+          </span>
+          <span className="eyebrow">CONVITE ACEITO</span>
+          <h2>Bem-vindo(a) ao espaço de {accepted.ownerName}</h2>
+          <p>Você já pode acessar as ferramentas e os dados liberados para você.</p>
+          <Button
+            className="full"
+            icon={ArrowUpRight}
+            onClick={() => enterSharedSpace(accepted.ownerId, accepted.ownerName)}
+          >
+            Entrar no espaço
+          </Button>
+        </div>
+      </main>
+    );
+
+  if (state.status === "loading")
+    return (
+      <main className="auth-shell verify-shell">
+        <div className="auth-card verify-card">
+          <span className="mobile-logo">
+            <Logo />
+          </span>
+          <p>Carregando convite...</p>
+        </div>
+      </main>
+    );
+
+  if (state.status === "error")
+    return (
+      <main className="auth-shell verify-shell">
+        <div className="auth-card verify-card">
+          <span className="mobile-logo">
+            <Logo />
+          </span>
+          <span className="eyebrow">CONVITE</span>
+          <h2>Não foi possível abrir este convite</h2>
+          <div className="auth-error" role="alert">
+            <CircleAlert />
+            {state.message}
+          </div>
+          <p className="auth-switch">
+            <a href="/">Voltar para o início</a>
+          </p>
+        </div>
+      </main>
+    );
+
+  const invite = state.invite;
+  const wrongAccount =
+    db.user && invite.hasAccount && db.user.email !== invite.email;
+  const rightAccount =
+    db.user && invite.hasAccount && db.user.email === invite.email;
+
+  return (
+    <main className="auth-shell verify-shell">
+      <div className="auth-card verify-card">
+        <span className="mobile-logo">
+          <Logo />
+        </span>
+        <span className="eyebrow">CONVITE DE {invite.ownerName.toUpperCase()}</span>
+        <h2>Você foi convidado(a) como {ROLE_LABELS_PT[invite.role] || "Colaborador"}</h2>
+        <p>
+          Convite enviado para <strong>{invite.email}</strong>.
+        </p>
+        {invite.hasAccount ? (
+          wrongAccount ? (
+            <>
+              <div className="auth-error" role="alert">
+                <CircleAlert />
+                Você está logado(a) como {db.user.email}. Entre com a conta{" "}
+                {invite.email} para aceitar este convite.
+              </div>
+              <Button
+                className="full"
+                variant="secondary"
+                icon={LogOut}
+                onClick={() => {
+                  endSession();
+                  update(() => cleanDb(null));
+                }}
+              >
+                Sair e entrar com outra conta
+              </Button>
+            </>
+          ) : rightAccount ? (
+            <>
+              {error && (
+                <div className="auth-error" role="alert">
+                  <CircleAlert />
+                  {error}
+                </div>
+              )}
+              <Button
+                className="full"
+                icon={busy ? RefreshCw : ArrowUpRight}
+                disabled={busy}
+                onClick={accept}
+              >
+                {busy ? "Aceitando..." : "Aceitar convite"}
+              </Button>
+            </>
+          ) : (
+            <p className="auth-switch">
+              Você já possui conta. Entre com {invite.email} e volte a este
+              link para aceitar.{" "}
+              <a href="/">Ir para o login</a>
+            </p>
+          )
+        ) : (
+          <>
+            <Field label="Crie uma senha" hint="Mínimo de 8 caracteres">
+              <input
+                type="password"
+                autoFocus
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+              />
+            </Field>
+            {error && (
+              <div className="auth-error" role="alert">
+                <CircleAlert />
+                {error}
+              </div>
+            )}
+            <Button
+              className="full"
+              icon={busy ? RefreshCw : ArrowUpRight}
+              disabled={busy || password.length < 8}
+              onClick={accept}
+            >
+              {busy ? "Criando conta..." : "Criar conta e aceitar convite"}
+            </Button>
+          </>
+        )}
+      </div>
+    </main>
+  );
+}
+
+const ROLE_LABELS_PT = {
+  admin: "Administrador",
+  gestor: "Gestor",
+  colaborador: "Colaborador",
+};
+
 function Onboarding({ db, update }) {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
@@ -12447,11 +12651,37 @@ function switchSpace(id, name) {
   location.reload();
 }
 
+const BOND_TYPES = [
+  "Funcionário",
+  "Freelancer",
+  "Prestador",
+  "Assistente",
+  "Estagiário",
+  "Aprendiz",
+  "Temporário",
+  "Parceiro",
+  "Outro",
+];
+
+const INVITE_STATUS_LABELS = {
+  enviado: "Aguardando ativação",
+  expirado: "Expirado",
+  ativo: "Ativo",
+};
+
+const blankInviteForm = {
+  name: "",
+  email: "",
+  functionTitle: "",
+  bondType: "",
+  role: "colaborador",
+  directManagerId: "",
+};
+
 function Collaborators({ setToast }) {
-  const [data, setData] = useState({ members: [], spaces: [] });
-  const [code, setCode] = useState(""),
-    [invite, setInvite] = useState(""),
-    [joining, setJoining] = useState(false);
+  const [data, setData] = useState({ members: [], invites: [], spaces: [] });
+  const [form, setForm] = useState(blankInviteForm);
+  const [sending, setSending] = useState(false);
   const active = activeSpaceId();
   const load = () =>
     fetch("/api/collab", { headers: authHeaders() })
@@ -12461,40 +12691,69 @@ function Collaborators({ setToast }) {
   useEffect(() => {
     load();
   }, []);
-  const createInvite = async () => {
+  const sendInvite = async (e) => {
+    e.preventDefault();
+    if (!form.name.trim() || !form.email.trim()) return;
+    setSending(true);
     try {
       const r = await fetch("/api/collab/invite", {
         method: "POST",
         headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify(form),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || "Falha ao criar convite");
-      setInvite(d.code);
-      setToast("Convite criado — compartilhe o link");
+      if (!r.ok) throw new Error(d.error || "Não foi possível enviar o convite.");
+      setForm(blankInviteForm);
+      load();
+      setToast(`Convite enviado para ${form.email}`);
+    } catch (e) {
+      setToast(e.message);
+    } finally {
+      setSending(false);
+    }
+  };
+  const resend = async (id) => {
+    try {
+      const r = await fetch("/api/collab/resend", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ id }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Não foi possível reenviar.");
+      load();
+      setToast("Convite reenviado");
     } catch (e) {
       setToast(e.message);
     }
   };
-  const join = async () => {
-    const c = code.trim();
-    if (c.length < 4) return;
-    setJoining(true);
-    try {
-      const r = await fetch("/api/collab/join", {
-        method: "POST",
-        headers: { "content-type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ code: c }),
-      });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || "Não foi possível entrar");
-      setCode("");
-      load();
-      setToast(`Você entrou no espaço de ${d.ownerName}`);
-    } catch (e) {
-      setToast(e.message);
-    } finally {
-      setJoining(false);
-    }
+  const cancelInvite = async (id) => {
+    if (!confirm("Cancelar este convite?")) return;
+    await fetch("/api/collab/cancel", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ id }),
+    }).catch(() => {});
+    load();
+    setToast("Convite cancelado");
+  };
+  const setMemberStatus = async (memberId, status) => {
+    await fetch("/api/collab/member-status", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ memberId, status }),
+    }).catch(() => {});
+    load();
+    setToast(status === "suspenso" ? "Colaborador suspenso" : "Acesso reativado");
+  };
+  const setMemberRole = async (memberId, role) => {
+    await fetch("/api/collab/member-role", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ memberId, role }),
+    }).catch(() => {});
+    load();
+    setToast("Papel atualizado");
   };
   const remove = async (id) => {
     if (!confirm("Remover esta pessoa do seu espaço?")) return;
@@ -12506,7 +12765,7 @@ function Collaborators({ setToast }) {
     load();
     setToast("Colaborador removido");
   };
-  const inviteLink = invite ? `${location.origin}/?convite=${invite}` : "";
+  const pendingInvites = data.invites.filter((i) => i.status !== "ativo");
   return (
     <section className="section">
       <div className="section-head">
@@ -12519,29 +12778,116 @@ function Collaborators({ setToast }) {
         <div className="collab-card">
           <h3>
             <UserRound />
-            Convidar para o meu espaço
+            Convidar colaborador
           </h3>
           <p>
-            Quem entrar com o convite vê e edita os mesmos projetos, tarefas e
-            clientes.
+            A pessoa recebe um e-mail com um link seguro para criar a própria
+            senha e ativar a conta. Todos os colaboradores ativos podem
+            utilizar todas as ferramentas da plataforma.
           </p>
-          <Button icon={Plus} onClick={createInvite}>
-            Gerar convite
-          </Button>
-          {invite && (
-            <div className="invite-box">
-              <span>
-                Código <strong>{invite}</strong> · válido por 7 dias
-              </span>
-              <button
-                onClick={() => {
-                  navigator.clipboard?.writeText(inviteLink);
-                  setToast("Link copiado");
-                }}
+          <form className="invite-form" onSubmit={sendInvite}>
+            <div className="form-grid">
+            <Field label="Nome">
+              <input
+                required
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+              />
+            </Field>
+            <Field label="E-mail">
+              <input
+                required
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+              />
+            </Field>
+            <Field label="Função">
+              <input
+                value={form.functionTitle}
+                onChange={(e) =>
+                  setForm({ ...form, functionTitle: e.target.value })
+                }
+                placeholder="Ex.: Atendimento, Vendas..."
+              />
+            </Field>
+            <Field label="Tipo de vínculo">
+              <select
+                value={form.bondType}
+                onChange={(e) => setForm({ ...form, bondType: e.target.value })}
               >
-                <Copy />
-                Copiar link do convite
-              </button>
+                <option value="">Não informado</option>
+                {BOND_TYPES.map((b) => (
+                  <option key={b}>{b}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Papel inicial">
+              <select
+                value={form.role}
+                onChange={(e) => setForm({ ...form, role: e.target.value })}
+              >
+                <option value="colaborador">Colaborador</option>
+                <option value="gestor">Gestor</option>
+                <option value="admin">Administrador</option>
+              </select>
+            </Field>
+            {data.members.length > 0 && (
+              <Field label="Responsável direto (opcional)">
+                <select
+                  value={form.directManagerId}
+                  onChange={(e) =>
+                    setForm({ ...form, directManagerId: e.target.value })
+                  }
+                >
+                  <option value="">Nenhum</option>
+                  {data.members.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+            </div>
+            <Button type="submit" icon={Send} disabled={sending}>
+              {sending ? "Enviando..." : "Enviar convite"}
+            </Button>
+          </form>
+          {pendingInvites.length > 0 && (
+            <div className="member-list">
+              <small className="member-title">Convites</small>
+              {pendingInvites.map((inv) => (
+                <div key={inv.id}>
+                  <span className="avatar">{inv.name[0]}</span>
+                  <span>
+                    <strong>{inv.name}</strong>
+                    <small>
+                      {inv.email} · {INVITE_STATUS_LABELS[inv.status] || inv.status}
+                    </small>
+                  </span>
+                  <span className="task-actions">
+                    {(inv.status === "enviado" || inv.status === "expirado") && (
+                      <>
+                        <button
+                          className="icon-button"
+                          title="Reenviar convite"
+                          onClick={() => resend(inv.id)}
+                        >
+                          <RefreshCw />
+                        </button>
+                        <button
+                          className="icon-button danger"
+                          title="Cancelar convite"
+                          onClick={() => cancelInvite(inv.id)}
+                        >
+                          <X />
+                        </button>
+                      </>
+                    )}
+                  </span>
+                </div>
+              ))}
             </div>
           )}
           {data.members.length > 0 && (
@@ -12552,15 +12898,40 @@ function Collaborators({ setToast }) {
                   <span className="avatar">{m.name[0]}</span>
                   <span>
                     <strong>{m.name}</strong>
-                    <small>{m.email}</small>
+                    <small>
+                      {m.email} · {m.status === "suspenso" ? "Suspenso" : "Ativo"}
+                    </small>
                   </span>
-                  <button
-                    className="icon-button danger"
-                    title="Remover"
-                    onClick={() => remove(m.id)}
+                  <select
+                    value={m.role}
+                    aria-label={`Papel de ${m.name}`}
+                    onChange={(e) => setMemberRole(m.id, e.target.value)}
                   >
-                    <Trash2 />
-                  </button>
+                    <option value="colaborador">Colaborador</option>
+                    <option value="gestor">Gestor</option>
+                    <option value="admin">Administrador</option>
+                  </select>
+                  <span className="task-actions">
+                    <button
+                      className="icon-button"
+                      title={m.status === "suspenso" ? "Reativar acesso" : "Suspender acesso"}
+                      onClick={() =>
+                        setMemberStatus(
+                          m.id,
+                          m.status === "suspenso" ? "ativo" : "suspenso",
+                        )
+                      }
+                    >
+                      {m.status === "suspenso" ? <Play /> : <Clock3 />}
+                    </button>
+                    <button
+                      className="icon-button danger"
+                      title="Remover"
+                      onClick={() => remove(m.id)}
+                    >
+                      <Trash2 />
+                    </button>
+                  </span>
                 </div>
               ))}
             </div>
@@ -12571,25 +12942,7 @@ function Collaborators({ setToast }) {
             <Layers />
             Espaços de trabalho
           </h3>
-          <p>
-            Entre com um código recebido e alterne entre o seu espaço e os
-            compartilhados.
-          </p>
-          <div className="join-row">
-            <input
-              value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
-              placeholder="Código do convite"
-              maxLength={16}
-            />
-            <Button
-              icon={ArrowUpRight}
-              disabled={joining || code.trim().length < 4}
-              onClick={join}
-            >
-              {joining ? "..." : "Entrar"}
-            </Button>
-          </div>
+          <p>Alterne entre o seu espaço e os espaços aos quais você foi adicionado.</p>
           <div className="space-list">
             <button
               className={!active ? "active" : ""}
@@ -13234,6 +13587,9 @@ export default function App() {
         page={publicMatch?.[2] || ""}
       />
     );
+  const inviteMatch = location.pathname.match(/^\/convite\/([^/]+)/);
+  if (inviteMatch)
+    return <AcceptInvite db={db} update={update} token={inviteMatch[1]} />;
   if (!db.user) return <Login update={update} />;
   if (!db.preferences.modeChosen && !hasAnyWorkspaceData(db))
     return <ModeOnboarding update={update} />;
