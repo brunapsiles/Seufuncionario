@@ -45,6 +45,7 @@ const initialDb = () => ({
   appointments: [],
   products: [],
   orders: [],
+  timeEntries: [],
   transactions: [],
   financeSettings: {},
   documents: [],
@@ -471,6 +472,49 @@ describe("fluxos de trabalho", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Catálogo" }));
     expect(await screen.findByText(/7 un em estoque/)).toBeInTheDocument();
+  });
+
+  it("registra horas trabalhadas e fatura lançando a receita no Financeiro", async () => {
+    render(<App />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Horas e Faturamento" }),
+    );
+    expect(
+      await screen.findByText("Nenhum apontamento aqui"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Novo apontamento" })[0],
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Novo apontamento",
+    });
+    fireEvent.change(within(dialog).getByLabelText("Cliente"), {
+      target: { value: "Escritório Almeida" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Horas"), {
+      target: { value: "4" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Valor por hora"), {
+      target: { value: "200" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Salvar apontamento" }),
+    );
+
+    expect(await screen.findByText(/Escritório Almeida/)).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Faturar horas de Escritório Almeida",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Todas" }));
+    expect(await screen.findByText(/Faturado/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Financeiro" }));
+    expect(
+      await screen.findByText(/Escritório Almeida — 4h/),
+    ).toBeInTheDocument();
   });
 });
 
