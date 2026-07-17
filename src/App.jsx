@@ -471,11 +471,21 @@ const whatsappLink = (phone, message) =>
 const toolBadgeLabel = (tool) =>
   tool.badge === "Redirecionamento" ? tool.badge : `Redirecionamento · ${tool.badge}`;
 
-export const addDaysYmd = (ymd, days) => {
+const shiftYmd = (ymd, days) => {
   const [y, m, d] = String(ymd || "").split("-").map(Number);
-  if (!y || !m || !d) return "";
+  if (!y || !m || !d) return null;
   const dt = new Date(Date.UTC(y, m - 1, d + days));
-  return `${dt.getUTCFullYear()}${String(dt.getUTCMonth() + 1).padStart(2, "0")}${String(dt.getUTCDate()).padStart(2, "0")}`;
+  return { y: dt.getUTCFullYear(), m: dt.getUTCMonth() + 1, d: dt.getUTCDate() };
+};
+
+export const addDaysYmd = (ymd, days) => {
+  const s = shiftYmd(ymd, days);
+  return s ? `${s.y}${String(s.m).padStart(2, "0")}${String(s.d).padStart(2, "0")}` : "";
+};
+
+const addDaysYmdDashed = (ymd, days) => {
+  const s = shiftYmd(ymd, days);
+  return s ? `${s.y}-${String(s.m).padStart(2, "0")}-${String(s.d).padStart(2, "0")}` : "";
 };
 
 export const googleCalendarUrl = (task) => {
@@ -491,6 +501,128 @@ export const googleCalendarUrl = (task) => {
     .filter(Boolean)
     .join("\n");
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(task.title || "Tarefa")}&dates=${start}/${end}&details=${encodeURIComponent(details)}`;
+};
+
+let gsiLoadPromise = null;
+const loadGoogleIdentityScript = () => {
+  if (window.google?.accounts?.oauth2) return Promise.resolve();
+  if (gsiLoadPromise) return gsiLoadPromise;
+  gsiLoadPromise = new Promise((resolve, reject) => {
+    const ready = () =>
+      window.google?.accounts?.oauth2
+        ? resolve()
+        : reject(new Error("Login do Google indisponível."));
+    const existing = document.querySelector(
+      'script[src="https://accounts.google.com/gsi/client"]',
+    );
+    if (existing) {
+      existing.addEventListener("load", ready, { once: true });
+      return;
+    }
+    const s = document.createElement("script");
+    s.src = "https://accounts.google.com/gsi/client";
+    s.async = true;
+    s.defer = true;
+    s.onload = ready;
+    s.onerror = () => reject(new Error("Não foi possível carregar o login do Google."));
+    document.body.appendChild(s);
+  });
+  return gsiLoadPromise;
+};
+
+export const requestGoogleAccessToken = async (clientId, scope) => {
+  if (!clientId)
+    throw new Error("Conexão com o Google ainda não está configurada.");
+  await loadGoogleIdentityScript();
+  return new Promise((resolve, reject) => {
+    const client = window.google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope,
+      callback: (resp) => {
+        if (resp?.error) reject(new Error("Permissão do Google negada."));
+        else resolve(resp.access_token);
+      },
+      error_callback: () => reject(new Error("Não foi possível conectar com o Google.")),
+    });
+    client.requestAccessToken();
+  });
+};
+
+const base64UrlFromText = (text) => {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  bytes.forEach((b) => (binary += String.fromCharCode(b)));
+  return btoa(binary);
+};
+
+const buildRawEmail = ({ to, subject, body }) => {
+  const encodedSubject = `=?UTF-8?B?${base64UrlFromText(subject || "")}?=`;
+  const message = [
+    `To: ${to}`,
+    `Subject: ${encodedSubject}`,
+    "Content-Type: text/plain; charset=UTF-8",
+    "MIME-Version: 1.0",
+    "",
+    body || "",
+  ].join("\r\n");
+  return base64UrlFromText(message)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+};
+
+export const sendGmailReal = async (clientId, { to, subject, body }) => {
+  const token = await requestGoogleAccessToken(
+    clientId,
+    "https://www.googleapis.com/auth/gmail.send",
+  );
+  const res = await fetch(
+    "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+    {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ raw: buildRawEmail({ to, subject, body }) }),
+    },
+  );
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error?.message || "Não foi possível enviar o e-mail agora.");
+  }
+  return res.json();
+};
+
+export const createGoogleCalendarEventReal = async (clientId, task) => {
+  const token = await requestGoogleAccessToken(
+    clientId,
+    "https://www.googleapis.com/auth/calendar.events",
+  );
+  const start = addDaysYmdDashed(task.due, 0);
+  const end = addDaysYmdDashed(task.due, 1);
+  const details = [
+    task.description,
+    task.project ? `Projeto: ${task.project}` : "",
+    task.assignee ? `Responsável: ${task.assignee}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const res = await fetch(
+    "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+    {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        summary: task.title || "Tarefa",
+        description: details,
+        start: { date: start },
+        end: { date: end },
+      }),
+    },
+  );
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error?.message || "Não foi possível criar o evento agora.");
+  }
+  return res.json();
 };
 
 const userStorageKey = (id) => `${STORAGE_PREFIX}${id}`;
@@ -3327,6 +3459,21 @@ function Tasks({ db, update, business, setToast, go }) {
   const [projectFilter, setProjectFilter] = useState("Todos");
   const [archiveFilter, setArchiveFilter] = useState("Ativas");
   const [realMembers, setRealMembers] = useState([]);
+  const [googleId, setGoogleId] = useState("");
+  useEffect(() => {
+    fetch("/api/config")
+      .then((r) => r.json())
+      .then((d) => setGoogleId(d.googleClientId || ""))
+      .catch(() => {});
+  }, []);
+  const addTaskToCalendar = async (task) => {
+    try {
+      await createGoogleCalendarEventReal(googleId, task);
+      setToast("Evento adicionado à sua Google Agenda");
+    } catch {
+      window.open(googleCalendarUrl(task), "_blank", "noopener");
+    }
+  };
   const blankTask = {
     title: "",
     description: "",
@@ -3602,16 +3749,14 @@ function Tasks({ db, update, business, setToast, go }) {
                       </span>
                       <span className="task-actions">
                         {t.due && (
-                          <a
+                          <button
                             className="icon-button"
                             aria-label={`Adicionar "${t.title}" ao Google Agenda`}
                             title="Adicionar ao Google Agenda"
-                            href={googleCalendarUrl(t)}
-                            target="_blank"
-                            rel="noreferrer"
+                            onClick={() => addTaskToCalendar(t)}
                           >
                             <CalendarDays />
-                          </a>
+                          </button>
                         )}
                         <button
                           className="icon-button"
@@ -3748,16 +3893,14 @@ function Tasks({ db, update, business, setToast, go }) {
                   </button>
                 )}
                 {t.due && (
-                  <a
+                  <button
                     className="icon-button"
                     aria-label={`Adicionar "${t.title}" ao Google Agenda`}
                     title="Adicionar ao Google Agenda"
-                    href={googleCalendarUrl(t)}
-                    target="_blank"
-                    rel="noreferrer"
+                    onClick={() => addTaskToCalendar(t)}
                   >
                     <CalendarDays />
-                  </a>
+                  </button>
                 )}
                 <button
                   className="icon-button"
@@ -6887,6 +7030,29 @@ function EmailComposer({ onClose, setToast, initial }) {
     subject: initial?.subject || "",
     body: initial?.body || "",
   });
+  const [googleId, setGoogleId] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState("");
+  useEffect(() => {
+    fetch("/api/config")
+      .then((r) => r.json())
+      .then((d) => setGoogleId(d.googleClientId || ""))
+      .catch(() => {});
+  }, []);
+  const sendReal = async () => {
+    if (!form.to.trim() || sending) return;
+    setSending(true);
+    setSendError("");
+    try {
+      await sendGmailReal(googleId, form);
+      setToast("E-mail enviado pela sua conta Google");
+      onClose();
+    } catch (error) {
+      setSendError(error.message || "Não foi possível enviar agora.");
+    } finally {
+      setSending(false);
+    }
+  };
   const params = () =>
     `to=${encodeURIComponent(form.to)}&su=${encodeURIComponent(form.subject)}&body=${encodeURIComponent(form.body)}`;
   const openGmail = () => {
@@ -6914,8 +7080,9 @@ function EmailComposer({ onClose, setToast, initial }) {
         <div className="notice">
           <ShieldCheck />
           <span>
-            O Seu Funcionário prepara a mensagem. O envio final acontece na sua
-            conta de e-mail, para você revisar destinatário e conteúdo.
+            "Enviar pelo Gmail" pede sua permissão do Google e envia direto
+            pela sua conta. As demais opções só preparam um rascunho para você
+            revisar e enviar manualmente.
           </span>
         </div>
         <div className="form-grid">
@@ -6943,9 +7110,21 @@ function EmailComposer({ onClose, setToast, initial }) {
             placeholder="Escreva ou cole sua mensagem..."
           />
         </Field>
+        {sendError && (
+          <div className="ask-error">
+            <CircleAlert /> {sendError}
+          </div>
+        )}
         <div className="email-actions">
-          <Button icon={Mail} onClick={openGmail}>
-            Abrir no Gmail
+          <Button
+            icon={Send}
+            onClick={sendReal}
+            disabled={sending || !form.to.trim()}
+          >
+            {sending ? "Enviando..." : "Enviar pelo Gmail"}
+          </Button>
+          <Button variant="secondary" icon={Mail} onClick={openGmail}>
+            Abrir rascunho no Gmail
           </Button>
           <Button variant="secondary" icon={Mail} onClick={openOutlook}>
             Abrir no Outlook

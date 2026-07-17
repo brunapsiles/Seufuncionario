@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App, {
   addDaysYmd,
   contactLinks,
+  createGoogleCalendarEventReal,
   documentFileKind,
   documentTitleFromFilename,
   extractDocumentText,
@@ -19,6 +20,7 @@ import App, {
   makeSite,
   makeSitePages,
   mergeSiteBrief,
+  sendGmailReal,
 } from "./App";
 
 const user = {
@@ -533,6 +535,70 @@ describe("integrações reais com ferramentas externas", () => {
   it("soma dias preservando o fuso (sem pular dia)", () => {
     expect(addDaysYmd("2026-01-31", 1)).toBe("20260201");
     expect(addDaysYmd("2026-12-31", 1)).toBe("20270101");
+  });
+
+  describe("com permissão do Google concedida", () => {
+    beforeEach(() => {
+      window.google = {
+        accounts: {
+          oauth2: {
+            initTokenClient: ({ callback }) => ({
+              requestAccessToken: () => callback({ access_token: "token-123" }),
+            }),
+          },
+        },
+      };
+    });
+
+    afterEach(() => {
+      delete window.google;
+      vi.unstubAllGlobals();
+    });
+
+    it("envia e-mail de verdade pela Gmail API com o token obtido", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue({ ok: true, json: async () => ({ id: "msg1" }) });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const result = await sendGmailReal("client-id", {
+        to: "cliente@empresa.com",
+        subject: "Proposta",
+        body: "Segue a proposta combinada.",
+      });
+
+      expect(result).toEqual({ id: "msg1" });
+      const [url, options] = fetchMock.mock.calls[0];
+      expect(url).toBe(
+        "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+      );
+      expect(options.headers.authorization).toBe("Bearer token-123");
+      expect(JSON.parse(options.body).raw).toBeTruthy();
+    });
+
+    it("cria evento de verdade na Google Agenda com datas no formato esperado", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue({ ok: true, json: async () => ({ id: "evt1" }) });
+      vi.stubGlobal("fetch", fetchMock);
+
+      await createGoogleCalendarEventReal("client-id", {
+        title: "Reunião com cliente",
+        due: "2026-05-01",
+      });
+
+      const [, options] = fetchMock.mock.calls[0];
+      const body = JSON.parse(options.body);
+      expect(body.summary).toBe("Reunião com cliente");
+      expect(body.start).toEqual({ date: "2026-05-01" });
+      expect(body.end).toEqual({ date: "2026-05-02" });
+    });
+  });
+
+  it("recusa enviar e-mail real quando o Google não está configurado", async () => {
+    await expect(
+      sendGmailReal("", { to: "cliente@empresa.com" }),
+    ).rejects.toThrow(/configurada/i);
   });
 });
 
