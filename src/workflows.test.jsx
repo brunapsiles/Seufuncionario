@@ -43,6 +43,8 @@ const initialDb = () => ({
   tasks: [],
   leads: [],
   appointments: [],
+  products: [],
+  orders: [],
   transactions: [],
   financeSettings: {},
   documents: [],
@@ -412,6 +414,63 @@ describe("fluxos de trabalho", () => {
     expect(
       screen.getByRole("button", { name: "Confirmar por WhatsApp com Ana" }),
     ).toBeInTheDocument();
+  });
+
+  it("cadastra um produto, monta um pedido e dá baixa automática no estoque", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Produtos e Pedidos" }));
+    expect(
+      await screen.findByText("Nenhum produto cadastrado"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Novo produto" })[0],
+    );
+    let dialog = await screen.findByRole("dialog", { name: "Novo produto" });
+    fireEvent.change(within(dialog).getByLabelText("Nome do produto"), {
+      target: { value: "Ração 10kg" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Preço de venda"), {
+      target: { value: "150" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Estoque atual"), {
+      target: { value: "10" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Salvar produto" }),
+    );
+
+    expect(await screen.findByText("Ração 10kg")).toBeInTheDocument();
+    expect(screen.getByText(/10 un em estoque/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Pedidos" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Novo pedido" })[0]);
+    dialog = await screen.findByRole("dialog", { name: "Novo pedido" });
+    fireEvent.change(within(dialog).getByLabelText("Cliente"), {
+      target: { value: "Carlos" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("WhatsApp ou e-mail"), {
+      target: { value: "(11) 97777-6666" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Escolher produto"), {
+      target: { value: within(dialog).getByText(/Ração 10kg/).closest("option").value },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Quantidade"), {
+      target: { value: "3" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Adicionar" }));
+    expect(within(dialog).getByText("3x Ração 10kg")).toBeInTheDocument();
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Salvar pedido" }),
+    );
+
+    expect(await screen.findByText(/Carlos/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Avisar Carlos por WhatsApp" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Catálogo" }));
+    expect(await screen.findByText(/7 un em estoque/)).toBeInTheDocument();
   });
 });
 

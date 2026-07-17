@@ -103,6 +103,8 @@ const emptyDb = {
   tasks: [],
   leads: [],
   appointments: [],
+  products: [],
+  orders: [],
   transactions: [],
   financeSettings: {},
   documents: [],
@@ -126,6 +128,7 @@ const nav = [
   ["marketing", "Marca e Marketing", Megaphone],
   ["vendas", "Vendas e Clientes", Handshake],
   ["agendamentos", "Agendamentos", CalendarDays],
+  ["produtos", "Produtos e Pedidos", ShoppingBag],
   ["financeiro", "Financeiro", WalletCards],
   ["operacao", "Operação", Workflow],
   ["sites", "Sites e Materiais", PanelsTopLeft],
@@ -3234,6 +3237,13 @@ const areaToolkits = {
         description: "Planeje, delegue e acompanhe a execução.",
         icon: ListTodo,
       },
+      {
+        kind: "page",
+        page: "produtos",
+        title: "Produtos, estoque e pedidos",
+        description: "Cadastre produtos e registre pedidos com baixa automática.",
+        icon: ShoppingBag,
+      },
       { kind: "ai", tool: "ops" },
       { kind: "ai", tool: "rh" },
       { kind: "ai", tool: "compras" },
@@ -4891,6 +4901,531 @@ function Appointments({ db, update, business, setToast, go }) {
               </Button>
               <Button type="submit" icon={Save}>
                 {editing ? "Salvar alterações" : "Salvar agendamento"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </PageTitle>
+  );
+}
+
+const orderStatuses = [
+  "Novo",
+  "Preparando",
+  "Pronto",
+  "Enviado",
+  "Entregue",
+  "Cancelado",
+];
+const orderChannels = ["Balcão", "Retirada", "Delivery", "Online"];
+
+function Catalog({ db, update, business, setToast, go }) {
+  const [view, setView] = useState("produtos"),
+    [search, setSearch] = useState(""),
+    [productModal, setProductModal] = useState(false),
+    [editingProduct, setEditingProduct] = useState(null),
+    [orderModal, setOrderModal] = useState(false),
+    [editingOrder, setEditingOrder] = useState(null);
+  const blankProduct = {
+    name: "",
+    category: "",
+    price: "",
+    cost: "",
+    stock: "",
+    lowStockAlert: "5",
+    unit: "un",
+  };
+  const [productForm, setProductForm] = useState(blankProduct);
+  const blankOrder = {
+    clientName: "",
+    clientContact: "",
+    channel: "Balcão",
+    status: "Novo",
+    notes: "",
+    items: [],
+  };
+  const [orderForm, setOrderForm] = useState(blankOrder);
+  const [pickProduct, setPickProduct] = useState("");
+  const [pickQty, setPickQty] = useState("1");
+
+  const products = (db.products || []).filter(
+    (p) => !business || p.businessId === business.id,
+  );
+  const orders = (db.orders || []).filter(
+    (o) => !business || o.businessId === business.id,
+  );
+  const filteredProducts = products.filter(
+    (p) =>
+      !search ||
+      `${p.name} ${p.category}`.toLowerCase().includes(search.toLowerCase()),
+  );
+  const filteredOrders = orders
+    .filter(
+      (o) =>
+        !search ||
+        `${o.clientName} ${o.items.map((i) => i.name).join(" ")}`
+          .toLowerCase()
+          .includes(search.toLowerCase()),
+    )
+    .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+
+  const openProduct = (item = null) => {
+    setEditingProduct(item?.id || null);
+    setProductForm(item ? { ...blankProduct, ...item } : blankProduct);
+    setProductModal(true);
+  };
+  const saveProduct = (e) => {
+    e.preventDefault();
+    if (!productForm.name.trim()) return;
+    const now = new Date().toISOString();
+    const item = {
+      ...productForm,
+      name: productForm.name.trim(),
+      price: Number(productForm.price) || 0,
+      cost: Number(productForm.cost) || 0,
+      stock: Number(productForm.stock) || 0,
+      lowStockAlert: Number(productForm.lowStockAlert) || 0,
+      id: editingProduct || uid(),
+      businessId: business?.id || null,
+      createdAt: productForm.createdAt || now,
+      updatedAt: now,
+    };
+    update((d) => ({
+      ...d,
+      products: editingProduct
+        ? (d.products || []).map((p) => (p.id === editingProduct ? item : p))
+        : [item, ...(d.products || [])],
+    }));
+    setProductModal(false);
+    setToast(editingProduct ? "Produto atualizado" : "Produto cadastrado");
+  };
+  const removeProduct = (id) => {
+    if (!confirm("Excluir este produto do catálogo?")) return;
+    update((d) => ({
+      ...d,
+      products: (d.products || []).filter((p) => p.id !== id),
+    }));
+  };
+
+  const openOrder = (item = null) => {
+    setEditingOrder(item?.id || null);
+    setOrderForm(item ? { ...blankOrder, ...item } : blankOrder);
+    setPickProduct("");
+    setPickQty("1");
+    setOrderModal(true);
+  };
+  const addItemToOrder = () => {
+    const product = products.find((p) => p.id === pickProduct);
+    const qty = Number(pickQty) || 0;
+    if (!product || qty <= 0) return;
+    setOrderForm((current) => {
+      const existing = current.items.find((i) => i.productId === product.id);
+      const items = existing
+        ? current.items.map((i) =>
+            i.productId === product.id ? { ...i, quantity: i.quantity + qty } : i,
+          )
+        : [
+            ...current.items,
+            { productId: product.id, name: product.name, price: product.price, quantity: qty },
+          ];
+      return { ...current, items };
+    });
+    setPickProduct("");
+    setPickQty("1");
+  };
+  const removeItemFromOrder = (productId) =>
+    setOrderForm((current) => ({
+      ...current,
+      items: current.items.filter((i) => i.productId !== productId),
+    }));
+  const orderTotal = (items) =>
+    (items || []).reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const saveOrder = (e) => {
+    e.preventDefault();
+    if (!orderForm.clientName.trim() || !orderForm.items.length) return;
+    const now = new Date().toISOString();
+    const item = {
+      ...orderForm,
+      clientName: orderForm.clientName.trim(),
+      total: orderTotal(orderForm.items),
+      id: editingOrder || uid(),
+      businessId: business?.id || null,
+      createdAt: orderForm.createdAt || now,
+      updatedAt: now,
+    };
+    update((d) => ({
+      ...d,
+      orders: editingOrder
+        ? (d.orders || []).map((o) => (o.id === editingOrder ? item : o))
+        : [item, ...(d.orders || [])],
+      products: editingOrder
+        ? d.products
+        : (d.products || []).map((p) => {
+            const line = orderForm.items.find((i) => i.productId === p.id);
+            return line ? { ...p, stock: Math.max(0, p.stock - line.quantity) } : p;
+          }),
+    }));
+    setOrderModal(false);
+    setToast(
+      editingOrder
+        ? "Pedido atualizado"
+        : "Pedido criado e estoque atualizado",
+    );
+  };
+  const removeOrder = (id) => {
+    if (!confirm("Excluir este pedido?")) return;
+    update((d) => ({ ...d, orders: (d.orders || []).filter((o) => o.id !== id) }));
+  };
+  const changeOrderStatus = (item, status) =>
+    update((d) => ({
+      ...d,
+      orders: (d.orders || []).map((o) =>
+        o.id === item.id ? { ...o, status, updatedAt: new Date().toISOString() } : o,
+      ),
+    }));
+  const confirmOrderWhatsapp = (item) => {
+    const { phone } = contactLinks(item.clientContact);
+    if (!phone) return;
+    const list = item.items.map((i) => `${i.quantity}x ${i.name}`).join(", ");
+    const message = `Olá ${item.clientName}, tudo bem? Seu pedido${business?.name ? ` na ${business.name}` : ""} (${list}) está no status: ${item.status}. Total: ${money(item.total)}.`;
+    window.open(whatsappLink(phone, message), "_blank", "noopener");
+  };
+
+  return (
+    <PageTitle
+      eyebrow="PRODUTOS E PEDIDOS"
+      title="Catálogo, estoque e pedidos em um só lugar"
+      text="Cadastre produtos, acompanhe o estoque e registre pedidos com atualização automática."
+      action={
+        <Button
+          icon={Plus}
+          onClick={() => (view === "produtos" ? openProduct() : openOrder())}
+        >
+          {view === "produtos" ? "Novo produto" : "Novo pedido"}
+        </Button>
+      }
+    >
+      <div className="toolbar">
+        <div className="search">
+          <Search />
+          <input
+            type="search"
+            placeholder={view === "produtos" ? "Buscar produto" : "Buscar pedido"}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Buscar"
+          />
+        </div>
+        <div className="view-toggle">
+          <button
+            className={view === "produtos" ? "active" : ""}
+            onClick={() => setView("produtos")}
+          >
+            Catálogo
+          </button>
+          <button
+            className={view === "pedidos" ? "active" : ""}
+            onClick={() => setView("pedidos")}
+          >
+            Pedidos
+          </button>
+        </div>
+      </div>
+
+      {view === "produtos" ? (
+        filteredProducts.length === 0 ? (
+          <Empty
+            icon={ShoppingBag}
+            title="Nenhum produto cadastrado"
+            text="Cadastre produtos com preço e estoque para começar a montar pedidos."
+            action="Novo produto"
+            onAction={() => openProduct()}
+          />
+        ) : (
+          <div className="data-list">
+            {filteredProducts.map((p) => (
+              <article key={p.id}>
+                <span
+                  className={`status-dot ${p.stock <= 0 ? "cancelado" : p.stock <= (p.lowStockAlert || 0) ? "faltou" : "concluído"}`}
+                />
+                <span>
+                  <strong>{p.name}</strong>
+                  <small>
+                    {p.category || "Sem categoria"} · {money(p.price)} ·{" "}
+                    {p.stock} {p.unit || "un"} em estoque
+                    {p.stock <= (p.lowStockAlert || 0) && " · Estoque baixo"}
+                  </small>
+                </span>
+                <span className="task-actions">
+                  <button
+                    className="icon-button"
+                    aria-label={`Editar ${p.name}`}
+                    onClick={() => openProduct(p)}
+                  >
+                    <Edit3 />
+                  </button>
+                  <button
+                    className="icon-button danger"
+                    aria-label={`Excluir ${p.name}`}
+                    onClick={() => removeProduct(p.id)}
+                  >
+                    <Trash2 />
+                  </button>
+                </span>
+              </article>
+            ))}
+          </div>
+        )
+      ) : filteredOrders.length === 0 ? (
+        <Empty
+          icon={ReceiptText}
+          title="Nenhum pedido registrado"
+          text="Monte um pedido escolhendo produtos do catálogo."
+          action="Novo pedido"
+          onAction={() => openOrder()}
+        />
+      ) : (
+        <div className="data-list">
+          {filteredOrders.map((o) => (
+            <article key={o.id}>
+              <span>
+                <strong>
+                  {o.clientName} · {money(o.total)}
+                </strong>
+                <small>
+                  {o.items.map((i) => `${i.quantity}x ${i.name}`).join(", ")} ·{" "}
+                  {o.channel}
+                </small>
+              </span>
+              <select
+                value={o.status}
+                onChange={(e) => changeOrderStatus(o, e.target.value)}
+              >
+                {orderStatuses.map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
+              </select>
+              <span className="task-actions">
+                {contactLinks(o.clientContact).phone && (
+                  <button
+                    className="icon-button"
+                    aria-label={`Avisar ${o.clientName} por WhatsApp`}
+                    title="Avisar por WhatsApp"
+                    onClick={() => confirmOrderWhatsapp(o)}
+                  >
+                    <MessageSquareText />
+                  </button>
+                )}
+                <button
+                  className="icon-button"
+                  aria-label={`Editar pedido de ${o.clientName}`}
+                  onClick={() => openOrder(o)}
+                >
+                  <Edit3 />
+                </button>
+                <button
+                  className="icon-button danger"
+                  aria-label={`Excluir pedido de ${o.clientName}`}
+                  onClick={() => removeOrder(o.id)}
+                >
+                  <Trash2 />
+                </button>
+              </span>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {productModal && (
+        <Modal
+          title={editingProduct ? "Editar produto" : "Novo produto"}
+          onClose={() => setProductModal(false)}
+        >
+          <form className="modal-body" onSubmit={saveProduct}>
+            <Field label="Nome do produto">
+              <input
+                required
+                autoFocus
+                value={productForm.name}
+                onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
+              />
+            </Field>
+            <div className="form-grid">
+              <Field label="Categoria">
+                <input
+                  value={productForm.category}
+                  onChange={(e) =>
+                    setProductForm({ ...productForm, category: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Preço de venda">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={productForm.price}
+                  onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
+                />
+              </Field>
+              <Field label="Custo (opcional)">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={productForm.cost}
+                  onChange={(e) => setProductForm({ ...productForm, cost: e.target.value })}
+                />
+              </Field>
+              <Field label="Estoque atual">
+                <input
+                  type="number"
+                  min="0"
+                  value={productForm.stock}
+                  onChange={(e) => setProductForm({ ...productForm, stock: e.target.value })}
+                />
+              </Field>
+              <Field label="Alertar quando estoque for menor que">
+                <input
+                  type="number"
+                  min="0"
+                  value={productForm.lowStockAlert}
+                  onChange={(e) =>
+                    setProductForm({ ...productForm, lowStockAlert: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Unidade">
+                <input
+                  value={productForm.unit}
+                  onChange={(e) => setProductForm({ ...productForm, unit: e.target.value })}
+                  placeholder="un, kg, caixa..."
+                />
+              </Field>
+            </div>
+            <div className="modal-actions">
+              <Button variant="ghost" onClick={() => setProductModal(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" icon={Save}>
+                {editingProduct ? "Salvar alterações" : "Salvar produto"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {orderModal && (
+        <Modal
+          title={editingOrder ? "Editar pedido" : "Novo pedido"}
+          wide
+          onClose={() => setOrderModal(false)}
+        >
+          <form className="modal-body" onSubmit={saveOrder}>
+            <div className="form-grid">
+              <Field label="Cliente">
+                <input
+                  required
+                  autoFocus
+                  value={orderForm.clientName}
+                  onChange={(e) =>
+                    setOrderForm({ ...orderForm, clientName: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="WhatsApp ou e-mail">
+                <input
+                  value={orderForm.clientContact}
+                  onChange={(e) =>
+                    setOrderForm({ ...orderForm, clientContact: e.target.value })
+                  }
+                  placeholder="(11) 98888-7777"
+                />
+              </Field>
+              <Field label="Canal">
+                <select
+                  value={orderForm.channel}
+                  onChange={(e) => setOrderForm({ ...orderForm, channel: e.target.value })}
+                >
+                  {orderChannels.map((c) => (
+                    <option key={c}>{c}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Status">
+                <select
+                  value={orderForm.status}
+                  onChange={(e) => setOrderForm({ ...orderForm, status: e.target.value })}
+                >
+                  {orderStatuses.map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <Field label="Adicionar produto">
+              <div className="order-item-picker">
+                <select
+                  value={pickProduct}
+                  onChange={(e) => setPickProduct(e.target.value)}
+                  aria-label="Escolher produto"
+                >
+                  <option value="">Escolha um produto</option>
+                  {products.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} · {money(p.price)}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  min="1"
+                  value={pickQty}
+                  onChange={(e) => setPickQty(e.target.value)}
+                  aria-label="Quantidade"
+                />
+                <Button type="button" variant="secondary" onClick={addItemToOrder}>
+                  Adicionar
+                </Button>
+              </div>
+            </Field>
+            {orderForm.items.length > 0 && (
+              <div className="order-items">
+                {orderForm.items.map((i) => (
+                  <div key={i.productId} className="order-item-row">
+                    <span>
+                      {i.quantity}x {i.name}
+                    </span>
+                    <span>{money(i.price * i.quantity)}</span>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label={`Remover ${i.name} do pedido`}
+                      onClick={() => removeItemFromOrder(i.productId)}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+                <div className="order-item-row order-total">
+                  <span>Total</span>
+                  <span>{money(orderTotal(orderForm.items))}</span>
+                </div>
+              </div>
+            )}
+            <Field label="Observações">
+              <textarea
+                value={orderForm.notes}
+                onChange={(e) => setOrderForm({ ...orderForm, notes: e.target.value })}
+              />
+            </Field>
+            <div className="modal-actions">
+              <Button variant="ghost" onClick={() => setOrderModal(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" icon={Save} disabled={!orderForm.items.length}>
+                {editingOrder ? "Salvar alterações" : "Salvar pedido"}
               </Button>
             </div>
           </form>
@@ -10535,6 +11070,16 @@ export default function App() {
       case "agendamentos":
         return (
           <Appointments
+            db={db}
+            update={update}
+            business={business}
+            setToast={setToast}
+            go={go}
+          />
+        );
+      case "produtos":
+        return (
+          <Catalog
             db={db}
             update={update}
             business={business}

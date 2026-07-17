@@ -2753,6 +2753,33 @@ aside nav button.active {
 .list-editor-row .icon-button {
   align-self: start;
 }
+.order-item-picker {
+  display: grid;
+  grid-template-columns: 1fr 90px auto;
+  gap: 8px;
+  align-items: center;
+}
+.order-items {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface2);
+}
+.order-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 14px;
+}
+.order-item-row.order-total {
+  font-weight: 800;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+  margin-top: 4px;
+}
 .slug-editor {
   display: flex;
   align-items: center;
