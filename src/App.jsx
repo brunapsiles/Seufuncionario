@@ -5401,6 +5401,7 @@ function CRM({ db, update, business, setToast, go }) {
         name: form.name.trim(),
         id: editing || uid(),
         businessId: business?.id || form.businessId || null,
+        ownerId: form.ownerId || db.user.id,
         createdAt: form.createdAt || now,
         updatedAt: now,
         interactions: stageChanged
@@ -8698,6 +8699,7 @@ function Documents({ db, update, business, setToast, go }) {
           importedAt: new Date().toISOString(),
           importedContentTruncated: extracted.truncated,
           businessId: business?.id || null,
+          ownerId: db.user.id,
           updatedAt: new Date().toISOString(),
           versions: [],
         });
@@ -8740,6 +8742,7 @@ function Documents({ db, update, business, setToast, go }) {
       ...form,
       id: editing || uid(),
       businessId: business?.id || null,
+      ownerId: form.ownerId || db.user.id,
       updatedAt: new Date().toISOString(),
       versions: changed
         ? [
@@ -9799,6 +9802,7 @@ function Sites({ db, update, business, setToast, go }) {
       ],
       published: false,
       businessId: business?.id || null,
+      ownerId: db.user.id,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       leads: [],
