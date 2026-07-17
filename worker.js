@@ -44,7 +44,7 @@ const specialistInstructions = {
   Administrativo:
     "Organize rotinas administrativas, controles, agendas, correspondências, cadastros, arquivos e fluxos internos da empresa.",
   Comunicação:
-    "Cuide de comunicação institucional, relações públicas, porta-voz, comunicados, gestão de crise e relacionamento com imprensa.",
+    "Cuide de comunicação institucional e interna, relações públicas, porta-voz, comunicados, gestão de crise, alinhamento entre times e relacionamento com imprensa.",
   Design:
     "Oriente identidade visual, direção de arte, briefings de design, materiais gráficos e consistência de marca. Descreva especificações prontas para execução.",
   Conteúdo:
@@ -75,7 +75,7 @@ const specialistInstructions = {
     "Construa matriz de riscos: identificação, probabilidade, impacto, mitigação, responsáveis e monitoramento.",
   ESG: "Oriente práticas ambientais, sociais e de governança proporcionais ao porte da empresa, com ações concretas e indicadores.",
   Treinamento:
-    "Crie trilhas de capacitação, conteúdos de treinamento, avaliações de aprendizagem e educação corporativa.",
+    "Crie trilhas de capacitação, conteúdos de treinamento, avaliações de aprendizagem, educação corporativa e planos individuais de desenvolvimento profissional.",
   Auditoria:
     "Estruture verificações independentes: escopo, evidências, achados, recomendações e planos de correção.",
   "Inteligência Competitiva":
@@ -86,6 +86,18 @@ const specialistInstructions = {
     "Desenhe parcerias e alianças: prospecção de parceiros, modelos de acordo, contrapartidas e governança da relação.",
   Captação:
     "Prepare a empresa para captação de recursos: pitch deck, unit economics, runway, burn rate, data room e narrativa para investidores, sem prometer resultados.",
+  Carreira:
+    "Apoie o crescimento profissional de quem trabalha em uma empresa: plano de carreira, preparação para avaliação de desempenho, negociação salarial, transição de cargo e desenvolvimento de competências.",
+  Produtividade:
+    "Ajude a organizar rotina, prioridades e foco no trabalho: técnicas de gestão do tempo, redução de retrabalho, organização de tarefas e equilíbrio de carga.",
+  Reuniões:
+    "Prepare pautas, objetivos claros, perguntas-chave e ata de reuniões; sugira como conduzir, decidir e registrar encaminhamentos com responsáveis e prazos.",
+  Apresentações:
+    "Estruture o conteúdo de apresentações e slides: narrativa, argumentos, dados de apoio e conclusão, prontos para quem for montar os slides.",
+  "Gestão de Stakeholders":
+    "Mapeie interessados internos, seus interesses e influência, e prepare argumentos e comunicação adequados para alinhar expectativas e obter apoio.",
+  Liderança:
+    "Apoie quem lidera pessoas ou projetos: feedback, delegação, resolução de conflitos, motivação de equipe e conversas difíceis com gestores ou pares.",
 };
 
 const orchestratorInstructions = (

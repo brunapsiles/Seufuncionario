@@ -50,6 +50,11 @@ describe("acesso à conta", () => {
         .querySelector("form"),
     );
 
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Para administrar meu negócio",
+      }),
+    );
     await waitFor(() =>
       expect(
         screen.getByRole("heading", { name: /Vamos fazer acontecer/ }),
@@ -102,6 +107,11 @@ describe("acesso à conta", () => {
         "/api/auth/register",
         expect.objectContaining({ method: "POST" }),
       ),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Para administrar meu negócio",
+      }),
     );
     expect(
       screen.getByRole("heading", { name: /Vamos fazer acontecer/ }),

@@ -436,6 +436,32 @@ h3,
 .option-grid button.selected svg {
   color: var(--primary);
 }
+.mode-onboard-card {
+  margin-top: 10vh;
+}
+.mode-option-grid {
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+.mode-option-grid button {
+  align-items: flex-start;
+  padding: 20px;
+  gap: 16px;
+}
+.mode-option-grid button svg {
+  width: 24px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.mode-option-grid button span {
+  display: grid;
+  gap: 4px;
+}
+.mode-option-grid button small {
+  color: var(--muted);
+  font-weight: 400;
+  line-height: 1.5;
+}
 .onboard-card footer {
   display: flex;
   justify-content: space-between;
@@ -590,6 +616,11 @@ aside nav button.active {
 }
 .rotated {
   transform: rotate(90deg);
+}
+.top-business-neutral .employee-identity {
+  display: flex;
+  align-items: center;
+  gap: 9px;
 }
 .business-avatar {
   width: 42px;

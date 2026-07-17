@@ -119,8 +119,26 @@ const emptyDb = {
   pluggedTools: [],
   selectedConversationId: null,
   journeys: {},
-  preferences: { theme: "light", specialist: "Diretor" },
+  preferences: {
+    theme: "light",
+    specialist: "Diretor",
+    mode: "business",
+    modeChosen: false,
+  },
 };
+
+export const hasAnyWorkspaceData = (db) =>
+  (db?.businesses || []).length > 0 ||
+  (db?.tasks || []).length > 0 ||
+  (db?.leads || []).length > 0 ||
+  (db?.appointments || []).length > 0 ||
+  (db?.products || []).length > 0 ||
+  (db?.orders || []).length > 0 ||
+  (db?.timeEntries || []).length > 0 ||
+  (db?.documents || []).length > 0 ||
+  (db?.sites || []).length > 0 ||
+  (db?.conversations || []).length > 0 ||
+  (db?.history || []).length > 0;
 
 const nav = [
   ["inicio", "Início", Home],
@@ -145,6 +163,22 @@ const navSecondary = [
   ["time", "Meu Time", Users],
   ["config", "Configurações", Settings],
 ];
+
+export const EMPLOYEE_NAV_IDS = [
+  "inicio",
+  "operacao",
+  "agendamentos",
+  "documentos",
+  "ferramentas",
+  "estudio",
+  "historico",
+  "certificacoes",
+];
+
+export const navForMode = (mode) =>
+  mode === "employee"
+    ? nav.filter(([id]) => EMPLOYEE_NAV_IDS.includes(id))
+    : nav;
 
 const toolCatalog = [
   {
@@ -376,6 +410,16 @@ const specialistData = [
     DollarSign,
     "Pitch deck, unit economics e preparação para investidores.",
   ],
+  ["Carreira", Rocket, "Plano de carreira, avaliações e negociação salarial."],
+  ["Produtividade", Clock3, "Rotina, prioridades e foco no trabalho."],
+  ["Reuniões", Users, "Pautas, condução e ata com encaminhamentos."],
+  ["Apresentações", Layers, "Narrativa e conteúdo de slides."],
+  [
+    "Gestão de Stakeholders",
+    Handshake,
+    "Mapeamento de interessados e alinhamento de expectativas.",
+  ],
+  ["Liderança", Award, "Feedback, delegação e conversas difíceis."],
 ];
 
 const journeyData = {
@@ -1200,6 +1244,55 @@ function Markdown({ text }) {
   }
   flush();
   return <div className="md">{blocks}</div>;
+}
+
+function ModeOnboarding({ update }) {
+  const choose = (mode) =>
+    update((d) => ({
+      ...d,
+      preferences: { ...d.preferences, mode, modeChosen: true },
+    }));
+  return (
+    <main className="onboarding">
+      <header>
+        <Logo />
+      </header>
+      <div className="onboard-card mode-onboard-card">
+        <h1>Como você pretende usar o Seu Funcionário?</h1>
+        <p>Você pode mudar isso quando quiser em Configurações.</p>
+        <div className="option-grid mode-option-grid">
+          <button
+            type="button"
+            aria-label="Para administrar meu negócio"
+            onClick={() => choose("business")}
+          >
+            <BriefcaseBusiness />
+            <span>
+              <strong>Para administrar meu negócio</strong>
+              <small>
+                CRM, produtos, pedidos, financeiro, sites e faturamento para
+                quem toca uma empresa ou trabalha por conta própria.
+              </small>
+            </span>
+          </button>
+          <button
+            type="button"
+            aria-label="Para me ajudar no meu trabalho"
+            onClick={() => choose("employee")}
+          >
+            <UserRound />
+            <span>
+              <strong>Para me ajudar no meu trabalho</strong>
+              <small>
+                Tarefas, agenda, documentos e especialistas de IA para quem
+                trabalha dentro de outra empresa.
+              </small>
+            </span>
+          </button>
+        </div>
+      </div>
+    </main>
+  );
 }
 
 function Login({ update }) {
@@ -2754,18 +2847,46 @@ function UniversalRequest({ db, update, business, setToast }) {
 }
 
 function Dashboard({ db, update, business, go, setToast }) {
+  const isEmployeeMode = (db.preferences.mode || "business") === "employee";
   const activeTasks = db.tasks.filter(
-    (x) => x.status !== "Concluído" && x.businessId === business?.id,
+    (x) => x.status !== "Concluído" && (!business || x.businessId === business.id),
   );
   const followups = db.leads.filter(
     (x) =>
-      x.businessId === business?.id &&
+      (!business || x.businessId === business.id) &&
       x.status !== "Ganho" &&
       x.status !== "Perdido",
   );
+  const upcomingAppointments = (db.appointments || [])
+    .filter(
+      (a) =>
+        (!business || a.businessId === business.id) &&
+        a.status !== "Cancelado" &&
+        a.date >= today(),
+    )
+    .sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`))
+    .slice(0, 4);
   const recent = db.history
     .filter((x) => !business || x.businessId === business.id)
     .slice(0, 3);
+  const selectSpecialist = (name) => {
+    update((d) => ({ ...d, preferences: { ...d.preferences, specialist: name } }));
+    setToast(`${name} selecionado — envie sua mensagem abaixo`);
+  };
+  const quickEmployee = [
+    ["Organizar minha semana", ListTodo, "operacao"],
+    ["Organizar tarefas e prioridades", CheckCircle2, "operacao"],
+    ["Escrever um e-mail ou mensagem", Mail, "ferramentas"],
+    ["Resumir ou analisar um documento", FileText, "documentos"],
+    ["Registrar resultados e entregas", History, "historico"],
+  ];
+  const quickEmployeeSpecialists = [
+    ["Preparar uma reunião", Users, "Reuniões"],
+    ["Criar uma apresentação", Layers, "Apresentações"],
+    ["Planejar um projeto", ListTodo, "Projetos"],
+    ["Preparar uma conversa com meu gestor", MessageSquareText, "Liderança"],
+    ["Melhorar um processo de trabalho", Workflow, "Processos"],
+  ];
   const quickBase = [
     ["Validar uma ideia", Lightbulb, "comecar"],
     ["Montar meus preços", Calculator, "financeiro"],
@@ -2808,6 +2929,8 @@ function Dashboard({ db, update, business, go, setToast }) {
                 <strong>{business.name}</strong> está na fase “{business.stage}
                 ”.
               </>
+            ) : isEmployeeMode ? (
+              "Organize sua semana e conte com a IA para o seu trabalho."
             ) : (
               "Crie seu primeiro negócio para receber um painel personalizado."
             )}
@@ -2837,18 +2960,47 @@ function Dashboard({ db, update, business, go, setToast }) {
           </div>
         </div>
         <div className="quick-grid">
-          {quick.map(([t, I, p], i) => (
-            <button key={t} onClick={() => go(p)}>
-              <span className={`quick-icon q${i}`}>
-                <I />
-              </span>
-              <span>
-                <strong>{t}</strong>
-                <small>Abrir ferramenta</small>
-              </span>
-              <ArrowUpRight />
-            </button>
-          ))}
+          {isEmployeeMode ? (
+            <>
+              {quickEmployee.map(([t, I, p], i) => (
+                <button key={t} onClick={() => go(p)}>
+                  <span className={`quick-icon q${i % 6}`}>
+                    <I />
+                  </span>
+                  <span>
+                    <strong>{t}</strong>
+                    <small>Abrir ferramenta</small>
+                  </span>
+                  <ArrowUpRight />
+                </button>
+              ))}
+              {quickEmployeeSpecialists.map(([t, I, name], i) => (
+                <button key={t} onClick={() => selectSpecialist(name)}>
+                  <span className={`quick-icon q${(i + quickEmployee.length) % 6}`}>
+                    <I />
+                  </span>
+                  <span>
+                    <strong>{t}</strong>
+                    <small>Conversar com a IA</small>
+                  </span>
+                  <ArrowUpRight />
+                </button>
+              ))}
+            </>
+          ) : (
+            quick.map(([t, I, p], i) => (
+              <button key={t} onClick={() => go(p)}>
+                <span className={`quick-icon q${i}`}>
+                  <I />
+                </span>
+                <span>
+                  <strong>{t}</strong>
+                  <small>Abrir ferramenta</small>
+                </span>
+                <ArrowUpRight />
+              </button>
+            ))
+          )}
         </div>
       </section>
       {(db.pluggedTools || []).length > 0 && (
@@ -2925,38 +3077,76 @@ function Dashboard({ db, update, business, go, setToast }) {
             />
           )}
         </section>
-        <section className="panel">
-          <div className="panel-head">
-            <div>
-              <span className="eyebrow">RELACIONAMENTOS</span>
-              <h2>Leads para acompanhar</h2>
+        {isEmployeeMode ? (
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <span className="eyebrow">AGENDA</span>
+                <h2>Próximos compromissos</h2>
+              </div>
+              <button className="text-button" onClick={() => go("agendamentos")}>
+                Abrir agenda
+              </button>
             </div>
-            <button className="text-button" onClick={() => go("vendas")}>
-              Abrir CRM
-            </button>
-          </div>
-          {followups.length ? (
-            <div className="mini-list">
-              {followups.slice(0, 4).map((l) => (
-                <div key={l.id}>
-                  <span className="avatar">{l.name[0]}</span>
-                  <span>
-                    <strong>{l.name}</strong>
-                    <small>
-                      {l.status} · {l.next || "Sem follow-up"}
-                    </small>
-                  </span>
-                </div>
-              ))}
+            {upcomingAppointments.length ? (
+              <div className="mini-list">
+                {upcomingAppointments.map((a) => (
+                  <div key={a.id}>
+                    <span className="avatar">
+                      {(a.clientName || a.title || "?")[0]}
+                    </span>
+                    <span>
+                      <strong>{a.title}</strong>
+                      <small>
+                        {new Date(`${a.date}T12:00`).toLocaleDateString("pt-BR")}{" "}
+                        · {a.time}
+                      </small>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Empty
+                icon={CalendarDays}
+                title="Nada agendado"
+                text="Marque uma reunião, prazo ou bloco de foco."
+              />
+            )}
+          </section>
+        ) : (
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <span className="eyebrow">RELACIONAMENTOS</span>
+                <h2>Leads para acompanhar</h2>
+              </div>
+              <button className="text-button" onClick={() => go("vendas")}>
+                Abrir CRM
+              </button>
             </div>
-          ) : (
-            <Empty
-              icon={Users}
-              title="Seu CRM está livre"
-              text="Adicione oportunidades e acompanhe cada conversa."
-            />
-          )}
-        </section>
+            {followups.length ? (
+              <div className="mini-list">
+                {followups.slice(0, 4).map((l) => (
+                  <div key={l.id}>
+                    <span className="avatar">{l.name[0]}</span>
+                    <span>
+                      <strong>{l.name}</strong>
+                      <small>
+                        {l.status} · {l.next || "Sem follow-up"}
+                      </small>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Empty
+                icon={Users}
+                title="Seu CRM está livre"
+                text="Adicione oportunidades e acompanhe cada conversa."
+              />
+            )}
+          </section>
+        )}
       </div>
       {recent.length > 0 && (
         <section className="section">
@@ -4716,6 +4906,7 @@ function CRM({ db, update, business, setToast, go }) {
 }
 
 function Appointments({ db, update, business, setToast, go }) {
+  const isEmployeeMode = (db.preferences.mode || "business") === "employee";
   const [modal, setModal] = useState(false),
     [editing, setEditing] = useState(null),
     [view, setView] = useState("dia"),
@@ -4760,7 +4951,12 @@ function Appointments({ db, update, business, setToast, go }) {
   };
   const save = (e) => {
     e.preventDefault();
-    if (!form.title.trim() || !form.clientName.trim() || !form.date) return;
+    if (
+      !form.title.trim() ||
+      (!isEmployeeMode && !form.clientName.trim()) ||
+      !form.date
+    )
+      return;
     const now = new Date().toISOString();
     const item = {
       ...form,
@@ -4800,12 +4996,12 @@ function Appointments({ db, update, business, setToast, go }) {
     const { phone } = contactLinks(item.clientContact);
     if (!phone) return;
     const when = new Date(`${item.date}T12:00`).toLocaleDateString("pt-BR");
-    const message = `Olá ${item.clientName}, tudo bem? Confirmando seu horário${business?.name ? ` na ${business.name}` : ""}: ${item.title}, dia ${when} às ${item.time}.`;
+    const message = `Olá${item.clientName ? ` ${item.clientName}` : ""}, tudo bem? Confirmando seu horário${business?.name ? ` na ${business.name}` : ""}: ${item.title}, dia ${when} às ${item.time}.`;
     window.open(whatsappLink(phone, message), "_blank", "noopener");
   };
   const addToCalendar = async (item) => {
     const task = {
-      title: `${item.title} - ${item.clientName}`,
+      title: item.clientName ? `${item.title} - ${item.clientName}` : item.title,
       due: item.date,
       time: item.time,
       durationMinutes: item.durationMinutes,
@@ -4887,7 +5083,8 @@ function Appointments({ db, update, business, setToast, go }) {
                 <strong>{item.title}</strong>
                 <small>
                   {new Date(`${item.date}T12:00`).toLocaleDateString("pt-BR")} ·{" "}
-                  {item.time} · {item.clientName}
+                  {item.time}
+                  {item.clientName && ` · ${item.clientName}`}
                   {item.professional && ` · ${item.professional}`}
                 </small>
               </span>
@@ -4903,7 +5100,7 @@ function Appointments({ db, update, business, setToast, go }) {
                 {contactLinks(item.clientContact).phone && (
                   <button
                     className="icon-button"
-                    aria-label={`Confirmar por WhatsApp com ${item.clientName}`}
+                    aria-label={`Confirmar por WhatsApp${item.clientName ? ` com ${item.clientName}` : ""}`}
                     title="Confirmar por WhatsApp"
                     onClick={() => remindWhatsapp(item)}
                   >
@@ -4953,11 +5150,14 @@ function Appointments({ db, update, business, setToast, go }) {
               />
             </Field>
             <div className="form-grid">
-              <Field label="Cliente">
+              <Field label={isEmployeeMode ? "Com quem (opcional)" : "Cliente"}>
                 <input
-                  required
+                  required={!isEmployeeMode}
                   value={form.clientName}
                   onChange={(e) => setForm({ ...form, clientName: e.target.value })}
+                  placeholder={
+                    isEmployeeMode ? "Pessoa, empresa ou deixe em branco" : ""
+                  }
                 />
               </Field>
               <Field label="WhatsApp ou e-mail">
@@ -11161,6 +11361,19 @@ function AccountSettings({ db, update, setToast }) {
   const theme = db.preferences.theme;
   const setTheme = (t) =>
     update((d) => ({ ...d, preferences: { ...d.preferences, theme: t } }));
+  const mode = db.preferences.mode || "business";
+  const setMode = (m) => {
+    if (m === mode) return;
+    update((d) => ({
+      ...d,
+      preferences: { ...d.preferences, mode: m, modeChosen: true },
+    }));
+    setToast(
+      m === "employee"
+        ? "Modo alterado: me ajudar no meu trabalho"
+        : "Modo alterado: administrar meu negócio",
+    );
+  };
   const saveName = async () => {
     const clean = name.trim();
     if (clean.length < 2) {
@@ -11273,6 +11486,40 @@ function AccountSettings({ db, update, setToast }) {
               {theme === "dark" && <CheckCircle2 className="theme-check" />}
             </button>
           </div>
+        </section>
+        <section className="settings-card">
+          <div className="settings-card-head">
+            <span className="settings-icon">
+              <BriefcaseBusiness />
+            </span>
+            <div>
+              <h2>Modo de uso</h2>
+              <p>Ajuste o aplicativo ao seu jeito de trabalhar.</p>
+            </div>
+          </div>
+          <div className="theme-choice">
+            <button
+              className={mode === "business" ? "active" : ""}
+              onClick={() => setMode("business")}
+            >
+              <span className="theme-preview light">
+                <BriefcaseBusiness />
+              </span>
+              <strong>Administrar meu negócio</strong>
+              {mode === "business" && <CheckCircle2 className="theme-check" />}
+            </button>
+            <button
+              className={mode === "employee" ? "active" : ""}
+              onClick={() => setMode("employee")}
+            >
+              <span className="theme-preview dark">
+                <UserRound />
+              </span>
+              <strong>Me ajudar no meu trabalho</strong>
+              {mode === "employee" && <CheckCircle2 className="theme-check" />}
+            </button>
+          </div>
+          <small>Seus dados não são apagados nem ocultados ao trocar de modo.</small>
         </section>
         <section className="settings-card">
           <div className="settings-card-head">
@@ -11419,6 +11666,19 @@ export default function App() {
       return () => clearTimeout(t);
     }
   }, [toast]);
+  useEffect(() => {
+    if (!db.user) return;
+    if (db.preferences.modeChosen) return;
+    if (!hasAnyWorkspaceData(db)) return;
+    update((d) => ({
+      ...d,
+      preferences: {
+        ...d.preferences,
+        mode: d.preferences.mode || "business",
+        modeChosen: true,
+      },
+    }));
+  }, [db.user, db.preferences.modeChosen]);
   const publicMatch = location.pathname.match(/^\/s\/([^/]+)(?:\/([^/]+))?/);
   const publicSlug = publicMatch?.[1];
   if (publicSlug)
@@ -11429,6 +11689,11 @@ export default function App() {
       />
     );
   if (!db.user) return <Login update={update} />;
+  if (!db.preferences.modeChosen && !hasAnyWorkspaceData(db))
+    return <ModeOnboarding update={update} />;
+  const mode = db.preferences.mode || "business";
+  const isEmployeeMode = mode === "employee";
+  const visibleNav = navForMode(mode);
   const business =
     db.businesses.find((x) => x.id === db.selectedBusinessId) ||
     db.businesses[0] ||
@@ -11607,7 +11872,7 @@ export default function App() {
           </button>
         </div>
         <nav>
-          {nav.map(([id, label, I]) => (
+          {visibleNav.map(([id, label, I]) => (
             <button
               key={id}
               className={page === id ? "active" : ""}
@@ -11702,46 +11967,58 @@ export default function App() {
               <Menu />
             </button>
           )}
-          <div className="top-business">
-            <span>Negócio ativo</span>
-            <button onClick={() => setBusinessMenu(!businessMenu)}>
-              <span className="business-avatar small">
-                {business?.name?.[0] || "+"}
+          {isEmployeeMode ? (
+            <div className="top-business top-business-neutral">
+              <span>Meu trabalho</span>
+              <span className="employee-identity">
+                <span className="business-avatar small">
+                  {db.user.name?.[0] || "V"}
+                </span>
+                <strong>{db.user.name}</strong>
               </span>
-              <strong>{business?.name || "Criar negócio"}</strong>
-              <ChevronRight className={businessMenu ? "rotated" : ""} />
-            </button>
-            {businessMenu && (
-              <div className="business-popover">
-                {db.businesses.map((b) => (
+            </div>
+          ) : (
+            <div className="top-business">
+              <span>Negócio ativo</span>
+              <button onClick={() => setBusinessMenu(!businessMenu)}>
+                <span className="business-avatar small">
+                  {business?.name?.[0] || "+"}
+                </span>
+                <strong>{business?.name || "Criar negócio"}</strong>
+                <ChevronRight className={businessMenu ? "rotated" : ""} />
+              </button>
+              {businessMenu && (
+                <div className="business-popover">
+                  {db.businesses.map((b) => (
+                    <button
+                      key={b.id}
+                      onClick={() => {
+                        update((d) => ({ ...d, selectedBusinessId: b.id }));
+                        setBusinessMenu(false);
+                      }}
+                    >
+                      <span className="business-avatar small">{b.name[0]}</span>
+                      <span>
+                        <strong>{b.name}</strong>
+                        <small>{b.segment || "Sem segmento"}</small>
+                      </span>
+                      {business?.id === b.id && <Check />}
+                    </button>
+                  ))}
                   <button
-                    key={b.id}
+                    className="manage"
                     onClick={() => {
-                      update((d) => ({ ...d, selectedBusinessId: b.id }));
+                      go("businesses");
                       setBusinessMenu(false);
                     }}
                   >
-                    <span className="business-avatar small">{b.name[0]}</span>
-                    <span>
-                      <strong>{b.name}</strong>
-                      <small>{b.segment || "Sem segmento"}</small>
-                    </span>
-                    {business?.id === b.id && <Check />}
+                    <Building2 />
+                    Gerenciar negócios
                   </button>
-                ))}
-                <button
-                  className="manage"
-                  onClick={() => {
-                    go("businesses");
-                    setBusinessMenu(false);
-                  }}
-                >
-                  <Building2 />
-                  Gerenciar negócios
-                </button>
-              </div>
-            )}
-          </div>
+                </div>
+              )}
+            </div>
+          )}
           <div className="top-actions">
             {activeSpaceId() && (
               <button
