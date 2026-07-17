@@ -5363,6 +5363,9 @@ export function mergeSiteBrief(base, patch) {
     "contact",
     "color",
     "faq",
+    "heroStyle",
+    "features",
+    "homeBlocks",
   ];
   const next = { ...base };
   allowed.forEach((key) => {
@@ -5484,6 +5487,29 @@ const siteFaq = (value) =>
       answer: String(item.answer).trim().slice(0, 400),
     }));
 
+const siteFeatures = (value) =>
+  (Array.isArray(value) ? value : [])
+    .filter((item) => item && String(item.title || "").trim())
+    .slice(0, 4)
+    .map((item) => ({
+      title: String(item.title).trim().slice(0, 60),
+      description: String(item.description || "").trim().slice(0, 200),
+    }));
+
+export const HOME_BLOCK_IDS = ["features", "gallery", "testimonials", "cta"];
+
+const sanitizeHomeBlocks = (value) =>
+  (Array.isArray(value) ? value : [])
+    .filter((id) => HOME_BLOCK_IDS.includes(id))
+    .filter((id, index, arr) => arr.indexOf(id) === index)
+    .slice(0, HOME_BLOCK_IDS.length);
+
+export const HERO_STYLES = [
+  { id: "centrado", label: "Centrado" },
+  { id: "dividido", label: "Dividido" },
+  { id: "impacto", label: "Impacto" },
+];
+
 export function makeSite(form, page = "", siteSlug = "") {
   const title = form.name || "Meu negócio";
   const desc =
@@ -5503,6 +5529,11 @@ export function makeSite(form, page = "", siteSlug = "") {
   const gallery = siteGallery(form.gallery);
   const testimonials = siteTestimonials(form.testimonials);
   const faq = siteFaq(form.faq);
+  const features = siteFeatures(form.features);
+  const homeBlocks = sanitizeHomeBlocks(form.homeBlocks);
+  const heroStyle = HERO_STYLES.some((s) => s.id === form.heroStyle)
+    ? form.heroStyle
+    : "centrado";
   const cards = services
     .map(
       (service) =>
@@ -5523,10 +5554,18 @@ export function makeSite(form, page = "", siteSlug = "") {
   const about =
     form.about ||
     `${title} nasceu para oferecer uma experiência confiável, simples e próxima. Cada atendimento parte do contexto real do cliente para chegar a uma solução adequada.`;
-  const heroText = `<span>${escapeHtml(form.segment || "Bem-vindo")}</span><h1>${escapeHtml(form.headline || title)}</h1><p>${escapeHtml(desc)}</p><a class="cta" href="${sitePagePath(slug, "contato")}">${escapeHtml(form.cta || "Quero saber mais")}</a>`;
-  const heroSection = heroImg
-    ? `<section class="hero heroImg"><div>${heroText}</div><img src="${escapeHtml(heroImg)}" alt="${escapeHtml(title)}" loading="lazy"></section>`
-    : `<section class="hero"><div>${heroText}</div></section>`;
+  const heroCopy = `<span>${escapeHtml(form.segment || "Bem-vindo")}</span><h1>${escapeHtml(form.headline || title)}</h1><p>${escapeHtml(desc)}</p><a class="cta" href="${sitePagePath(slug, "contato")}">${escapeHtml(form.cta || "Quero saber mais")}</a>`;
+  const heroVisual = heroImg
+    ? `<img src="${escapeHtml(heroImg)}" alt="${escapeHtml(title)}" loading="lazy">`
+    : `<div class="hero-decor" aria-hidden="true"><span>${escapeHtml((title.trim()[0] || "S").toUpperCase())}</span></div>`;
+  const heroSection =
+    heroStyle === "impacto"
+      ? `<section class="hero style-impacto"><div>${heroCopy}</div></section>`
+      : heroStyle === "dividido"
+        ? `<section class="hero heroImg style-dividido"><div>${heroCopy}</div>${heroVisual}</section>`
+        : heroImg
+          ? `<section class="hero heroImg"><div>${heroCopy}</div>${heroVisual}</section>`
+          : `<section class="hero"><div>${heroCopy}</div></section>`;
   const gallerySection = gallery.length
     ? `<section class="section gallery"><span class="kicker">GALERIA</span><h2>Um pouco do nosso trabalho</h2><div class="gallery-grid">${gallery
         .map(
@@ -5551,16 +5590,42 @@ export function makeSite(form, page = "", siteSlug = "") {
         )
         .join("")}</div></section>`
     : "";
+  const featuresSection = features.length
+    ? `<section class="section features"><span class="kicker">POR QUE ESCOLHER A GENTE</span><h2>O que nos diferencia</h2><div class="cards feature-cards">${features
+        .map(
+          (f, i) =>
+            `<article class="card feature"><span class="feature-num">${String(i + 1).padStart(2, "0")}</span><h3>${escapeHtml(f.title)}</h3>${f.description ? `<p>${escapeHtml(f.description)}</p>` : ""}</article>`,
+        )
+        .join("")}</div></section>`
+    : "";
+  const ctaBannerSection = `<section class="section cta-banner"><div><h2>Vamos conversar sobre o que ${escapeHtml(title)} pode fazer por você?</h2><a class="cta light" href="${sitePagePath(slug, "contato")}">${escapeHtml(form.cta || "Falar agora")}</a></div></section>`;
+  const homeBlockContent = {
+    features: featuresSection,
+    gallery: gallerySection,
+    testimonials: testimonialsSection,
+    cta: ctaBannerSection,
+  };
+  const homeOrder = homeBlocks.length ? homeBlocks : HOME_BLOCK_IDS;
+  const renderedHomeIds = new Set();
+  const homeExtras = homeOrder
+    .filter((id) => homeBlockContent[id])
+    .map((id) => {
+      renderedHomeIds.add(id);
+      return homeBlockContent[id];
+    });
+  ["gallery", "testimonials"].forEach((id) => {
+    if (homeBlockContent[id] && !renderedHomeIds.has(id)) homeExtras.push(homeBlockContent[id]);
+  });
   const pageContent =
     {
-      "": `${heroSection}<section class="section intro"><span class="kicker">O QUE FAZEMOS</span><h2>Soluções pensadas para necessidades reais</h2><div class="cards">${cards}</div></section>${gallerySection}`,
+      "": `${heroSection}<section class="section intro"><span class="kicker">O QUE FAZEMOS</span><h2>Soluções pensadas para necessidades reais</h2><div class="cards">${cards}</div></section>${homeExtras.join("")}`,
       sobre: `<section class="page-hero"><span>QUEM SOMOS</span><h1>${escapeHtml(form.aboutTitle || `Sobre ${title}`)}</h1><p>${escapeHtml(desc)}</p></section><section class="section prose"><h2>Um trabalho construído com você</h2><p>${escapeHtml(about)}</p><a class="cta" href="${sitePagePath(slug, "contato")}">Conversar com a equipe</a></section>${testimonialsSection}`,
       servicos: `<section class="page-hero"><span>NOSSAS SOLUÇÕES</span><h1>Como podemos ajudar</h1><p>Conheça as frentes de trabalho e encontre o melhor ponto de partida.</p></section><section class="section"><div class="cards">${cards}</div></section>${faqSection}`,
       contato: `<section class="section contact" id="contato"><div class="contact-grid"><div><span class="kicker">CONTATO</span><h1>Vamos conversar?</h1><p>Conte o que você precisa. A mensagem chega diretamente à equipe responsável.</p>${contact !== "#contato" ? `<p><a class="cta light" href="${escapeHtml(contact)}">${escapeHtml(form.cta || "Falar agora")}</a></p>` : ""}</div><form class="lead-form" data-sf-lead-form><label>Nome<input name="name" required maxlength="100" autocomplete="name"></label><label>E-mail<input name="email" type="email" maxlength="160" autocomplete="email"></label><label>Telefone<input name="phone" maxlength="40" autocomplete="tel"></label><label>Mensagem<textarea name="message" maxlength="2000"></textarea></label><button type="submit">Enviar mensagem</button><p class="lead-status" data-sf-lead-status aria-live="polite"></p></form></div></section>`,
     }[page] || "";
   return `<!doctype html>
 <html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(page ? `${page[0].toUpperCase()}${page.slice(1)} · ${title}` : title)}</title><meta name="description" content="${escapeHtml(desc.slice(0, 150))}"><style>
-*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font-family:${t.font};color:${t.text};background:${t.bg}}header{display:flex;justify-content:space-between;align-items:center;gap:28px;padding:22px 7%;background:${t.headerBg};border-bottom:1px solid ${t.headerBorder};position:sticky;top:0;z-index:3}header b{font-size:1.2rem}nav{display:flex;align-items:center;gap:24px}nav a{color:${t.navText};text-decoration:none;font-weight:700;font-size:.93rem}nav a[aria-current=page]{color:${color}}a{color:inherit}.cta,button{display:inline-block;background:${color};color:white;padding:14px 22px;border:0;border-radius:12px;text-decoration:none;font-weight:800;cursor:pointer}.cta.light{background:#fff;color:#17152b}.hero,.page-hero{padding:100px 7%;background:${t.heroBg};color:${t.heroText};display:grid;align-content:center}.hero{min-height:68vh}.hero>div{max-width:820px}.hero.heroImg{grid-template-columns:1.1fr .9fr;align-items:center;gap:44px;max-width:1280px;margin:0 auto}.hero.heroImg>div{max-width:none}.hero.heroImg img{width:100%;height:380px;object-fit:cover;border-radius:${t.radius}}.hero span,.page-hero span,.kicker{color:${color};font-weight:900;text-transform:uppercase;letter-spacing:.12em}.hero h1,.page-hero h1,.contact h1{font-size:clamp(2.6rem,7vw,5.4rem);line-height:1.02;margin:.25em 0}.hero p,.page-hero p{font-size:1.2rem;line-height:1.7;max-width:720px}.page-hero{min-height:48vh}.section{padding:80px 7%}.section>h2{font-size:clamp(2rem,4vw,3.4rem);max-width:780px}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:34px}.card{background:${t.cardBg};padding:28px;border:1px solid ${t.cardBorder};border-radius:${t.radius};box-shadow:0 12px 35px rgba(35,25,72,.06)}.card h3{font-size:1.25rem}.card p,.prose p{color:${t.muted};line-height:1.7}.prose{max-width:920px}.prose p{font-size:1.18rem}.testi p{font-size:1.05rem;font-style:italic;color:${t.text}}.testi footer{margin-top:14px;display:flex;flex-direction:column;gap:2px}.testi footer span{color:${t.muted};font-size:.88rem}.gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-top:34px}.gallery-grid figure{margin:0;border-radius:${t.radius};overflow:hidden;background:${t.cardBg}}.gallery-grid img{width:100%;height:220px;object-fit:cover;display:block}.gallery-grid figcaption{padding:10px 14px;font-size:.85rem;color:${t.muted}}.faq-list{margin-top:34px;display:grid;gap:12px;max-width:820px}.faq-list details{background:${t.cardBg};border:1px solid ${t.cardBorder};border-radius:14px;padding:16px 20px}.faq-list summary{cursor:pointer;font-weight:800}.faq-list p{margin:12px 0 0;color:${t.muted};line-height:1.6}.contact{background:${t.contactBg};color:${t.contactText};min-height:72vh;display:grid;align-content:center}.contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:50px;align-items:start;max-width:1150px;margin:auto}.lead-form{display:grid;gap:12px;background:#fff;color:#17152b;padding:28px;border-radius:20px}.lead-form label{display:grid;gap:6px;text-align:left;font-weight:700}.lead-form input,.lead-form textarea{width:100%;padding:13px;border:1px solid #d8d4e5;border-radius:10px;font:inherit}.lead-form textarea{min-height:110px;resize:vertical}.lead-status{min-height:22px;margin:0;color:#443d55;font-size:.92rem}footer{padding:28px 7%;text-align:center;color:${t.muted};background:${t.headerBg}}@media(max-width:760px){header{padding:18px 5%;align-items:flex-start;flex-direction:column}nav{width:100%;gap:16px;overflow:auto;padding-bottom:3px}.hero,.page-hero,.section{padding:62px 6%}.cards,.contact-grid,.gallery-grid{grid-template-columns:1fr}.hero.heroImg{grid-template-columns:1fr}.hero.heroImg img{height:240px}}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font-family:${t.font};color:${t.text};background:${t.bg}}header{display:flex;justify-content:space-between;align-items:center;gap:28px;padding:22px 7%;background:${t.headerBg};border-bottom:1px solid ${t.headerBorder};position:sticky;top:0;z-index:3}header b{font-size:1.2rem}nav{display:flex;align-items:center;gap:24px}nav a{color:${t.navText};text-decoration:none;font-weight:700;font-size:.93rem;transition:color .2s}nav a:hover{color:${color}}nav a[aria-current=page]{color:${color}}a{color:inherit}.cta,button{display:inline-block;background:${color};color:white;padding:14px 22px;border:0;border-radius:12px;text-decoration:none;font-weight:800;cursor:pointer;transition:transform .2s,box-shadow .2s}.cta:hover,button:hover{transform:translateY(-2px);box-shadow:0 12px 26px rgba(0,0,0,.18)}.cta.light{background:#fff;color:#17152b}.hero,.page-hero{padding:100px 7%;background:${t.heroBg};color:${t.heroText};display:grid;align-content:center}.hero{min-height:68vh}.hero>div{max-width:820px}.hero.heroImg{grid-template-columns:1.1fr .9fr;align-items:center;gap:44px;max-width:1280px;margin:0 auto}.hero.heroImg>div{max-width:none}.hero.heroImg img{width:100%;height:380px;object-fit:cover;border-radius:${t.radius}}.hero-decor{width:100%;height:380px;border-radius:${t.radius};background:linear-gradient(135deg, ${color}, ${t.cardBg});display:grid;place-items:center;overflow:hidden}.hero-decor span{font-size:8rem;font-weight:900;color:rgba(255,255,255,.85)}.hero.style-impacto{text-align:center}.hero.style-impacto>div{max-width:900px;margin:0 auto}.hero.style-impacto p{margin-left:auto;margin-right:auto}.hero span,.page-hero span,.kicker{color:${color};font-weight:900;text-transform:uppercase;letter-spacing:.12em}.hero h1,.page-hero h1,.contact h1{font-size:clamp(2.6rem,7vw,5.4rem);line-height:1.02;margin:.25em 0}.hero.style-impacto h1{font-size:clamp(3rem,8vw,6.2rem)}.hero p,.page-hero p{font-size:1.2rem;line-height:1.7;max-width:720px}.page-hero{min-height:48vh}.section{padding:80px 7%}.section>h2{font-size:clamp(2rem,4vw,3.4rem);max-width:780px}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:34px}.card{background:${t.cardBg};padding:28px;border:1px solid ${t.cardBorder};border-radius:${t.radius};box-shadow:0 12px 35px rgba(35,25,72,.06);transition:transform .25s,box-shadow .25s}.card:hover{transform:translateY(-5px);box-shadow:0 18px 45px rgba(35,25,72,.12)}.card h3{font-size:1.25rem}.card p,.prose p{color:${t.muted};line-height:1.7}.prose{max-width:920px}.prose p{font-size:1.18rem}.testi p{font-size:1.05rem;font-style:italic;color:${t.text}}.testi footer{margin-top:14px;display:flex;flex-direction:column;gap:2px}.testi footer span{color:${t.muted};font-size:.88rem}.feature-num{font-size:2rem;font-weight:900;color:${color};opacity:.4;display:block;margin-bottom:6px}.gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-top:34px}.gallery-grid figure{margin:0;border-radius:${t.radius};overflow:hidden;background:${t.cardBg}}.gallery-grid img{width:100%;height:220px;object-fit:cover;display:block}.gallery-grid figcaption{padding:10px 14px;font-size:.85rem;color:${t.muted}}.faq-list{margin-top:34px;display:grid;gap:12px;max-width:820px}.faq-list details{background:${t.cardBg};border:1px solid ${t.cardBorder};border-radius:14px;padding:16px 20px}.faq-list summary{cursor:pointer;font-weight:800}.faq-list p{margin:12px 0 0;color:${t.muted};line-height:1.6}.cta-banner{background:${t.contactBg};color:${t.contactText}}.cta-banner div{max-width:640px;margin:0 auto;display:grid;gap:20px;justify-items:center;text-align:center}.cta-banner h2{font-size:clamp(1.8rem,4vw,2.8rem);margin:0}.contact{background:${t.contactBg};color:${t.contactText};min-height:72vh;display:grid;align-content:center}.contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:50px;align-items:start;max-width:1150px;margin:auto}.lead-form{display:grid;gap:12px;background:#fff;color:#17152b;padding:28px;border-radius:20px}.lead-form label{display:grid;gap:6px;text-align:left;font-weight:700}.lead-form input,.lead-form textarea{width:100%;padding:13px;border:1px solid #d8d4e5;border-radius:10px;font:inherit}.lead-form textarea{min-height:110px;resize:vertical}.lead-status{min-height:22px;margin:0;color:#443d55;font-size:.92rem}footer{padding:28px 7%;text-align:center;color:${t.muted};background:${t.headerBg}}@keyframes sfFadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}.hero>div,.hero-decor,.page-hero>*{animation:sfFadeUp .7s ease both}.cards .card{animation:sfFadeUp .6s ease both}.cards .card:nth-child(2){animation-delay:.08s}.cards .card:nth-child(3){animation-delay:.16s}.cards .card:nth-child(4){animation-delay:.24s}@media(max-width:760px){header{padding:18px 5%;align-items:flex-start;flex-direction:column}nav{width:100%;gap:16px;overflow:auto;padding-bottom:3px}.hero,.page-hero,.section{padding:62px 6%}.cards,.contact-grid,.gallery-grid{grid-template-columns:1fr}.hero.heroImg{grid-template-columns:1fr}.hero.heroImg img,.hero-decor{height:240px}}
 </style></head><body><header><b>${escapeHtml(title)}</b><nav aria-label="Páginas do site">${nav}</nav></header><main>${pageContent}</main><footer>© ${new Date().getFullYear()} ${escapeHtml(title)}</footer></body></html>`;
 }
 
@@ -5671,6 +5736,25 @@ function SiteVisualEditor({ brief, onChange }) {
               className={(brief.theme || "moderno") === item.id ? "active" : ""}
               style={{ background: item.swatch }}
               onClick={() => onChange({ theme: item.id })}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </Field>
+      <Field
+        label="Formato do topo da página"
+        hint="Dividido usa imagem de capa (ou um destaque decorativo se não houver). Impacto centraliza um título grande."
+      >
+        <div className="theme-picker hero-style-picker">
+          {HERO_STYLES.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={
+                (brief.heroStyle || "centrado") === item.id ? "active" : ""
+              }
+              onClick={() => onChange({ heroStyle: item.id })}
             >
               {item.label}
             </button>
@@ -5825,10 +5909,13 @@ function Sites({ db, update, business, setToast, go }) {
     contact: "#contato",
     color: "#6d38e0",
     theme: "moderno",
+    heroStyle: "centrado",
     heroImage: "",
     gallery: [],
     testimonials: [],
     faq: [],
+    features: [],
+    homeBlocks: [],
   });
   const sites = db.sites.filter(
     (x) => !business || x.businessId === business.id,
@@ -5846,7 +5933,7 @@ function Sites({ db, update, business, setToast, go }) {
         body: JSON.stringify({
           specialist: "Criador de Sites",
           business,
-          prompt: `Transforme o briefing abaixo em conteúdo público de um site profissional. O briefing é uma instrução interna e NUNCA pode aparecer literalmente nos textos do site. Não invente clientes, números, depoimentos ou fatos. Responda SOMENTE com JSON válido, sem Markdown, usando os campos: headline, description (até 240 caracteres, texto para visitantes), aboutTitle, about, services (lista de objetos com title e description), cta, faq (lista de 3 a 5 objetos com question e answer, dúvidas genéricas sobre como funciona o atendimento, sem inventar preços, prazos ou números específicos).\n\nNome: ${form.name}\nSegmento: ${form.segment}\nBriefing interno: ${form.instructions.slice(0, 4000)}\nServiços informados: ${String(form.services || "").slice(0, 1600)}\nTexto público informado: ${form.description.slice(0, 800)}`,
+          prompt: `Transforme o briefing abaixo em conteúdo público de um site profissional e único, evitando um layout genérico igual para qualquer negócio. O briefing é uma instrução interna e NUNCA pode aparecer literalmente nos textos do site. Não invente clientes, números, depoimentos ou fatos. Responda SOMENTE com JSON válido, sem Markdown, usando os campos: headline, description (até 240 caracteres, texto para visitantes), aboutTitle, about, services (lista de objetos com title e description), cta, faq (lista de 3 a 5 objetos com question e answer, dúvidas genéricas sobre como funciona o atendimento, sem inventar preços, prazos ou números específicos), features (lista de 3 a 4 objetos com title e description, diferenciais genuínos com base no briefing, sem números inventados), heroStyle (escolha "centrado", "dividido" ou "impacto" conforme o tom do negócio: "impacto" para algo mais ousado/moderno, "dividido" para algo visual, "centrado" para algo clássico/confiável), homeBlocks (lista ordenada com a combinação que fizer mais sentido, usando somente os ids: "features", "gallery", "testimonials", "cta").\n\nNome: ${form.name}\nSegmento: ${form.segment}\nBriefing interno: ${form.instructions.slice(0, 4000)}\nServiços informados: ${String(form.services || "").slice(0, 1600)}\nTexto público informado: ${form.description.slice(0, 800)}`,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -6002,7 +6089,7 @@ function Sites({ db, update, business, setToast, go }) {
         body: JSON.stringify({
           specialist: "Criador de Sites",
           business,
-          prompt: `Você está editando um site existente por conversa. Altere APENAS o que o usuário pediu e preserve todo o resto. O pedido é uma instrução interna e nunca deve aparecer como texto do site. Não invente fatos. Responda SOMENTE com um objeto JSON contendo apenas os campos alterados entre: name, segment, headline, description, aboutTitle, about, services (lista de objetos com title e description), cta, contact, color, faq (lista de objetos com question e answer, sem inventar preços, prazos ou números específicos).\n\nSite atual:\n${JSON.stringify(current.brief || {}).slice(0, 10000)}\n\nAlteração pedida: ${request.slice(0, 3000)}`,
+          prompt: `Você está editando um site existente por conversa. Altere APENAS o que o usuário pediu e preserve todo o resto. O pedido é uma instrução interna e nunca deve aparecer como texto do site. Não invente fatos. Você também pode reorganizar a estrutura da página inicial quando pedido (adicionar, remover ou reordenar seções). Responda SOMENTE com um objeto JSON contendo apenas os campos alterados entre: name, segment, headline, description, aboutTitle, about, services (lista de objetos com title e description), cta, contact, color, faq (lista de objetos com question e answer, sem inventar preços, prazos ou números específicos), features (lista de objetos com title e description, diferenciais sem números inventados), heroStyle ("centrado", "dividido" ou "impacto"), homeBlocks (lista ordenada usando somente os ids "features", "gallery", "testimonials", "cta" — inclua só o que deve aparecer na página inicial, na ordem pedida).\n\nSite atual:\n${JSON.stringify(current.brief || {}).slice(0, 10000)}\n\nAlteração pedida: ${request.slice(0, 3000)}`,
         }),
       });
       const data = await response.json().catch(() => ({}));

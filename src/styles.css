@@ -2694,6 +2694,16 @@ aside nav button.active {
 .theme-picker button.active {
   border-color: var(--accent, #6d38e0);
 }
+.hero-style-picker button {
+  width: auto;
+  height: 42px;
+  padding: 0 18px;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface2);
+  color: var(--text);
+  text-shadow: none;
+}
 .list-editor {
   display: grid;
   gap: 10px;

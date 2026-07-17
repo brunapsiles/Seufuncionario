@@ -451,6 +451,36 @@ describe("construtor de sites", () => {
     expect(edited.heroImage).toBe(brief.heroImage);
     expect(edited.gallery).toBe(brief.gallery);
   });
+
+  it("compõe a página inicial com os blocos e o estilo de topo escolhidos", () => {
+    const brief = {
+      name: "Estúdio Aurora",
+      color: "#6d38e0",
+      heroStyle: "impacto",
+      features: [
+        { title: "Atendimento rápido", description: "Resposta no mesmo dia." },
+        { title: "Equipe especializada" },
+      ],
+      homeBlocks: ["cta", "features"],
+      gallery: [{ url: "https://exemplo.com/foto.jpg", caption: "Foto" }],
+    };
+    const home = makeSite(brief, "", "estudio-aurora");
+    expect(home).toContain("style-impacto");
+    expect(home).toContain("Atendimento rápido");
+    const ctaIndex = home.indexOf("cta-banner");
+    const featuresIndex = home.indexOf("O que nos diferencia");
+    expect(ctaIndex).toBeGreaterThan(-1);
+    expect(ctaIndex).toBeLessThan(featuresIndex);
+    // galeria tem conteúdo real e deve aparecer mesmo fora da lista escolhida
+    expect(home).toContain("https://exemplo.com/foto.jpg");
+  });
+
+  it("usa um destaque decorativo no hero dividido quando não há imagem de capa", () => {
+    const brief = { name: "Estúdio Aurora", heroStyle: "dividido" };
+    const home = makeSite(brief, "", "estudio-aurora");
+    expect(home).toContain("hero-decor");
+    expect(home).not.toContain("<img");
+  });
 });
 
 describe("importação de documentos", () => {
