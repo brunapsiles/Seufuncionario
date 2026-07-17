@@ -12,6 +12,14 @@ Ações que somente você pode realizar. **Nenhuma delas impede o uso do app**, 
 
 - Criar uma conta no app com um e-mail seu de verdade e confirmar que o código de 6 dígitos chega (pode cair no spam nas primeiras vezes — marque "não é spam").
 
+### 3. Ativar Gmail API e Calendar API (para envio real de e-mail e criação real de eventos)
+
+- No mesmo projeto do Google Cloud usado no login: **APIs e serviços → Biblioteca** → ativar **Gmail API** e **Google Calendar API**.
+- **APIs e serviços → Tela de consentimento OAuth → Acesso a dados/Escopos** → adicionar `.../auth/gmail.send` e `.../auth/calendar.events`.
+- Se o app estiver em modo "Teste", adicionar sua conta Google em **Usuários de teste**.
+- Sem isso, os botões "Enviar pelo Gmail" (CRM) e "Adicionar à Google Agenda" (Tarefas/Agendamentos) mostram erro do Google — o código já está pronto e publicado, só falta essa configuração.
+- Ao usar pela primeira vez, o Google mostra a tela "app não verificado" — normal até você submeter o app para revisão (não obrigatório para uso próprio/testes).
+
 ## 🟡 Opcionais / segurança
 
 ### 3. Restringir ou regenerar chaves compartilhadas em conversas
