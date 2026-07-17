@@ -816,7 +816,13 @@ export function canSeeTask(record, userId) {
   return false;
 }
 
-const RESTRICTED_FIELDS = ["tasks", "leads", "documents", "sites"];
+const RESTRICTED_FIELDS = [
+  "tasks",
+  "leads",
+  "documents",
+  "sites",
+  "developmentPlans",
+];
 
 function filterRecordsForViewer(records, userId) {
   return (Array.isArray(records) ? records : []).filter((r) =>

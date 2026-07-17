@@ -159,4 +159,43 @@ describe("visibilidade de leads, documentos e sites com D1 local", () => {
       "doc-new-by-member",
     ]);
   });
+
+  it("colaborador só vê o próprio plano de desenvolvimento, gestor e dono veem todos", async () => {
+    const owner = await createUser("rec-owner-3");
+    const member = await createUser("rec-member-3");
+    const other = await createUser("rec-other-3");
+    await addMember(owner.id, member.id, "colaborador");
+    await workspaceRequest(owner, {
+      method: "PUT",
+      body: {
+        data: {
+          developmentPlans: [
+            {
+              id: "plan-mine",
+              title: "Meu plano",
+              ownerId: owner.id,
+              assigneeId: member.id,
+            },
+            {
+              id: "plan-other",
+              title: "Plano de outra pessoa",
+              ownerId: owner.id,
+              assigneeId: other.id,
+            },
+          ],
+        },
+        revision: 0,
+      },
+    });
+
+    const asMember = await readJson(
+      await workspaceRequest(member, { owner: owner.id }),
+    );
+    expect(asMember.body.data.developmentPlans.map((p) => p.id)).toEqual([
+      "plan-mine",
+    ]);
+
+    const asOwner = await readJson(await workspaceRequest(owner));
+    expect(asOwner.body.data.developmentPlans).toHaveLength(2);
+  });
 });

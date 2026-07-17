@@ -82,6 +82,7 @@ const ALL_NAV = [
   "Horas e Faturamento",
   "Financeiro",
   "Operação",
+  "Desenvolvimento",
   "Sites e Materiais",
   "Documentos",
   "Ferramentas",

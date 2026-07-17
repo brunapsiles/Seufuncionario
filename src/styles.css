@@ -3012,6 +3012,12 @@ aside nav button.active {
   gap: 8px;
   align-items: center;
 }
+.competency-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 110px auto;
+  gap: 8px;
+  align-items: center;
+}
 .slug-editor {
   display: flex;
   align-items: center;

@@ -111,6 +111,7 @@ const emptyDb = {
   deliveryZones: [],
   vehicles: [],
   trips: [],
+  developmentPlans: [],
   transactions: [],
   financeSettings: {},
   documents: [],
@@ -143,6 +144,7 @@ export const hasAnyWorkspaceData = (db) =>
   (db?.timeEntries || []).length > 0 ||
   (db?.vehicles || []).length > 0 ||
   (db?.trips || []).length > 0 ||
+  (db?.developmentPlans || []).length > 0 ||
   (db?.documents || []).length > 0 ||
   (db?.sites || []).length > 0 ||
   (db?.conversations || []).length > 0 ||
@@ -161,6 +163,7 @@ const nav = [
   ["horas", "Horas e Faturamento", Clock3],
   ["financeiro", "Financeiro", WalletCards],
   ["operacao", "Operação", Workflow],
+  ["desenvolvimento", "Desenvolvimento", TrendingUp],
   ["sites", "Sites e Materiais", PanelsTopLeft],
   ["documentos", "Documentos", FileText],
   ["ferramentas", "Ferramentas", Wrench],
@@ -7827,6 +7830,324 @@ function Fleet({ db, update, business, setToast, go }) {
   );
 }
 
+const planStatuses = ["Planejado", "Em andamento", "Concluído", "Cancelado"];
+const suggestedCompetencies = [
+  "Organização",
+  "Comunicação",
+  "Responsabilidade",
+  "Atendimento",
+  "Ferramentas digitais",
+  "Vendas",
+  "Qualidade",
+  "Produtividade",
+  "Trabalho em equipe",
+  "Autonomia",
+  "Pontualidade",
+  "Atenção aos detalhes",
+  "Resolução de problemas",
+];
+
+function DevelopmentPlans({ db, update, business, setToast, go }) {
+  const [modal, setModal] = useState(false),
+    [editing, setEditing] = useState(null),
+    [search, setSearch] = useState(""),
+    [realMembers, setRealMembers] = useState([]);
+  useEffect(() => {
+    fetch("/api/collab", { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setRealMembers(d.members || []))
+      .catch(() => {});
+  }, []);
+  const blankPlan = {
+    title: "",
+    collaboratorId: "",
+    collaboratorName: "",
+    generalObjective: "",
+    period: "",
+    status: "Planejado",
+    competencies: [],
+    finalResult: "",
+    notes: "",
+  };
+  const [form, setForm] = useState(blankPlan);
+  const plans = db.developmentPlans || [];
+  const filtered = plans.filter(
+    (p) =>
+      (!business || p.businessId === business.id) &&
+      (!search ||
+        `${p.title} ${p.collaboratorName}`
+          .toLowerCase()
+          .includes(search.toLowerCase())),
+  );
+  const openPlan = (plan = null) => {
+    setEditing(plan?.id || null);
+    setForm(plan ? { ...blankPlan, ...plan } : blankPlan);
+    setModal(true);
+  };
+  const save = (e) => {
+    e.preventDefault();
+    if (!form.title.trim() || !form.collaboratorName.trim()) return;
+    const now = new Date().toISOString();
+    update((d) => {
+      const item = {
+        ...form,
+        title: form.title.trim(),
+        id: editing || uid(),
+        businessId: business?.id || null,
+        ownerId: form.ownerId || db.user.id,
+        assigneeId: form.collaboratorId || null,
+        createdAt: form.createdAt || now,
+        updatedAt: now,
+      };
+      return {
+        ...d,
+        developmentPlans: editing
+          ? (d.developmentPlans || []).map((p) => (p.id === editing ? item : p))
+          : [item, ...(d.developmentPlans || [])],
+      };
+    });
+    setModal(false);
+    setToast(editing ? "Plano atualizado" : "Plano de desenvolvimento criado");
+  };
+  const removePlan = (id) => {
+    if (!confirm("Excluir este plano de desenvolvimento?")) return;
+    update((d) => ({
+      ...d,
+      developmentPlans: (d.developmentPlans || []).filter((p) => p.id !== id),
+    }));
+  };
+  const blankCompetency = {
+    name: "",
+    currentSituation: "",
+    objective: "",
+    deadline: "",
+    progress: "0",
+    evidence: "",
+    managerEvaluation: "",
+  };
+  const addCompetency = () =>
+    setForm((c) => ({
+      ...c,
+      competencies: [...(c.competencies || []), { id: uid(), ...blankCompetency }],
+    }));
+  const updateCompetency = (id, field, value) =>
+    setForm((c) => ({
+      ...c,
+      competencies: (c.competencies || []).map((comp) =>
+        comp.id === id ? { ...comp, [field]: value } : comp,
+      ),
+    }));
+  const removeCompetency = (id) =>
+    setForm((c) => ({
+      ...c,
+      competencies: (c.competencies || []).filter((comp) => comp.id !== id),
+    }));
+  const overallProgress = (plan) => {
+    const list = plan.competencies || [];
+    if (!list.length) return 0;
+    return Math.round(
+      list.reduce((sum, c) => sum + (Number(c.progress) || 0), 0) / list.length,
+    );
+  };
+  return (
+    <PageTitle
+      eyebrow="DESENVOLVIMENTO"
+      title="Planos de desenvolvimento"
+      text="Acompanhe competências e evolução da equipe."
+      action={
+        <Button icon={Plus} onClick={() => openPlan()}>
+          Novo plano
+        </Button>
+      }
+    >
+      <div className="toolbar">
+        <div className="search">
+          <Search />
+          <input
+            type="search"
+            placeholder="Buscar plano"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Buscar"
+          />
+        </div>
+      </div>
+      {filtered.length === 0 ? (
+        <Empty
+          icon={TrendingUp}
+          title="Nenhum plano de desenvolvimento"
+          text="Crie um plano vinculando competências e metas práticas para um colaborador."
+          action="Novo plano"
+          onAction={() => openPlan()}
+        />
+      ) : (
+        <div className="data-list">
+          {filtered.map((p) => (
+            <article key={p.id}>
+              <span>
+                <strong>{p.title}</strong>
+                <small>
+                  {p.collaboratorName} · {p.status} · {overallProgress(p)}% concluído
+                </small>
+              </span>
+              <span className="task-actions">
+                <button
+                  className="icon-button"
+                  aria-label={`Editar ${p.title}`}
+                  onClick={() => openPlan(p)}
+                >
+                  <Edit3 />
+                </button>
+                <button
+                  className="icon-button danger"
+                  aria-label={`Excluir ${p.title}`}
+                  onClick={() => removePlan(p.id)}
+                >
+                  <Trash2 />
+                </button>
+              </span>
+            </article>
+          ))}
+        </div>
+      )}
+      {modal && (
+        <Modal
+          title={editing ? "Editar plano" : "Novo plano de desenvolvimento"}
+          wide
+          onClose={() => setModal(false)}
+        >
+          <form className="modal-body" onSubmit={save}>
+            <Field label="Título do plano">
+              <input
+                required
+                autoFocus
+                value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
+              />
+            </Field>
+            <div className="form-grid">
+              <Field label="Colaborador">
+                <input
+                  required
+                  list="dev-plan-members"
+                  value={form.collaboratorName}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    const member = realMembers.find((m) => m.name === value);
+                    setForm({
+                      ...form,
+                      collaboratorName: value,
+                      collaboratorId: member ? member.id : "",
+                    });
+                  }}
+                  placeholder="Nome da pessoa"
+                />
+                <datalist id="dev-plan-members">
+                  {realMembers.map((m) => (
+                    <option key={m.id} value={m.name} />
+                  ))}
+                </datalist>
+              </Field>
+              <Field label="Período">
+                <input
+                  value={form.period}
+                  onChange={(e) => setForm({ ...form, period: e.target.value })}
+                  placeholder="Ex.: Jul–Set 2026"
+                />
+              </Field>
+              <Field label="Status">
+                <select
+                  value={form.status}
+                  onChange={(e) => setForm({ ...form, status: e.target.value })}
+                >
+                  {planStatuses.map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <Field label="Objetivo geral">
+              <textarea
+                value={form.generalObjective}
+                onChange={(e) =>
+                  setForm({ ...form, generalObjective: e.target.value })
+                }
+              />
+            </Field>
+            <div className="field">
+              <span>Competências</span>
+              <div className="variant-rows">
+                {(form.competencies || []).map((c) => (
+                  <div key={c.id} className="competency-row">
+                    <input
+                      list="suggested-competencies"
+                      value={c.name}
+                      onChange={(e) =>
+                        updateCompetency(c.id, "name", e.target.value)
+                      }
+                      placeholder="Competência"
+                      aria-label="Nome da competência"
+                    />
+                    <input
+                      value={c.objective}
+                      onChange={(e) =>
+                        updateCompetency(c.id, "objective", e.target.value)
+                      }
+                      placeholder="Objetivo"
+                      aria-label={`Objetivo da competência ${c.name || ""}`}
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={c.progress}
+                      onChange={(e) =>
+                        updateCompetency(c.id, "progress", e.target.value)
+                      }
+                      placeholder="% concluído"
+                      aria-label={`Progresso da competência ${c.name || ""}`}
+                    />
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label="Remover competência"
+                      onClick={() => removeCompetency(c.id)}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+                <datalist id="suggested-competencies">
+                  {suggestedCompetencies.map((c) => (
+                    <option key={c} value={c} />
+                  ))}
+                </datalist>
+                <Button type="button" variant="secondary" onClick={addCompetency}>
+                  Adicionar competência
+                </Button>
+              </div>
+            </div>
+            <Field label="Resultado final (opcional)">
+              <textarea
+                value={form.finalResult}
+                onChange={(e) => setForm({ ...form, finalResult: e.target.value })}
+              />
+            </Field>
+            <div className="modal-actions">
+              <Button variant="ghost" onClick={() => setModal(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" icon={Save}>
+                {editing ? "Salvar alterações" : "Criar plano"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </PageTitle>
+  );
+}
+
 function TimeTracking({ db, update, business, setToast, go }) {
   const [modal, setModal] = useState(false),
     [editing, setEditing] = useState(null),
@@ -14279,6 +14600,16 @@ export default function App() {
       case "operacao":
         return (
           <Tasks
+            db={db}
+            update={update}
+            business={business}
+            setToast={setToast}
+            go={go}
+          />
+        );
+      case "desenvolvimento":
+        return (
+          <DevelopmentPlans
             db={db}
             update={update}
             business={business}
