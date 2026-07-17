@@ -9027,6 +9027,26 @@ function Sites({ db, update, business, setToast, go }) {
               >
                 Copiar link
               </Button>
+              <a
+                className="button secondary"
+                href={`/loja/${current.slug}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <ShoppingBag size={17} /> Ver loja virtual (carrinho)
+              </a>
+              <Button
+                variant="ghost"
+                icon={Copy}
+                onClick={() => {
+                  navigator.clipboard?.writeText(
+                    `${location.origin}/loja/${current.slug}`,
+                  );
+                  setToast("Link da loja virtual copiado");
+                }}
+              >
+                Copiar link da loja
+              </Button>
             </div>
           )}
           {current.published && !current.serverPublished && (
