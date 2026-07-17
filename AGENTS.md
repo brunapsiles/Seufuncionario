@@ -16,8 +16,8 @@ Este arquivo orienta qualquer assistente de IA que trabalhe neste projeto. A tit
 
 ```bash
 npm ci            # instalar
-npm run build     # build (gera dist/, que NÃO é commitado)
-npm test          # 12 testes vitest — precisam passar antes de commitar
+npm run build     # executa os testes e, se passarem, gera dist/ (não commitado)
+npm test          # executa a suíte Vitest isoladamente
 npm run deploy:cloudflare                             # aplica migrações e publica
 npx wrangler d1 migrations apply seu-funcionario-db --remote   # aplica migrações novas
 ```
@@ -38,7 +38,7 @@ não sejam a `main` também estão habilitados como versões de prévia.
 1. **Gratuidade**: nada de serviços pagos, cartão ou dependência obrigatória de API paga. xAI (Grok) não entra na cascata automática; exige `confirmPaid: true` por consumir créditos.
 2. **Nunca** colocar chaves/tokens em código, commits, logs ou no frontend.
 3. Produto 100% em **português do Brasil**; tom profissional e acolhedor.
-4. Antes de commitar: `npm test` + `npm run build` verdes. Testar o fluxo real em produção quando possível.
+4. Antes de commitar: `npm run build` verde (o build já executa todos os testes). Testar o fluxo real em produção quando possível.
 5. Não recriar funções que já existem — corrigir/estender as atuais (ver mapa abaixo).
 6. Alterou schema? Criar NOVA migração numerada em `migrations/` (nunca editar as antigas) e aplicar com wrangler.
 7. Dados de usuários são isolados por conta; qualquer rota nova de dados exige sessão (ver `sessionUser`).
@@ -46,7 +46,7 @@ não sejam a `main` também estão habilitados como versões de prévia.
 
 ## Mapa do que já existe (não duplicar)
 
-- **Auth**: e-mail+senha (PBKDF2), verificação por código de 6 dígitos via Brevo (`pending_signups`, `/api/auth/verify|resend`), login Google (`/api/auth/google`; origem no Console pendente de ajuste pela titular), perfil (`/api/auth/profile`)
+- **Auth**: e-mail+senha (PBKDF2), verificação por código de 6 dígitos via Brevo (`pending_signups`, `/api/auth/verify|resend`), login Google (`/api/auth/google`; origem autorizada e fluxo real validados), perfil (`/api/auth/profile`)
 - **IA**: cascata dinâmica em `worker.js` (`providerMap`): Google Gemini/Gemma, Cloudflare Workers AI, Groq, Cerebras, Mistral, OpenRouter, GitHub Models e Hugging Face. Só entram provedores configurados; xAI exige confirmação paga; ao final há contingência local. 46 funcionários especialistas + Diretor orquestrador + funcionários dinâmicos criados pelo usuário
 - **Sync**: workspace JSON por usuário no D1 (`/api/workspace`), multi-dispositivo, espaços compartilhados com convites (`/api/collab/*`)
 - **Ferramentas inteligentes** (ToolsHub): tradutor, roteirizador (link Google Maps), calculadora de preço, gerador de posts, minuta de contrato, roteiro de vendas, vaga/entrevista RH, POP operações, respostas de atendimento — padrão `aiTools` + `AIToolModal`, fácil de estender
@@ -55,6 +55,6 @@ não sejam a `main` também estão habilitados como versões de prévia.
 
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
-- Login Google: falta a titular corrigir a origem autorizada no Google Console
 - "Esqueci minha senha": ✅ implementado (/api/auth/forgot e /api/auth/reset, códigos via Brevo)
+- Google OAuth, Gmail API e Calendar API: ✅ origem, escopos, usuário de teste e fluxos reais validados em 17/07/2026
 - Domínio próprio e servidor GPU de vídeo: opcionais, dependem da titular

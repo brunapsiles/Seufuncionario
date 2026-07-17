@@ -97,6 +97,17 @@ describe("fluxos de trabalho", () => {
     vi.restoreAllMocks();
   });
 
+  it("avisa quando uma nova versão do aplicativo está disponível", () => {
+    render(<App />);
+    fireEvent(window, new Event("sf-app-update-available"));
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Uma nova versão está pronta",
+    );
+    expect(
+      screen.getByRole("button", { name: "Atualizar agora" }),
+    ).toBeInTheDocument();
+  });
+
   it("cria, edita, vincula e arquiva uma tarefa", async () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "Operação" }));

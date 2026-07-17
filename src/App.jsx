@@ -1024,6 +1024,21 @@ function Toast({ toast }) {
   ) : null;
 }
 
+function AppUpdate({ visible }) {
+  return visible ? (
+    <div className="app-update" role="status" aria-live="polite">
+      <span>
+        <RefreshCw size={18} />
+        <strong>Uma nova versão está pronta.</strong>
+        Atualize para receber as melhorias sem perder seus dados.
+      </span>
+      <button type="button" onClick={() => location.reload()}>
+        Atualizar agora
+      </button>
+    </div>
+  ) : null;
+}
+
 const INLINE_PATTERN =
   /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
 function renderInline(text) {
@@ -11343,6 +11358,9 @@ export default function App() {
     [toast, setToast] = useState(""),
     [businessMenu, setBusinessMenu] = useState(false);
   const [menuHidden, setMenuHidden] = useState(!!savedUi.menuHidden);
+  const [updateAvailable, setUpdateAvailable] = useState(
+    () => !!window.__SF_UPDATE_AVAILABLE__,
+  );
   const [sbw, setSbw] = useState(
     Math.min(380, Math.max(210, savedUi.sbw || 266)),
   );
@@ -11354,6 +11372,12 @@ export default function App() {
       );
     } catch {}
   }, [collapsed, menuHidden, sbw]);
+  useEffect(() => {
+    const showUpdate = () => setUpdateAvailable(true);
+    window.addEventListener("sf-app-update-available", showUpdate);
+    return () =>
+      window.removeEventListener("sf-app-update-available", showUpdate);
+  }, []);
   const startResize = (e) => {
     e.preventDefault();
     document.body.style.userSelect = "none";
@@ -11758,6 +11782,7 @@ export default function App() {
         </header>
         <div className="page">{content()}</div>
       </main>
+      <AppUpdate visible={updateAvailable} />
       <Toast toast={toast} />
     </div>
   );
