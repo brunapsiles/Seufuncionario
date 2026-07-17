@@ -3012,6 +3012,12 @@ aside nav button.active {
   gap: 8px;
   align-items: center;
 }
+.feedback-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 8px 0;
+}
 .competency-row {
   display: grid;
   grid-template-columns: 1fr 1fr 110px auto;
@@ -4415,6 +4421,19 @@ input[readonly] {
 }
 .settings-stat strong {
   color: var(--text);
+}
+.settings-stat.as-button {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+}
+.settings-stat.as-button:hover {
+  color: var(--primary);
 }
 .settings-note {
   display: flex;

@@ -3391,6 +3391,43 @@ function UniversalRequest({ db, update, business, setToast }) {
 
 function Dashboard({ db, update, business, go, setToast }) {
   const isEmployeeMode = (db.preferences.mode || "business") === "employee";
+  const [team, setTeam] = useState({ members: [], invites: [] });
+  useEffect(() => {
+    if (isEmployeeMode) return;
+    fetch("/api/collab", { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setTeam({ members: d.members || [], invites: d.invites || [] }))
+      .catch(() => {});
+  }, [isEmployeeMode]);
+  const managerStats = {
+    activeMembers: team.members.filter((m) => m.status !== "suspenso").length,
+    pendingInvites: team.invites.filter((i) => i.status === "enviado").length,
+    awaitingReview: db.tasks.filter(
+      (t) => t.isMission && t.missionStatus === "enviada_para_revisao",
+    ).length,
+    overdue: db.tasks.filter(
+      (t) => t.due && t.due < today() && t.status !== "Concluído",
+    ).length,
+    pendingPayouts: db.tasks.filter(
+      (t) => Number(t.reward) > 0 && t.rewardStatus === "aprovada",
+    ).length,
+  };
+  const myTasks = db.tasks.filter(
+    (t) =>
+      t.assigneeId === db.user.id ||
+      (t.assignees || []).some((a) => a.userId === db.user.id),
+  );
+  const collaboratorStats = {
+    inProgress: myTasks.filter((t) => t.status !== "Concluído").length,
+    inReview: myTasks.filter((t) => t.missionStatus === "enviada_para_revisao")
+      .length,
+    correctionsNeeded: myTasks.filter(
+      (t) => t.missionStatus === "correcao_solicitada",
+    ).length,
+  };
+  const myPlan = (db.developmentPlans || []).find(
+    (p) => p.assigneeId === db.user.id,
+  );
   const activeTasks = db.tasks.filter(
     (x) => x.status !== "Concluído" && (!business || x.businessId === business.id),
   );
@@ -3569,6 +3606,106 @@ function Dashboard({ db, update, business, go, setToast }) {
           )}
         </div>
       </section>
+      {isEmployeeMode ? (
+        (collaboratorStats.inProgress > 0 ||
+          collaboratorStats.inReview > 0 ||
+          collaboratorStats.correctionsNeeded > 0 ||
+          myPlan) && (
+          <section className="section">
+            <div className="section-head">
+              <div>
+                <span className="eyebrow">PAINEL DO COLABORADOR</span>
+                <h2>Meu resumo</h2>
+              </div>
+            </div>
+            <div className="settings-links">
+              <div className="settings-stat">
+                <ListTodo />
+                <span>
+                  <strong>{collaboratorStats.inProgress}</strong> tarefas em
+                  andamento comigo
+                </span>
+              </div>
+              <div className="settings-stat">
+                <Clock3 />
+                <span>
+                  <strong>{collaboratorStats.inReview}</strong> entregas minhas
+                  aguardando revisão
+                </span>
+              </div>
+              <div className="settings-stat">
+                <CircleAlert />
+                <span>
+                  <strong>{collaboratorStats.correctionsNeeded}</strong>{" "}
+                  correções pendentes
+                </span>
+              </div>
+              {myPlan && (
+                <button
+                  className="settings-stat as-button"
+                  onClick={() => go("desenvolvimento")}
+                >
+                  <TrendingUp />
+                  <span>
+                    Meu plano de desenvolvimento: <strong>{myPlan.status}</strong>
+                  </span>
+                </button>
+              )}
+            </div>
+          </section>
+        )
+      ) : (
+        <section className="section">
+          <div className="section-head">
+            <div>
+              <span className="eyebrow">PAINEL DO GESTOR</span>
+              <h2>Visão geral da equipe</h2>
+            </div>
+            <button className="text-button" onClick={() => go("time")}>
+              Gerenciar
+            </button>
+          </div>
+          <div className="settings-links">
+            <div className="settings-stat">
+              <UserRound />
+              <span>
+                <strong>{managerStats.activeMembers}</strong> colaboradores
+                ativos · <strong>{managerStats.pendingInvites}</strong>{" "}
+                convites aguardando ativação
+              </span>
+            </div>
+            <button
+              className="settings-stat as-button"
+              onClick={() => go("operacao")}
+            >
+              <Clock3 />
+              <span>
+                <strong>{managerStats.awaitingReview}</strong> entregas
+                aguardando revisão
+              </span>
+            </button>
+            <button
+              className="settings-stat as-button"
+              onClick={() => go("operacao")}
+            >
+              <CircleAlert />
+              <span>
+                <strong>{managerStats.overdue}</strong> tarefas atrasadas
+              </span>
+            </button>
+            <button
+              className="settings-stat as-button"
+              onClick={() => go("financeiro")}
+            >
+              <WalletCards />
+              <span>
+                <strong>{managerStats.pendingPayouts}</strong> recompensas
+                aprovadas aguardando pagamento
+              </span>
+            </button>
+          </div>
+        </section>
+      )}
       {(db.pluggedTools || []).length > 0 && (
         <section className="section">
           <div className="section-head">
@@ -4345,6 +4482,14 @@ function Tasks({ db, update, business, setToast, go }) {
   const [archiveFilter, setArchiveFilter] = useState("Ativas");
   const [realMembers, setRealMembers] = useState([]);
   const [deadlineCalc, setDeadlineCalc] = useState({ open: false, base: today(), days: "5" });
+  const [deliveryFeedback, setDeliveryFeedback] = useState({
+    wasClear: false,
+    neededHelp: false,
+  });
+  const [reviewFeedback, setReviewFeedback] = useState({
+    followedInstructions: false,
+    autonomous: false,
+  });
   const [googleId, setGoogleId] = useState("");
   useEffect(() => {
     fetch("/api/config")
@@ -4582,7 +4727,7 @@ function Tasks({ db, update, business, setToast, go }) {
     });
     setToast("Interesse recusado");
   };
-  const submitDelivery = (task, comment) => {
+  const submitDelivery = (task, comment, collaboratorFeedback = {}) => {
     if (!comment.trim()) return;
     changeTask(task.id, {
       deliveries: [
@@ -4594,13 +4739,15 @@ function Tasks({ db, update, business, setToast, go }) {
           authorName: db.user.name,
           createdAt: new Date().toISOString(),
           status: "enviada",
+          wasClear: !!collaboratorFeedback.wasClear,
+          neededHelp: !!collaboratorFeedback.neededHelp,
         },
       ],
       missionStatus: "enviada_para_revisao",
     });
     setToast("Entrega enviada para revisão");
   };
-  const reviewDelivery = (task, approved, feedback) => {
+  const reviewDelivery = (task, approved, feedback, managerFeedback = {}) => {
     changeTask(task.id, {
       missionStatus: approved ? "aprovada" : "correcao_solicitada",
       status: approved ? "Concluído" : task.status,
@@ -4608,7 +4755,13 @@ function Tasks({ db, update, business, setToast, go }) {
         approved && Number(task.reward) > 0 ? "aprovada" : task.rewardStatus,
       deliveries: (task.deliveries || []).map((d, i) =>
         i === (task.deliveries || []).length - 1
-          ? { ...d, status: approved ? "aprovada" : "correcao_solicitada", feedback }
+          ? {
+              ...d,
+              status: approved ? "aprovada" : "correcao_solicitada",
+              feedback,
+              followedInstructions: !!managerFeedback.followedInstructions,
+              autonomous: !!managerFeedback.autonomous,
+            }
           : d,
       ),
     });
@@ -5364,13 +5517,46 @@ function Tasks({ db, update, business, setToast, go }) {
                     }
                     placeholder="Descreva o que foi feito, links ou observações"
                   />
+                  <div className="feedback-toggles">
+                    <label className="cost-check">
+                      <input
+                        type="checkbox"
+                        checked={deliveryFeedback.wasClear}
+                        onChange={(e) =>
+                          setDeliveryFeedback((f) => ({
+                            ...f,
+                            wasClear: e.target.checked,
+                          }))
+                        }
+                      />
+                      <span>A tarefa estava clara</span>
+                    </label>
+                    <label className="cost-check">
+                      <input
+                        type="checkbox"
+                        checked={deliveryFeedback.neededHelp}
+                        onChange={(e) =>
+                          setDeliveryFeedback((f) => ({
+                            ...f,
+                            neededHelp: e.target.checked,
+                          }))
+                        }
+                      />
+                      <span>Precisei de ajuda</span>
+                    </label>
+                  </div>
                   <Button
                     type="button"
                     variant="secondary"
                     disabled={!(form.deliveryDraft || "").trim()}
                     onClick={() => {
-                      submitDelivery(editingTask, form.deliveryDraft || "");
+                      submitDelivery(
+                        editingTask,
+                        form.deliveryDraft || "",
+                        deliveryFeedback,
+                      );
                       setForm({ ...form, deliveryDraft: "" });
+                      setDeliveryFeedback({ wasClear: false, neededHelp: false });
                     }}
                   >
                     Enviar entrega
@@ -5384,19 +5570,54 @@ function Tasks({ db, update, business, setToast, go }) {
                     {editingTask.deliveries?.[editingTask.deliveries.length - 1]
                       ?.comment}
                   </p>
+                  <div className="feedback-toggles">
+                    <label className="cost-check">
+                      <input
+                        type="checkbox"
+                        checked={reviewFeedback.followedInstructions}
+                        onChange={(e) =>
+                          setReviewFeedback((f) => ({
+                            ...f,
+                            followedInstructions: e.target.checked,
+                          }))
+                        }
+                      />
+                      <span>Seguiu as instruções</span>
+                    </label>
+                    <label className="cost-check">
+                      <input
+                        type="checkbox"
+                        checked={reviewFeedback.autonomous}
+                        onChange={(e) =>
+                          setReviewFeedback((f) => ({
+                            ...f,
+                            autonomous: e.target.checked,
+                          }))
+                        }
+                      />
+                      <span>Demonstrou autonomia</span>
+                    </label>
+                  </div>
                   <div className="modal-actions">
                     <Button
                       type="button"
                       variant="ghost"
                       onClick={() =>
-                        reviewDelivery(editingTask, false, "Ajuste solicitado pelo gestor")
+                        reviewDelivery(
+                          editingTask,
+                          false,
+                          "Ajuste solicitado pelo gestor",
+                          reviewFeedback,
+                        )
                       }
                     >
                       Solicitar correção
                     </Button>
                     <Button
                       type="button"
-                      onClick={() => reviewDelivery(editingTask, true, "")}
+                      onClick={() =>
+                        reviewDelivery(editingTask, true, "", reviewFeedback)
+                      }
                     >
                       Aprovar entrega
                     </Button>
@@ -13556,7 +13777,15 @@ function Collaborators({ setToast }) {
   const load = () =>
     fetch("/api/collab", { headers: authHeaders() })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => d && setData(d))
+      .then(
+        (d) =>
+          d &&
+          setData({
+            members: d.members || [],
+            invites: d.invites || [],
+            spaces: d.spaces || [],
+          }),
+      )
       .catch(() => {});
   useEffect(() => {
     load();
