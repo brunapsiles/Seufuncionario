@@ -5734,7 +5734,7 @@ const orderStatuses = [
   "Entregue",
   "Cancelado",
 ];
-const orderChannels = ["Balcão", "Retirada", "Delivery", "Online"];
+const orderChannels = ["Balcão", "Retirada", "Delivery", "Online", "Mesa"];
 
 function Catalog({ db, update, business, setToast, go }) {
   const [view, setView] = useState("produtos"),
@@ -5897,11 +5897,14 @@ function Catalog({ db, update, business, setToast, go }) {
             const line = orderForm.items.find((i) => i.productId === p.id);
             return line ? { ...p, stock: Math.max(0, p.stock - line.quantity) } : p;
           }),
-      contacts: upsertContact(d.contacts || [], {
-        name: item.clientName,
-        contact: item.clientContact,
-        businessId: item.businessId,
-      }),
+      contacts:
+        item.channel === "Mesa"
+          ? d.contacts || []
+          : upsertContact(d.contacts || [], {
+              name: item.clientName,
+              contact: item.clientContact,
+              businessId: item.businessId,
+            }),
     }));
     setOrderModal(false);
     setToast(
@@ -6094,6 +6097,17 @@ function Catalog({ db, update, business, setToast, go }) {
                 ))}
               </select>
               <span className="task-actions">
+                {o.channel === "Mesa" &&
+                  !["Entregue", "Cancelado"].includes(o.status) && (
+                    <button
+                      className="icon-button"
+                      aria-label="Fechar comanda"
+                      title="Fechar comanda"
+                      onClick={() => changeOrderStatus(o, "Entregue")}
+                    >
+                      <CheckCircle2 />
+                    </button>
+                  )}
                 {contactLinks(o.clientContact).phone && (
                   <button
                     className="icon-button"
@@ -6211,7 +6225,7 @@ function Catalog({ db, update, business, setToast, go }) {
         >
           <form className="modal-body" onSubmit={saveOrder}>
             <div className="form-grid">
-              <Field label="Cliente">
+              <Field label={orderForm.channel === "Mesa" ? "Mesa / Comanda" : "Cliente"}>
                 <input
                   required
                   autoFocus
@@ -6219,17 +6233,20 @@ function Catalog({ db, update, business, setToast, go }) {
                   onChange={(e) =>
                     setOrderForm({ ...orderForm, clientName: e.target.value })
                   }
+                  placeholder={orderForm.channel === "Mesa" ? "Mesa 5" : undefined}
                 />
               </Field>
-              <Field label="WhatsApp ou e-mail">
-                <input
-                  value={orderForm.clientContact}
-                  onChange={(e) =>
-                    setOrderForm({ ...orderForm, clientContact: e.target.value })
-                  }
-                  placeholder="(11) 98888-7777"
-                />
-              </Field>
+              {orderForm.channel !== "Mesa" && (
+                <Field label="WhatsApp ou e-mail">
+                  <input
+                    value={orderForm.clientContact}
+                    onChange={(e) =>
+                      setOrderForm({ ...orderForm, clientContact: e.target.value })
+                    }
+                    placeholder="(11) 98888-7777"
+                  />
+                </Field>
+              )}
               <Field label="Canal">
                 <select
                   value={orderForm.channel}

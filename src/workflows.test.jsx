@@ -627,6 +627,71 @@ describe("fluxos de trabalho", () => {
     expect(await screen.findByText(/Marina · R\$ 48,00/)).toBeInTheDocument();
   });
 
+  it("comanda de mesa não pede WhatsApp, some da lista ao ser fechada e não vira contato", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Produtos e Pedidos" }));
+    await screen.findByText("Nenhum produto cadastrado");
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Novo produto" })[0],
+    );
+    let dialog = await screen.findByRole("dialog", { name: "Novo produto" });
+    fireEvent.change(within(dialog).getByLabelText("Nome do produto"), {
+      target: { value: "Cerveja" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Preço de venda"), {
+      target: { value: "10" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Estoque atual"), {
+      target: { value: "50" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Salvar produto" }),
+    );
+    expect(await screen.findByText("Cerveja")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Pedidos" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Novo pedido" })[0]);
+    dialog = await screen.findByRole("dialog", { name: "Novo pedido" });
+    fireEvent.change(within(dialog).getByLabelText("Canal"), {
+      target: { value: "Mesa" },
+    });
+    expect(
+      within(dialog).getByText("Mesa / Comanda"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByLabelText("WhatsApp ou e-mail"),
+    ).not.toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText("Mesa / Comanda"), {
+      target: { value: "Mesa 5" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Escolher produto"), {
+      target: {
+        value: within(dialog).getByText(/Cerveja/).closest("option").value,
+      },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Quantidade"), {
+      target: { value: "3" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Adicionar" }));
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Salvar pedido" }),
+    );
+
+    expect(await screen.findByText(/Mesa 5 · R\$ 30,00/)).toBeInTheDocument();
+    const closeButton = screen.getByRole("button", { name: "Fechar comanda" });
+    fireEvent.click(closeButton);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Fechar comanda" }),
+      ).not.toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Contatos" }));
+    expect(screen.queryByText("Mesa 5")).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("article")).toHaveLength(0);
+  });
+
   it("registra horas trabalhadas e fatura lançando a receita no Financeiro", async () => {
     render(<App />);
     fireEvent.click(
