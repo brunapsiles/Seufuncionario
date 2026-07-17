@@ -1296,6 +1296,25 @@ aside nav button.active {
   color: #277c64;
   background: #e1f7ef;
 }
+.status-dot {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #a66313;
+}
+.status-dot.confirmado {
+  background: #6d38e0;
+}
+.status-dot.concluído {
+  background: #277c64;
+}
+.status-dot.cancelado {
+  background: #c53854;
+}
+.status-dot.faltou {
+  background: #a66313;
+}
 .kanban h3 {
   font-size: 14px;
   margin: 10px 0 5px;

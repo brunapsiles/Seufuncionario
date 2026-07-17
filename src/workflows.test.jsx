@@ -42,6 +42,7 @@ const initialDb = () => ({
   businesses: [business],
   tasks: [],
   leads: [],
+  appointments: [],
   transactions: [],
   financeSettings: {},
   documents: [],
@@ -380,6 +381,38 @@ describe("fluxos de trabalho", () => {
       await screen.findByRole("dialog", { name: "Criar um site" }),
     ).toBeInTheDocument();
   });
+
+  it("cria um agendamento e mostra a ação de confirmar por WhatsApp", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Agendamentos" }));
+    expect(
+      await screen.findByText("Nenhum agendamento aqui"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Novo agendamento" })[0],
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Novo agendamento",
+    });
+    fireEvent.change(within(dialog).getByLabelText("Serviço ou motivo"), {
+      target: { value: "Banho e tosa" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Cliente"), {
+      target: { value: "Ana" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("WhatsApp ou e-mail"), {
+      target: { value: "(11) 98888-7777" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Salvar agendamento" }),
+    );
+
+    expect(await screen.findByText("Banho e tosa")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Confirmar por WhatsApp com Ana" }),
+    ).toBeInTheDocument();
+  });
 });
 
 describe("construtor de sites", () => {
@@ -532,6 +565,16 @@ describe("integrações reais com ferramentas externas", () => {
     expect(googleCalendarUrl({ title: "Sem prazo" })).toBe("");
   });
 
+  it("monta o link com horário quando o compromisso tem hora marcada", () => {
+    const url = googleCalendarUrl({
+      title: "Banho e tosa - Rex",
+      due: "2026-05-01",
+      time: "23:45",
+      durationMinutes: 30,
+    });
+    expect(url).toContain("dates=20260501T234500/20260502T001500");
+  });
+
   it("soma dias preservando o fuso (sem pular dia)", () => {
     expect(addDaysYmd("2026-01-31", 1)).toBe("20260201");
     expect(addDaysYmd("2026-12-31", 1)).toBe("20270101");
@@ -592,6 +635,32 @@ describe("integrações reais com ferramentas externas", () => {
       expect(body.summary).toBe("Reunião com cliente");
       expect(body.start).toEqual({ date: "2026-05-01" });
       expect(body.end).toEqual({ date: "2026-05-02" });
+    });
+
+    it("cria evento de horário marcado (agendamento) com dateTime e fuso de São Paulo", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue({ ok: true, json: async () => ({ id: "evt2" }) });
+      vi.stubGlobal("fetch", fetchMock);
+
+      await createGoogleCalendarEventReal("client-id", {
+        title: "Banho e tosa - Rex",
+        due: "2026-05-01",
+        time: "23:45",
+        durationMinutes: 30,
+      });
+
+      const [, options] = fetchMock.mock.calls[0];
+      const body = JSON.parse(options.body);
+      expect(body.start).toEqual({
+        dateTime: "2026-05-01T23:45:00",
+        timeZone: "America/Sao_Paulo",
+      });
+      // 23:45 + 30min cruza a meia-noite para o dia seguinte
+      expect(body.end).toEqual({
+        dateTime: "2026-05-02T00:15:00",
+        timeZone: "America/Sao_Paulo",
+      });
     });
   });
 
