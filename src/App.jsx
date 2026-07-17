@@ -4295,7 +4295,21 @@ function Tasks({ db, update, business, setToast, go }) {
     area: "Operação",
     assigneeType: "real",
     assignee: "",
+    assigneeId: "",
     project: "",
+    isMission: false,
+    distribution: "atribuida",
+    difficulty: "Simples",
+    slots: "1",
+    points: "",
+    reward: "",
+    approvalMode: "imediata",
+    allowWithdrawal: true,
+    assignees: [],
+    interested: [],
+    missionStatus: "",
+    deliveries: [],
+    deliveryDraft: "",
   };
   const [form, setForm] = useState(blankTask);
   const digitalCollaborators = [
@@ -4337,6 +4351,15 @@ function Tasks({ db, update, business, setToast, go }) {
       (archiveFilter === "Todas" ||
         (archiveFilter === "Arquivadas" ? !!t.archived : !t.archived)),
   );
+  const editingTask = editing ? db.tasks.find((t) => t.id === editing) : null;
+  const availableMissions = db.tasks.filter(
+    (t) =>
+      (!business || t.businessId === business.id) &&
+      t.isMission &&
+      t.distribution === "disponivel" &&
+      !t.archived &&
+      (t.assignees || []).length < (t.slots || 1),
+  );
   const openTask = (task = null) => {
     setEditing(task?.id || null);
     setForm(task ? { ...blankTask, ...task } : blankTask);
@@ -4352,12 +4375,29 @@ function Tasks({ db, update, business, setToast, go }) {
     if (!form.title.trim()) return;
     const now = new Date().toISOString();
     update((d) => {
+      const { deliveryDraft, ...rest } = form;
+      const isMission = !!form.isMission;
       const item = {
-        ...form,
+        ...rest,
         title: form.title.trim(),
         id: editing || uid(),
         businessId: business?.id || form.businessId || null,
         archived: !!form.archived,
+        ownerId: form.ownerId || db.user.id,
+        visibility:
+          isMission && form.distribution === "disponivel"
+            ? "espaco_todo"
+            : form.visibility || "privado",
+        missionStatus:
+          isMission && !editing && form.distribution === "disponivel"
+            ? "disponivel"
+            : form.missionStatus || "",
+        slots: isMission ? Number(form.slots) || 1 : 1,
+        points: isMission ? Number(form.points) || 0 : 0,
+        reward: isMission ? Number(form.reward) || 0 : 0,
+        assignees: Array.isArray(form.assignees) ? form.assignees : [],
+        interested: Array.isArray(form.interested) ? form.interested : [],
+        deliveries: Array.isArray(form.deliveries) ? form.deliveries : [],
         createdAt: form.createdAt || now,
         updatedAt: now,
       };
@@ -4407,6 +4447,93 @@ function Tasks({ db, update, business, setToast, go }) {
           : task,
       ),
     }));
+  const expressInterest = (task) => {
+    const already = (task.interested || []).some((i) => i.userId === db.user.id);
+    if (already) return;
+    changeTask(task.id, {
+      interested: [
+        ...(task.interested || []),
+        { userId: db.user.id, name: db.user.name, at: new Date().toISOString() },
+      ],
+      missionStatus: "interesse_enviado",
+    });
+    setToast("Interesse enviado");
+  };
+  const withdrawInterest = (task) => {
+    changeTask(task.id, {
+      interested: (task.interested || []).filter((i) => i.userId !== db.user.id),
+    });
+    setToast("Interesse retirado");
+  };
+  const assumeTask = (task) => {
+    const assignees = task.assignees || [];
+    if (assignees.some((a) => a.userId === db.user.id)) return;
+    const slots = task.slots || 1;
+    if (assignees.length >= slots) {
+      setToast("Não há mais vagas disponíveis para esta missão");
+      return;
+    }
+    const nextAssignees = [
+      ...assignees,
+      { userId: db.user.id, name: db.user.name, at: new Date().toISOString() },
+    ];
+    const full = nextAssignees.length >= slots;
+    changeTask(task.id, {
+      assignees: nextAssignees,
+      missionStatus: full ? "em_andamento" : "disponivel",
+      status: full ? "Em andamento" : task.status,
+    });
+    setToast("Missão assumida");
+  };
+  const approveInterested = (task, userId) => {
+    const person = (task.interested || []).find((i) => i.userId === userId);
+    if (!person) return;
+    const assignees = [...(task.assignees || []), person];
+    const full = assignees.length >= (task.slots || 1);
+    changeTask(task.id, {
+      assignees,
+      interested: (task.interested || []).filter((i) => i.userId !== userId),
+      missionStatus: full ? "em_andamento" : "aguardando_aprovacao",
+      status: full ? "Em andamento" : task.status,
+    });
+    setToast(`${person.name} aprovado(a) para a missão`);
+  };
+  const rejectInterested = (task, userId) => {
+    changeTask(task.id, {
+      interested: (task.interested || []).filter((i) => i.userId !== userId),
+    });
+    setToast("Interesse recusado");
+  };
+  const submitDelivery = (task, comment) => {
+    if (!comment.trim()) return;
+    changeTask(task.id, {
+      deliveries: [
+        ...(task.deliveries || []),
+        {
+          id: uid(),
+          comment: comment.trim(),
+          authorId: db.user.id,
+          authorName: db.user.name,
+          createdAt: new Date().toISOString(),
+          status: "enviada",
+        },
+      ],
+      missionStatus: "enviada_para_revisao",
+    });
+    setToast("Entrega enviada para revisão");
+  };
+  const reviewDelivery = (task, approved, feedback) => {
+    changeTask(task.id, {
+      missionStatus: approved ? "aprovada" : "correcao_solicitada",
+      status: approved ? "Concluído" : task.status,
+      deliveries: (task.deliveries || []).map((d, i) =>
+        i === (task.deliveries || []).length - 1
+          ? { ...d, status: approved ? "aprovada" : "correcao_solicitada", feedback }
+          : d,
+      ),
+    });
+    setToast(approved ? "Entrega aprovada" : "Correção solicitada");
+  };
   const removeTask = (id) => {
     if (!confirm("Excluir esta tarefa definitivamente?")) return;
     update((d) => ({
@@ -4487,9 +4614,16 @@ function Tasks({ db, update, business, setToast, go }) {
             <ListTodo />
             Lista
           </button>
+          <button
+            className={view === "missoes" ? "active" : ""}
+            onClick={() => setView("missoes")}
+          >
+            <Award />
+            Disponíveis
+          </button>
         </div>
       </div>
-      <div className="filter-row">
+      {view !== "missoes" && <div className="filter-row">
         <select
           aria-label="Filtrar por status"
           value={statusFilter}
@@ -4539,8 +4673,59 @@ function Tasks({ db, update, business, setToast, go }) {
           <option>Arquivadas</option>
           <option>Todas</option>
         </select>
-      </div>
-      {items.length === 0 ? (
+      </div>}
+      {view === "missoes" ? (
+        availableMissions.length === 0 ? (
+          <Empty
+            icon={Award}
+            title="Nenhuma missão disponível no momento"
+            text="Quando alguém publicar uma missão aberta para escolha, ela aparece aqui."
+          />
+        ) : (
+          <div className="data-list">
+            {availableMissions.map((t) => {
+              const alreadyAssigned = (t.assignees || []).some(
+                (a) => a.userId === db.user.id,
+              );
+              const alreadyInterested = (t.interested || []).some(
+                (i) => i.userId === db.user.id,
+              );
+              const slotsLeft = (t.slots || 1) - (t.assignees || []).length;
+              return (
+                <article key={t.id}>
+                  <span>
+                    <strong>{t.title}</strong>
+                    <small>
+                      {t.difficulty} · {t.points || 0} pontos
+                      {t.reward ? ` · ${money(t.reward)}` : ""} · {slotsLeft}{" "}
+                      {slotsLeft === 1 ? "vaga" : "vagas"}
+                      {t.due ? ` · Prazo: ${t.due}` : ""}
+                    </small>
+                  </span>
+                  {alreadyAssigned ? (
+                    <span className="publish-state live">
+                      <BadgeCheck /> Você assumiu
+                    </span>
+                  ) : t.approvalMode === "aprovacao" ? (
+                    <Button
+                      variant={alreadyInterested ? "ghost" : "secondary"}
+                      onClick={() =>
+                        alreadyInterested
+                          ? withdrawInterest(t)
+                          : expressInterest(t)
+                      }
+                    >
+                      {alreadyInterested ? "Retirar interesse" : "Demonstrar interesse"}
+                    </Button>
+                  ) : (
+                    <Button onClick={() => assumeTask(t)}>Assumir missão</Button>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        )
+      ) : items.length === 0 ? (
         <Empty
           icon={ListTodo}
           title="Nenhuma tarefa encontrada"
@@ -4901,6 +5086,7 @@ function Tasks({ db, update, business, setToast, go }) {
                       setForm({
                         ...form,
                         assignee: value,
+                        assigneeId: member ? member.id : "",
                         notifyTo: member ? member.email : form.notifyTo || "",
                       });
                     }}
@@ -4954,6 +5140,189 @@ function Tasks({ db, update, business, setToast, go }) {
                 />
               </Field>
             </div>
+            <div className="field">
+              <label className="cost-check">
+                <input
+                  type="checkbox"
+                  checked={!!form.isMission}
+                  onChange={(e) =>
+                    setForm({ ...form, isMission: e.target.checked })
+                  }
+                />
+                <span>Tratar como missão (vagas, pontos, recompensa e entregas)</span>
+              </label>
+            </div>
+            {form.isMission && (
+              <div className="form-grid">
+                <Field label="Distribuição">
+                  <select
+                    value={form.distribution}
+                    onChange={(e) =>
+                      setForm({ ...form, distribution: e.target.value })
+                    }
+                  >
+                    <option value="atribuida">Atribuída diretamente</option>
+                    <option value="disponivel">
+                      Disponível para colaboradores escolherem
+                    </option>
+                    <option value="pessoal">Pessoal (organização própria)</option>
+                  </select>
+                </Field>
+                <Field label="Dificuldade">
+                  <select
+                    value={form.difficulty}
+                    onChange={(e) =>
+                      setForm({ ...form, difficulty: e.target.value })
+                    }
+                  >
+                    <option>Simples</option>
+                    <option>Intermediária</option>
+                    <option>Avançada</option>
+                  </select>
+                </Field>
+                {form.distribution === "disponivel" && (
+                  <>
+                    <Field label="Vagas">
+                      <input
+                        type="number"
+                        min="1"
+                        value={form.slots}
+                        onChange={(e) =>
+                          setForm({ ...form, slots: e.target.value })
+                        }
+                      />
+                    </Field>
+                    <Field label="Como assumir">
+                      <select
+                        value={form.approvalMode}
+                        onChange={(e) =>
+                          setForm({ ...form, approvalMode: e.target.value })
+                        }
+                      >
+                        <option value="imediata">Aceitação imediata</option>
+                        <option value="aprovacao">
+                          Precisa da minha aprovação
+                        </option>
+                      </select>
+                    </Field>
+                  </>
+                )}
+                <Field label="Pontos">
+                  <input
+                    type="number"
+                    min="0"
+                    value={form.points}
+                    onChange={(e) => setForm({ ...form, points: e.target.value })}
+                  />
+                </Field>
+                <Field label="Recompensa financeira (opcional)">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.reward}
+                    onChange={(e) => setForm({ ...form, reward: e.target.value })}
+                    placeholder="R$"
+                  />
+                </Field>
+                <Field label="Desistência">
+                  <label className="cost-check">
+                    <input
+                      type="checkbox"
+                      checked={!!form.allowWithdrawal}
+                      onChange={(e) =>
+                        setForm({ ...form, allowWithdrawal: e.target.checked })
+                      }
+                    />
+                    <span>Permitir desistir antes do início</span>
+                  </label>
+                </Field>
+              </div>
+            )}
+            {editingTask?.isMission &&
+              (editingTask.interested || []).length > 0 && (
+                <div className="field">
+                  <span>Interessados nesta missão</span>
+                  <div className="member-list">
+                    {editingTask.interested.map((i) => (
+                      <div key={i.userId}>
+                        <span className="avatar">{i.name[0]}</span>
+                        <span>
+                          <strong>{i.name}</strong>
+                        </span>
+                        <span className="task-actions">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => approveInterested(editingTask, i.userId)}
+                          >
+                            Aprovar
+                          </Button>
+                          <button
+                            type="button"
+                            className="icon-button danger"
+                            aria-label={`Recusar interesse de ${i.name}`}
+                            onClick={() => rejectInterested(editingTask, i.userId)}
+                          >
+                            <X />
+                          </button>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            {editingTask?.isMission &&
+              (editingTask.assignees || []).some((a) => a.userId === db.user.id) && (
+                <div className="field">
+                  <span>Enviar entrega</span>
+                  <textarea
+                    aria-label="Comentário da entrega"
+                    value={form.deliveryDraft || ""}
+                    onChange={(e) =>
+                      setForm({ ...form, deliveryDraft: e.target.value })
+                    }
+                    placeholder="Descreva o que foi feito, links ou observações"
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={!(form.deliveryDraft || "").trim()}
+                    onClick={() => {
+                      submitDelivery(editingTask, form.deliveryDraft || "");
+                      setForm({ ...form, deliveryDraft: "" });
+                    }}
+                  >
+                    Enviar entrega
+                  </Button>
+                </div>
+              )}
+            {editingTask?.isMission &&
+              editingTask.missionStatus === "enviada_para_revisao" && (
+                <Field label="Revisar entrega">
+                  <p>
+                    {editingTask.deliveries?.[editingTask.deliveries.length - 1]
+                      ?.comment}
+                  </p>
+                  <div className="modal-actions">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() =>
+                        reviewDelivery(editingTask, false, "Ajuste solicitado pelo gestor")
+                      }
+                    >
+                      Solicitar correção
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => reviewDelivery(editingTask, true, "")}
+                    >
+                      Aprovar entrega
+                    </Button>
+                  </div>
+                </Field>
+              )}
             <div className="modal-actions">
               <Button variant="ghost" onClick={() => setModal(false)}>
                 Cancelar

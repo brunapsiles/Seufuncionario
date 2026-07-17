@@ -789,10 +789,61 @@ async function canAccessWorkspace(env, userId, ownerId) {
   return !!m;
 }
 
+async function membershipRole(env, userId, ownerId) {
+  if (userId === ownerId) return "owner";
+  const m = await env.DB.prepare(
+    "SELECT role FROM memberships WHERE owner_id = ? AND member_id = ? AND status = 'ativo'",
+  )
+    .bind(ownerId, userId)
+    .first();
+  return m ? m.role : null;
+}
+
+export function canSeeTask(task, userId) {
+  if (!task || !userId) return false;
+  if (task.ownerId === userId) return true;
+  if (task.assigneeId === userId) return true;
+  if (Array.isArray(task.assignees) && task.assignees.includes(userId))
+    return true;
+  if (Array.isArray(task.sharedWith) && task.sharedWith.includes(userId))
+    return true;
+  if (task.visibility === "espaco_todo") return true;
+  if (
+    Array.isArray(task.interested) &&
+    task.interested.some((i) => i && i.userId === userId)
+  )
+    return true;
+  return false;
+}
+
+function filterTasksForViewer(tasks, userId) {
+  return (Array.isArray(tasks) ? tasks : []).filter((t) =>
+    canSeeTask(t, userId),
+  );
+}
+
+function mergeTasksFromMember(currentTasks, incomingTasks, memberId) {
+  const current = Array.isArray(currentTasks) ? currentTasks : [];
+  const incoming = Array.isArray(incomingTasks) ? incomingTasks : [];
+  const currentById = new Map(current.map((t) => [t.id, t]));
+  const visibleIds = new Set(
+    current.filter((t) => canSeeTask(t, memberId)).map((t) => t.id),
+  );
+  const accepted = incoming.filter((t) => {
+    if (!t || !t.id) return false;
+    if (visibleIds.has(t.id)) return true;
+    if (!currentById.has(t.id) && t.ownerId === memberId) return true;
+    return false;
+  });
+  const hidden = current.filter((t) => !visibleIds.has(t.id));
+  return [...hidden, ...accepted];
+}
+
 async function handleWorkspace(request, env, user, url) {
   const ownerId = url.searchParams.get("owner") || user.id;
-  if (!(await canAccessWorkspace(env, user.id, ownerId)))
-    return json({ error: "Você não tem acesso a este espaço." }, 403);
+  const role = await membershipRole(env, user.id, ownerId);
+  if (!role) return json({ error: "Você não tem acesso a este espaço." }, 403);
+  const restricted = role === "colaborador" || role === "gestor";
   if (request.method === "GET") {
     const row = await env.DB.prepare(
       "SELECT data, updated_at, revision FROM workspaces WHERE user_id = ?",
@@ -805,6 +856,8 @@ async function handleWorkspace(request, env, user, url) {
     } catch {
       data = null;
     }
+    if (data && restricted)
+      data = { ...data, tasks: filterTasksForViewer(data.tasks, user.id) };
     return json({
       data,
       updatedAt: row?.updated_at || null,
@@ -825,12 +878,33 @@ async function handleWorkspace(request, env, user, url) {
   } catch {
     return json({ error: "Solicitação inválida." }, 400);
   }
-  const data =
+  let data =
     body && body.data && typeof body.data === "object" ? body.data : null;
   if (!data) return json({ error: "Dados inválidos." }, 400);
   const baseRevision = body.revision ?? 0;
   if (!Number.isInteger(baseRevision) || baseRevision < 0)
     return json({ error: "Revisão de workspace inválida." }, 400);
+  if (restricted) {
+    const row = await env.DB.prepare(
+      "SELECT data FROM workspaces WHERE user_id = ?",
+    )
+      .bind(ownerId)
+      .first();
+    let currentData = null;
+    try {
+      currentData = row ? JSON.parse(row.data) : null;
+    } catch {
+      currentData = null;
+    }
+    data = {
+      ...data,
+      tasks: mergeTasksFromMember(
+        currentData?.tasks,
+        data.tasks,
+        user.id,
+      ),
+    };
+  }
   const text = JSON.stringify(data);
   if (text.length > 900_000)
     return json(
