@@ -217,6 +217,42 @@ async function sendEmail(env, to, subject, html) {
   }
 }
 
+async function handleErrorLog(request, env) {
+  if (request.method !== "POST") return json({ error: "Método não permitido." }, 405);
+  if (!env.DB) return json({ ok: true });
+  const ip = request.headers.get("cf-connecting-ip") || "local";
+  if (!allowed(`err:${ip}`, 20)) return json({ ok: true });
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Solicitação inválida." }, 400);
+  }
+  const message = String(body?.message || "").slice(0, 500);
+  if (!message) return json({ error: "Mensagem obrigatória." }, 400);
+  let userId = null;
+  try {
+    const user = await sessionUser(request, env);
+    userId = user?.id || null;
+  } catch {}
+  await env.DB.prepare(
+    `INSERT INTO error_logs (id, message, stack, component_stack, url, user_agent, user_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      crypto.randomUUID(),
+      message,
+      String(body?.stack || "").slice(0, 4000),
+      String(body?.componentStack || "").slice(0, 4000),
+      String(body?.url || "").slice(0, 500),
+      request.headers.get("user-agent")?.slice(0, 300) || "",
+      userId,
+      new Date().toISOString(),
+    )
+    .run();
+  return json({ ok: true });
+}
+
 async function handleAuth(request, env, url) {
   if (!env.DB)
     return json(
@@ -2055,6 +2091,14 @@ export default {
         googleClientId: env.GOOGLE_CLIENT_ID || "",
         videoEnabled: !!(env.VIDEO_AI_URL && env.VIDEO_AI_TOKEN),
       });
+    if (url.pathname === "/api/errors") {
+      try {
+        return await handleErrorLog(request, env);
+      } catch (error) {
+        console.error("Error log failure", error);
+        return json({ ok: true });
+      }
+    }
     if (url.pathname.startsWith("/api/auth/")) {
       try {
         return await handleAuth(request, env, url);

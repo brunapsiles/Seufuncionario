@@ -3,9 +3,65 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./styles.css";
 
+const reportError = (message, stack, componentStack) => {
+  try {
+    fetch("/api/errors", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        message: String(message || "").slice(0, 500),
+        stack: String(stack || "").slice(0, 4000),
+        componentStack: String(componentStack || "").slice(0, 4000),
+        url: location.href,
+      }),
+    }).catch(() => {});
+  } catch {}
+};
+
+window.addEventListener("error", (event) => {
+  reportError(event.message, event.error?.stack);
+});
+window.addEventListener("unhandledrejection", (event) => {
+  reportError(
+    event.reason?.message || String(event.reason || "unhandled rejection"),
+    event.reason?.stack,
+  );
+});
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error, info) {
+    reportError(error?.message || String(error), error?.stack, info?.componentStack);
+  }
+  render() {
+    if (!this.state.hasError) return this.props.children;
+    return (
+      <div className="crash-screen">
+        <div className="crash-card">
+          <strong>Seu Funcionário</strong>
+          <h1>Algo deu errado</h1>
+          <p>
+            Encontramos um problema inesperado. Seus dados estão salvos; tente
+            recarregar a página.
+          </p>
+          <button onClick={() => location.reload()}>Recarregar</button>
+        </div>
+      </div>
+    );
+  }
+}
+
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>,
 );
 
