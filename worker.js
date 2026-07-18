@@ -841,6 +841,11 @@ const RESTRICTED_FIELDS = [
   "developmentPlans",
   "notifications",
   "transactions",
+  "appointments",
+  "products",
+  "orders",
+  "vehicles",
+  "trips",
 ];
 
 function resolveViewerContext(data, userId) {

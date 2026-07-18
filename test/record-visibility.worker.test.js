@@ -229,4 +229,57 @@ describe("visibilidade de leads, documentos e sites com D1 local", () => {
     const asOwner = await readJson(await workspaceRequest(owner));
     expect(asOwner.body.data.transactions).toHaveLength(3);
   });
+
+  it("agendamentos, produtos, pedidos, veículos e fretes continuam visíveis a todos por padrão, mas podem ser restritos", async () => {
+    const owner = await createUser("rec-owner-5");
+    const member = await createUser("rec-member-5");
+    const other = await createUser("rec-other-5");
+    await addMember(owner.id, member.id, "colaborador");
+    await workspaceRequest(owner, {
+      method: "PUT",
+      body: {
+        data: {
+          appointments: [
+            { id: "appt-shared", title: "Corte", ownerId: owner.id, visibility: "espaco_todo" },
+            { id: "appt-private", title: "Reunião reservada", ownerId: other.id, visibility: "privado" },
+          ],
+          products: [
+            { id: "prod-shared", name: "Camiseta", ownerId: owner.id, visibility: "espaco_todo" },
+            { id: "prod-private", name: "Amostra reservada", ownerId: other.id, visibility: "privado" },
+          ],
+          vehicles: [
+            { id: "veh-shared", plate: "ABC1234", ownerId: owner.id, visibility: "espaco_todo" },
+            { id: "veh-private", plate: "XYZ9999", ownerId: other.id, visibility: "privado" },
+          ],
+          trips: [
+            { id: "trip-shared", origin: "SP", destination: "RJ", ownerId: owner.id, visibility: "espaco_todo" },
+            { id: "trip-private", origin: "SP", destination: "MG", ownerId: other.id, visibility: "privado" },
+          ],
+        },
+        revision: 0,
+      },
+    });
+
+    const asMember = await readJson(
+      await workspaceRequest(member, { owner: owner.id }),
+    );
+    expect(asMember.body.data.appointments.map((a) => a.id)).toEqual([
+      "appt-shared",
+    ]);
+    expect(asMember.body.data.products.map((p) => p.id)).toEqual([
+      "prod-shared",
+    ]);
+    expect(asMember.body.data.vehicles.map((v) => v.id)).toEqual([
+      "veh-shared",
+    ]);
+    expect(asMember.body.data.trips.map((t) => t.id)).toEqual([
+      "trip-shared",
+    ]);
+
+    const asOwner = await readJson(await workspaceRequest(owner));
+    expect(asOwner.body.data.appointments).toHaveLength(2);
+    expect(asOwner.body.data.products).toHaveLength(2);
+    expect(asOwner.body.data.vehicles).toHaveLength(2);
+    expect(asOwner.body.data.trips).toHaveLength(2);
+  });
 });

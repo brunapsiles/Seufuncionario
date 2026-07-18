@@ -6706,6 +6706,9 @@ function Appointments({ db, update, business, setToast, go }) {
     professional: "",
     status: "Confirmado",
     notes: "",
+    visibility: "espaco_todo",
+    sharedWith: [],
+    sharedTeams: [],
   };
   const [form, setForm] = useState(blankAppointment);
   const statuses = ["Confirmado", "Concluído", "Cancelado", "Faltou"];
@@ -6741,6 +6744,10 @@ function Appointments({ db, update, business, setToast, go }) {
       clientName: form.clientName.trim(),
       id: editing || uid(),
       businessId: business?.id || null,
+      ownerId: form.ownerId || db.user.id,
+      visibility: form.visibility || "espaco_todo",
+      sharedWith: Array.isArray(form.sharedWith) ? form.sharedWith : [],
+      sharedTeams: Array.isArray(form.sharedTeams) ? form.sharedTeams : [],
       createdAt: form.createdAt || now,
       updatedAt: now,
     };
@@ -7003,6 +7010,15 @@ function Appointments({ db, update, business, setToast, go }) {
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
               />
             </Field>
+            <SharingFields
+              value={{
+                visibility: form.visibility,
+                sharedWith: form.sharedWith,
+                sharedTeams: form.sharedTeams,
+              }}
+              onChange={(next) => setForm({ ...form, ...next })}
+              teams={db.teams}
+            />
             <div className="modal-actions">
               <Button variant="ghost" onClick={() => setModal(false)}>
                 Cancelar
@@ -7243,6 +7259,9 @@ function Catalog({ db, update, business, setToast, go }) {
     lowStockAlert: "5",
     unit: "un",
     variants: [],
+    visibility: "espaco_todo",
+    sharedWith: [],
+    sharedTeams: [],
   };
   const [productForm, setProductForm] = useState(blankProduct);
   const blankOrder = {
@@ -7253,6 +7272,9 @@ function Catalog({ db, update, business, setToast, go }) {
     notes: "",
     items: [],
     deliveryZoneId: "",
+    visibility: "espaco_todo",
+    sharedWith: [],
+    sharedTeams: [],
   };
   const [orderForm, setOrderForm] = useState(blankOrder);
   const [pickProduct, setPickProduct] = useState("");
@@ -7332,6 +7354,14 @@ function Catalog({ db, update, business, setToast, go }) {
       variants,
       id: editingProduct || uid(),
       businessId: business?.id || null,
+      ownerId: productForm.ownerId || db.user.id,
+      visibility: productForm.visibility || "espaco_todo",
+      sharedWith: Array.isArray(productForm.sharedWith)
+        ? productForm.sharedWith
+        : [],
+      sharedTeams: Array.isArray(productForm.sharedTeams)
+        ? productForm.sharedTeams
+        : [],
       createdAt: productForm.createdAt || now,
       updatedAt: now,
     };
@@ -7439,6 +7469,14 @@ function Catalog({ db, update, business, setToast, go }) {
       total: orderTotal(orderForm.items) + deliveryFee,
       id: editingOrder || uid(),
       businessId: business?.id || null,
+      ownerId: orderForm.ownerId || db.user.id,
+      visibility: orderForm.visibility || "espaco_todo",
+      sharedWith: Array.isArray(orderForm.sharedWith)
+        ? orderForm.sharedWith
+        : [],
+      sharedTeams: Array.isArray(orderForm.sharedTeams)
+        ? orderForm.sharedTeams
+        : [],
       createdAt: orderForm.createdAt || now,
       updatedAt: now,
     };
@@ -7826,6 +7864,15 @@ function Catalog({ db, update, business, setToast, go }) {
                 </Button>
               </div>
             </div>
+            <SharingFields
+              value={{
+                visibility: productForm.visibility,
+                sharedWith: productForm.sharedWith,
+                sharedTeams: productForm.sharedTeams,
+              }}
+              onChange={(next) => setProductForm({ ...productForm, ...next })}
+              teams={db.teams}
+            />
             <div className="modal-actions">
               <Button variant="ghost" onClick={() => setProductModal(false)}>
                 Cancelar
@@ -8002,6 +8049,15 @@ function Catalog({ db, update, business, setToast, go }) {
                 onChange={(e) => setOrderForm({ ...orderForm, notes: e.target.value })}
               />
             </Field>
+            <SharingFields
+              value={{
+                visibility: orderForm.visibility,
+                sharedWith: orderForm.sharedWith,
+                sharedTeams: orderForm.sharedTeams,
+              }}
+              onChange={(next) => setOrderForm({ ...orderForm, ...next })}
+              teams={db.teams}
+            />
             <div className="modal-actions">
               <Button variant="ghost" onClick={() => setOrderModal(false)}>
                 Cancelar
@@ -8136,6 +8192,9 @@ function Fleet({ db, update, business, setToast, go }) {
     driverContact: "",
     nextMaintenanceDate: "",
     notes: "",
+    visibility: "espaco_todo",
+    sharedWith: [],
+    sharedTeams: [],
   };
   const [vehicleForm, setVehicleForm] = useState(blankVehicle);
   const blankTrip = {
@@ -8151,6 +8210,9 @@ function Fleet({ db, update, business, setToast, go }) {
     status: "Agendado",
     scheduledDate: today(),
     notes: "",
+    visibility: "espaco_todo",
+    sharedWith: [],
+    sharedTeams: [],
   };
   const [tripForm, setTripForm] = useState(blankTrip);
 
@@ -8196,6 +8258,14 @@ function Fleet({ db, update, business, setToast, go }) {
       capacityKg: Number(vehicleForm.capacityKg) || 0,
       id: editingVehicle || uid(),
       businessId: business?.id || null,
+      ownerId: vehicleForm.ownerId || db.user.id,
+      visibility: vehicleForm.visibility || "espaco_todo",
+      sharedWith: Array.isArray(vehicleForm.sharedWith)
+        ? vehicleForm.sharedWith
+        : [],
+      sharedTeams: Array.isArray(vehicleForm.sharedTeams)
+        ? vehicleForm.sharedTeams
+        : [],
       createdAt: vehicleForm.createdAt || now,
       updatedAt: now,
     };
@@ -8234,6 +8304,12 @@ function Fleet({ db, update, business, setToast, go }) {
       cteValue: Number(tripForm.cteValue) || 0,
       id: editingTrip || uid(),
       businessId: business?.id || null,
+      ownerId: tripForm.ownerId || db.user.id,
+      visibility: tripForm.visibility || "espaco_todo",
+      sharedWith: Array.isArray(tripForm.sharedWith) ? tripForm.sharedWith : [],
+      sharedTeams: Array.isArray(tripForm.sharedTeams)
+        ? tripForm.sharedTeams
+        : [],
       createdAt: tripForm.createdAt || now,
       updatedAt: now,
     };
@@ -8497,6 +8573,15 @@ function Fleet({ db, update, business, setToast, go }) {
                 }
               />
             </Field>
+            <SharingFields
+              value={{
+                visibility: vehicleForm.visibility,
+                sharedWith: vehicleForm.sharedWith,
+                sharedTeams: vehicleForm.sharedTeams,
+              }}
+              onChange={(next) => setVehicleForm({ ...vehicleForm, ...next })}
+              teams={db.teams}
+            />
             <div className="modal-actions">
               <Button variant="ghost" onClick={() => setVehicleModal(false)}>
                 Cancelar
@@ -8644,6 +8729,15 @@ function Fleet({ db, update, business, setToast, go }) {
                 }
               />
             </Field>
+            <SharingFields
+              value={{
+                visibility: tripForm.visibility,
+                sharedWith: tripForm.sharedWith,
+                sharedTeams: tripForm.sharedTeams,
+              }}
+              onChange={(next) => setTripForm({ ...tripForm, ...next })}
+              teams={db.teams}
+            />
             <div className="modal-actions">
               <Button variant="ghost" onClick={() => setTripModal(false)}>
                 Cancelar
