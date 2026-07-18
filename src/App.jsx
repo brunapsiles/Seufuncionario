@@ -5904,8 +5904,11 @@ function Tasks({ db, update, business, setToast, go }) {
                   </div>
                 </div>
               )}
-            {editingTask?.isMission &&
-              (editingTask.assignees || []).some((a) => a.userId === db.user.id) && (
+            {editingTask &&
+              (editingTask.assigneeId === db.user.id ||
+                (editingTask.assignees || []).some(
+                  (a) => a.userId === db.user.id,
+                )) && (
                 <div className="field">
                   <span>Enviar entrega</span>
                   <textarea
@@ -5962,7 +5965,8 @@ function Tasks({ db, update, business, setToast, go }) {
                   </Button>
                 </div>
               )}
-            {editingTask?.isMission &&
+            {editingTask &&
+              editingTask.ownerId === db.user.id &&
               editingTask.missionStatus === "enviada_para_revisao" && (
                 <Field label="Revisar entrega">
                   <p>
