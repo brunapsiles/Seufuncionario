@@ -1476,6 +1476,7 @@ aside nav button.active {
   opacity: 0.5;
   cursor: grabbing;
   box-shadow: var(--shadow);
+  touch-action: none;
 }
 .kanban article > div,
 .kanban article footer {
@@ -1624,6 +1625,15 @@ aside nav button.active {
   padding: 4px 0;
   cursor: pointer;
   text-align: left;
+}
+.recurrence-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.recurrence-note .link-button {
+  display: inline;
+  padding: 0;
 }
 .deadline-calc {
   display: grid;
@@ -3287,6 +3297,50 @@ aside nav button.active {
 .attachment-chip button svg {
   width: 13px;
   height: 13px;
+}
+.attachment-thumb {
+  cursor: zoom-in;
+  border-radius: 50%;
+}
+.attachment-thumb:hover img {
+  opacity: 0.85;
+}
+.attachment-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 16, 38, 0.82);
+  padding: 30px;
+  cursor: zoom-out;
+}
+.attachment-lightbox img {
+  max-width: min(90vw, 900px);
+  max-height: 85vh;
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  cursor: default;
+}
+.attachment-lightbox-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  border: none;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  cursor: pointer;
+}
+.attachment-lightbox-close svg {
+  width: 20px;
+  height: 20px;
 }
 .competency-row {
   display: grid;

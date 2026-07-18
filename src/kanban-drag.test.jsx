@@ -192,4 +192,84 @@ describe("arrastar e soltar tarefas no quadro Kanban", () => {
       "A fazer",
     );
   });
+
+  it("move uma tarefa por toque (long-press) no celular, sem depender de drag-and-drop de mouse", async () => {
+    stubFetch();
+    seedLoggedIn(
+      businessDb({
+        tasks: [
+          {
+            id: "task-touch-1",
+            title: "Enviar proposta",
+            status: "A fazer",
+            priority: "Média",
+            due: "",
+            area: "Operação",
+            businessId: business.id,
+            ownerId: user.id,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+      }),
+    );
+    render(<App />);
+    await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
+    fireEvent.click(screen.getByRole("button", { name: "Operação" }));
+    await screen.findByText("Enviar proposta");
+
+    const card = screen.getByText("Enviar proposta").closest("article");
+    const targetColumn = getColumnSection("Em andamento");
+    document.elementFromPoint = vi.fn(() => targetColumn);
+
+    fireEvent.touchStart(card, { touches: [{ clientX: 50, clientY: 50 }] });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    fireEvent.touchMove(card, { touches: [{ clientX: 50, clientY: 50 }] });
+    fireEvent.touchEnd(card);
+
+    const updated = await screen.findByText("Enviar proposta");
+    expect(updated.closest("article").closest("section")).toHaveTextContent(
+      "Em andamento",
+    );
+  });
+
+  it("não arrasta por toque se o dedo se mover antes do tempo de pressionar (evita atrapalhar rolagem)", async () => {
+    stubFetch();
+    seedLoggedIn(
+      businessDb({
+        tasks: [
+          {
+            id: "task-touch-2",
+            title: "Organizar planilha",
+            status: "A fazer",
+            priority: "Média",
+            due: "",
+            area: "Operação",
+            businessId: business.id,
+            ownerId: user.id,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+      }),
+    );
+    render(<App />);
+    await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
+    fireEvent.click(screen.getByRole("button", { name: "Operação" }));
+    await screen.findByText("Organizar planilha");
+
+    const card = screen.getByText("Organizar planilha").closest("article");
+    const targetColumn = getColumnSection("Em andamento");
+    document.elementFromPoint = vi.fn(() => targetColumn);
+
+    fireEvent.touchStart(card, { touches: [{ clientX: 50, clientY: 50 }] });
+    fireEvent.touchMove(card, { touches: [{ clientX: 90, clientY: 90 }] });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    fireEvent.touchEnd(card);
+
+    const stillThere = screen.getByText("Organizar planilha");
+    expect(stillThere.closest("article").closest("section")).toHaveTextContent(
+      "A fazer",
+    );
+  });
 });

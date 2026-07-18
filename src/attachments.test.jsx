@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App, { addAttachmentsFromFiles, buildAttachment } from "./App";
 
@@ -288,5 +288,48 @@ describe("anexos em tarefas e entregas (fluxo na interface)", () => {
     expect(
       within(reviewDialog).getByAltText("vitrine.jpg"),
     ).toBeInTheDocument();
+  });
+
+  it("amplia a imagem do anexo ao clicar na miniatura e fecha com Escape", async () => {
+    stubCanvas();
+    stubFetch();
+    seedLoggedIn(businessDb());
+    render(<App />);
+    await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
+    fireEvent.click(screen.getByRole("button", { name: "Operação" }));
+    fireEvent.click(screen.getByRole("button", { name: "Nova tarefa" }));
+    const dialog = await screen.findByRole("dialog", { name: "Criar tarefa" });
+    fireEvent.change(within(dialog).getByLabelText("Título"), {
+      target: { value: "Ver anexo" },
+    });
+
+    const imageFile = new File([new Uint8Array([1, 2, 3])], "foto.jpg", {
+      type: "image/jpeg",
+    });
+    const input = within(dialog).getByLabelText("Anexar arquivo à tarefa");
+    fireEvent.change(input, { target: { files: [imageFile] } });
+    await within(dialog).findByText("foto.jpg");
+
+    expect(
+      screen.queryByRole("dialog", { name: "Imagem ampliada: foto.jpg" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(dialog).getByRole("button", {
+        name: "Ver imagem ampliada de foto.jpg",
+      }),
+    );
+
+    const lightbox = await screen.findByRole("dialog", {
+      name: "Imagem ampliada: foto.jpg",
+    });
+    expect(within(lightbox).getByAltText("foto.jpg")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Imagem ampliada: foto.jpg" }),
+      ).not.toBeInTheDocument(),
+    );
   });
 });

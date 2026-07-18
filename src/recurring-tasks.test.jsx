@@ -5,6 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App, { nextRecurrenceDue } from "./App";
 
 describe("nextRecurrenceDue (função pura)", () => {
+  it("avança um dia para tarefas diárias, virando o mês quando necessário", () => {
+    expect(nextRecurrenceDue("2026-07-31", "daily")).toBe("2026-08-01");
+  });
+
   it("avança uma semana para tarefas semanais", () => {
     expect(nextRecurrenceDue("2026-07-18", "weekly")).toBe("2026-07-25");
   });
@@ -210,5 +214,88 @@ describe("tarefas recorrentes na interface", () => {
 
     await screen.findByText("Fechar caixa");
     expect(screen.getByTitle("Todo mês")).toBeInTheDocument();
+  });
+
+  it("mostra que a tarefa faz parte de uma série e permite cancelar a recorrência", async () => {
+    stubFetch();
+    seedLoggedIn(businessDb());
+    render(<App />);
+    await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
+    fireEvent.click(screen.getByRole("button", { name: "Operação" }));
+    fireEvent.click(screen.getByRole("button", { name: "Nova tarefa" }));
+    let dialog = await screen.findByRole("dialog", { name: "Criar tarefa" });
+    fireEvent.change(within(dialog).getByLabelText("Título"), {
+      target: { value: "Regar as plantas" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Repetir"), {
+      target: { value: "daily" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Criar tarefa" }),
+    );
+    await screen.findByText("Regar as plantas");
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Editar tarefa" })[0]);
+    dialog = await screen.findByRole("dialog", { name: "Editar tarefa" });
+    expect(
+      within(dialog).getByText(/Parte de uma série recorrente \(1 no total\)/),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Cancelar recorrência" }),
+    );
+    expect(within(dialog).getByLabelText("Repetir")).toHaveValue("none");
+    expect(
+      within(dialog).queryByText(/Parte de uma série recorrente/),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Salvar alterações" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Lista" }));
+    fireEvent.change(screen.getByDisplayValue("A fazer"), {
+      target: { value: "Concluído" },
+    });
+    await screen.findByDisplayValue("Concluído");
+    expect(screen.getAllByText("Regar as plantas")).toHaveLength(1);
+  });
+
+  it("mantém o vínculo de série entre as ocorrências ao concluir uma tarefa recorrente", async () => {
+    stubFetch();
+    seedLoggedIn(
+      businessDb({
+        tasks: [
+          {
+            id: "task-series-1",
+            title: "Backup do sistema",
+            status: "A fazer",
+            priority: "Média",
+            due: "2026-07-18",
+            area: "Operação",
+            businessId: business.id,
+            ownerId: user.id,
+            recurrence: { frequency: "weekly", seriesId: "serie-backup" },
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+      }),
+    );
+    render(<App />);
+    await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
+    fireEvent.click(screen.getByRole("button", { name: "Operação" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lista" }));
+    await screen.findByText("Backup do sistema");
+
+    fireEvent.change(screen.getByDisplayValue("A fazer"), {
+      target: { value: "Concluído" },
+    });
+    await screen.findByText(/próxima ocorrência criada/i);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Editar tarefa" })[0]);
+    const dialog = await screen.findByRole("dialog", { name: "Editar tarefa" });
+    expect(
+      within(dialog).getByText(/Parte de uma série recorrente \(2 no total\)/),
+    ).toBeInTheDocument();
   });
 });

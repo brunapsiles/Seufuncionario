@@ -649,6 +649,7 @@ export const addBusinessDays = (ymd, days) => {
 
 export const RECURRENCE_OPTIONS = [
   { value: "none", label: "Não repetir" },
+  { value: "daily", label: "Todo dia" },
   { value: "weekly", label: "Toda semana" },
   { value: "monthly", label: "Todo mês" },
 ];
@@ -657,7 +658,8 @@ export const nextRecurrenceDue = (ymd, frequency) => {
   const [y, m, d] = String(ymd || "").split("-").map(Number);
   if (!y || !m || !d) return "";
   const date = new Date(y, m - 1, d);
-  if (frequency === "weekly") date.setDate(date.getDate() + 7);
+  if (frequency === "daily") date.setDate(date.getDate() + 1);
+  else if (frequency === "weekly") date.setDate(date.getDate() + 7);
   else if (frequency === "monthly") date.setMonth(date.getMonth() + 1);
   else return ymd;
   const pad = (n) => String(n).padStart(2, "0");
@@ -4808,6 +4810,58 @@ function Tasks({ db, update, business, setToast, go }) {
   const [projectsOpen, setProjectsOpen] = useState(false);
   const [draggedTaskId, setDraggedTaskId] = useState(null);
   const [dragOverStatus, setDragOverStatus] = useState(null);
+  const kanbanRef = useRef(null);
+  const touchDragRef = useRef({ taskId: null, startX: 0, startY: 0, timer: null, active: false });
+  const clearTouchDrag = () => {
+    if (touchDragRef.current.timer) clearTimeout(touchDragRef.current.timer);
+    touchDragRef.current = { taskId: null, startX: 0, startY: 0, timer: null, active: false };
+  };
+  const onCardTouchStart = (t) => (e) => {
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    clearTouchDrag();
+    touchDragRef.current = {
+      taskId: t.id,
+      startX: touch.clientX,
+      startY: touch.clientY,
+      timer: setTimeout(() => {
+        touchDragRef.current.active = true;
+        setDraggedTaskId(t.id);
+      }, 350),
+      active: false,
+    };
+  };
+  const onCardTouchEnd = () => {
+    const state = touchDragRef.current;
+    if (state.active && state.taskId && dragOverStatus) {
+      const task = items.find((x) => x.id === state.taskId);
+      if (task && task.status !== dragOverStatus) changeTaskStatus(task, dragOverStatus);
+    }
+    clearTouchDrag();
+    setDraggedTaskId(null);
+    setDragOverStatus(null);
+  };
+  useEffect(() => {
+    const el = kanbanRef.current;
+    if (!el) return undefined;
+    const handleTouchMove = (e) => {
+      const state = touchDragRef.current;
+      if (!state.taskId) return;
+      const touch = e.touches[0];
+      if (!state.active) {
+        const dx = Math.abs(touch.clientX - state.startX);
+        const dy = Math.abs(touch.clientY - state.startY);
+        if (dx > 10 || dy > 10) clearTouchDrag();
+        return;
+      }
+      e.preventDefault();
+      const target = document.elementFromPoint(touch.clientX, touch.clientY);
+      const column = target?.closest("[data-kanban-status]");
+      setDragOverStatus(column ? column.getAttribute("data-kanban-status") : null);
+    };
+    el.addEventListener("touchmove", handleTouchMove, { passive: false });
+    return () => el.removeEventListener("touchmove", handleTouchMove);
+  }, []);
   const [deliveryAttachments, setDeliveryAttachments] = useState([]);
   const taskAttachRef = useRef(null);
   const deliveryAttachRef = useRef(null);
@@ -5012,9 +5066,13 @@ function Tasks({ db, update, business, setToast, go }) {
         subtasks: Array.isArray(form.subtasks) ? form.subtasks : [],
         dependsOn: Array.isArray(form.dependsOn) ? form.dependsOn : [],
         attachments: Array.isArray(form.attachments) ? form.attachments : [],
-        recurrence: form.recurrence?.frequency
-          ? form.recurrence
-          : { frequency: "none" },
+        recurrence:
+          form.recurrence?.frequency && form.recurrence.frequency !== "none"
+            ? {
+                frequency: form.recurrence.frequency,
+                seriesId: form.recurrence.seriesId || uid(),
+              }
+            : { frequency: "none" },
         createdAt: form.createdAt || now,
         updatedAt: now,
       };
@@ -5588,10 +5646,11 @@ function Tasks({ db, update, business, setToast, go }) {
           onAction={() => openTask()}
         />
       ) : view === "board" ? (
-        <div className="kanban">
+        <div className="kanban" ref={kanbanRef}>
           {statuses.map((s) => (
             <section
               key={s}
+              data-kanban-status={s}
               className={dragOverStatus === s ? "drag-over" : ""}
               onDragOver={(e) => {
                 if (!draggedTaskId) return;
@@ -5622,6 +5681,13 @@ function Tasks({ db, update, business, setToast, go }) {
                     className={draggedTaskId === t.id ? "dragging" : ""}
                     onDragStart={() => setDraggedTaskId(t.id)}
                     onDragEnd={() => {
+                      setDraggedTaskId(null);
+                      setDragOverStatus(null);
+                    }}
+                    onTouchStart={onCardTouchStart(t)}
+                    onTouchEnd={onCardTouchEnd}
+                    onTouchCancel={() => {
+                      clearTouchDrag();
                       setDraggedTaskId(null);
                       setDragOverStatus(null);
                     }}
@@ -6098,7 +6164,10 @@ function Tasks({ db, update, business, setToast, go }) {
                   onChange={(e) =>
                     setForm({
                       ...form,
-                      recurrence: { frequency: e.target.value },
+                      recurrence: {
+                        frequency: e.target.value,
+                        seriesId: form.recurrence?.seriesId,
+                      },
                     })
                   }
                 >
@@ -6108,6 +6177,34 @@ function Tasks({ db, update, business, setToast, go }) {
                     </option>
                   ))}
                 </select>
+                {editing &&
+                  form.recurrence?.frequency &&
+                  form.recurrence.frequency !== "none" &&
+                  form.recurrence.seriesId && (
+                    <p className="recurrence-note">
+                      Parte de uma série recorrente (
+                      {
+                        db.tasks.filter(
+                          (t) =>
+                            t.recurrence?.seriesId ===
+                            form.recurrence.seriesId,
+                        ).length
+                      }{" "}
+                      no total).{" "}
+                      <button
+                        type="button"
+                        className="link-button"
+                        onClick={() =>
+                          setForm({
+                            ...form,
+                            recurrence: { frequency: "none" },
+                          })
+                        }
+                      >
+                        Cancelar recorrência
+                      </button>
+                    </p>
+                  )}
               </Field>
               <div className="deadline-calc-wrap">
                 <button
@@ -10541,13 +10638,27 @@ export async function addAttachmentsFromFiles(fileList, current, onError) {
 }
 
 function AttachmentList({ attachments, onRemove }) {
+  const [preview, setPreview] = useState(null);
+  useEffect(() => {
+    if (!preview) return undefined;
+    const h = (e) => e.key === "Escape" && setPreview(null);
+    addEventListener("keydown", h);
+    return () => removeEventListener("keydown", h);
+  }, [preview]);
   if (!attachments || attachments.length === 0) return null;
   return (
     <div className="attachment-list">
       {attachments.map((a) => (
         <span key={a.id} className="attachment-chip">
           {a.kind === "image" ? (
-            <img src={a.dataUrl} alt={a.name} />
+            <button
+              type="button"
+              className="attachment-thumb"
+              aria-label={`Ver imagem ampliada de ${a.name}`}
+              onClick={() => setPreview(a)}
+            >
+              <img src={a.dataUrl} alt={a.name} />
+            </button>
           ) : (
             <FileText />
           )}
@@ -10564,6 +10675,28 @@ function AttachmentList({ attachments, onRemove }) {
           )}
         </span>
       ))}
+      {preview && (
+        <div
+          className="attachment-lightbox"
+          role="dialog"
+          aria-label={`Imagem ampliada: ${preview.name}`}
+          onClick={() => setPreview(null)}
+        >
+          <img
+            src={preview.dataUrl}
+            alt={preview.name}
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            type="button"
+            className="attachment-lightbox-close"
+            aria-label="Fechar imagem ampliada"
+            onClick={() => setPreview(null)}
+          >
+            <X />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
