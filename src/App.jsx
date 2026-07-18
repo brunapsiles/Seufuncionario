@@ -4756,6 +4756,8 @@ function Tasks({ db, update, business, setToast, go }) {
     autonomous: false,
   });
   const [projectsOpen, setProjectsOpen] = useState(false);
+  const [draggedTaskId, setDraggedTaskId] = useState(null);
+  const [dragOverStatus, setDragOverStatus] = useState(null);
   const [projectForm, setProjectForm] = useState({ name: "", description: "" });
   const [editingProject, setEditingProject] = useState(null);
   const saveProject = (e) => {
@@ -5438,7 +5440,25 @@ function Tasks({ db, update, business, setToast, go }) {
       ) : view === "board" ? (
         <div className="kanban">
           {statuses.map((s) => (
-            <section key={s}>
+            <section
+              key={s}
+              className={dragOverStatus === s ? "drag-over" : ""}
+              onDragOver={(e) => {
+                if (!draggedTaskId) return;
+                e.preventDefault();
+                setDragOverStatus(s);
+              }}
+              onDragLeave={() =>
+                setDragOverStatus((current) => (current === s ? null : current))
+              }
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOverStatus(null);
+                const task = items.find((x) => x.id === draggedTaskId);
+                setDraggedTaskId(null);
+                if (task && task.status !== s) changeTaskStatus(task, s);
+              }}
+            >
               <header>
                 <span>{s}</span>
                 <b>{items.filter((x) => x.status === s).length}</b>
@@ -5446,7 +5466,16 @@ function Tasks({ db, update, business, setToast, go }) {
               {items
                 .filter((x) => x.status === s)
                 .map((t) => (
-                  <article key={t.id}>
+                  <article
+                    key={t.id}
+                    draggable
+                    className={draggedTaskId === t.id ? "dragging" : ""}
+                    onDragStart={() => setDraggedTaskId(t.id)}
+                    onDragEnd={() => {
+                      setDraggedTaskId(null);
+                      setDragOverStatus(null);
+                    }}
+                  >
                     <div>
                       <span className={`priority ${t.priority.toLowerCase()}`}>
                         {t.priority}

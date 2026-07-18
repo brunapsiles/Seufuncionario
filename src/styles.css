@@ -1430,6 +1430,10 @@ aside nav button.active {
   border-radius: 14px;
   padding: 10px;
   min-height: 300px;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.kanban > section.drag-over {
+  box-shadow: inset 0 0 0 2px var(--primary);
 }
 .kanban > section > header {
   display: flex;
@@ -1449,6 +1453,13 @@ aside nav button.active {
   border-radius: 12px;
   padding: 13px;
   margin-bottom: 9px;
+  cursor: grab;
+  transition: opacity 0.15s ease, box-shadow 0.15s ease;
+}
+.kanban article.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+  box-shadow: var(--shadow);
 }
 .kanban article > div,
 .kanban article footer {
