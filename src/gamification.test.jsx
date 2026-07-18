@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App, {
   computeAchievements,
@@ -198,5 +198,41 @@ describe("cartão de progresso no painel", () => {
     render(<App />);
     await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
     expect(screen.queryByText(/pontos/)).not.toBeInTheDocument();
+  });
+
+  it("notifica ao desbloquear uma conquista pela primeira vez, mas não de novo depois", async () => {
+    stubFetch();
+    const dbWithAchievement = businessDb({
+      tasks: [
+        {
+          id: "t1",
+          title: "Missão feita",
+          isMission: true,
+          points: 60,
+          missionStatus: "aprovada",
+          assigneeId: user.id,
+          businessId: business.id,
+        },
+      ],
+    });
+    seedLoggedIn(dbWithAchievement);
+    const { unmount } = render(<App />);
+    await screen.findByText("Primeira entrega");
+
+    fireEvent.click(screen.getByRole("button", { name: "Notificações" }));
+    expect(
+      await screen.findByText(/Conquista desbloqueada: Primeira entrega/),
+    ).toBeInTheDocument();
+    unmount();
+    cleanup();
+
+    // Reabre o app com o mesmo estado persistido (já contendo a notificação
+    // da primeira vez) para confirmar que a conquista não é notificada de novo.
+    render(<App />);
+    await screen.findByText("Primeira entrega");
+    fireEvent.click(screen.getByRole("button", { name: "Notificações" }));
+    expect(
+      await screen.findAllByText(/Conquista desbloqueada: Primeira entrega/),
+    ).toHaveLength(1);
   });
 });

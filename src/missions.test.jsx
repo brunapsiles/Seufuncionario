@@ -101,7 +101,7 @@ describe("tarefas tratadas como missão", () => {
     });
     fireEvent.click(
       within(dialog).getByLabelText(
-        "Tratar como missão (vagas, pontos, recompensa e entregas)",
+        "Tratar como missão (vagas, pontos, recompensa, subtarefas e entregas)",
       ),
     );
     fireEvent.change(within(dialog).getByLabelText("Distribuição"), {

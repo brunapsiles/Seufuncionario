@@ -3682,6 +3682,37 @@ function Dashboard({ db, update, business, go, setToast }) {
   const myPoints = computeUserPoints(db.tasks, db.user.id);
   const myLevel = levelForPoints(myPoints, db.levels || DEFAULT_LEVELS);
   const myAchievements = computeAchievements(db.tasks, db.user.id);
+  useEffect(() => {
+    if (!gamificationEnabled || myAchievements.length === 0) return;
+    const key = `seu-funcionario-achievements-seen:${db.user.id}`;
+    let seen = [];
+    try {
+      seen = JSON.parse(localStorage.getItem(key) || "[]");
+    } catch {
+      seen = [];
+    }
+    const newOnes = myAchievements.filter((a) => !seen.includes(a.id));
+    if (newOnes.length === 0) return;
+    try {
+      localStorage.setItem(
+        key,
+        JSON.stringify([...seen, ...newOnes.map((a) => a.id)]),
+      );
+    } catch {}
+    update((d) => ({
+      ...d,
+      notifications: newOnes.reduce(
+        (list, a) =>
+          pushNotification(list, {
+            recipientId: db.user.id,
+            message: `Conquista desbloqueada: ${a.label}`,
+            link: "inicio",
+            createdBy: db.user.id,
+          }),
+        d.notifications,
+      ),
+    }));
+  }, [myAchievements.map((a) => a.id).join(",")]);
   return (
     <>
       {gamificationEnabled && myPoints > 0 && (
@@ -5799,7 +5830,7 @@ function Tasks({ db, update, business, setToast, go }) {
                     setForm({ ...form, isMission: e.target.checked })
                   }
                 />
-                <span>Tratar como missão (vagas, pontos, recompensa e entregas)</span>
+                <span>Tratar como missão (vagas, pontos, recompensa, subtarefas e entregas)</span>
               </label>
             </div>
             <SharingFields
