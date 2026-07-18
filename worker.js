@@ -1068,6 +1068,22 @@ async function logAudit(env, ownerId, actor, action, target, details) {
 async function handleCollab(request, env, user, url) {
   const action = url.pathname.replace("/api/collab", "").replace(/^\//, "");
   if (!action) {
+    const ownerId = url.searchParams.get("owner") || user.id;
+    if (ownerId !== user.id) {
+      const role = await membershipRole(env, user.id, ownerId);
+      if (!role)
+        return json({ error: "Você não tem acesso a este espaço." }, 403);
+      const members = await env.DB.prepare(
+        `SELECT users.id, users.name, users.email, memberships.role, memberships.status,
+          memberships.function_title AS functionTitle, memberships.bond_type AS bondType,
+          memberships.direct_manager_id AS directManagerId, memberships.created_at AS createdAt
+        FROM memberships
+        JOIN users ON users.id = memberships.member_id WHERE memberships.owner_id = ? ORDER BY memberships.created_at`,
+      )
+        .bind(ownerId)
+        .all();
+      return json({ members: members.results || [], invites: [], spaces: [] });
+    }
     const members = await env.DB.prepare(
       `SELECT users.id, users.name, users.email, memberships.role, memberships.status,
         memberships.function_title AS functionTitle, memberships.bond_type AS bondType,
@@ -1078,7 +1094,7 @@ async function handleCollab(request, env, user, url) {
       .bind(user.id)
       .all();
     const invites = await env.DB.prepare(
-      `SELECT id, name, email, role, status, function_title AS functionTitle, bond_type AS bondType,
+      `SELECT code AS id, name, email, role, status, function_title AS functionTitle, bond_type AS bondType,
         direct_manager_id AS directManagerId, created_at AS createdAt, expires_at AS expiresAt
       FROM invites WHERE owner_id = ? ORDER BY created_at DESC`,
     )

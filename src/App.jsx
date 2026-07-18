@@ -172,7 +172,7 @@ const nav = [
   ["documentos", "Documentos", FileText],
   ["ferramentas", "Ferramentas", Wrench],
   ["estudio", "Estúdio de IA", WandSparkles],
-  ["historico", "Projetos", History],
+  ["historico", "Histórico", History],
   ["certificacoes", "Certificações", Award],
 ];
 
@@ -1415,7 +1415,10 @@ function SharingFields({
   const [members, setMembers] = useState([]);
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/collab", { headers: authHeaders() })
+    const space = activeSpaceId();
+    fetch(`/api/collab${space ? `?owner=${encodeURIComponent(space)}` : ""}`, {
+      headers: authHeaders(),
+    })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!cancelled) setMembers(d?.members || []);
@@ -3554,7 +3557,10 @@ function Dashboard({ db, update, business, go, setToast }) {
   const [team, setTeam] = useState({ members: [], invites: [] });
   useEffect(() => {
     if (isEmployeeMode) return;
-    fetch("/api/collab", { headers: authHeaders() })
+    const space = activeSpaceId();
+    fetch(`/api/collab${space ? `?owner=${encodeURIComponent(space)}` : ""}`, {
+      headers: authHeaders(),
+    })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => d && setTeam({ members: d.members || [], invites: d.invites || [] }))
       .catch(() => {});
@@ -4740,7 +4746,10 @@ function Tasks({ db, update, business, setToast, go }) {
   ];
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/collab", { headers: authHeaders() })
+    const space = activeSpaceId();
+    fetch(`/api/collab${space ? `?owner=${encodeURIComponent(space)}` : ""}`, {
+      headers: authHeaders(),
+    })
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => {
         if (!cancelled) setRealMembers(data?.members || []);
@@ -8574,7 +8583,10 @@ function DevelopmentPlans({ db, update, business, setToast, go }) {
     [search, setSearch] = useState(""),
     [realMembers, setRealMembers] = useState([]);
   useEffect(() => {
-    fetch("/api/collab", { headers: authHeaders() })
+    const space = activeSpaceId();
+    fetch(`/api/collab${space ? `?owner=${encodeURIComponent(space)}` : ""}`, {
+      headers: authHeaders(),
+    })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => d && setRealMembers(d.members || []))
       .catch(() => {});
@@ -13660,7 +13672,7 @@ function HistoryPage({ db, update, business, setToast, go }) {
   };
   return (
     <PageTitle
-      eyebrow="PROJETOS E HISTÓRICO"
+      eyebrow="HISTÓRICO"
       title="Tudo o que você escolheu guardar, pronto para continuar"
       text="As conversas ficam no chat; somente respostas que você salvar entram aqui."
     >
@@ -14562,6 +14574,16 @@ function Collaborators({ db, update, setToast }) {
           <h2>Convide colaboradores reais</h2>
         </div>
       </div>
+      {active && (
+        <div className="notice">
+          <CircleAlert />
+          <span>
+            Você está visualizando outro espaço, mas os convites, papéis e
+            equipes abaixo são sempre do seu próprio espaço — não é possível
+            gerenciar a equipe de outra pessoa por aqui.
+          </span>
+        </div>
+      )}
       <div className="collab-grid">
         <div className="collab-card">
           <h3>

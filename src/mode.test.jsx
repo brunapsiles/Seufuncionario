@@ -87,7 +87,7 @@ const ALL_NAV = [
   "Documentos",
   "Ferramentas",
   "Estúdio de IA",
-  "Projetos",
+  "Histórico",
   "Certificações",
 ];
 
