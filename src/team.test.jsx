@@ -224,6 +224,10 @@ describe("convites de equipe", () => {
     await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
 
     fireEvent.click(screen.getByRole("button", { name: "Meu Time" }));
+    await screen.findByText("Convidar colaborador");
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Histórico" }).at(-1),
+    );
     await screen.findByText("Histórico de ações");
 
     fireEvent.click(screen.getByRole("button", { name: "Ver histórico" }));

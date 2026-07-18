@@ -181,6 +181,24 @@ const navSecondary = [
   ["config", "Configurações", Settings],
 ];
 
+const navGroups = [
+  { label: null, items: ["inicio", "comecar"] },
+  {
+    label: "VENDAS E CLIENTES",
+    items: ["estrategia", "marketing", "vendas", "contatos", "agendamentos"],
+  },
+  {
+    label: "OPERAÇÃO",
+    items: ["produtos", "frota", "horas", "operacao", "desenvolvimento"],
+  },
+  { label: "FINANCEIRO", items: ["financeiro"] },
+  {
+    label: "CONTEÚDO",
+    items: ["sites", "documentos", "ferramentas", "estudio"],
+  },
+  { label: "REGISTROS", items: ["historico", "certificacoes"] },
+];
+
 // O modo employee personaliza sugestões e rótulos, mas nunca restringe
 // acesso: os dois modos navegam pelo mesmo conjunto completo de páginas.
 export const navForMode = () => nav;
@@ -14411,6 +14429,7 @@ function Collaborators({ db, update, setToast }) {
   const [auditLoading, setAuditLoading] = useState(false);
   const [teamForm, setTeamForm] = useState({ name: "", memberIds: [] });
   const [editingTeam, setEditingTeam] = useState(null);
+  const [tab, setTab] = useState("colaboradores");
   const active = activeSpaceId();
   const teams = db.teams || [];
   const saveTeam = (e) => {
@@ -14584,8 +14603,39 @@ function Collaborators({ db, update, setToast }) {
           </span>
         </div>
       )}
+      <div className="view-toggle">
+        <button
+          className={tab === "colaboradores" ? "active" : ""}
+          onClick={() => setTab("colaboradores")}
+        >
+          <UserRound />
+          Colaboradores
+        </button>
+        <button
+          className={tab === "equipes" ? "active" : ""}
+          onClick={() => setTab("equipes")}
+        >
+          <Users />
+          Equipes
+        </button>
+        <button
+          className={tab === "espacos" ? "active" : ""}
+          onClick={() => setTab("espacos")}
+        >
+          <Layers />
+          Espaços de trabalho
+        </button>
+        <button
+          className={tab === "historico" ? "active" : ""}
+          onClick={() => setTab("historico")}
+        >
+          <History />
+          Histórico
+        </button>
+      </div>
       <div className="collab-grid">
-        <div className="collab-card">
+        {tab === "colaboradores" && (
+        <div className="collab-card wide">
           <h3>
             <UserRound />
             Convidar colaborador
@@ -14747,7 +14797,9 @@ function Collaborators({ db, update, setToast }) {
             </div>
           )}
         </div>
-        <div className="collab-card">
+        )}
+        {tab === "espacos" && (
+        <div className="collab-card wide">
           <h3>
             <Layers />
             Espaços de trabalho
@@ -14783,7 +14835,9 @@ function Collaborators({ db, update, setToast }) {
             ))}
           </div>
         </div>
-        <div className="collab-card">
+        )}
+        {tab === "equipes" && (
+        <div className="collab-card wide">
           <h3>
             <Users />
             Equipes
@@ -14864,7 +14918,9 @@ function Collaborators({ db, update, setToast }) {
             </div>
           )}
         </div>
-        <div className="collab-card">
+        )}
+        {tab === "historico" && (
+        <div className="collab-card wide">
           <h3>
             <History />
             Histórico de ações
@@ -14910,6 +14966,7 @@ function Collaborators({ db, update, setToast }) {
             </div>
           )}
         </div>
+        )}
       </div>
     </section>
   );
@@ -15776,17 +15833,33 @@ export default function App() {
           </button>
         </div>
         <nav>
-          {visibleNav.map(([id, label, I]) => (
-            <button
-              key={id}
-              className={page === id ? "active" : ""}
-              onClick={() => go(id)}
-              title={collapsed ? label : undefined}
-            >
-              <I />
-              <span>{label}</span>
-            </button>
-          ))}
+          {(() => {
+            const byId = new Map(visibleNav.map((item) => [item[0], item]));
+            return navGroups.map((group, gi) => {
+              const items = group.items
+                .map((id) => byId.get(id))
+                .filter(Boolean);
+              if (!items.length) return null;
+              return (
+                <div className="nav-group" key={group.label || `g${gi}`}>
+                  {group.label && !collapsed && (
+                    <span className="nav-group-label">{group.label}</span>
+                  )}
+                  {items.map(([id, label, I]) => (
+                    <button
+                      key={id}
+                      className={page === id ? "active" : ""}
+                      onClick={() => go(id)}
+                      title={collapsed ? label : undefined}
+                    >
+                      <I />
+                      <span>{label}</span>
+                    </button>
+                  ))}
+                </div>
+              );
+            });
+          })()}
           <div className="nav-divider" />
           {navSecondary.map(([id, label, I]) => (
             <button

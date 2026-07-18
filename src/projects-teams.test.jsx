@@ -189,7 +189,9 @@ describe("projetos, equipes e subtarefas", () => {
     await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
 
     fireEvent.click(screen.getByRole("button", { name: "Meu Time" }));
-    await screen.findByText("Equipes");
+    await screen.findByText("Convidar colaborador");
+    fireEvent.click(screen.getByRole("button", { name: "Equipes" }));
+    await screen.findByLabelText("Nome da equipe");
     fireEvent.change(screen.getByLabelText("Nome da equipe"), {
       target: { value: "Vendas" },
     });

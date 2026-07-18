@@ -574,6 +574,20 @@ aside nav {
   display: grid;
   gap: 3px;
 }
+.nav-group {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+.nav-group-label {
+  display: block;
+  padding: 10px 12px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  opacity: 0.75;
+}
 aside nav button,
 .side-bottom button {
   min-height: 44px;
@@ -4578,6 +4592,9 @@ input[readonly] {
   border: 1px solid var(--line);
   border-radius: 18px;
   padding: 20px;
+}
+.collab-card.wide {
+  grid-column: 1 / -1;
 }
 .collab-card h3 {
   display: flex;
