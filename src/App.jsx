@@ -4731,6 +4731,7 @@ function Tasks({ db, update, business, setToast, go }) {
     sharedTeams: [],
     subtasks: [],
     subtaskDraft: "",
+    dependsOn: [],
   };
   const [form, setForm] = useState(blankTask);
   const digitalCollaborators = [
@@ -4797,6 +4798,19 @@ function Tasks({ db, update, business, setToast, go }) {
   const save = (e) => {
     e.preventDefault();
     if (!form.title.trim()) return;
+    if (
+      form.status === "Concluído" &&
+      editingTask &&
+      editingTask.status !== "Concluído" &&
+      isBlocked(editingTask)
+    ) {
+      setToast(
+        `Bloqueada: conclua antes "${blockingTasks(editingTask)
+          .map((dep) => dep.title)
+          .join('", "')}"`,
+      );
+      return;
+    }
     const now = new Date().toISOString();
     update((d) => {
       const { deliveryDraft, subtaskDraft, ...rest } = form;
@@ -4829,6 +4843,7 @@ function Tasks({ db, update, business, setToast, go }) {
         sharedWith: Array.isArray(form.sharedWith) ? form.sharedWith : [],
         sharedTeams: Array.isArray(form.sharedTeams) ? form.sharedTeams : [],
         subtasks: Array.isArray(form.subtasks) ? form.subtasks : [],
+        dependsOn: Array.isArray(form.dependsOn) ? form.dependsOn : [],
         createdAt: form.createdAt || now,
         updatedAt: now,
       };
@@ -4878,6 +4893,22 @@ function Tasks({ db, update, business, setToast, go }) {
           : task,
       ),
     }));
+  const blockingTasks = (task) =>
+    (task.dependsOn || [])
+      .map((depId) => db.tasks.find((x) => x.id === depId))
+      .filter((dep) => dep && dep.status !== "Concluído");
+  const isBlocked = (task) => blockingTasks(task).length > 0;
+  const changeTaskStatus = (task, newStatus) => {
+    if (newStatus === "Concluído" && isBlocked(task)) {
+      setToast(
+        `Bloqueada: conclua antes "${blockingTasks(task)
+          .map((dep) => dep.title)
+          .join('", "')}"`,
+      );
+      return;
+    }
+    changeTask(task.id, { status: newStatus });
+  };
   const notifyUser = (recipientId, message) => {
     if (!recipientId || recipientId === db.user.id) return;
     update((d) => ({
@@ -4910,6 +4941,14 @@ function Tasks({ db, update, business, setToast, go }) {
     setToast("Interesse retirado");
   };
   const assumeTask = (task) => {
+    if (isBlocked(task)) {
+      setToast(
+        `Bloqueada: conclua antes "${blockingTasks(task)
+          .map((dep) => dep.title)
+          .join('", "')}"`,
+      );
+      return;
+    }
     const assignees = task.assignees || [];
     if (assignees.some((a) => a.userId === db.user.id)) return;
     const slots = task.slots || 1;
@@ -4952,6 +4991,14 @@ function Tasks({ db, update, business, setToast, go }) {
   };
   const submitDelivery = (task, comment, collaboratorFeedback = {}) => {
     if (!comment.trim()) return;
+    if (isBlocked(task)) {
+      setToast(
+        `Bloqueada: conclua antes "${blockingTasks(task)
+          .map((dep) => dep.title)
+          .join('", "')}"`,
+      );
+      return;
+    }
     changeTask(task.id, {
       deliveries: [
         ...(task.deliveries || []),
@@ -5332,7 +5379,19 @@ function Tasks({ db, update, business, setToast, go }) {
                         </button>
                       </span>
                     </div>
-                    <h3>{t.title}</h3>
+                    <h3>
+                      {t.title}
+                      {isBlocked(t) && (
+                        <span
+                          className="blocked-badge"
+                          title={`Aguardando: ${blockingTasks(t)
+                            .map((dep) => dep.title)
+                            .join(", ")}`}
+                        >
+                          Bloqueada
+                        </span>
+                      )}
+                    </h3>
                     <p>{t.description || "Sem descrição"}</p>
                     <footer>
                       <span>
@@ -5346,16 +5405,7 @@ function Tasks({ db, update, business, setToast, go }) {
                       </span>
                       <select
                         value={t.status}
-                        onChange={(e) =>
-                          update((d) => ({
-                            ...d,
-                            tasks: d.tasks.map((x) =>
-                              x.id === t.id
-                                ? { ...x, status: e.target.value }
-                                : x,
-                            ),
-                          }))
-                        }
+                        onChange={(e) => changeTaskStatus(t, e.target.value)}
                       >
                         {statuses.map((x) => (
                           <option key={x}>{x}</option>
@@ -5392,26 +5442,28 @@ function Tasks({ db, update, business, setToast, go }) {
             <article key={t.id}>
               <button
                 onClick={() =>
-                  update((d) => ({
-                    ...d,
-                    tasks: d.tasks.map((x) =>
-                      x.id === t.id
-                        ? {
-                            ...x,
-                            status:
-                              x.status === "Concluído"
-                                ? "A fazer"
-                                : "Concluído",
-                          }
-                        : x,
-                    ),
-                  }))
+                  changeTaskStatus(
+                    t,
+                    t.status === "Concluído" ? "A fazer" : "Concluído",
+                  )
                 }
               >
                 {t.status === "Concluído" ? <CheckCircle2 /> : <Circle />}
               </button>
               <span>
-                <strong>{t.title}</strong>
+                <strong>
+                  {t.title}
+                  {isBlocked(t) && (
+                    <span
+                      className="blocked-badge"
+                      title={`Aguardando: ${blockingTasks(t)
+                        .map((dep) => dep.title)
+                        .join(", ")}`}
+                    >
+                      Bloqueada
+                    </span>
+                  )}
+                </strong>
                 <small>
                   {t.area} · {t.priority} · {t.due || "Sem prazo"} ·{" "}
                   {t.project || "Sem projeto"} ·{" "}
@@ -5427,14 +5479,7 @@ function Tasks({ db, update, business, setToast, go }) {
               </span>
               <select
                 value={t.status}
-                onChange={(e) =>
-                  update((d) => ({
-                    ...d,
-                    tasks: d.tasks.map((x) =>
-                      x.id === t.id ? { ...x, status: e.target.value } : x,
-                    ),
-                  }))
-                }
+                onChange={(e) => changeTaskStatus(t, e.target.value)}
               >
                 {statuses.map((x) => (
                   <option key={x}>{x}</option>
@@ -5687,6 +5732,37 @@ function Tasks({ db, update, business, setToast, go }) {
                 />
               </Field>
             </div>
+            {db.tasks.filter((t) => t.id !== editing).length > 0 && (
+              <div className="field">
+                <span>Depende de</span>
+                <div className="checkbox-list">
+                  {db.tasks
+                    .filter((t) => t.id !== editing)
+                    .map((t) => (
+                      <label key={t.id} className="cost-check">
+                        <input
+                          type="checkbox"
+                          checked={(form.dependsOn || []).includes(t.id)}
+                          onChange={() =>
+                            setForm({
+                              ...form,
+                              dependsOn: (form.dependsOn || []).includes(t.id)
+                                ? form.dependsOn.filter((id) => id !== t.id)
+                                : [...(form.dependsOn || []), t.id],
+                            })
+                          }
+                        />
+                        {t.title} ({t.status})
+                      </label>
+                    ))}
+                </div>
+                <small>
+                  Esta tarefa fica bloqueada para concluir, entregar ou
+                  assumir enquanto as tarefas marcadas acima não estiverem
+                  concluídas.
+                </small>
+              </div>
+            )}
             <div className="field">
               <label className="cost-check">
                 <input

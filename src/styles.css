@@ -3783,6 +3783,31 @@ aside nav button.active {
   text-decoration: line-through;
   color: var(--muted);
 }
+.blocked-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fdecec;
+  color: #b42318;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+@media (prefers-color-scheme: dark) {
+  .blocked-badge {
+    background: #4a1f1f;
+    color: #ff9b8f;
+  }
+}
+:root[data-theme="dark"] .blocked-badge {
+  background: #4a1f1f;
+  color: #ff9b8f;
+}
+:root[data-theme="light"] .blocked-badge {
+  background: #fdecec;
+  color: #b42318;
+}
 .media-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
