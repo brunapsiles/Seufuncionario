@@ -1718,6 +1718,35 @@ aside nav button.active {
   color: var(--muted);
   margin-top: 3px;
 }
+.data-list article.selected {
+  background: var(--surface2);
+}
+.data-list article > input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: auto;
+  margin: 0;
+}
+.bulk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface2);
+}
+.bulk-bar .cost-check {
+  margin: 0;
+}
+.bulk-assignee-input {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  max-width: 200px;
+}
 .metric-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

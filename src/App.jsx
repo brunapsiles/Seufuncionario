@@ -4811,6 +4811,8 @@ function Tasks({ db, update, business, setToast, go }) {
   const [deliveryAttachments, setDeliveryAttachments] = useState([]);
   const taskAttachRef = useRef(null);
   const deliveryAttachRef = useRef(null);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkAssignee, setBulkAssignee] = useState("");
   const [projectForm, setProjectForm] = useState({ name: "", description: "" });
   const [editingProject, setEditingProject] = useState(null);
   const saveProject = (e) => {
@@ -5259,6 +5261,52 @@ function Tasks({ db, update, business, setToast, go }) {
       tasks: d.tasks.filter((task) => task.id !== id),
     }));
     setToast("Tarefa excluída");
+  };
+  const toggleSelected = (id) =>
+    setSelectedIds((current) =>
+      current.includes(id)
+        ? current.filter((x) => x !== id)
+        : [...current, id],
+    );
+  const clearSelection = () => setSelectedIds([]);
+  const bulkArchive = (archived) => {
+    const now = new Date().toISOString();
+    update((d) => ({
+      ...d,
+      tasks: d.tasks.map((task) =>
+        selectedIds.includes(task.id)
+          ? { ...task, archived, updatedAt: now }
+          : task,
+      ),
+    }));
+    setToast(
+      archived
+        ? `${selectedIds.length} tarefa(s) arquivada(s)`
+        : `${selectedIds.length} tarefa(s) desarquivada(s)`,
+    );
+    clearSelection();
+  };
+  const bulkReassign = () => {
+    const value = bulkAssignee.trim();
+    if (!value) return;
+    const member = realMembers.find((m) => m.name === value);
+    const now = new Date().toISOString();
+    update((d) => ({
+      ...d,
+      tasks: d.tasks.map((task) =>
+        selectedIds.includes(task.id)
+          ? {
+              ...task,
+              assignee: value,
+              assigneeId: member ? member.id : "",
+              updatedAt: now,
+            }
+          : task,
+      ),
+    }));
+    setToast(`${selectedIds.length} tarefa(s) reatribuída(s) para ${value}`);
+    setBulkAssignee("");
+    clearSelection();
   };
   const startDigitalTask = (task) => {
     const specialist = task.assignee || "Diretor";
@@ -5772,8 +5820,79 @@ function Tasks({ db, update, business, setToast, go }) {
         </div>
       ) : (
         <div className="data-list">
+          {items.length > 0 && (
+            <div className="bulk-bar">
+              <label className="cost-check">
+                <input
+                  type="checkbox"
+                  aria-label="Selecionar todas as tarefas visíveis"
+                  checked={
+                    selectedIds.length > 0 &&
+                    items.every((t) => selectedIds.includes(t.id))
+                  }
+                  onChange={(e) =>
+                    setSelectedIds(e.target.checked ? items.map((t) => t.id) : [])
+                  }
+                />
+                <span>
+                  {selectedIds.length > 0
+                    ? `${selectedIds.length} selecionada(s)`
+                    : "Selecionar todas"}
+                </span>
+              </label>
+              {selectedIds.length > 0 && (
+                <>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    icon={Archive}
+                    onClick={() => bulkArchive(true)}
+                  >
+                    Arquivar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    icon={RotateCcw}
+                    onClick={() => bulkArchive(false)}
+                  >
+                    Desarquivar
+                  </Button>
+                  <input
+                    list="real-team-members"
+                    className="bulk-assignee-input"
+                    aria-label="Reatribuir selecionadas para"
+                    value={bulkAssignee}
+                    onChange={(e) => setBulkAssignee(e.target.value)}
+                    placeholder="Reatribuir para..."
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={!bulkAssignee.trim()}
+                    onClick={bulkReassign}
+                  >
+                    Aplicar
+                  </Button>
+                  <button
+                    type="button"
+                    className="link-button"
+                    onClick={clearSelection}
+                  >
+                    Limpar seleção
+                  </button>
+                </>
+              )}
+            </div>
+          )}
           {items.map((t) => (
-            <article key={t.id}>
+            <article key={t.id} className={selectedIds.includes(t.id) ? "selected" : ""}>
+              <input
+                type="checkbox"
+                aria-label={`Selecionar "${t.title}"`}
+                checked={selectedIds.includes(t.id)}
+                onChange={() => toggleSelected(t.id)}
+              />
               <button
                 onClick={() =>
                   changeTaskStatus(
