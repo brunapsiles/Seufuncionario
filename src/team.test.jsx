@@ -192,4 +192,48 @@ describe("convites de equipe", () => {
       "session-token-new",
     );
   });
+
+  it("mostra o histórico de ações administrativas ao clicar em Ver histórico", async () => {
+    const fetchMock = vi.fn((url, options = {}) => {
+      if (url === "/api/auth/session") return response({ user });
+      if (String(url).startsWith("/api/workspace"))
+        return options.method === "PUT"
+          ? response({ ok: true })
+          : response({});
+      if (url === "/api/config") return response({ videoEnabled: false });
+      if (url === "/api/collab")
+        return response({ members: [], invites: [], spaces: [] });
+      if (url === "/api/collab/audit" && options.method === "POST")
+        return response({
+          logs: [
+            {
+              id: "log-1",
+              actorName: "Bruna Silva",
+              action: "papel_alterado",
+              target: "member-1",
+              details: "novo papel: gestor",
+              createdAt: "2026-01-10T12:00:00.000Z",
+            },
+          ],
+        });
+      return response({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    seedLoggedIn(businessDb());
+    render(<App />);
+    await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
+
+    fireEvent.click(screen.getByRole("button", { name: "Meu Time" }));
+    await screen.findByText("Histórico de ações");
+
+    fireEvent.click(screen.getByRole("button", { name: "Ver histórico" }));
+
+    expect(await screen.findByText(/Papel alterado/)).toBeInTheDocument();
+    await vi.waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/collab/audit",
+        expect.objectContaining({ method: "POST" }),
+      ),
+    );
+  });
 });

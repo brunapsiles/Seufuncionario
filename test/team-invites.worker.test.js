@@ -339,4 +339,44 @@ describe("convites de equipe com D1 local", () => {
     });
     expect(selfChange.status).toBe(400);
   });
+
+  it("registra as ações administrativas no histórico e isola por dono do espaço", async () => {
+    const owner = await createUser("invite-owner-10");
+    const stranger = await createUser("invite-stranger-10");
+    const member = await createUser("invite-member-10");
+    await env.DB.prepare(
+      `INSERT INTO memberships (id, owner_id, member_id, role, created_at, status)
+      VALUES (?, ?, ?, 'colaborador', ?, 'ativo')`,
+    )
+      .bind("membership-10", owner.id, member.id, new Date().toISOString())
+      .run();
+
+    await req("/api/collab/member-role", {
+      method: "POST",
+      user: owner,
+      body: { memberId: member.id, role: "gestor" },
+    });
+    await req("/api/collab/member-status", {
+      method: "POST",
+      user: owner,
+      body: { memberId: member.id, status: "suspenso" },
+    });
+
+    const asOwner = await req("/api/collab/audit", {
+      method: "POST",
+      user: owner,
+    });
+    expect(asOwner.status).toBe(200);
+    const ownerBody = await asOwner.json();
+    const actions = ownerBody.logs.map((l) => l.action);
+    expect(actions).toContain("papel_alterado");
+    expect(actions).toContain("colaborador_suspenso");
+
+    const asStranger = await req("/api/collab/audit", {
+      method: "POST",
+      user: stranger,
+    });
+    const strangerBody = await asStranger.json();
+    expect(strangerBody.logs).toHaveLength(0);
+  });
 });

@@ -4702,6 +4702,58 @@ input[readonly] {
   height: 17px;
   color: var(--primary);
 }
+.notif-wrap {
+  position: relative;
+}
+.notif-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+}
+.notif-popover {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  width: 300px;
+  max-height: 360px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 40;
+}
+.notif-popover button {
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  padding: 9px 10px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.notif-popover button.unread {
+  color: var(--text);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+}
+.notif-popover button:hover {
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+}
+.notif-empty {
+  padding: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
 .space-badge {
   display: inline-flex;
   align-items: center;

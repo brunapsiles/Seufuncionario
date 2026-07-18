@@ -822,6 +822,7 @@ const RESTRICTED_FIELDS = [
   "documents",
   "sites",
   "developmentPlans",
+  "notifications",
 ];
 
 function filterRecordsForViewer(records, userId) {
@@ -1004,6 +1005,28 @@ async function handleTaskNotify(request, env, user) {
 
 const VALID_ROLES = ["admin", "gestor", "colaborador"];
 
+async function logAudit(env, ownerId, actor, action, target, details) {
+  try {
+    await env.DB.prepare(
+      `INSERT INTO audit_log (id, owner_id, actor_id, actor_name, action, target, details, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        crypto.randomUUID(),
+        ownerId,
+        actor.id,
+        actor.name,
+        action,
+        target || "",
+        details || "",
+        new Date().toISOString(),
+      )
+      .run();
+  } catch (e) {
+    console.error("audit log", e);
+  }
+}
+
 async function handleCollab(request, env, user, url) {
   const action = url.pathname.replace("/api/collab", "").replace(/^\//, "");
   if (!action) {
@@ -1137,6 +1160,7 @@ async function handleCollab(request, env, user, url) {
         502,
       );
     }
+    await logAudit(env, user.id, user, "convite_criado", email, `papel: ${role}`);
     return json({ id: code, expiresAt });
   }
   if (action === "resend") {
@@ -1172,15 +1196,23 @@ async function handleCollab(request, env, user, url) {
       console.error("resend invite mail", e);
       return json({ error: "Não foi possível reenviar agora." }, 502);
     }
+    await logAudit(env, user.id, user, "convite_reenviado", invite.email, "");
     return json({ ok: true, expiresAt });
   }
   if (action === "cancel") {
     const id = typeof body.id === "string" ? body.id : "";
+    const invite = await env.DB.prepare(
+      "SELECT email FROM invites WHERE code = ? AND owner_id = ?",
+    )
+      .bind(id, user.id)
+      .first();
     await env.DB.prepare(
       "DELETE FROM invites WHERE code = ? AND owner_id = ? AND status != 'ativo'",
     )
       .bind(id, user.id)
       .run();
+    if (invite)
+      await logAudit(env, user.id, user, "convite_cancelado", invite.email, "");
     return json({ ok: true });
   }
   if (action === "member-status") {
@@ -1193,6 +1225,14 @@ async function handleCollab(request, env, user, url) {
     )
       .bind(status, user.id, memberId)
       .run();
+    await logAudit(
+      env,
+      user.id,
+      user,
+      status === "suspenso" ? "colaborador_suspenso" : "colaborador_reativado",
+      memberId,
+      "",
+    );
     return json({ ok: true });
   }
   if (action === "member-role") {
@@ -1206,6 +1246,7 @@ async function handleCollab(request, env, user, url) {
     )
       .bind(role, user.id, memberId)
       .run();
+    await logAudit(env, user.id, user, "papel_alterado", memberId, `novo papel: ${role}`);
     return json({ ok: true });
   }
   if (action === "remove") {
@@ -1215,7 +1256,17 @@ async function handleCollab(request, env, user, url) {
     )
       .bind(user.id, memberId)
       .run();
+    await logAudit(env, user.id, user, "colaborador_removido", memberId, "");
     return json({ ok: true });
+  }
+  if (action === "audit") {
+    const logs = await env.DB.prepare(
+      `SELECT id, actor_name AS actorName, action, target, details, created_at AS createdAt
+      FROM audit_log WHERE owner_id = ? ORDER BY created_at DESC LIMIT 50`,
+    )
+      .bind(user.id)
+      .all();
+    return json({ logs: logs.results || [] });
   }
   if (action === "leave") {
     const ownerId = typeof body.ownerId === "string" ? body.ownerId : "";
@@ -1355,6 +1406,14 @@ async function handlePublicInvite(request, env, url) {
     const owner = await env.DB.prepare("SELECT name FROM users WHERE id = ?")
       .bind(invite.owner_id)
       .first();
+    await logAudit(
+      env,
+      invite.owner_id,
+      { id: account.id, name: account.name },
+      "convite_aceito",
+      invite.email,
+      `papel: ${invite.role}`,
+    );
     return json({
       ok: true,
       ownerId: invite.owner_id,

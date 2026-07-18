@@ -87,6 +87,7 @@ import {
   MapPin,
   Navigation,
   Truck,
+  Bell,
 } from "lucide-react";
 
 const LEGACY_STORAGE_KEY = "seu-funcionario-v1";
@@ -112,6 +113,7 @@ const emptyDb = {
   vehicles: [],
   trips: [],
   developmentPlans: [],
+  notifications: [],
   transactions: [],
   financeSettings: {},
   documents: [],
@@ -522,6 +524,25 @@ const whatsappLink = (phone, message) =>
 
 // Constrói a agenda de contatos automaticamente a partir do uso do CRM,
 // Agendamentos e Pedidos, sem exigir nenhum passo extra do usuário.
+export const pushNotification = (
+  notifications,
+  { recipientId, message, link, createdBy },
+) => {
+  if (!recipientId) return notifications || [];
+  return [
+    {
+      id: uid(),
+      assigneeId: recipientId,
+      ownerId: createdBy || null,
+      message,
+      link: link || "",
+      read: false,
+      createdAt: new Date().toISOString(),
+    },
+    ...(notifications || []),
+  ].slice(0, 50);
+};
+
 export const upsertContact = (contacts, { name, contact, company, businessId }) => {
   const trimmedName = String(name || "").trim();
   const trimmedContact = String(contact || "").trim();
@@ -4670,6 +4691,18 @@ function Tasks({ db, update, business, setToast, go }) {
           : task,
       ),
     }));
+  const notifyUser = (recipientId, message) => {
+    if (!recipientId || recipientId === db.user.id) return;
+    update((d) => ({
+      ...d,
+      notifications: pushNotification(d.notifications, {
+        recipientId,
+        message,
+        link: "operacao",
+        createdBy: db.user.id,
+      }),
+    }));
+  };
   const expressInterest = (task) => {
     const already = (task.interested || []).some((i) => i.userId === db.user.id);
     if (already) return;
@@ -4680,6 +4713,7 @@ function Tasks({ db, update, business, setToast, go }) {
       ],
       missionStatus: "interesse_enviado",
     });
+    notifyUser(task.ownerId, `Novo interesse em "${task.title}"`);
     setToast("Interesse enviado");
   };
   const withdrawInterest = (task) => {
@@ -4706,6 +4740,7 @@ function Tasks({ db, update, business, setToast, go }) {
       missionStatus: full ? "em_andamento" : "disponivel",
       status: full ? "Em andamento" : task.status,
     });
+    notifyUser(task.ownerId, `Vaga assumida em "${task.title}"`);
     setToast("Missão assumida");
   };
   const approveInterested = (task, userId) => {
@@ -4719,6 +4754,7 @@ function Tasks({ db, update, business, setToast, go }) {
       missionStatus: full ? "em_andamento" : "aguardando_aprovacao",
       status: full ? "Em andamento" : task.status,
     });
+    notifyUser(userId, `Você foi aprovado(a) para "${task.title}"`);
     setToast(`${person.name} aprovado(a) para a missão`);
   };
   const rejectInterested = (task, userId) => {
@@ -4745,6 +4781,7 @@ function Tasks({ db, update, business, setToast, go }) {
       ],
       missionStatus: "enviada_para_revisao",
     });
+    notifyUser(task.ownerId, `Nova entrega em "${task.title}"`);
     setToast("Entrega enviada para revisão");
   };
   const reviewDelivery = (task, approved, feedback, managerFeedback = {}) => {
@@ -4765,6 +4802,15 @@ function Tasks({ db, update, business, setToast, go }) {
           : d,
       ),
     });
+    const notifyMessage = approved
+      ? `Entrega aprovada: "${task.title}"`
+      : `Correção solicitada: "${task.title}"`;
+    const recipients = new Set(
+      [task.assigneeId, ...(task.assignees || []).map((a) => a.userId)].filter(
+        Boolean,
+      ),
+    );
+    recipients.forEach((id) => notifyUser(id, notifyMessage));
     setToast(approved ? "Entrega aprovada" : "Correção solicitada");
   };
   const removeTask = (id) => {
@@ -8674,6 +8720,7 @@ function RewardsPanel({ db, update, business, setToast }) {
         (t.assignees || []).some((a) => a.userId === db.user.id)),
   );
   const markPaid = (task) => {
+    const recipientId = task.assigneeId || task.assignees?.[0]?.userId;
     update((d) => ({
       ...d,
       tasks: d.tasks.map((t) =>
@@ -8700,6 +8747,15 @@ function RewardsPanel({ db, update, business, setToast }) {
             ...d.transactions,
           ]
         : d.transactions,
+      notifications:
+        recipientId && recipientId !== db.user.id
+          ? pushNotification(d.notifications, {
+              recipientId,
+              message: `Recompensa paga: "${task.title}"`,
+              link: "financeiro",
+              createdBy: db.user.id,
+            })
+          : d.notifications,
     }));
     setToast("Recompensa marcada como paga");
   };
@@ -13472,6 +13528,28 @@ function Certifications({ db, update, business, setToast, go }) {
     setToast("Certificado emitido pela Academia Praxis");
   };
   const certs = db.certificates || [];
+  const myCompletedPlans = (db.developmentPlans || []).filter(
+    (p) => p.assigneeId === db.user.id && p.status === "Concluído",
+  );
+  const issuePlanCertificate = (plan) => {
+    const alreadyIssued = certs.some(
+      (c) => c.track === "development-plan" && c.projectId === plan.id,
+    );
+    if (alreadyIssued) return;
+    const cert = {
+      id: uid(),
+      track: "development-plan",
+      projectId: plan.id,
+      projectName: plan.title,
+      name: db.user.name,
+      title: `Plano de Desenvolvimento Concluído: ${plan.title}`,
+      issuedAt: new Date().toISOString(),
+      code: `PRX-DEV-${new Date().getFullYear()}-${plan.id.slice(0, 8).toUpperCase()}`,
+    };
+    update((d) => ({ ...d, certificates: [cert, ...(d.certificates || [])] }));
+    setView(cert);
+    setToast("Certificado emitido");
+  };
   return (
     <PageTitle
       eyebrow="ACADEMIA PRAXIS"
@@ -13558,6 +13636,46 @@ function Certifications({ db, update, business, setToast, go }) {
           )}
         </div>
       </section>
+      {myCompletedPlans.length > 0 && (
+        <section className="section">
+          <div className="section-head">
+            <div>
+              <span className="eyebrow">DESENVOLVIMENTO</span>
+              <h2>Planos concluídos</h2>
+            </div>
+          </div>
+          <div className="data-list">
+            {myCompletedPlans.map((p) => {
+              const alreadyIssued = certs.some(
+                (c) => c.track === "development-plan" && c.projectId === p.id,
+              );
+              const existingCert = certs.find(
+                (c) => c.track === "development-plan" && c.projectId === p.id,
+              );
+              return (
+                <article key={p.id}>
+                  <span>
+                    <strong>{p.title}</strong>
+                    <small>Plano de desenvolvimento concluído</small>
+                  </span>
+                  {alreadyIssued ? (
+                    <Button icon={Award} onClick={() => setView(existingCert)}>
+                      Ver certificado
+                    </Button>
+                  ) : (
+                    <Button
+                      icon={GraduationCap}
+                      onClick={() => issuePlanCertificate(p)}
+                    >
+                      Emitir certificado
+                    </Button>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      )}
       {certs.length > 0 && (
         <section className="section">
           <div className="section-head">
@@ -13769,10 +13887,24 @@ const blankInviteForm = {
   directManagerId: "",
 };
 
+const AUDIT_ACTION_LABELS = {
+  convite_criado: "Convite enviado",
+  convite_reenviado: "Convite reenviado",
+  convite_cancelado: "Convite cancelado",
+  convite_aceito: "Convite aceito",
+  colaborador_suspenso: "Acesso suspenso",
+  colaborador_reativado: "Acesso reativado",
+  papel_alterado: "Papel alterado",
+  colaborador_removido: "Colaborador removido",
+};
+
 function Collaborators({ setToast }) {
   const [data, setData] = useState({ members: [], invites: [], spaces: [] });
   const [form, setForm] = useState(blankInviteForm);
   const [sending, setSending] = useState(false);
+  const [auditOpen, setAuditOpen] = useState(false);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [auditLoading, setAuditLoading] = useState(false);
   const active = activeSpaceId();
   const load = () =>
     fetch("/api/collab", { headers: authHeaders() })
@@ -13863,6 +13995,26 @@ function Collaborators({ setToast }) {
     }).catch(() => {});
     load();
     setToast("Colaborador removido");
+  };
+  const toggleAudit = async () => {
+    if (auditOpen) {
+      setAuditOpen(false);
+      return;
+    }
+    setAuditLoading(true);
+    try {
+      const r = await fetch("/api/collab/audit", {
+        method: "POST",
+        headers: authHeaders(),
+      });
+      const d = await r.json();
+      setAuditLogs(d.logs || []);
+      setAuditOpen(true);
+    } catch (e) {
+      setToast("Não foi possível carregar o histórico.");
+    } finally {
+      setAuditLoading(false);
+    }
   };
   const pendingInvites = data.invites.filter((i) => i.status !== "ativo");
   return (
@@ -14071,6 +14223,52 @@ function Collaborators({ setToast }) {
               </button>
             ))}
           </div>
+        </div>
+        <div className="collab-card">
+          <h3>
+            <History />
+            Histórico de ações
+          </h3>
+          <p>Registro de convites, papéis e acessos alterados no seu espaço.</p>
+          <Button
+            variant="ghost"
+            icon={History}
+            onClick={toggleAudit}
+            disabled={auditLoading}
+          >
+            {auditLoading
+              ? "Carregando..."
+              : auditOpen
+                ? "Ocultar histórico"
+                : "Ver histórico"}
+          </Button>
+          {auditOpen && (
+            <div className="member-list">
+              {auditLogs.length === 0 && (
+                <small className="member-title">
+                  Nenhuma ação registrada ainda.
+                </small>
+              )}
+              {auditLogs.map((log) => (
+                <div key={log.id}>
+                  <span className="avatar">{log.actorName[0]}</span>
+                  <span>
+                    <strong>
+                      {log.actorName} ·{" "}
+                      {AUDIT_ACTION_LABELS[log.action] || log.action}
+                    </strong>
+                    <small>
+                      {[log.target, log.details]
+                        .filter(Boolean)
+                        .join(" · ")}
+                      {log.target || log.details ? " · " : ""}
+                      {new Date(log.createdAt).toLocaleString("pt-BR")}
+                    </small>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </section>
@@ -14628,7 +14826,8 @@ export default function App() {
     [collapsed, setCollapsed] = useState(!!savedUi.collapsed),
     [mobile, setMobile] = useState(false),
     [toast, setToast] = useState(""),
-    [businessMenu, setBusinessMenu] = useState(false);
+    [businessMenu, setBusinessMenu] = useState(false),
+    [notifOpen, setNotifOpen] = useState(false);
   const [menuHidden, setMenuHidden] = useState(!!savedUi.menuHidden);
   const [updateAvailable, setUpdateAvailable] = useState(
     () => !!window.__SF_UPDATE_AVAILABLE__,
@@ -14726,6 +14925,9 @@ export default function App() {
     db.businesses.find((x) => x.id === db.selectedBusinessId) ||
     db.businesses[0] ||
     null;
+  const myNotifications = (db.notifications || []).filter(
+    (n) => n.assigneeId === db.user.id,
+  );
   const go = (p) => {
     setPage(p);
     setMobile(false);
@@ -15097,6 +15299,44 @@ export default function App() {
                 <X />
               </button>
             )}
+            <div className="notif-wrap">
+              <button
+                className="icon-button"
+                aria-label="Notificações"
+                onClick={() => setNotifOpen((v) => !v)}
+              >
+                <Bell />
+                {myNotifications.some((n) => !n.read) && (
+                  <span className="notif-dot" />
+                )}
+              </button>
+              {notifOpen && (
+                <div className="notif-popover">
+                  {myNotifications.length === 0 ? (
+                    <p className="notif-empty">Nenhuma notificação por aqui.</p>
+                  ) : (
+                    myNotifications.slice(0, 20).map((n) => (
+                      <button
+                        key={n.id}
+                        className={n.read ? "" : "unread"}
+                        onClick={() => {
+                          update((d) => ({
+                            ...d,
+                            notifications: (d.notifications || []).map((x) =>
+                              x.id === n.id ? { ...x, read: true } : x,
+                            ),
+                          }));
+                          setNotifOpen(false);
+                          if (n.link) go(n.link);
+                        }}
+                      >
+                        {n.message}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
             <button
               className="icon-button"
               onClick={() =>
