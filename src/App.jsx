@@ -15524,7 +15524,9 @@ export default function App() {
     [mobile, setMobile] = useState(false),
     [toast, setToast] = useState(""),
     [businessMenu, setBusinessMenu] = useState(false),
-    [notifOpen, setNotifOpen] = useState(false);
+    [notifOpen, setNotifOpen] = useState(false),
+    [searchOpen, setSearchOpen] = useState(false),
+    [searchQuery, setSearchQuery] = useState("");
   const [menuHidden, setMenuHidden] = useState(!!savedUi.menuHidden);
   const [updateAvailable, setUpdateAvailable] = useState(
     () => !!window.__SF_UPDATE_AVAILABLE__,
@@ -15588,6 +15590,17 @@ export default function App() {
     }
   }, [toast]);
   useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+      if (e.key === "Escape") setSearchOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  useEffect(() => {
     if (!db.user) return;
     if (db.preferences.modeChosen) return;
     if (!hasAnyWorkspaceData(db)) return;
@@ -15625,6 +15638,17 @@ export default function App() {
   const myNotifications = (db.notifications || []).filter(
     (n) => n.assigneeId === db.user.id,
   );
+  const normalizeSearch = (s) =>
+    String(s || "")
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase();
+  const searchableNav = [...visibleNav, ...navSecondary];
+  const searchResults = searchQuery.trim()
+    ? searchableNav.filter(([, label]) =>
+        normalizeSearch(label).includes(normalizeSearch(searchQuery)),
+      )
+    : searchableNav;
   const go = (p) => {
     setPage(p);
     setMobile(false);
@@ -15998,6 +16022,14 @@ export default function App() {
             )}
           </div>
           <div className="top-actions">
+            <button
+              className="icon-button"
+              aria-label="Buscar em tudo"
+              title="Buscar (Ctrl+K)"
+              onClick={() => setSearchOpen(true)}
+            >
+              <Search />
+            </button>
             {activeSpaceId() && (
               <button
                 className="space-badge"
@@ -16073,6 +16105,44 @@ export default function App() {
             </button>
           </div>
         </header>
+        {searchOpen && (
+          <Modal
+            title="Buscar em tudo"
+            onClose={() => {
+              setSearchOpen(false);
+              setSearchQuery("");
+            }}
+          >
+            <div className="global-search">
+              <input
+                autoFocus
+                aria-label="Buscar seção"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Digite o nome de uma ferramenta ou seção..."
+              />
+              {searchResults.length === 0 ? (
+                <p className="notif-empty">Nada encontrado.</p>
+              ) : (
+                <div className="global-search-results">
+                  {searchResults.map(([id, label, I]) => (
+                    <button
+                      key={id}
+                      onClick={() => {
+                        go(id);
+                        setSearchOpen(false);
+                        setSearchQuery("");
+                      }}
+                    >
+                      <I />
+                      <span>{label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Modal>
+        )}
         <div className="page">{content()}</div>
       </main>
       <AppUpdate visible={updateAvailable} />
