@@ -664,6 +664,36 @@ export const nextRecurrenceDue = (ymd, frequency) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 };
 
+export const todayYearMonth = () => new Date().toISOString().slice(0, 7);
+
+export const shiftYearMonth = (yearMonth, delta) => {
+  const [y, m] = String(yearMonth || "").split("-").map(Number);
+  if (!y || !m) return todayYearMonth();
+  const date = new Date(y, m - 1 + delta, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+};
+
+export const buildTaskCalendar = (yearMonth, tasks) => {
+  const [year, month] = String(yearMonth || "").split("-").map(Number);
+  if (!year || !month) return [];
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const startWeekday = new Date(year, month - 1, 1).getDay();
+  const pad = (n) => String(n).padStart(2, "0");
+  const byDate = {};
+  (tasks || []).forEach((task) => {
+    if (!task.due) return;
+    if (!byDate[task.due]) byDate[task.due] = [];
+    byDate[task.due].push(task);
+  });
+  const cells = [];
+  for (let i = 0; i < startWeekday; i += 1) cells.push(null);
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const ymd = `${year}-${pad(month)}-${pad(day)}`;
+    cells.push({ day, ymd, tasks: byDate[ymd] || [] });
+  }
+  return cells;
+};
+
 export const DEFAULT_LEVELS = [
   { name: "Iniciante", minPoints: 0 },
   { name: "Assistente", minPoints: 50 },
@@ -4759,6 +4789,7 @@ function Tasks({ db, update, business, setToast, go }) {
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState("");
   const [view, setView] = useState("board");
+  const [calendarMonth, setCalendarMonth] = useState(todayYearMonth);
   const [statusFilter, setStatusFilter] = useState("Todos");
   const [priorityFilter, setPriorityFilter] = useState("Todas");
   const [assigneeFilter, setAssigneeFilter] = useState("Todos");
@@ -5308,6 +5339,13 @@ function Tasks({ db, update, business, setToast, go }) {
             <Award />
             Disponíveis
           </button>
+          <button
+            className={view === "calendario" ? "active" : ""}
+            onClick={() => setView("calendario")}
+          >
+            <CalendarDays />
+            Calendário
+          </button>
         </div>
       </div>
       <div className="collab-card">
@@ -5659,6 +5697,78 @@ function Tasks({ db, update, business, setToast, go }) {
                 ))}
             </section>
           ))}
+        </div>
+      ) : view === "calendario" ? (
+        <div className="task-calendar">
+          <div className="task-calendar-header">
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Mês anterior"
+              onClick={() =>
+                setCalendarMonth((m) => shiftYearMonth(m, -1))
+              }
+            >
+              <ChevronLeft />
+            </button>
+            <strong>
+              {new Date(`${calendarMonth}-01T00:00:00`).toLocaleDateString(
+                "pt-BR",
+                { month: "long", year: "numeric" },
+              )}
+            </strong>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Próximo mês"
+              onClick={() =>
+                setCalendarMonth((m) => shiftYearMonth(m, 1))
+              }
+            >
+              <ChevronRight />
+            </button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setCalendarMonth(todayYearMonth())}
+            >
+              Hoje
+            </Button>
+          </div>
+          <div className="task-calendar-weekdays">
+            {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((d) => (
+              <span key={d}>{d}</span>
+            ))}
+          </div>
+          <div className="task-calendar-grid">
+            {buildTaskCalendar(calendarMonth, items).map((cell, index) =>
+              cell ? (
+                <div
+                  key={cell.ymd}
+                  className={`task-calendar-cell ${
+                    cell.ymd === today() ? "is-today" : ""
+                  }`}
+                >
+                  <span className="task-calendar-day">{cell.day}</span>
+                  {cell.tasks.slice(0, 3).map((t) => (
+                    <button
+                      type="button"
+                      key={t.id}
+                      className={`task-calendar-chip priority-${t.priority.toLowerCase()}`}
+                      onClick={() => openTask(t)}
+                    >
+                      {t.title}
+                    </button>
+                  ))}
+                  {cell.tasks.length > 3 && (
+                    <small>+{cell.tasks.length - 3} mais</small>
+                  )}
+                </div>
+              ) : (
+                <div key={`blank-${index}`} className="task-calendar-cell is-blank" />
+              ),
+            )}
+          </div>
         </div>
       ) : (
         <div className="data-list">
