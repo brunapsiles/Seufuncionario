@@ -90,6 +90,7 @@ import {
   Truck,
   Bell,
   Paperclip,
+  Repeat,
 } from "lucide-react";
 
 const LEGACY_STORAGE_KEY = "seu-funcionario-v1";
@@ -642,6 +643,23 @@ export const addBusinessDays = (ymd, days) => {
     const day = date.getDay();
     if (day !== 0 && day !== 6) remaining--;
   }
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
+
+export const RECURRENCE_OPTIONS = [
+  { value: "none", label: "Não repetir" },
+  { value: "weekly", label: "Toda semana" },
+  { value: "monthly", label: "Todo mês" },
+];
+
+export const nextRecurrenceDue = (ymd, frequency) => {
+  const [y, m, d] = String(ymd || "").split("-").map(Number);
+  if (!y || !m || !d) return "";
+  const date = new Date(y, m - 1, d);
+  if (frequency === "weekly") date.setDate(date.getDate() + 7);
+  else if (frequency === "monthly") date.setMonth(date.getMonth() + 1);
+  else return ymd;
   const pad = (n) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 };
@@ -4844,6 +4862,7 @@ function Tasks({ db, update, business, setToast, go }) {
     subtaskDraft: "",
     dependsOn: [],
     attachments: [],
+    recurrence: { frequency: "none" },
   };
   const [form, setForm] = useState(blankTask);
   const digitalCollaborators = [
@@ -4960,6 +4979,9 @@ function Tasks({ db, update, business, setToast, go }) {
         subtasks: Array.isArray(form.subtasks) ? form.subtasks : [],
         dependsOn: Array.isArray(form.dependsOn) ? form.dependsOn : [],
         attachments: Array.isArray(form.attachments) ? form.attachments : [],
+        recurrence: form.recurrence?.frequency
+          ? form.recurrence
+          : { frequency: "none" },
         createdAt: form.createdAt || now,
         updatedAt: now,
       };
@@ -5023,7 +5045,42 @@ function Tasks({ db, update, business, setToast, go }) {
       );
       return;
     }
-    changeTask(task.id, { status: newStatus });
+    const frequency = task.recurrence?.frequency;
+    const completesRecurring =
+      newStatus === "Concluído" &&
+      task.status !== "Concluído" &&
+      frequency &&
+      frequency !== "none";
+    if (!completesRecurring) {
+      changeTask(task.id, { status: newStatus });
+      return;
+    }
+    const now = new Date().toISOString();
+    const nextTask = {
+      ...task,
+      id: uid(),
+      status: "A fazer",
+      due: nextRecurrenceDue(task.due, frequency),
+      deliveries: [],
+      interested: [],
+      attachments: [],
+      missionStatus:
+        task.isMission && task.distribution === "disponivel"
+          ? "disponivel"
+          : "",
+      createdAt: now,
+      updatedAt: now,
+    };
+    update((d) => ({
+      ...d,
+      tasks: [
+        nextTask,
+        ...d.tasks.map((x) =>
+          x.id === task.id ? { ...x, status: newStatus, updatedAt: now } : x,
+        ),
+      ],
+    }));
+    setToast("Tarefa concluída — próxima ocorrência criada");
   };
   const notifyUser = (recipientId, message) => {
     if (!recipientId || recipientId === db.user.id) return;
@@ -5555,6 +5612,20 @@ function Tasks({ db, update, business, setToast, go }) {
                             {t.attachments.length}
                           </em>
                         )}
+                        {t.recurrence?.frequency &&
+                          t.recurrence.frequency !== "none" && (
+                            <em
+                              className="attachment-count"
+                              title={
+                                RECURRENCE_OPTIONS.find(
+                                  (option) =>
+                                    option.value === t.recurrence.frequency,
+                                )?.label || "Tarefa recorrente"
+                              }
+                            >
+                              <Repeat />
+                            </em>
+                          )}
                       </span>
                       <select
                         value={t.status}
@@ -5637,6 +5708,19 @@ function Tasks({ db, update, business, setToast, go }) {
                       {t.attachments.length}
                     </em>
                   )}
+                  {t.recurrence?.frequency &&
+                    t.recurrence.frequency !== "none" && (
+                      <em
+                        className="attachment-count"
+                        title={
+                          RECURRENCE_OPTIONS.find(
+                            (option) => option.value === t.recurrence.frequency,
+                          )?.label || "Tarefa recorrente"
+                        }
+                      >
+                        <Repeat />
+                      </em>
+                    )}
                 </small>
               </span>
               <select
@@ -5778,6 +5862,23 @@ function Tasks({ db, update, business, setToast, go }) {
                   value={form.due}
                   onChange={(e) => setForm({ ...form, due: e.target.value })}
                 />
+              </Field>
+              <Field label="Repetir">
+                <select
+                  value={form.recurrence?.frequency || "none"}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      recurrence: { frequency: e.target.value },
+                    })
+                  }
+                >
+                  {RECURRENCE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </Field>
               <div className="deadline-calc-wrap">
                 <button
