@@ -15,6 +15,7 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Moon,
   Sun,
   Plus,
@@ -1418,6 +1419,17 @@ function Field({ label, children, hint }) {
       {children}
       {hint && <small>{hint}</small>}
     </label>
+  );
+}
+
+function FilterSelect({ "aria-label": ariaLabel, value, onChange, children }) {
+  return (
+    <div className="filter-select">
+      <select aria-label={ariaLabel} value={value} onChange={onChange}>
+        {children}
+      </select>
+      <ChevronDown />
+    </div>
   );
 }
 
@@ -5276,7 +5288,7 @@ function Tasks({ db, update, business, setToast, go }) {
         )}
       </div>
       {view !== "missoes" && <div className="filter-row">
-        <select
+        <FilterSelect
           aria-label="Filtrar por status"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
@@ -5285,8 +5297,8 @@ function Tasks({ db, update, business, setToast, go }) {
           {statuses.map((status) => (
             <option key={status}>{status}</option>
           ))}
-        </select>
-        <select
+        </FilterSelect>
+        <FilterSelect
           aria-label="Filtrar por prioridade"
           value={priorityFilter}
           onChange={(e) => setPriorityFilter(e.target.value)}
@@ -5295,8 +5307,8 @@ function Tasks({ db, update, business, setToast, go }) {
           <option>Baixa</option>
           <option>Média</option>
           <option>Alta</option>
-        </select>
-        <select
+        </FilterSelect>
+        <FilterSelect
           aria-label="Filtrar por responsável"
           value={assigneeFilter}
           onChange={(e) => setAssigneeFilter(e.target.value)}
@@ -5305,8 +5317,8 @@ function Tasks({ db, update, business, setToast, go }) {
           {assignees.map((assignee) => (
             <option key={assignee}>{assignee}</option>
           ))}
-        </select>
-        <select
+        </FilterSelect>
+        <FilterSelect
           aria-label="Filtrar por projeto"
           value={projectFilter}
           onChange={(e) => setProjectFilter(e.target.value)}
@@ -5315,8 +5327,8 @@ function Tasks({ db, update, business, setToast, go }) {
           {projects.map((project) => (
             <option key={project}>{project}</option>
           ))}
-        </select>
-        <select
+        </FilterSelect>
+        <FilterSelect
           aria-label="Filtrar arquivamento"
           value={archiveFilter}
           onChange={(e) => setArchiveFilter(e.target.value)}
@@ -5324,7 +5336,7 @@ function Tasks({ db, update, business, setToast, go }) {
           <option>Ativas</option>
           <option>Arquivadas</option>
           <option>Todas</option>
-        </select>
+        </FilterSelect>
       </div>}
       {view === "missoes" ? (
         availableMissions.length === 0 ? (

@@ -5378,8 +5378,41 @@ aside nav:hover::-webkit-scrollbar-thumb {
   gap: 8px;
   margin: -6px 0 18px;
 }
-.filter-row select {
+.filter-select {
+  position: relative;
+  display: inline-flex;
+}
+.filter-select select {
+  appearance: none;
+  -webkit-appearance: none;
   min-width: 145px;
+  padding: 9px 34px 9px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.filter-select select:hover {
+  border-color: var(--primary);
+}
+.filter-select select:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 20%, transparent);
+}
+.filter-select svg {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 15px;
+  height: 15px;
+  color: var(--muted);
+  pointer-events: none;
 }
 .task-actions,
 .crm-actions,
@@ -5593,8 +5626,11 @@ aside nav:hover::-webkit-scrollbar-thumb {
   .planning-results {
     grid-template-columns: 1fr;
   }
-  .filter-row select {
+  .filter-row .filter-select {
     flex: 1 1 140px;
+  }
+  .filter-row .filter-select select {
+    width: 100%;
   }
   .page-actions,
   .page-actions .button {
