@@ -9021,6 +9021,7 @@ function TimeTracking({ db, update, business, setToast, go }) {
           date: today(),
           category: "Horas faturadas",
           businessId: business?.id || null,
+          ownerId: db.user.id,
         },
         ...d.transactions,
       ],
@@ -9258,6 +9259,7 @@ function RewardsPanel({ db, update, business, setToast }) {
               date: today(),
               category: "Recompensas e pagamentos",
               businessId: business?.id || null,
+              ownerId: db.user.id,
             },
             ...d.transactions,
           ]
@@ -9392,7 +9394,12 @@ function Finance({ db, update, business, setToast, go }) {
     update((d) => ({
       ...d,
       transactions: [
-        { ...form, id: uid(), businessId: business?.id || null },
+        {
+          ...form,
+          id: uid(),
+          businessId: business?.id || null,
+          ownerId: db.user.id,
+        },
         ...d.transactions,
       ],
     }));
@@ -15175,6 +15182,18 @@ function AccountSettings({ db, update, setToast, go }) {
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [deleteErr, setDeleteErr] = useState("");
+  const workspaceSizeBytes = (() => {
+    try {
+      return new Blob([JSON.stringify(db)]).size;
+    } catch {
+      return 0;
+    }
+  })();
+  const workspaceSizeLimit = 900_000;
+  const workspaceSizePct = Math.min(
+    100,
+    Math.round((workspaceSizeBytes / workspaceSizeLimit) * 100),
+  );
   const theme = db.preferences.theme;
   const setTheme = (t) =>
     update((d) => ({ ...d, preferences: { ...d.preferences, theme: t } }));
@@ -15431,6 +15450,24 @@ function AccountSettings({ db, update, setToast, go }) {
               <p>Seus projetos são sincronizados com a sua conta.</p>
             </div>
           </div>
+          <div className="settings-stat">
+            <Boxes />
+            <span>
+              <strong>{workspaceSizePct}%</strong> do espaço de sincronização
+              usado ({Math.round(workspaceSizeBytes / 1024)} KB de{" "}
+              {Math.round(workspaceSizeLimit / 1024)} KB)
+            </span>
+          </div>
+          {workspaceSizePct >= 70 && (
+            <div className="notice">
+              <CircleAlert />
+              <span>
+                {workspaceSizePct >= 90
+                  ? "Seu espaço está quase cheio. Exporte ou arquive itens antigos (documentos, tarefas concluídas, histórico) para evitar falhas de sincronização."
+                  : "Seu espaço de sincronização está enchendo. Vale exportar ou arquivar itens antigos com o tempo."}
+              </span>
+            </div>
+          )}
           <div className="settings-actions col">
             <Button variant="secondary" icon={Download} onClick={exportData}>
               Exportar meus dados
@@ -16054,7 +16091,7 @@ export default function App() {
           </div>
           <div className="top-actions">
             <button
-              className="icon-button"
+              className="icon-button search-trigger"
               aria-label="Buscar em tudo"
               title="Buscar (Ctrl+K)"
               onClick={() => setSearchOpen(true)}

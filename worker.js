@@ -801,6 +801,7 @@ async function membershipRole(env, userId, ownerId) {
 
 export function canSeeTask(record, userId, ctx = {}) {
   if (!record || !userId) return false;
+  if (record.ownerId == null) return true;
   if (record.ownerId === userId) return true;
   if (record.assigneeId === userId) return true;
   if (
@@ -839,6 +840,7 @@ const RESTRICTED_FIELDS = [
   "sites",
   "developmentPlans",
   "notifications",
+  "transactions",
 ];
 
 function resolveViewerContext(data, userId) {
