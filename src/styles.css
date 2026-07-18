@@ -3763,6 +3763,26 @@ aside nav button.active {
 .cost-check input {
   margin-top: 2px;
 }
+.checkbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.subtask-editor {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.subtask-editor input {
+  flex: 1;
+}
+.subtask-done {
+  text-decoration: line-through;
+  color: var(--muted);
+}
 .media-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

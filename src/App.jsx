@@ -114,6 +114,8 @@ const emptyDb = {
   trips: [],
   developmentPlans: [],
   notifications: [],
+  teams: [],
+  projects: [],
   transactions: [],
   financeSettings: {},
   documents: [],
@@ -1398,6 +1400,143 @@ function Field({ label, children, hint }) {
       {children}
       {hint && <small>{hint}</small>}
     </label>
+  );
+}
+
+function SharingFields({
+  value,
+  onChange,
+  teams,
+  disabled,
+  disabledHint,
+  projectOptions,
+  hideProjectField,
+}) {
+  const [members, setMembers] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/collab", { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled) setMembers(d?.members || []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const visibility = value.visibility || "privado";
+  const togglePerson = (id) => {
+    const current = value.sharedWith || [];
+    onChange({
+      ...value,
+      sharedWith: current.includes(id)
+        ? current.filter((x) => x !== id)
+        : [...current, id],
+    });
+  };
+  const toggleTeam = (id) => {
+    const current = value.sharedTeams || [];
+    onChange({
+      ...value,
+      sharedTeams: current.includes(id)
+        ? current.filter((x) => x !== id)
+        : [...current, id],
+    });
+  };
+  if (disabled) {
+    return (
+      <div className="field">
+        <span>Visibilidade</span>
+        <small>{disabledHint || "Definida automaticamente."}</small>
+      </div>
+    );
+  }
+  return (
+    <>
+      <Field label="Visibilidade">
+        <select
+          value={visibility}
+          onChange={(e) => onChange({ ...value, visibility: e.target.value })}
+        >
+          <option value="privado">Privado (só eu)</option>
+          <option value="pessoas">Compartilhado com pessoas selecionadas</option>
+          <option value="equipe">Compartilhado com uma equipe</option>
+          <option value="projeto">Compartilhado com participantes do projeto</option>
+          <option value="espaco_todo">Visível para todo o espaço</option>
+        </select>
+      </Field>
+      {visibility === "pessoas" && (
+        <div className="field">
+          <span>Compartilhar com</span>
+          {members.length === 0 ? (
+            <small>Convide colaboradores em Meu Time para compartilhar.</small>
+          ) : (
+            <div className="checkbox-list">
+              {members.map((m) => (
+                <label key={m.id} className="cost-check">
+                  <input
+                    type="checkbox"
+                    checked={(value.sharedWith || []).includes(m.id)}
+                    onChange={() => togglePerson(m.id)}
+                  />
+                  {m.name}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {visibility === "equipe" && (
+        <div className="field">
+          <span>Equipe</span>
+          {(teams || []).length === 0 ? (
+            <small>Nenhuma equipe criada ainda. Crie uma em Meu Time.</small>
+          ) : (
+            <div className="checkbox-list">
+              {teams.map((t) => (
+                <label key={t.id} className="cost-check">
+                  <input
+                    type="checkbox"
+                    checked={(value.sharedTeams || []).includes(t.id)}
+                    onChange={() => toggleTeam(t.id)}
+                  />
+                  {t.name}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {visibility === "projeto" && !hideProjectField && (
+        <Field
+          label="Projeto"
+          hint="Quem participa de tarefas com o mesmo nome de projeto também verá este item."
+        >
+          <input
+            list={projectOptions?.length ? "sharing-project-options" : undefined}
+            value={value.project || ""}
+            onChange={(e) => onChange({ ...value, project: e.target.value })}
+            placeholder="Nome do projeto"
+          />
+        </Field>
+      )}
+      {visibility === "projeto" && hideProjectField && (
+        <div className="field">
+          <small>
+            Use o campo Projeto acima — quem participa de outras tarefas com o
+            mesmo nome também verá este item.
+          </small>
+        </div>
+      )}
+      {!hideProjectField && projectOptions?.length > 0 && (
+        <datalist id="sharing-project-options">
+          {projectOptions.map((p) => (
+            <option key={p} value={p} />
+          ))}
+        </datalist>
+      )}
+    </>
   );
 }
 
@@ -4511,6 +4650,43 @@ function Tasks({ db, update, business, setToast, go }) {
     followedInstructions: false,
     autonomous: false,
   });
+  const [projectsOpen, setProjectsOpen] = useState(false);
+  const [projectForm, setProjectForm] = useState({ name: "", description: "" });
+  const [editingProject, setEditingProject] = useState(null);
+  const saveProject = (e) => {
+    e.preventDefault();
+    if (!projectForm.name.trim()) return;
+    update((d) => {
+      const item = {
+        id: editingProject || uid(),
+        name: projectForm.name.trim(),
+        description: projectForm.description || "",
+      };
+      return {
+        ...d,
+        projects: editingProject
+          ? (d.projects || []).map((p) => (p.id === editingProject ? item : p))
+          : [...(d.projects || []), item],
+      };
+    });
+    setToast(editingProject ? "Projeto atualizado" : "Projeto criado");
+    setProjectForm({ name: "", description: "" });
+    setEditingProject(null);
+  };
+  const editProject = (project) => {
+    setEditingProject(project.id);
+    setProjectForm({ name: project.name, description: project.description || "" });
+  };
+  const cancelProjectEdit = () => {
+    setEditingProject(null);
+    setProjectForm({ name: "", description: "" });
+  };
+  const removeProject = (id) => {
+    if (!confirm("Excluir este projeto? As tarefas já criadas com esse nome não são apagadas.")) return;
+    update((d) => ({ ...d, projects: (d.projects || []).filter((p) => p.id !== id) }));
+    if (editingProject === id) cancelProjectEdit();
+    setToast("Projeto excluído");
+  };
   const [googleId, setGoogleId] = useState("");
   useEffect(() => {
     fetch("/api/config")
@@ -4550,6 +4726,11 @@ function Tasks({ db, update, business, setToast, go }) {
     missionStatus: "",
     deliveries: [],
     deliveryDraft: "",
+    visibility: "privado",
+    sharedWith: [],
+    sharedTeams: [],
+    subtasks: [],
+    subtaskDraft: "",
   };
   const [form, setForm] = useState(blankTask);
   const digitalCollaborators = [
@@ -4576,7 +4757,10 @@ function Tasks({ db, update, business, setToast, go }) {
     ...new Set(scoped.map((task) => task.assignee).filter(Boolean)),
   ];
   const projects = [
-    ...new Set(scoped.map((task) => task.project).filter(Boolean)),
+    ...new Set([
+      ...(db.projects || []).map((p) => p.name),
+      ...scoped.map((task) => task.project).filter(Boolean),
+    ]),
   ];
   const items = db.tasks.filter(
     (t) =>
@@ -4615,7 +4799,7 @@ function Tasks({ db, update, business, setToast, go }) {
     if (!form.title.trim()) return;
     const now = new Date().toISOString();
     update((d) => {
-      const { deliveryDraft, ...rest } = form;
+      const { deliveryDraft, subtaskDraft, ...rest } = form;
       const isMission = !!form.isMission;
       const item = {
         ...rest,
@@ -4642,6 +4826,9 @@ function Tasks({ db, update, business, setToast, go }) {
         assignees: Array.isArray(form.assignees) ? form.assignees : [],
         interested: Array.isArray(form.interested) ? form.interested : [],
         deliveries: Array.isArray(form.deliveries) ? form.deliveries : [],
+        sharedWith: Array.isArray(form.sharedWith) ? form.sharedWith : [],
+        sharedTeams: Array.isArray(form.sharedTeams) ? form.sharedTeams : [],
+        subtasks: Array.isArray(form.subtasks) ? form.subtasks : [],
         createdAt: form.createdAt || now,
         updatedAt: now,
       };
@@ -4901,6 +5088,87 @@ function Tasks({ db, update, business, setToast, go }) {
             Disponíveis
           </button>
         </div>
+      </div>
+      <div className="collab-card">
+        <h3>
+          <ListTodo />
+          Projetos
+        </h3>
+        <p>
+          Crie um projeto antes de começar as tarefas, ou apenas escreva o
+          nome do projeto na tarefa — funciona dos dois jeitos.
+        </p>
+        <Button
+          variant="ghost"
+          icon={ListTodo}
+          onClick={() => setProjectsOpen((v) => !v)}
+        >
+          {projectsOpen ? "Ocultar projetos" : "Gerenciar projetos"}
+        </Button>
+        {projectsOpen && (
+          <>
+            <form className="invite-form" onSubmit={saveProject}>
+              <div className="form-grid">
+                <Field label="Nome do projeto">
+                  <input
+                    required
+                    value={projectForm.name}
+                    onChange={(e) =>
+                      setProjectForm({ ...projectForm, name: e.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="Descrição (opcional)">
+                  <input
+                    value={projectForm.description}
+                    onChange={(e) =>
+                      setProjectForm({ ...projectForm, description: e.target.value })
+                    }
+                  />
+                </Field>
+              </div>
+              <div className="task-actions">
+                <Button type="submit" icon={editingProject ? Save : Plus}>
+                  {editingProject ? "Salvar projeto" : "Criar projeto"}
+                </Button>
+                {editingProject && (
+                  <Button variant="ghost" type="button" onClick={cancelProjectEdit}>
+                    Cancelar
+                  </Button>
+                )}
+              </div>
+            </form>
+            {(db.projects || []).length > 0 && (
+              <div className="member-list">
+                {(db.projects || []).map((p) => (
+                  <div key={p.id}>
+                    <span className="avatar">{p.name[0]}</span>
+                    <span>
+                      <strong>{p.name}</strong>
+                      {p.description && <small>{p.description}</small>}
+                    </span>
+                    <span className="task-actions">
+                      <button
+                        className="icon-button"
+                        title="Editar projeto"
+                        onClick={() => editProject(p)}
+                      >
+                        <Edit3 />
+                      </button>
+                      <button
+                        className="icon-button danger"
+                        title="Excluir projeto"
+                        onClick={() => removeProject(p.id)}
+                      >
+                        <Trash2 />
+                      </button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </div>
       {view !== "missoes" && <div className="filter-row">
         <select
@@ -5431,6 +5699,20 @@ function Tasks({ db, update, business, setToast, go }) {
                 <span>Tratar como missão (vagas, pontos, recompensa e entregas)</span>
               </label>
             </div>
+            <SharingFields
+              value={{
+                visibility: form.visibility,
+                sharedWith: form.sharedWith,
+                sharedTeams: form.sharedTeams,
+                project: form.project,
+              }}
+              onChange={(next) => setForm({ ...form, ...next })}
+              teams={db.teams}
+              projectOptions={projects}
+              hideProjectField
+              disabled={form.isMission && form.distribution === "disponivel"}
+              disabledHint="Missões disponíveis ficam visíveis para todo o espaço automaticamente."
+            />
             {form.isMission && (
               <div className="form-grid">
                 <Field label="Distribuição">
@@ -5516,6 +5798,77 @@ function Tasks({ db, update, business, setToast, go }) {
                     <span>Permitir desistir antes do início</span>
                   </label>
                 </Field>
+              </div>
+            )}
+            {form.isMission && (
+              <div className="field">
+                <span>Subtarefas (mini-missões)</span>
+                <div className="subtask-editor">
+                  <input
+                    value={form.subtaskDraft || ""}
+                    onChange={(e) =>
+                      setForm({ ...form, subtaskDraft: e.target.value })
+                    }
+                    placeholder="Ex.: Enviar orçamento para aprovação"
+                    aria-label="Nova subtarefa"
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    icon={Plus}
+                    disabled={!(form.subtaskDraft || "").trim()}
+                    onClick={() =>
+                      setForm({
+                        ...form,
+                        subtasks: [
+                          ...(form.subtasks || []),
+                          { id: uid(), title: form.subtaskDraft.trim(), done: false },
+                        ],
+                        subtaskDraft: "",
+                      })
+                    }
+                  >
+                    Adicionar
+                  </Button>
+                </div>
+                {(form.subtasks || []).length > 0 && (
+                  <div className="member-list">
+                    {form.subtasks.map((s) => (
+                      <div key={s.id}>
+                        <label className="cost-check">
+                          <input
+                            type="checkbox"
+                            checked={!!s.done}
+                            onChange={() =>
+                              setForm({
+                                ...form,
+                                subtasks: form.subtasks.map((x) =>
+                                  x.id === s.id ? { ...x, done: !x.done } : x,
+                                ),
+                              })
+                            }
+                          />
+                          <span className={s.done ? "subtask-done" : undefined}>
+                            {s.title}
+                          </span>
+                        </label>
+                        <button
+                          type="button"
+                          className="icon-button danger"
+                          aria-label={`Remover subtarefa ${s.title}`}
+                          onClick={() =>
+                            setForm({
+                              ...form,
+                              subtasks: form.subtasks.filter((x) => x.id !== s.id),
+                            })
+                          }
+                        >
+                          <X />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             {editingTask?.isMission &&
@@ -5705,7 +6058,17 @@ function CRM({ db, update, business, setToast, go }) {
     next: "",
     notes: "",
     interactions: [],
+    visibility: "privado",
+    sharedWith: [],
+    sharedTeams: [],
+    project: "",
   };
+  const taskProjects = [
+    ...new Set([
+      ...(db.projects || []).map((p) => p.name),
+      ...(db.tasks || []).map((t) => t.project).filter(Boolean),
+    ]),
+  ];
   const [form, setForm] = useState(blankLead);
   const stages = [
     "Novo",
@@ -6028,6 +6391,17 @@ function CRM({ db, update, business, setToast, go }) {
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
               />
             </Field>
+            <SharingFields
+              value={{
+                visibility: form.visibility,
+                sharedWith: form.sharedWith,
+                sharedTeams: form.sharedTeams,
+                project: form.project,
+              }}
+              onChange={(next) => setForm({ ...form, ...next })}
+              teams={db.teams}
+              projectOptions={taskProjects}
+            />
             {editing && (
               <section className="interaction-panel">
                 <div className="section-head compact">
@@ -9337,13 +9711,24 @@ function Documents({ db, update, business, setToast, go }) {
         .toLowerCase()
         .includes(search.toLowerCase()),
   );
-  const [form, setForm] = useState({
+  const blankDocument = {
     title: "",
     type: "Proposta comercial",
     content: "",
-  });
+    visibility: "privado",
+    sharedWith: [],
+    sharedTeams: [],
+    project: "",
+  };
+  const [form, setForm] = useState(blankDocument);
+  const taskProjects = [
+    ...new Set([
+      ...(db.projects || []).map((p) => p.name),
+      ...(db.tasks || []).map((t) => t.project).filter(Boolean),
+    ]),
+  ];
   const open = (d) => {
-    setForm(d || { title: "", type: "Proposta comercial", content: "" });
+    setForm(d ? { ...blankDocument, ...d } : blankDocument);
     setEditing(d?.id || null);
     setModal(true);
   };
@@ -9792,6 +10177,17 @@ function Documents({ db, update, business, setToast, go }) {
                 </div>
               </section>
             )}
+            <SharingFields
+              value={{
+                visibility: form.visibility,
+                sharedWith: form.sharedWith,
+                sharedTeams: form.sharedTeams,
+                project: form.project,
+              }}
+              onChange={(next) => setForm({ ...form, ...next })}
+              teams={db.teams}
+              projectOptions={taskProjects}
+            />
             <div className="modal-actions">
               <Button variant="ghost" onClick={() => setModal(false)}>
                 Cancelar
@@ -10902,6 +11298,22 @@ function Sites({ db, update, business, setToast, go }) {
               />
             </div>
           </Field>
+          <SharingFields
+            value={{
+              visibility: current.visibility,
+              sharedWith: current.sharedWith,
+              sharedTeams: current.sharedTeams,
+              project: current.project,
+            }}
+            onChange={(next) => updateSite(current.id, next)}
+            teams={db.teams}
+            projectOptions={[
+              ...new Set([
+                ...(db.projects || []).map((p) => p.name),
+                ...(db.tasks || []).map((t) => t.project).filter(Boolean),
+              ]),
+            ]}
+          />
           {current.published && current.serverPublished && (
             <div className="site-public-actions">
               <span className="publish-state live">
@@ -13898,14 +14310,59 @@ const AUDIT_ACTION_LABELS = {
   colaborador_removido: "Colaborador removido",
 };
 
-function Collaborators({ setToast }) {
+function Collaborators({ db, update, setToast }) {
   const [data, setData] = useState({ members: [], invites: [], spaces: [] });
   const [form, setForm] = useState(blankInviteForm);
   const [sending, setSending] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
   const [auditLogs, setAuditLogs] = useState([]);
   const [auditLoading, setAuditLoading] = useState(false);
+  const [teamForm, setTeamForm] = useState({ name: "", memberIds: [] });
+  const [editingTeam, setEditingTeam] = useState(null);
   const active = activeSpaceId();
+  const teams = db.teams || [];
+  const saveTeam = (e) => {
+    e.preventDefault();
+    if (!teamForm.name.trim()) return;
+    update((d) => {
+      const item = {
+        id: editingTeam || uid(),
+        name: teamForm.name.trim(),
+        memberIds: teamForm.memberIds,
+      };
+      return {
+        ...d,
+        teams: editingTeam
+          ? (d.teams || []).map((t) => (t.id === editingTeam ? item : t))
+          : [...(d.teams || []), item],
+      };
+    });
+    setToast(editingTeam ? "Equipe atualizada" : "Equipe criada");
+    setTeamForm({ name: "", memberIds: [] });
+    setEditingTeam(null);
+  };
+  const editTeam = (team) => {
+    setEditingTeam(team.id);
+    setTeamForm({ name: team.name, memberIds: team.memberIds || [] });
+  };
+  const cancelTeamEdit = () => {
+    setEditingTeam(null);
+    setTeamForm({ name: "", memberIds: [] });
+  };
+  const removeTeam = (id) => {
+    if (!confirm("Excluir esta equipe?")) return;
+    update((d) => ({ ...d, teams: (d.teams || []).filter((t) => t.id !== id) }));
+    if (editingTeam === id) cancelTeamEdit();
+    setToast("Equipe excluída");
+  };
+  const toggleTeamMember = (id) => {
+    setTeamForm((current) => ({
+      ...current,
+      memberIds: current.memberIds.includes(id)
+        ? current.memberIds.filter((x) => x !== id)
+        : [...current.memberIds, id],
+    }));
+  };
   const load = () =>
     fetch("/api/collab", { headers: authHeaders() })
       .then((r) => (r.ok ? r.json() : null))
@@ -14226,6 +14683,87 @@ function Collaborators({ setToast }) {
         </div>
         <div className="collab-card">
           <h3>
+            <Users />
+            Equipes
+          </h3>
+          <p>
+            Agrupe colaboradores em equipes para compartilhar tarefas,
+            documentos e sites com todo o grupo de uma vez.
+          </p>
+          <form className="invite-form" onSubmit={saveTeam}>
+            <Field label="Nome da equipe">
+              <input
+                required
+                value={teamForm.name}
+                onChange={(e) =>
+                  setTeamForm({ ...teamForm, name: e.target.value })
+                }
+              />
+            </Field>
+            {data.members.length > 0 && (
+              <div className="field">
+                <span>Integrantes</span>
+                <div className="checkbox-list">
+                  {data.members.map((m) => (
+                    <label key={m.id} className="cost-check">
+                      <input
+                        type="checkbox"
+                        checked={teamForm.memberIds.includes(m.id)}
+                        onChange={() => toggleTeamMember(m.id)}
+                      />
+                      {m.name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="task-actions">
+              <Button type="submit" icon={editingTeam ? Save : Plus}>
+                {editingTeam ? "Salvar equipe" : "Criar equipe"}
+              </Button>
+              {editingTeam && (
+                <Button variant="ghost" type="button" onClick={cancelTeamEdit}>
+                  Cancelar
+                </Button>
+              )}
+            </div>
+          </form>
+          {teams.length > 0 && (
+            <div className="member-list">
+              <small className="member-title">Suas equipes</small>
+              {teams.map((t) => (
+                <div key={t.id}>
+                  <span className="avatar">{t.name[0]}</span>
+                  <span>
+                    <strong>{t.name}</strong>
+                    <small>
+                      {(t.memberIds || []).length} integrante
+                      {(t.memberIds || []).length === 1 ? "" : "s"}
+                    </small>
+                  </span>
+                  <span className="task-actions">
+                    <button
+                      className="icon-button"
+                      title="Editar equipe"
+                      onClick={() => editTeam(t)}
+                    >
+                      <Edit3 />
+                    </button>
+                    <button
+                      className="icon-button danger"
+                      title="Excluir equipe"
+                      onClick={() => removeTeam(t.id)}
+                    >
+                      <Trash2 />
+                    </button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="collab-card">
+          <h3>
             <History />
             Histórico de ações
           </h3>
@@ -14333,7 +14871,7 @@ function Team({ db, update, setToast }) {
           </p>
         </div>
       </div>
-      <Collaborators setToast={setToast} />
+      <Collaborators db={db} update={update} setToast={setToast} />
       {(db.customSpecialists || []).length > 0 && (
         <section className="section">
           <div className="section-head">

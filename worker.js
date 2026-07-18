@@ -799,11 +799,14 @@ async function membershipRole(env, userId, ownerId) {
   return m ? m.role : null;
 }
 
-export function canSeeTask(record, userId) {
+export function canSeeTask(record, userId, ctx = {}) {
   if (!record || !userId) return false;
   if (record.ownerId === userId) return true;
   if (record.assigneeId === userId) return true;
-  if (Array.isArray(record.assignees) && record.assignees.includes(userId))
+  if (
+    Array.isArray(record.assignees) &&
+    record.assignees.some((a) => a && a.userId === userId)
+  )
     return true;
   if (Array.isArray(record.sharedWith) && record.sharedWith.includes(userId))
     return true;
@@ -811,6 +814,19 @@ export function canSeeTask(record, userId) {
   if (
     Array.isArray(record.interested) &&
     record.interested.some((i) => i && i.userId === userId)
+  )
+    return true;
+  if (
+    ctx.teamIds instanceof Set &&
+    Array.isArray(record.sharedTeams) &&
+    record.sharedTeams.some((t) => ctx.teamIds.has(t))
+  )
+    return true;
+  if (
+    ctx.projects instanceof Set &&
+    record.visibility === "projeto" &&
+    record.project &&
+    ctx.projects.has(record.project)
   )
     return true;
   return false;
@@ -825,18 +841,33 @@ const RESTRICTED_FIELDS = [
   "notifications",
 ];
 
-function filterRecordsForViewer(records, userId) {
+function resolveViewerContext(data, userId) {
+  const teamIds = new Set(
+    (Array.isArray(data?.teams) ? data.teams : [])
+      .filter((t) => Array.isArray(t.memberIds) && t.memberIds.includes(userId))
+      .map((t) => t.id),
+  );
+  const baseCtx = { teamIds, projects: new Set() };
+  const projects = new Set(
+    (Array.isArray(data?.tasks) ? data.tasks : [])
+      .filter((t) => t.project && canSeeTask(t, userId, baseCtx))
+      .map((t) => t.project),
+  );
+  return { teamIds, projects };
+}
+
+function filterRecordsForViewer(records, userId, ctx) {
   return (Array.isArray(records) ? records : []).filter((r) =>
-    canSeeTask(r, userId),
+    canSeeTask(r, userId, ctx),
   );
 }
 
-function mergeRecordsFromMember(currentRecords, incomingRecords, memberId) {
+function mergeRecordsFromMember(currentRecords, incomingRecords, memberId, ctx) {
   const current = Array.isArray(currentRecords) ? currentRecords : [];
   const incoming = Array.isArray(incomingRecords) ? incomingRecords : [];
   const currentById = new Map(current.map((r) => [r.id, r]));
   const visibleIds = new Set(
-    current.filter((r) => canSeeTask(r, memberId)).map((r) => r.id),
+    current.filter((r) => canSeeTask(r, memberId, ctx)).map((r) => r.id),
   );
   const accepted = incoming.filter((r) => {
     if (!r || !r.id) return false;
@@ -866,9 +897,10 @@ async function handleWorkspace(request, env, user, url) {
       data = null;
     }
     if (data && restricted) {
+      const ctx = resolveViewerContext(data, user.id);
       const filtered = { ...data };
       for (const field of RESTRICTED_FIELDS)
-        filtered[field] = filterRecordsForViewer(data[field], user.id);
+        filtered[field] = filterRecordsForViewer(data[field], user.id, ctx);
       data = filtered;
     }
     return json({
@@ -909,13 +941,19 @@ async function handleWorkspace(request, env, user, url) {
     } catch {
       currentData = null;
     }
+    const ctx = resolveViewerContext(currentData, user.id);
     const merged = { ...data };
     for (const field of RESTRICTED_FIELDS)
       merged[field] = mergeRecordsFromMember(
         currentData?.[field],
         data[field],
         user.id,
+        ctx,
       );
+    merged.teams = Array.isArray(currentData?.teams) ? currentData.teams : [];
+    merged.projects = Array.isArray(currentData?.projects)
+      ? currentData.projects
+      : [];
     data = merged;
   }
   const text = JSON.stringify(data);
