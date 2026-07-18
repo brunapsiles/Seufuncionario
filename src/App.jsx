@@ -89,6 +89,7 @@ import {
   Navigation,
   Truck,
   Bell,
+  Paperclip,
 } from "lucide-react";
 
 const LEGACY_STORAGE_KEY = "seu-funcionario-v1";
@@ -4758,6 +4759,9 @@ function Tasks({ db, update, business, setToast, go }) {
   const [projectsOpen, setProjectsOpen] = useState(false);
   const [draggedTaskId, setDraggedTaskId] = useState(null);
   const [dragOverStatus, setDragOverStatus] = useState(null);
+  const [deliveryAttachments, setDeliveryAttachments] = useState([]);
+  const taskAttachRef = useRef(null);
+  const deliveryAttachRef = useRef(null);
   const [projectForm, setProjectForm] = useState({ name: "", description: "" });
   const [editingProject, setEditingProject] = useState(null);
   const saveProject = (e) => {
@@ -4839,6 +4843,7 @@ function Tasks({ db, update, business, setToast, go }) {
     subtasks: [],
     subtaskDraft: "",
     dependsOn: [],
+    attachments: [],
   };
   const [form, setForm] = useState(blankTask);
   const digitalCollaborators = [
@@ -4954,6 +4959,7 @@ function Tasks({ db, update, business, setToast, go }) {
         sharedTeams: Array.isArray(form.sharedTeams) ? form.sharedTeams : [],
         subtasks: Array.isArray(form.subtasks) ? form.subtasks : [],
         dependsOn: Array.isArray(form.dependsOn) ? form.dependsOn : [],
+        attachments: Array.isArray(form.attachments) ? form.attachments : [],
         createdAt: form.createdAt || now,
         updatedAt: now,
       };
@@ -5099,7 +5105,7 @@ function Tasks({ db, update, business, setToast, go }) {
     });
     setToast("Interesse recusado");
   };
-  const submitDelivery = (task, comment, collaboratorFeedback = {}) => {
+  const submitDelivery = (task, comment, collaboratorFeedback = {}, attachments = []) => {
     if (!comment.trim()) return;
     if (isBlocked(task)) {
       setToast(
@@ -5121,6 +5127,7 @@ function Tasks({ db, update, business, setToast, go }) {
           status: "enviada",
           wasClear: !!collaboratorFeedback.wasClear,
           neededHelp: !!collaboratorFeedback.neededHelp,
+          attachments: Array.isArray(attachments) ? attachments : [],
         },
       ],
       missionStatus: "enviada_para_revisao",
@@ -5539,6 +5546,15 @@ function Tasks({ db, update, business, setToast, go }) {
                             {taskUrgency(t).text}
                           </em>
                         )}
+                        {(t.attachments || []).length > 0 && (
+                          <em
+                            className="attachment-count"
+                            title={`${t.attachments.length} anexo(s)`}
+                          >
+                            <Paperclip />
+                            {t.attachments.length}
+                          </em>
+                        )}
                       </span>
                       <select
                         value={t.status}
@@ -5610,6 +5626,15 @@ function Tasks({ db, update, business, setToast, go }) {
                   {taskUrgency(t) && (
                     <em className={`urgency ${taskUrgency(t).tone}`}>
                       {taskUrgency(t).text}
+                    </em>
+                  )}
+                  {(t.attachments || []).length > 0 && (
+                    <em
+                      className="attachment-count"
+                      title={`${t.attachments.length} anexo(s)`}
+                    >
+                      <Paperclip />
+                      {t.attachments.length}
                     </em>
                   )}
                 </small>
@@ -5684,6 +5709,46 @@ function Tasks({ db, update, business, setToast, go }) {
                 }
               />
             </Field>
+            <div className="field">
+              <span>Anexos</span>
+              <input
+                ref={taskAttachRef}
+                className="visually-hidden"
+                type="file"
+                multiple
+                accept="image/*,.pdf,.docx,.txt,.md,.markdown,.csv"
+                aria-label="Anexar arquivo à tarefa"
+                onChange={async (e) => {
+                  const files = e.target.files;
+                  e.target.value = "";
+                  const next = await addAttachmentsFromFiles(
+                    files,
+                    form.attachments || [],
+                    setToast,
+                  );
+                  setForm((current) => ({ ...current, attachments: next }));
+                }}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                icon={Paperclip}
+                onClick={() => taskAttachRef.current?.click()}
+              >
+                Anexar arquivo
+              </Button>
+              <AttachmentList
+                attachments={form.attachments}
+                onRemove={(id) =>
+                  setForm((current) => ({
+                    ...current,
+                    attachments: (current.attachments || []).filter(
+                      (a) => a.id !== id,
+                    ),
+                  }))
+                }
+              />
+            </div>
             <div className="form-grid">
               <Field label="Prioridade">
                 <select
@@ -6160,6 +6225,40 @@ function Tasks({ db, update, business, setToast, go }) {
                       <span>Precisei de ajuda</span>
                     </label>
                   </div>
+                  <input
+                    ref={deliveryAttachRef}
+                    className="visually-hidden"
+                    type="file"
+                    multiple
+                    accept="image/*,.pdf,.docx,.txt,.md,.markdown,.csv"
+                    aria-label="Anexar arquivo à entrega"
+                    onChange={async (e) => {
+                      const files = e.target.files;
+                      e.target.value = "";
+                      const next = await addAttachmentsFromFiles(
+                        files,
+                        deliveryAttachments,
+                        setToast,
+                      );
+                      setDeliveryAttachments(next);
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    icon={Paperclip}
+                    onClick={() => deliveryAttachRef.current?.click()}
+                  >
+                    Anexar arquivo à entrega
+                  </Button>
+                  <AttachmentList
+                    attachments={deliveryAttachments}
+                    onRemove={(id) =>
+                      setDeliveryAttachments((current) =>
+                        current.filter((a) => a.id !== id),
+                      )
+                    }
+                  />
                   <Button
                     type="button"
                     variant="secondary"
@@ -6169,9 +6268,11 @@ function Tasks({ db, update, business, setToast, go }) {
                         editingTask,
                         form.deliveryDraft || "",
                         deliveryFeedback,
+                        deliveryAttachments,
                       );
                       setForm({ ...form, deliveryDraft: "" });
                       setDeliveryFeedback({ wasClear: false, neededHelp: false });
+                      setDeliveryAttachments([]);
                     }}
                   >
                     Enviar entrega
@@ -6186,6 +6287,12 @@ function Tasks({ db, update, business, setToast, go }) {
                     {editingTask.deliveries?.[editingTask.deliveries.length - 1]
                       ?.comment}
                   </p>
+                  <AttachmentList
+                    attachments={
+                      editingTask.deliveries?.[editingTask.deliveries.length - 1]
+                        ?.attachments
+                    }
+                  />
                   <div className="feedback-toggles">
                     <label className="cost-check">
                       <input
@@ -10013,6 +10120,122 @@ export async function extractDocumentText(file) {
     truncated: text.length > DOCUMENT_TEXT_LIMIT,
     kind,
   };
+}
+
+const ATTACHMENT_IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp"];
+const MAX_ATTACHMENT_IMAGE_BYTES = 350_000;
+const MAX_ATTACHMENT_TEXT_CHARS = 8_000;
+const MAX_ATTACHMENTS_PER_ITEM = 5;
+
+function isImageAttachmentFile(file) {
+  const extension = String(file?.name || "").toLowerCase().split(".").pop();
+  return (
+    ATTACHMENT_IMAGE_EXTENSIONS.includes(extension) ||
+    (file?.type || "").startsWith("image/")
+  );
+}
+
+export async function compressImageForAttachment(file) {
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Não foi possível ler a imagem."));
+    reader.readAsDataURL(file);
+  });
+  const image = await new Promise((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error("Imagem inválida."));
+    el.src = dataUrl;
+  });
+  const maxDim = 1280;
+  const width = image.naturalWidth || image.width || maxDim;
+  const height = image.naturalHeight || image.height || maxDim;
+  const scale = Math.min(1, maxDim / Math.max(width, height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+  let quality = 0.72;
+  let out = canvas.toDataURL("image/jpeg", quality);
+  while (out.length * 0.75 > MAX_ATTACHMENT_IMAGE_BYTES && quality > 0.35) {
+    quality -= 0.12;
+    out = canvas.toDataURL("image/jpeg", quality);
+  }
+  if (out.length * 0.75 > MAX_ATTACHMENT_IMAGE_BYTES)
+    throw new Error(
+      "A imagem é grande demais mesmo após compressão. Tente uma imagem menor.",
+    );
+  return out;
+}
+
+export async function buildAttachment(file) {
+  if (!file?.size) throw new Error("O arquivo está vazio.");
+  if (isImageAttachmentFile(file)) {
+    const dataUrl = await compressImageForAttachment(file);
+    return {
+      id: uid(),
+      name: file.name,
+      kind: "image",
+      dataUrl,
+      size: file.size,
+      createdAt: new Date().toISOString(),
+    };
+  }
+  const { content, truncated } = await extractDocumentText(file);
+  return {
+    id: uid(),
+    name: file.name,
+    kind: "document",
+    content: content.slice(0, MAX_ATTACHMENT_TEXT_CHARS),
+    truncated: truncated || content.length > MAX_ATTACHMENT_TEXT_CHARS,
+    size: file.size,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+export async function addAttachmentsFromFiles(fileList, current, onError) {
+  const existing = Array.isArray(current) ? current : [];
+  const room = Math.max(0, MAX_ATTACHMENTS_PER_ITEM - existing.length);
+  const files = [...(fileList || [])].slice(0, room);
+  const results = [...existing];
+  for (const file of files) {
+    try {
+      results.push(await buildAttachment(file));
+    } catch (error) {
+      onError?.(error.message || `Não foi possível anexar "${file.name}".`);
+    }
+  }
+  return results;
+}
+
+function AttachmentList({ attachments, onRemove }) {
+  if (!attachments || attachments.length === 0) return null;
+  return (
+    <div className="attachment-list">
+      {attachments.map((a) => (
+        <span key={a.id} className="attachment-chip">
+          {a.kind === "image" ? (
+            <img src={a.dataUrl} alt={a.name} />
+          ) : (
+            <FileText />
+          )}
+          <b>{a.name}</b>
+          {onRemove && (
+            <button
+              type="button"
+              className="icon-button"
+              aria-label={`Remover anexo ${a.name}`}
+              onClick={() => onRemove(a.id)}
+            >
+              <X />
+            </button>
+          )}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 function Documents({ db, update, business, setToast, go }) {

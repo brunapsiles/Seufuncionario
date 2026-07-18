@@ -1549,6 +1549,20 @@ aside nav button.active {
   color: #c53854;
   background: #ffe6eb;
 }
+.attachment-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 8px;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.attachment-count svg {
+  width: 12px;
+  height: 12px;
+}
 .kanban h3 {
   font-size: 14px;
   margin: 10px 0 5px;
@@ -3089,6 +3103,54 @@ aside nav button.active {
   flex-wrap: wrap;
   gap: 14px;
   margin: 8px 0;
+}
+.attachment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 4px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface2);
+  font-size: 12px;
+  max-width: 220px;
+}
+.attachment-chip img {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+.attachment-chip svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+.attachment-chip b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.attachment-chip button {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  padding: 0;
+  color: var(--muted);
+}
+.attachment-chip button svg {
+  width: 13px;
+  height: 13px;
 }
 .competency-row {
   display: grid;
