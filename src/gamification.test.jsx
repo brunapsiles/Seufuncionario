@@ -7,6 +7,7 @@ import App, {
   computeUserPoints,
   DEFAULT_LEVELS,
   levelForPoints,
+  levelProgress,
 } from "./App";
 
 describe("cálculo puro de pontos, níveis e conquistas", () => {
@@ -45,6 +46,21 @@ describe("cálculo puro de pontos, níveis e conquistas", () => {
       { name: "Veterano", minPoints: 10 },
     ];
     expect(levelForPoints(15, custom).name).toBe("Veterano");
+  });
+
+  it("calcula o progresso até o próximo nível", () => {
+    const midway = levelProgress(25);
+    expect(midway.next.name).toBe("Assistente");
+    expect(midway.pct).toBe(50);
+    expect(midway.pointsToNext).toBe(25);
+
+    const atThreshold = levelProgress(600);
+    expect(atThreshold.next).toBeNull();
+    expect(atThreshold.pct).toBe(100);
+
+    const beyondMax = levelProgress(9999);
+    expect(beyondMax.next).toBeNull();
+    expect(beyondMax.pct).toBe(100);
   });
 
   it("libera conquistas com base no histórico de missões aprovadas", () => {
@@ -169,6 +185,9 @@ describe("cartão de progresso no painel", () => {
       await screen.findByText("Assistente · 60 pontos"),
     ).toBeInTheDocument();
     expect(screen.getByText("Primeira entrega")).toBeInTheDocument();
+    expect(
+      screen.getByText("Faltam 90 pontos para Colaborador"),
+    ).toBeInTheDocument();
   });
 
   it("some quando a gamificação é desativada em Configurações", async () => {

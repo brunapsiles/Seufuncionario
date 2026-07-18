@@ -833,6 +833,35 @@ aside nav button.active {
   margin: 4px 0 0;
   font-size: 17px;
 }
+.level-progress {
+  margin-top: 8px;
+  min-width: 200px;
+}
+.level-progress-bar {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface2);
+  overflow: hidden;
+}
+.level-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--primary);
+  transition: width 0.3s ease;
+}
+.level-progress small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.level-progress-max {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
 .achievement-chips {
   display: flex;
   flex-wrap: wrap;
@@ -1153,33 +1182,48 @@ aside nav button.active {
 }
 .empty {
   text-align: center;
-  padding: 36px 20px;
+  padding: 48px 24px;
   display: flex;
   flex-direction: column;
   align-items: center;
+  border: 1.5px dashed var(--line);
+  border-radius: 18px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--primary) 5%, transparent),
+    transparent 70%
+  );
 }
 .empty-icon {
-  width: 50px;
-  height: 50px;
+  width: 68px;
+  height: 68px;
   display: grid;
   place-items: center;
-  border-radius: 15px;
-  background: var(--surface2);
+  border-radius: 50%;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--primary) 20%, var(--surface)),
+    color-mix(in srgb, var(--primary) 6%, var(--surface))
+  );
   color: var(--primary);
-  margin-bottom: 13px;
+  margin-bottom: 16px;
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--primary) 18%, transparent);
 }
 .empty h3 {
-  font-size: 16px;
-  margin: 0 0 6px;
+  font-size: 18px;
+  margin: 0 0 8px;
 }
 .empty p {
   color: var(--muted);
   max-width: 420px;
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 13.5px;
+  line-height: 1.6;
 }
 .empty .button {
-  margin-top: 5px;
+  margin-top: 16px;
+  padding: 12px 22px;
+  font-size: 14px;
+  font-weight: 700;
 }
 .recent-grid {
   display: grid;
@@ -4858,6 +4902,31 @@ input[readonly] {
   width: 18px;
   min-width: 18px;
   color: var(--muted);
+}
+.sync-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.sync-indicator svg {
+  width: 13px;
+  height: 13px;
+  animation: sf-spin 0.9s linear infinite;
+}
+@keyframes sf-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 .space-badge {
   display: inline-flex;

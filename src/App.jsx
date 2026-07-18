@@ -670,6 +670,19 @@ export const levelForPoints = (points, levels = DEFAULT_LEVELS) =>
     .sort((a, b) => a.minPoints - b.minPoints)
     .reduce((current, level) => (points >= level.minPoints ? level : current), levels[0]);
 
+export const levelProgress = (points, levels = DEFAULT_LEVELS) => {
+  const sorted = [...levels].sort((a, b) => a.minPoints - b.minPoints);
+  const current = levelForPoints(points, sorted);
+  const currentIndex = sorted.findIndex((l) => l.name === current.name);
+  const next = sorted[currentIndex + 1] || null;
+  if (!next) return { next: null, pct: 100, pointsToNext: 0 };
+  const span = next.minPoints - current.minPoints;
+  const pct = span > 0
+    ? Math.min(100, Math.max(0, Math.round(((points - current.minPoints) / span) * 100)))
+    : 100;
+  return { next, pct, pointsToNext: Math.max(0, next.minPoints - points) };
+};
+
 export const computeAchievements = (tasks, userId) => {
   const approved = (tasks || []).filter((t) => isApprovedMission(t, userId));
   const onTime = approved.filter(
@@ -1026,6 +1039,7 @@ const activeSpaceId = () => {
 function useDatabase() {
   const [db, setDb] = useState(loadInitialDb);
   const [workspaceConflict, setWorkspaceConflict] = useState(null);
+  const [syncing, setSyncing] = useState(false);
   const syncTimer = useRef(null);
   const syncChain = useRef(Promise.resolve());
   const pulled = useRef(false);
@@ -1180,29 +1194,34 @@ function useDatabase() {
         .catch(() => {})
         .then(async () => {
           if (conflictRef.current) return;
-          const baseRevision = revisionRef.current;
-          const response = await fetch(wsUrl, {
-            method: "PUT",
-            headers: { "content-type": "application/json", ...authHeaders() },
-            body: JSON.stringify({ data, revision: baseRevision }),
-          });
-          const payload = await response.json().catch(() => ({}));
-          if (response.status === 409) {
-            preserveWorkspaceConflict(
-              spaceKey,
-              data,
-              baseRevision,
-              payload,
-            );
-            conflictRef.current = true;
-            setWorkspaceConflict(payload);
-            return;
-          }
-          if (!response.ok) return;
-          const revision = Number(payload.revision);
-          if (Number.isInteger(revision) && revision >= 0) {
-            revisionRef.current = revision;
-            storeWorkspaceRevision(spaceKey, revision);
+          setSyncing(true);
+          try {
+            const baseRevision = revisionRef.current;
+            const response = await fetch(wsUrl, {
+              method: "PUT",
+              headers: { "content-type": "application/json", ...authHeaders() },
+              body: JSON.stringify({ data, revision: baseRevision }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (response.status === 409) {
+              preserveWorkspaceConflict(
+                spaceKey,
+                data,
+                baseRevision,
+                payload,
+              );
+              conflictRef.current = true;
+              setWorkspaceConflict(payload);
+              return;
+            }
+            if (!response.ok) return;
+            const revision = Number(payload.revision);
+            if (Number.isInteger(revision) && revision >= 0) {
+              revisionRef.current = revision;
+              storeWorkspaceRevision(spaceKey, revision);
+            }
+          } finally {
+            setSyncing(false);
           }
         })
         .catch(() => {});
@@ -1216,7 +1235,7 @@ function useDatabase() {
         typeof fn === "function" ? fn(current) : { ...current, ...fn };
       return { ...next, updatedAt: new Date().toISOString() };
     });
-  return [db, update, workspaceConflict];
+  return [db, update, workspaceConflict, syncing];
 }
 
 function Logo({ compact = false }) {
@@ -1262,7 +1281,7 @@ function Empty({ icon: Icon = Sparkles, title, text, action, onAction }) {
   return (
     <div className="empty">
       <span className="empty-icon">
-        <Icon size={23} />
+        <Icon size={30} />
       </span>
       <h3>{title}</h3>
       <p>{text}</p>
@@ -3693,6 +3712,7 @@ function Dashboard({ db, update, business, go, setToast }) {
   const gamificationEnabled = db.preferences.gamificationEnabled !== false;
   const myPoints = computeUserPoints(db.tasks, db.user.id);
   const myLevel = levelForPoints(myPoints, db.levels || DEFAULT_LEVELS);
+  const myLevelProgress = levelProgress(myPoints, db.levels || DEFAULT_LEVELS);
   const myAchievements = computeAchievements(db.tasks, db.user.id);
   useEffect(() => {
     if (!gamificationEnabled || myAchievements.length === 0) return;
@@ -3734,6 +3754,24 @@ function Dashboard({ db, update, business, go, setToast }) {
             <h2>
               {myLevel.name} · {myPoints} pontos
             </h2>
+            {myLevelProgress.next ? (
+              <div className="level-progress">
+                <div className="level-progress-bar">
+                  <div
+                    className="level-progress-fill"
+                    style={{ width: `${myLevelProgress.pct}%` }}
+                  />
+                </div>
+                <small>
+                  Faltam {myLevelProgress.pointsToNext} pontos para{" "}
+                  {myLevelProgress.next.name}
+                </small>
+              </div>
+            ) : (
+              <small className="level-progress-max">
+                Nível máximo alcançado
+              </small>
+            )}
           </div>
           {myAchievements.length > 0 && (
             <div className="achievement-chips">
@@ -15598,7 +15636,7 @@ export default function App() {
       return {};
     }
   })();
-  const [db, update, workspaceConflict] = useDatabase(),
+  const [db, update, workspaceConflict, syncing] = useDatabase(),
     [page, setPage] = useState("inicio"),
     [collapsed, setCollapsed] = useState(!!savedUi.collapsed),
     [mobile, setMobile] = useState(false),
@@ -16102,6 +16140,12 @@ export default function App() {
             )}
           </div>
           <div className="top-actions">
+            {syncing && (
+              <span className="sync-indicator" role="status">
+                <RefreshCw />
+                Sincronizando...
+              </span>
+            )}
             <button
               className="icon-button search-trigger"
               aria-label="Buscar em tudo"
