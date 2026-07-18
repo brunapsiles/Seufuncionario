@@ -798,6 +798,22 @@ aside nav button.active {
   padding: 34px;
   max-width: 1500px;
   margin: 0 auto;
+  animation: sf-page-in 0.16s ease-out;
+}
+@keyframes sf-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .page {
+    animation: none;
+  }
 }
 .page-title {
   display: flex;

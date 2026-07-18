@@ -16943,7 +16943,9 @@ export default function App() {
             </div>
           </Modal>
         )}
-        <div className="page">{content()}</div>
+        <div className="page" key={page}>
+          {content()}
+        </div>
       </main>
       <AppUpdate visible={updateAvailable} />
       <Toast toast={toast} />
