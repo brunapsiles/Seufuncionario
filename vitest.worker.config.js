@@ -13,6 +13,11 @@ export default defineConfig({
           TEST_MIGRATIONS: await readD1Migrations(
             path.resolve("./migrations"),
           ),
+          // Chave VAPID exclusiva de teste (não é usada em produção) — só
+          // existe para exercitar o fluxo de Web Push nos testes.
+          VAPID_PUBLIC_KEY:
+            "BEa6RPkBtRlZB3zsc7CJpieeD8RLYLSjWQbfWX69nASq9GcrzQNRHwKgO3T2wYgq8GRi6baoREH4uVvGPxsZC9Y",
+          VAPID_PRIVATE_KEY: "WnT6_QQd2c5yTC8ClemX9Djsgtc3Bvs8zgAToy4siGA",
         },
       },
     })),

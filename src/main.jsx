@@ -73,6 +73,13 @@ const announceUpdate = () => {
 };
 
 if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    if (event.data?.type === "sf-push-navigate") {
+      window.dispatchEvent(
+        new CustomEvent("sf-push-navigate", { detail: { link: event.data.link } }),
+      );
+    }
+  });
   window.addEventListener("load", async () => {
     try {
       let controlled = !!navigator.serviceWorker.controller;

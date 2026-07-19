@@ -543,6 +543,15 @@ export const contactLinks = (contact) => {
   return { phone: digits.length <= 11 ? `55${digits}` : digits, email: "" };
 };
 
+// PushManager.subscribe() exige a chave VAPID como Uint8Array, mas o
+// servidor entrega base64url — essa é a conversão padrão da MDN.
+const urlBase64ToUint8Array = (base64) => {
+  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
+  const base64Safe = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64Safe);
+  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+};
+
 const whatsappLink = (phone, message) =>
   `https://wa.me/${phone}${message ? `?text=${encodeURIComponent(message)}` : ""}`;
 
@@ -16314,6 +16323,79 @@ function AccountSettings({ db, update, setToast, go }) {
       setErrorLogsLoading(false);
     }
   };
+  const pushSupported =
+    typeof window !== "undefined" &&
+    "serviceWorker" in navigator &&
+    "PushManager" in window &&
+    typeof Notification !== "undefined";
+  const [vapidPublicKey, setVapidPublicKey] = useState("");
+  const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushChecked, setPushChecked] = useState(false);
+  useEffect(() => {
+    if (!pushSupported) return;
+    fetch("/api/config")
+      .then((r) => r.json())
+      .then((d) => setVapidPublicKey(d.vapidPublicKey || ""))
+      .catch(() => {});
+    navigator.serviceWorker.ready
+      .then((registration) => registration.pushManager.getSubscription())
+      .then((subscription) => setPushSubscribed(!!subscription))
+      .catch(() => {})
+      .finally(() => setPushChecked(true));
+  }, [pushSupported]);
+  const enablePush = async () => {
+    if (!vapidPublicKey) {
+      setToast("Notificações do navegador não estão configuradas.");
+      return;
+    }
+    setPushBusy(true);
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        setToast("Permissão de notificação negada.");
+        return;
+      }
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+      });
+      const r = await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify(subscription.toJSON()),
+      });
+      if (!r.ok) throw new Error("Não foi possível ativar as notificações.");
+      setPushSubscribed(true);
+      setToast("Notificações do navegador ativadas");
+    } catch (e) {
+      setToast(e.message || "Não foi possível ativar as notificações.");
+    } finally {
+      setPushBusy(false);
+    }
+  };
+  const disablePush = async () => {
+    setPushBusy(true);
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      if (subscription) {
+        await fetch("/api/push/unsubscribe", {
+          method: "POST",
+          headers: { "content-type": "application/json", ...authHeaders() },
+          body: JSON.stringify({ endpoint: subscription.endpoint }),
+        });
+        await subscription.unsubscribe();
+      }
+      setPushSubscribed(false);
+      setToast("Notificações do navegador desativadas");
+    } catch (e) {
+      setToast(e.message || "Não foi possível desativar as notificações.");
+    } finally {
+      setPushBusy(false);
+    }
+  };
   const workspaceSizeBytes = (() => {
     try {
       return new Blob([JSON.stringify(db)]).size;
@@ -16694,6 +16776,36 @@ function AccountSettings({ db, update, setToast, go }) {
               </div>
             ))}
         </section>
+        {pushSupported && (
+          <section className="settings-card">
+            <div className="settings-card-head">
+              <span className="settings-icon">
+                <Bell />
+              </span>
+              <div>
+                <h2>Notificações do navegador</h2>
+                <p>
+                  Receba um aviso mesmo com o aplicativo fechado — nova
+                  missão, entrega aprovada, convite aceito e outras novidades.
+                </p>
+              </div>
+            </div>
+            <div className="settings-actions">
+              <Button
+                variant={pushSubscribed ? "ghost" : "secondary"}
+                icon={Bell}
+                onClick={pushSubscribed ? disablePush : enablePush}
+                disabled={pushBusy || !pushChecked}
+              >
+                {pushBusy
+                  ? "Aguarde..."
+                  : pushSubscribed
+                    ? "Desativar notificações"
+                    : "Ativar notificações"}
+              </Button>
+            </div>
+          </section>
+        )}
       </div>
       {deleteOpen && (
         <Modal title="Excluir minha conta" onClose={() => setDeleteOpen(false)}>
@@ -16812,6 +16924,17 @@ export default function App() {
     window.addEventListener("sf-app-update-available", showUpdate);
     return () =>
       window.removeEventListener("sf-app-update-available", showUpdate);
+  }, []);
+  useEffect(() => {
+    const handler = (event) => {
+      const link = event.detail?.link;
+      if (link) {
+        setPage(link);
+        setMobile(false);
+      }
+    };
+    window.addEventListener("sf-push-navigate", handler);
+    return () => window.removeEventListener("sf-push-navigate", handler);
   }, []);
   const startResize = (e) => {
     e.preventDefault();

@@ -125,6 +125,12 @@ describe("/api/auth/account com D1 local", () => {
     )
       .bind(owner.id, now)
       .run();
+    await env.DB.prepare(
+      `INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth, created_at)
+      VALUES ('push-del', ?, 'https://push.example.com/del', 'p256dh', 'auth', ?)`,
+    )
+      .bind(owner.id, now)
+      .run();
 
     const response = await deleteAccount(owner);
     expect(response.status).toBe(200);
@@ -171,6 +177,13 @@ describe("/api/auth/account com D1 local", () => {
     ).toBeNull();
     expect(
       await env.DB.prepare("SELECT id FROM error_logs WHERE user_id = ?")
+        .bind(owner.id)
+        .first(),
+    ).toBeNull();
+    expect(
+      await env.DB.prepare(
+        "SELECT id FROM push_subscriptions WHERE user_id = ?",
+      )
         .bind(owner.id)
         .first(),
     ).toBeNull();

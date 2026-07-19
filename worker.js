@@ -1,3 +1,5 @@
+import { buildPushPayload } from "@block65/webcrypto-web-push";
+
 const specialistInstructions = {
   Diretor: "ORQUESTRADOR",
   Fundador:
@@ -238,6 +240,93 @@ async function sendEmail(env, to, subject, html) {
   }
 }
 
+function pushEnabled(env) {
+  return !!(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY);
+}
+
+// Envia uma notificação Web Push para uma única assinatura. Retorna
+// { ok: true } em sucesso, ou { ok: false, gone: true } quando o navegador
+// já invalidou essa assinatura (404/410) — sinal para apagá-la do banco.
+async function sendWebPush(env, subscription, message) {
+  const vapid = {
+    subject:
+      env.VAPID_SUBJECT || "https://seufuncionario-expo.brunapsiles.workers.dev",
+    publicKey: env.VAPID_PUBLIC_KEY,
+    privateKey: env.VAPID_PRIVATE_KEY,
+  };
+  const payload = await buildPushPayload(message, subscription, vapid);
+  const response = await fetch(subscription.endpoint, payload);
+  if (response.ok) return { ok: true };
+  if (response.status === 404 || response.status === 410)
+    return { ok: false, gone: true };
+  return { ok: false, gone: false };
+}
+
+// Compara as notificações antes/depois de um PUT em /api/workspace e envia
+// um Web Push para cada uma que for genuinamente nova (não existia antes),
+// desde que o destinatário (assigneeId) tenha alguma assinatura salva.
+async function notifyNewNotifications(env, beforeList, afterList) {
+  if (!pushEnabled(env)) return;
+  const before = new Set(
+    (Array.isArray(beforeList) ? beforeList : [])
+      .filter((n) => n && n.id)
+      .map((n) => n.id),
+  );
+  const fresh = (Array.isArray(afterList) ? afterList : []).filter(
+    (n) => n && n.id && n.assigneeId && !before.has(n.id),
+  );
+  if (!fresh.length) return;
+  const recipients = new Map();
+  for (const n of fresh) {
+    if (!recipients.has(n.assigneeId)) recipients.set(n.assigneeId, []);
+    recipients.get(n.assigneeId).push(n);
+  }
+  for (const [recipientId, items] of recipients) {
+    let subs;
+    try {
+      subs = await env.DB.prepare(
+        "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?",
+      )
+        .bind(recipientId)
+        .all();
+    } catch (error) {
+      console.error("push subscriptions lookup", error);
+      continue;
+    }
+    const rows = subs.results || [];
+    if (!rows.length) continue;
+    const latest = items[0];
+    const message = {
+      data: {
+        title: "Seu Funcionário",
+        body: latest.message || "Você tem uma novidade.",
+        link: latest.link || "/",
+        count: items.length,
+      },
+      options: { ttl: 3600, urgency: "normal" },
+    };
+    for (const row of rows) {
+      const subscription = {
+        endpoint: row.endpoint,
+        expirationTime: null,
+        keys: { p256dh: row.p256dh, auth: row.auth },
+      };
+      try {
+        const result = await sendWebPush(env, subscription, message);
+        if (!result.ok && result.gone) {
+          await env.DB.prepare(
+            "DELETE FROM push_subscriptions WHERE endpoint = ?",
+          )
+            .bind(row.endpoint)
+            .run();
+        }
+      } catch (error) {
+        console.error("web push send", error);
+      }
+    }
+  }
+}
+
 async function handleErrorLog(request, env) {
   if (request.method === "GET") {
     if (!env.DB) return json({ logs: [] });
@@ -354,6 +443,9 @@ async function handleAuth(request, env, url) {
         account.id,
       ),
       env.DB.prepare("DELETE FROM error_logs WHERE user_id = ?").bind(
+        account.id,
+      ),
+      env.DB.prepare("DELETE FROM push_subscriptions WHERE user_id = ?").bind(
         account.id,
       ),
       env.DB.prepare("DELETE FROM users WHERE id = ?").bind(account.id),
@@ -750,6 +842,17 @@ async function handleAuth(request, env, url) {
   }
 
   if (url.pathname === "/api/auth/login") {
+    // O limite por IP acima não protege uma conta específica de tentativas
+    // distribuídas entre vários IPs — este limite é por e-mail, independente
+    // de onde a tentativa vem.
+    if (!allowed(`auth-account:${email}`, 8))
+      return json(
+        {
+          error:
+            "Muitas tentativas para esta conta. Aguarde um minuto e tente novamente.",
+        },
+        429,
+      );
     const account = await env.DB.prepare(
       "SELECT id, name, email, password_hash, password_salt FROM users WHERE email = ?",
     )
@@ -1042,18 +1145,18 @@ async function handleWorkspace(request, env, user, url) {
   const baseRevision = body.revision ?? 0;
   if (!Number.isInteger(baseRevision) || baseRevision < 0)
     return json({ error: "Revisão de workspace inválida." }, 400);
+  const priorRow = await env.DB.prepare(
+    "SELECT data FROM workspaces WHERE user_id = ?",
+  )
+    .bind(ownerId)
+    .first();
+  let currentData = null;
+  try {
+    currentData = priorRow ? JSON.parse(priorRow.data) : null;
+  } catch {
+    currentData = null;
+  }
   if (restricted) {
-    const row = await env.DB.prepare(
-      "SELECT data FROM workspaces WHERE user_id = ?",
-    )
-      .bind(ownerId)
-      .first();
-    let currentData = null;
-    try {
-      currentData = row ? JSON.parse(row.data) : null;
-    } catch {
-      currentData = null;
-    }
     const ctx = resolveViewerContext(currentData, user.id);
     const merged = { ...data };
     for (const field of RESTRICTED_FIELDS)
@@ -1108,6 +1211,11 @@ async function handleWorkspace(request, env, user, url) {
       },
       409,
     );
+  }
+  try {
+    await notifyNewNotifications(env, currentData?.notifications, data.notifications);
+  } catch (error) {
+    console.error("push notify", error);
   }
   return json({
     ok: true,
@@ -2197,6 +2305,64 @@ async function handleSites(request, env, user, url) {
   return json({ error: "Ação não encontrada." }, 404);
 }
 
+async function handlePush(request, env, user, url) {
+  if (request.method !== "POST")
+    return json({ error: "Método não permitido." }, 405);
+  const action = url.pathname.replace("/api/push/", "");
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Dados inválidos." }, 400);
+  }
+  if (action === "subscribe") {
+    if (!pushEnabled(env))
+      return json(
+        { error: "Notificações do navegador não estão configuradas." },
+        503,
+      );
+    const endpoint = typeof body.endpoint === "string" ? body.endpoint : "";
+    const p256dh = body.keys?.p256dh;
+    const auth = body.keys?.auth;
+    if (
+      !endpoint ||
+      typeof p256dh !== "string" ||
+      !p256dh ||
+      typeof auth !== "string" ||
+      !auth
+    )
+      return json({ error: "Assinatura inválida." }, 400);
+    await env.DB.prepare(
+      `INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(endpoint) DO UPDATE SET
+        user_id = excluded.user_id, p256dh = excluded.p256dh,
+        auth = excluded.auth, created_at = excluded.created_at`,
+    )
+      .bind(
+        crypto.randomUUID(),
+        user.id,
+        endpoint,
+        p256dh,
+        auth,
+        new Date().toISOString(),
+      )
+      .run();
+    return json({ ok: true });
+  }
+  if (action === "unsubscribe") {
+    const endpoint = typeof body.endpoint === "string" ? body.endpoint : "";
+    if (!endpoint) return json({ ok: true });
+    await env.DB.prepare(
+      "DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?",
+    )
+      .bind(endpoint, user.id)
+      .run();
+    return json({ ok: true });
+  }
+  return json({ error: "Ação não encontrada." }, 404);
+}
+
 function systemPrompt(specialist, business, customInstructions) {
   const context = business
     ? [
@@ -3059,6 +3225,7 @@ export default {
       return json({
         googleClientId: env.GOOGLE_CLIENT_ID || "",
         videoEnabled: !!(env.VIDEO_AI_URL && env.VIDEO_AI_TOKEN),
+        vapidPublicKey: pushEnabled(env) ? env.VAPID_PUBLIC_KEY : null,
       });
     if (url.pathname === "/api/errors") {
       try {
@@ -3095,14 +3262,16 @@ export default {
       url.pathname === "/api/workspace" ||
       url.pathname.startsWith("/api/collab") ||
       url.pathname === "/api/tasks/notify" ||
-      url.pathname.startsWith("/api/sites/");
+      url.pathname.startsWith("/api/sites/") ||
+      url.pathname.startsWith("/api/push/");
     if (needsAuth) {
       if (url.pathname === "/api/ai" && request.method !== "POST")
         return json({ error: "Método não permitido." }, 405);
       if (
         (url.pathname === "/api/workspace" ||
           url.pathname.startsWith("/api/collab") ||
-          url.pathname.startsWith("/api/sites/")) &&
+          url.pathname.startsWith("/api/sites/") ||
+          url.pathname.startsWith("/api/push/")) &&
         !env.DB
       )
         return json(
@@ -3155,6 +3324,17 @@ export default {
           console.error("Sites error", error);
           return json(
             { error: "Não foi possível concluir a publicação." },
+            500,
+          );
+        }
+      }
+      if (url.pathname.startsWith("/api/push/")) {
+        try {
+          return await handlePush(request, env, user, url);
+        } catch (error) {
+          console.error("Push error", error);
+          return json(
+            { error: "Não foi possível concluir a ação de notificação." },
             500,
           );
         }

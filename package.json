@@ -16,6 +16,7 @@
     "db:migrate": "npx wrangler d1 migrations apply seu-funcionario-db --remote"
   },
   "dependencies": {
+    "@block65/webcrypto-web-push": "^1.0.2",
     "@vitejs/plugin-react": "^6.0.3",
     "docx": "^9.7.1",
     "jspdf": "^4.2.1",

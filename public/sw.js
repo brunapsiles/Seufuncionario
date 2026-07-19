@@ -1,4 +1,4 @@
-const CACHE = "seu-funcionario-v74";
+const CACHE = "seu-funcionario-v75";
 
 self.addEventListener("install", () => self.skipWaiting());
 
@@ -42,5 +42,41 @@ self.addEventListener("fetch", (event) => {
         return cached || cache.match("/");
       }
     }),
+  );
+});
+
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {}
+  const title = data.title || "Seu Funcionário";
+  const link = data.link || "/";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || "Você tem uma novidade.",
+      icon: "/favicon.svg",
+      badge: "/favicon.svg",
+      tag: link,
+      data: { link },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const link = event.notification.data?.link || "/";
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clients) => {
+        for (const client of clients) {
+          if (client.url.includes(location.origin) && "focus" in client) {
+            client.postMessage({ type: "sf-push-navigate", link });
+            return client.focus();
+          }
+        }
+        return self.clients.openWindow(link);
+      }),
   );
 });
