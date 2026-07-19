@@ -63,7 +63,17 @@ async function seedInvite({
       (code, owner_id, role, created_at, expires_at, token, email, name, status)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
-    .bind(code, ownerId, role, now.toISOString(), expiresAt, token, email, name, status)
+    .bind(
+      code,
+      ownerId,
+      role,
+      now.toISOString(),
+      expiresAt,
+      await sha256(token),
+      email,
+      name,
+      status,
+    )
     .run();
   return { code, token, email, name, role, expiresAt };
 }
@@ -244,10 +254,16 @@ describe("convites de equipe com D1 local", () => {
       body: { id: "code-cancel-1" },
     });
     expect(cancelled.status).toBe(200);
-    const gone = await env.DB.prepare("SELECT code FROM invites WHERE code = ?")
+    const soft = await env.DB.prepare("SELECT status FROM invites WHERE code = ?")
       .bind("code-cancel-1")
       .first();
-    expect(gone).toBeNull();
+    expect(soft).not.toBeNull();
+    expect(soft.status).toBe("cancelado");
+
+    const cancelledLookup = await req(
+      "/api/collab/invite-info?token=token-cancel-1",
+    );
+    expect(cancelledLookup.status).toBe(410);
 
     await seedInvite({
       code: "code-cancel-2",
@@ -261,12 +277,12 @@ describe("convites de equipe com D1 local", () => {
       user: owner,
       body: { id: "code-cancel-2" },
     });
-    const stillThere = await env.DB.prepare(
-      "SELECT code FROM invites WHERE code = ?",
+    const stillActive = await env.DB.prepare(
+      "SELECT status FROM invites WHERE code = ?",
     )
       .bind("code-cancel-2")
       .first();
-    expect(stillThere).not.toBeNull();
+    expect(stillActive.status).toBe("ativo");
   });
 
   it("suspende e reativa o acesso de um colaborador, bloqueando o workspace", async () => {

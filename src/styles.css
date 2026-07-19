@@ -5015,6 +5015,35 @@ input[readonly] {
   color: var(--muted);
   font-size: 12px;
 }
+.error-log-entry {
+  padding: 10px 12px;
+  border-radius: 11px;
+  background: var(--surface2);
+}
+.error-log-entry summary {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.error-log-entry summary strong {
+  font-size: 14px;
+}
+.error-log-entry summary small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.error-log-entry pre {
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow-y: auto;
+}
 .join-row {
   display: flex;
   gap: 8px;

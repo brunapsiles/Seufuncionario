@@ -239,6 +239,22 @@ async function sendEmail(env, to, subject, html) {
 }
 
 async function handleErrorLog(request, env) {
+  if (request.method === "GET") {
+    if (!env.DB) return json({ logs: [] });
+    let user = null;
+    try {
+      user = await sessionUser(request, env);
+    } catch {}
+    if (!user)
+      return json({ error: "Sua sessão expirou. Entre novamente." }, 401);
+    const logs = await env.DB.prepare(
+      `SELECT id, message, stack, component_stack AS componentStack, url, created_at AS createdAt
+      FROM error_logs WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`,
+    )
+      .bind(user.id)
+      .all();
+    return json({ logs: logs.results || [] });
+  }
   if (request.method !== "POST") return json({ error: "Método não permitido." }, 405);
   if (!env.DB) return json({ ok: true });
   const ip = request.headers.get("cf-connecting-ip") || "local";
@@ -846,6 +862,8 @@ const RESTRICTED_FIELDS = [
   "orders",
   "vehicles",
   "trips",
+  "conversations",
+  "emailDrafts",
 ];
 
 function resolveViewerContext(data, userId) {
@@ -869,21 +887,109 @@ function filterRecordsForViewer(records, userId, ctx) {
   );
 }
 
+// Fields only the record's owner (or a legacy no-owner record, which has no
+// owner to defer to) may change. A non-owner who can merely SEE a shared
+// record — because it's assigned to them, shared with their team, or set to
+// "espaco_todo" — must not be able to reassign it, change who it's shared
+// with, or tamper with mission economics (points/reward/slots) or the
+// approval fields that gate them.
+const OWNER_LOCKED_FIELDS = new Set([
+  "ownerId",
+  "businessId",
+  "visibility",
+  "sharedWith",
+  "sharedTeams",
+  "points",
+  "reward",
+  "slots",
+  "approvalMode",
+  "distribution",
+  "rewardStatus",
+]);
+
+function sanitizeMemberEdit(existing, incoming) {
+  const safe = { ...existing };
+  for (const key of Object.keys(incoming)) {
+    if (OWNER_LOCKED_FIELDS.has(key)) continue;
+    // Only the owner/reviewer may approve a mission — approving is what
+    // unlocks points and reward payout, so this is the one non-owner-writable
+    // field that still needs a value-level (not just field-level) guard.
+    if (key === "missionStatus" && incoming[key] === "aprovada") continue;
+    safe[key] = incoming[key];
+  }
+  return safe;
+}
+
 function mergeRecordsFromMember(currentRecords, incomingRecords, memberId, ctx) {
   const current = Array.isArray(currentRecords) ? currentRecords : [];
   const incoming = Array.isArray(incomingRecords) ? incomingRecords : [];
-  const currentById = new Map(current.map((r) => [r.id, r]));
+  const incomingById = new Map(
+    incoming.filter((r) => r && r.id).map((r) => [r.id, r]),
+  );
   const visibleIds = new Set(
     current.filter((r) => canSeeTask(r, memberId, ctx)).map((r) => r.id),
   );
-  const accepted = incoming.filter((r) => {
-    if (!r || !r.id) return false;
-    if (visibleIds.has(r.id)) return true;
-    if (!currentById.has(r.id) && r.ownerId === memberId) return true;
+  const result = [];
+  const seen = new Set();
+  for (const existing of current) {
+    seen.add(existing.id);
+    if (!visibleIds.has(existing.id)) {
+      result.push(existing);
+      continue;
+    }
+    const isOwner = existing.ownerId == null || existing.ownerId === memberId;
+    const incomingVersion = incomingById.get(existing.id);
+    if (!incomingVersion) {
+      // Member's payload dropped this record: only the owner (or a legacy
+      // no-owner record treated as ownerless) can actually delete it —
+      // a non-owner who merely sees a shared record can't erase it by
+      // omission.
+      if (isOwner) continue;
+      result.push(existing);
+      continue;
+    }
+    result.push(
+      isOwner
+        ? incomingVersion
+        : sanitizeMemberEdit(existing, incomingVersion),
+    );
+  }
+  for (const r of incoming) {
+    if (!r || !r.id || seen.has(r.id)) continue;
+    if (r.ownerId === memberId) result.push(r);
+  }
+  return result;
+}
+
+// public_sites/public_site_leads live entirely outside RESTRICTED_FIELDS —
+// canAccessWorkspace only proves the actor belongs to the space, not that
+// they're allowed to touch this specific site. Look the site up in the
+// owner's own workspace JSON and run it through the same canSeeTask a
+// non-owner would need to pass for any other record, so a colaborador can't
+// publish/unpublish/delete or read leads for a site someone else made.
+async function canManageSite(env, actorId, ownerId, siteId) {
+  if (actorId === ownerId) return true;
+  const role = await membershipRole(env, actorId, ownerId);
+  if (!role) return false;
+  if (role === "admin") return true;
+  const row = await env.DB.prepare(
+    "SELECT data FROM workspaces WHERE user_id = ?",
+  )
+    .bind(ownerId)
+    .first();
+  if (!row) return false;
+  let data;
+  try {
+    data = JSON.parse(row.data);
+  } catch {
     return false;
-  });
-  const hidden = current.filter((r) => !visibleIds.has(r.id));
-  return [...hidden, ...accepted];
+  }
+  const site = (Array.isArray(data.sites) ? data.sites : []).find(
+    (s) => s && s.id === siteId,
+  );
+  if (!site) return false;
+  const ctx = resolveViewerContext(data, actorId);
+  return canSeeTask(site, actorId, ctx);
 }
 
 async function handleWorkspace(request, env, user, url) {
@@ -1080,6 +1186,7 @@ async function handleCollab(request, env, user, url) {
       const role = await membershipRole(env, user.id, ownerId);
       if (!role)
         return json({ error: "Você não tem acesso a este espaço." }, 403);
+      const canManage = role === "admin";
       const members = await env.DB.prepare(
         `SELECT users.id, users.name, users.email, memberships.role, memberships.status,
           memberships.function_title AS functionTitle, memberships.bond_type AS bondType,
@@ -1089,7 +1196,30 @@ async function handleCollab(request, env, user, url) {
       )
         .bind(ownerId)
         .all();
-      return json({ members: members.results || [], invites: [], spaces: [] });
+      let invites = [];
+      if (canManage) {
+        const now = new Date().toISOString();
+        const inviteRows = await env.DB.prepare(
+          `SELECT code AS id, name, email, role, status, function_title AS functionTitle, bond_type AS bondType,
+            direct_manager_id AS directManagerId, created_at AS createdAt, expires_at AS expiresAt
+          FROM invites WHERE owner_id = ? ORDER BY created_at DESC`,
+        )
+          .bind(ownerId)
+          .all();
+        invites = (inviteRows.results || []).map((invite) => ({
+          ...invite,
+          status:
+            invite.status === "enviado" && invite.expiresAt < now
+              ? "expirado"
+              : invite.status,
+        }));
+      }
+      return json({
+        members: members.results || [],
+        invites,
+        spaces: [],
+        canManage,
+      });
     }
     const members = await env.DB.prepare(
       `SELECT users.id, users.name, users.email, memberships.role, memberships.status,
@@ -1124,6 +1254,7 @@ async function handleCollab(request, env, user, url) {
             : invite.status,
       })),
       spaces: spaces.results || [],
+      canManage: true,
     });
   }
   if (request.method !== "POST")
@@ -1138,6 +1269,35 @@ async function handleCollab(request, env, user, url) {
   try {
     body = await request.json();
   } catch {}
+
+  // "leave" operates on whatever space the user is leaving, named explicitly
+  // in the body — it isn't administering that space, so it's exempt from the
+  // owner-scope/admin gate below.
+  if (action === "leave") {
+    const ownerId = typeof body.ownerId === "string" ? body.ownerId : "";
+    await env.DB.prepare(
+      "DELETE FROM memberships WHERE owner_id = ? AND member_id = ?",
+    )
+      .bind(ownerId, user.id)
+      .run();
+    return json({ ok: true });
+  }
+
+  const scopeOwnerId = url.searchParams.get("owner") || user.id;
+  let actingOnBehalfOf = user;
+  if (scopeOwnerId !== user.id) {
+    const scopeRole = await membershipRole(env, user.id, scopeOwnerId);
+    if (scopeRole !== "admin")
+      return json(
+        { error: "Você não tem permissão para administrar este espaço." },
+        403,
+      );
+    const ownerRow = await env.DB.prepare("SELECT id, name, email FROM users WHERE id = ?")
+      .bind(scopeOwnerId)
+      .first();
+    if (!ownerRow) return json({ error: "Espaço não encontrado." }, 404);
+    actingOnBehalfOf = ownerRow;
+  }
 
   if (action === "invite") {
     const name =
@@ -1160,7 +1320,7 @@ async function handleCollab(request, env, user, url) {
     if (name.length < 2) return json({ error: "Informe o nome." }, 400);
     if (!/^\S+@\S+\.\S+$/.test(email))
       return json({ error: "Informe um e-mail válido." }, 400);
-    if (email === user.email)
+    if (email === user.email || email === actingOnBehalfOf.email)
       return json(
         { error: "Você não pode convidar a si mesmo." },
         400,
@@ -1169,7 +1329,7 @@ async function handleCollab(request, env, user, url) {
       `SELECT memberships.id FROM memberships JOIN users ON users.id = memberships.member_id
       WHERE memberships.owner_id = ? AND users.email = ? AND memberships.status = 'ativo'`,
     )
-      .bind(user.id, email)
+      .bind(scopeOwnerId, email)
       .first();
     if (alreadyMember)
       return json(
@@ -1191,11 +1351,11 @@ async function handleCollab(request, env, user, url) {
     )
       .bind(
         code,
-        user.id,
+        scopeOwnerId,
         role,
         now.toISOString(),
         expiresAt,
-        token,
+        await sha256(token),
         email,
         name,
         functionTitle,
@@ -1208,8 +1368,8 @@ async function handleCollab(request, env, user, url) {
       await sendEmail(
         env,
         email,
-        `${user.name} convidou você — Seu Funcionário`,
-        inviteEmailHtml(name, user.name, role, link),
+        `${actingOnBehalfOf.name} convidou você — Seu Funcionário`,
+        inviteEmailHtml(name, actingOnBehalfOf.name, role, link),
       );
     } catch (e) {
       console.error("invite mail", e);
@@ -1221,7 +1381,7 @@ async function handleCollab(request, env, user, url) {
         502,
       );
     }
-    await logAudit(env, user.id, user, "convite_criado", email, `papel: ${role}`);
+    await logAudit(env, scopeOwnerId, user, "convite_criado", email, `papel: ${role}`);
     return json({ id: code, expiresAt });
   }
   if (action === "resend") {
@@ -1229,7 +1389,7 @@ async function handleCollab(request, env, user, url) {
     const invite = await env.DB.prepare(
       "SELECT * FROM invites WHERE code = ? AND owner_id = ?",
     )
-      .bind(id, user.id)
+      .bind(id, scopeOwnerId)
       .first();
     if (!invite) return json({ error: "Convite não encontrado." }, 404);
     if (invite.status !== "enviado")
@@ -1243,21 +1403,21 @@ async function handleCollab(request, env, user, url) {
     await env.DB.prepare(
       "UPDATE invites SET token = ?, expires_at = ?, status = 'enviado' WHERE code = ?",
     )
-      .bind(token, expiresAt, id)
+      .bind(await sha256(token), expiresAt, id)
       .run();
     const link = `${url.origin}/convite/${token}`;
     try {
       await sendEmail(
         env,
         invite.email,
-        `${user.name} convidou você — Seu Funcionário`,
-        inviteEmailHtml(invite.name, user.name, invite.role, link),
+        `${actingOnBehalfOf.name} convidou você — Seu Funcionário`,
+        inviteEmailHtml(invite.name, actingOnBehalfOf.name, invite.role, link),
       );
     } catch (e) {
       console.error("resend invite mail", e);
       return json({ error: "Não foi possível reenviar agora." }, 502);
     }
-    await logAudit(env, user.id, user, "convite_reenviado", invite.email, "");
+    await logAudit(env, scopeOwnerId, user, "convite_reenviado", invite.email, "");
     return json({ ok: true, expiresAt });
   }
   if (action === "cancel") {
@@ -1265,15 +1425,15 @@ async function handleCollab(request, env, user, url) {
     const invite = await env.DB.prepare(
       "SELECT email FROM invites WHERE code = ? AND owner_id = ?",
     )
-      .bind(id, user.id)
+      .bind(id, scopeOwnerId)
       .first();
     await env.DB.prepare(
-      "DELETE FROM invites WHERE code = ? AND owner_id = ? AND status != 'ativo'",
+      "UPDATE invites SET status = 'cancelado' WHERE code = ? AND owner_id = ? AND status != 'ativo'",
     )
-      .bind(id, user.id)
+      .bind(id, scopeOwnerId)
       .run();
     if (invite)
-      await logAudit(env, user.id, user, "convite_cancelado", invite.email, "");
+      await logAudit(env, scopeOwnerId, user, "convite_cancelado", invite.email, "");
     return json({ ok: true });
   }
   if (action === "member-status") {
@@ -1284,11 +1444,11 @@ async function handleCollab(request, env, user, url) {
     await env.DB.prepare(
       "UPDATE memberships SET status = ? WHERE owner_id = ? AND member_id = ?",
     )
-      .bind(status, user.id, memberId)
+      .bind(status, scopeOwnerId, memberId)
       .run();
     await logAudit(
       env,
-      user.id,
+      scopeOwnerId,
       user,
       status === "suspenso" ? "colaborador_suspenso" : "colaborador_reativado",
       memberId,
@@ -1305,9 +1465,9 @@ async function handleCollab(request, env, user, url) {
     await env.DB.prepare(
       "UPDATE memberships SET role = ? WHERE owner_id = ? AND member_id = ?",
     )
-      .bind(role, user.id, memberId)
+      .bind(role, scopeOwnerId, memberId)
       .run();
-    await logAudit(env, user.id, user, "papel_alterado", memberId, `novo papel: ${role}`);
+    await logAudit(env, scopeOwnerId, user, "papel_alterado", memberId, `novo papel: ${role}`);
     return json({ ok: true });
   }
   if (action === "remove") {
@@ -1315,9 +1475,9 @@ async function handleCollab(request, env, user, url) {
     await env.DB.prepare(
       "DELETE FROM memberships WHERE owner_id = ? AND member_id = ?",
     )
-      .bind(user.id, memberId)
+      .bind(scopeOwnerId, memberId)
       .run();
-    await logAudit(env, user.id, user, "colaborador_removido", memberId, "");
+    await logAudit(env, scopeOwnerId, user, "colaborador_removido", memberId, "");
     return json({ ok: true });
   }
   if (action === "audit") {
@@ -1325,18 +1485,9 @@ async function handleCollab(request, env, user, url) {
       `SELECT id, actor_name AS actorName, action, target, details, created_at AS createdAt
       FROM audit_log WHERE owner_id = ? ORDER BY created_at DESC LIMIT 50`,
     )
-      .bind(user.id)
+      .bind(scopeOwnerId)
       .all();
     return json({ logs: logs.results || [] });
-  }
-  if (action === "leave") {
-    const ownerId = typeof body.ownerId === "string" ? body.ownerId : "";
-    await env.DB.prepare(
-      "DELETE FROM memberships WHERE owner_id = ? AND member_id = ?",
-    )
-      .bind(ownerId, user.id)
-      .run();
-    return json({ ok: true });
   }
   return json({ error: "Ação não encontrada." }, 404);
 }
@@ -1354,7 +1505,7 @@ async function handlePublicInvite(request, env, url) {
         users.name AS ownerName
       FROM invites JOIN users ON users.id = invites.owner_id WHERE invites.token = ?`,
     )
-      .bind(token)
+      .bind(await sha256(token))
       .first();
     if (!invite) return json({ error: "Convite inválido ou expirado." }, 404);
     if (invite.status !== "enviado")
@@ -1391,10 +1542,11 @@ async function handlePublicInvite(request, env, url) {
     }
     const token = typeof body.token === "string" ? body.token : "";
     if (!token) return json({ error: "Convite inválido." }, 400);
+    const tokenHash = await sha256(token);
     const invite = await env.DB.prepare(
       "SELECT * FROM invites WHERE token = ?",
     )
-      .bind(token)
+      .bind(tokenHash)
       .first();
     if (!invite)
       return json({ error: "Convite inválido ou expirado." }, 404);
@@ -1462,7 +1614,7 @@ async function handlePublicInvite(request, env, url) {
     await env.DB.prepare(
       "UPDATE invites SET status = 'ativo', accepted_at = ? WHERE token = ?",
     )
-      .bind(new Date().toISOString(), token)
+      .bind(new Date().toISOString(), tokenHash)
       .run();
     const owner = await env.DB.prepare("SELECT name FROM users WHERE id = ?")
       .bind(invite.owner_id)
@@ -1937,7 +2089,7 @@ async function handleSites(request, env, user, url) {
       .bind(siteId)
       .first();
     if (!site) return json({ leads: [] });
-    if (!(await canAccessWorkspace(env, user.id, site.owner_id)))
+    if (!(await canManageSite(env, user.id, site.owner_id, siteId)))
       return json({ error: "Você não tem acesso a este site." }, 403);
     const leads = await env.DB.prepare(
       `SELECT id, name, email, phone, message, created_at AS createdAt FROM public_site_leads
@@ -1960,8 +2112,8 @@ async function handleSites(request, env, user, url) {
     typeof body.ownerId === "string" && body.ownerId ? body.ownerId : user.id;
   if (!id || !/^[a-zA-Z0-9_-]{3,80}$/.test(id))
     return json({ error: "Identificador do site inválido." }, 400);
-  if (!(await canAccessWorkspace(env, user.id, ownerId)))
-    return json({ error: "Você não tem acesso a este espaço." }, 403);
+  if (!(await canManageSite(env, user.id, ownerId, id)))
+    return json({ error: "Você não tem acesso a este site." }, 403);
 
   if (action === "publish") {
     const slug = siteSlug(body.slug);
@@ -2347,9 +2499,10 @@ function buildAiContext(body, env) {
   return { prompt, specialist, system, contextualPrompt };
 }
 
-async function handleAiStream(request, env) {
+async function handleAiStream(request, env, user) {
   const ip = request.headers.get("cf-connecting-ip") || "local";
-  if (!allowed(ip)) return json({ error: "Muitas solicitações em pouco tempo. Aguarde um minuto." }, 429);
+  if (!allowed(ip) || !allowed(`ai-user:${user.id}`, 12))
+    return json({ error: "Muitas solicitações em pouco tempo. Aguarde um minuto." }, 429);
   if (!env.GEMINI_API_KEY) return json({ error: "Streaming indisponível.", fallback: true }, 503);
   let body;
   try { body = await request.json(); } catch { return json({ error: "Solicitação inválida." }, 400); }
@@ -2421,9 +2574,9 @@ async function handleAiStream(request, env) {
   });
 }
 
-async function handleAi(request, env) {
+async function handleAi(request, env, user) {
   const ip = request.headers.get("cf-connecting-ip") || "local";
-  if (!allowed(ip))
+  if (!allowed(ip) || !allowed(`ai-user:${user.id}`, 12))
     return json(
       {
         error:
@@ -3008,14 +3161,14 @@ export default {
       }
       if (url.pathname === "/api/ai/stream") {
         try {
-          return await handleAiStream(request, env);
+          return await handleAiStream(request, env, user);
         } catch (error) {
           console.error("Stream error", error);
           return json({ error: "Streaming indisponível.", fallback: true }, 500);
         }
       }
       return url.pathname === "/api/ai"
-        ? handleAi(request, env)
+        ? handleAi(request, env, user)
         : handleMedia(request, env, url);
     }
     return env.ASSETS.fetch(request);

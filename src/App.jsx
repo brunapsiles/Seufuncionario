@@ -91,6 +91,7 @@ import {
   Bell,
   Paperclip,
   Repeat,
+  Bug,
 } from "lucide-react";
 
 const LEGACY_STORAGE_KEY = "seu-funcionario-v1";
@@ -1404,12 +1405,53 @@ function Empty({ icon: Icon = Sparkles, title, text, action, onAction }) {
   );
 }
 
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 function Modal({ title, children, onClose, wide = false }) {
+  const modalRef = useRef(null);
+  // Captured during the first render (before commit), so it's whatever had
+  // focus right before this modal opened — not a child's own autoFocus,
+  // which only takes effect once the modal's DOM is actually mounted.
+  const triggerRef = useRef(
+    typeof document !== "undefined" ? document.activeElement : null,
+  );
   useEffect(() => {
-    const h = (e) => e.key === "Escape" && onClose();
+    const h = (e) => {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab" || !modalRef.current) return;
+      const focusable = Array.from(
+        modalRef.current.querySelectorAll(FOCUSABLE_SELECTOR),
+      );
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
     addEventListener("keydown", h);
     return () => removeEventListener("keydown", h);
   }, [onClose]);
+  useEffect(() => {
+    const node = modalRef.current;
+    // Respect a field's own autoFocus (e.g. a confirmation input) instead of
+    // stealing it to the first focusable element (often the close button).
+    if (node && !node.contains(document.activeElement)) {
+      const focusable = node.querySelector(FOCUSABLE_SELECTOR);
+      (focusable || node).focus();
+    }
+    return () => {
+      if (triggerRef.current?.focus) triggerRef.current.focus();
+    };
+  }, []);
   return (
     <div
       className="modal-backdrop"
@@ -1417,10 +1459,12 @@ function Modal({ title, children, onClose, wide = false }) {
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <section
+        ref={modalRef}
         className={`modal ${wide ? "wide" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-label={title}
+        tabIndex={-1}
       >
         <div className="modal-head">
           <h2>{title}</h2>
@@ -3200,6 +3244,7 @@ function UniversalRequest({ db, update, business, setToast }) {
               title: prompt.slice(0, 55),
               businessId: business?.id || null,
               specialist,
+              ownerId: db.user.id,
               createdAt: new Date().toISOString(),
               messages: [],
             };
@@ -14644,6 +14689,7 @@ function HistoryPage({ db, update, business, setToast, go }) {
           title: item.title,
           businessId: item.businessId,
           specialist: item.specialist || "Diretor",
+          ownerId: db.user.id,
           createdAt: now,
           updatedAt: now,
           messages: [
@@ -14840,7 +14886,7 @@ function HistoryPage({ db, update, business, setToast, go }) {
               ...d,
               selectedConversationId: cid,
               conversations: [
-                { id: cid, title: x.title.slice(0, 55), businessId: x.businessId, specialist: x.specialist, createdAt: new Date().toISOString(), messages: [
+                { id: cid, title: x.title.slice(0, 55), businessId: x.businessId, specialist: x.specialist, ownerId: db.user.id, createdAt: new Date().toISOString(), messages: [
                   { id: uid(), role: "user", content: x.request || x.title, createdAt: x.createdAt },
                   { id: uid(), role: "assistant", content: x.result, provider: x.provider, model: x.model, createdAt: new Date().toISOString() },
                 ] },
@@ -15445,6 +15491,7 @@ const INVITE_STATUS_LABELS = {
   enviado: "Aguardando ativação",
   expirado: "Expirado",
   ativo: "Ativo",
+  cancelado: "Cancelado",
 };
 
 const blankInviteForm = {
@@ -15468,7 +15515,12 @@ const AUDIT_ACTION_LABELS = {
 };
 
 function Collaborators({ db, update, setToast }) {
-  const [data, setData] = useState({ members: [], invites: [], spaces: [] });
+  const [data, setData] = useState({
+    members: [],
+    invites: [],
+    spaces: [],
+    canManage: true,
+  });
   const [form, setForm] = useState(blankInviteForm);
   const [sending, setSending] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
@@ -15478,6 +15530,7 @@ function Collaborators({ db, update, setToast }) {
   const [editingTeam, setEditingTeam] = useState(null);
   const [tab, setTab] = useState("colaboradores");
   const active = activeSpaceId();
+  const collabQuery = active ? `?owner=${encodeURIComponent(active)}` : "";
   const teams = db.teams || [];
   const saveTeam = (e) => {
     e.preventDefault();
@@ -15522,7 +15575,7 @@ function Collaborators({ db, update, setToast }) {
     }));
   };
   const load = () =>
-    fetch("/api/collab", { headers: authHeaders() })
+    fetch(`/api/collab${collabQuery}`, { headers: authHeaders() })
       .then((r) => (r.ok ? r.json() : null))
       .then(
         (d) =>
@@ -15531,18 +15584,19 @@ function Collaborators({ db, update, setToast }) {
             members: d.members || [],
             invites: d.invites || [],
             spaces: d.spaces || [],
+            canManage: d.canManage !== false,
           }),
       )
       .catch(() => {});
   useEffect(() => {
     load();
-  }, []);
+  }, [active]);
   const sendInvite = async (e) => {
     e.preventDefault();
     if (!form.name.trim() || !form.email.trim()) return;
     setSending(true);
     try {
-      const r = await fetch("/api/collab/invite", {
+      const r = await fetch(`/api/collab/invite${collabQuery}`, {
         method: "POST",
         headers: { "content-type": "application/json", ...authHeaders() },
         body: JSON.stringify(form),
@@ -15560,7 +15614,7 @@ function Collaborators({ db, update, setToast }) {
   };
   const resend = async (id) => {
     try {
-      const r = await fetch("/api/collab/resend", {
+      const r = await fetch(`/api/collab/resend${collabQuery}`, {
         method: "POST",
         headers: { "content-type": "application/json", ...authHeaders() },
         body: JSON.stringify({ id }),
@@ -15575,41 +15629,65 @@ function Collaborators({ db, update, setToast }) {
   };
   const cancelInvite = async (id) => {
     if (!confirm("Cancelar este convite?")) return;
-    await fetch("/api/collab/cancel", {
-      method: "POST",
-      headers: { "content-type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ id }),
-    }).catch(() => {});
-    load();
-    setToast("Convite cancelado");
+    try {
+      const r = await fetch(`/api/collab/cancel${collabQuery}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ id }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Não foi possível cancelar.");
+      load();
+      setToast("Convite cancelado");
+    } catch (e) {
+      setToast(e.message);
+    }
   };
   const setMemberStatus = async (memberId, status) => {
-    await fetch("/api/collab/member-status", {
-      method: "POST",
-      headers: { "content-type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ memberId, status }),
-    }).catch(() => {});
-    load();
-    setToast(status === "suspenso" ? "Colaborador suspenso" : "Acesso reativado");
+    try {
+      const r = await fetch(`/api/collab/member-status${collabQuery}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ memberId, status }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Não foi possível atualizar o acesso.");
+      load();
+      setToast(status === "suspenso" ? "Colaborador suspenso" : "Acesso reativado");
+    } catch (e) {
+      setToast(e.message);
+    }
   };
   const setMemberRole = async (memberId, role) => {
-    await fetch("/api/collab/member-role", {
-      method: "POST",
-      headers: { "content-type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ memberId, role }),
-    }).catch(() => {});
-    load();
-    setToast("Papel atualizado");
+    try {
+      const r = await fetch(`/api/collab/member-role${collabQuery}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ memberId, role }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Não foi possível atualizar o papel.");
+      load();
+      setToast("Papel atualizado");
+    } catch (e) {
+      setToast(e.message);
+    }
   };
   const remove = async (id) => {
-    if (!confirm("Remover esta pessoa do seu espaço?")) return;
-    await fetch("/api/collab/remove", {
-      method: "POST",
-      headers: { "content-type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ memberId: id }),
-    }).catch(() => {});
-    load();
-    setToast("Colaborador removido");
+    if (!confirm("Remover esta pessoa do espaço?")) return;
+    try {
+      const r = await fetch(`/api/collab/remove${collabQuery}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ memberId: id }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Não foi possível remover.");
+      load();
+      setToast("Colaborador removido");
+    } catch (e) {
+      setToast(e.message);
+    }
   };
   const toggleAudit = async () => {
     if (auditOpen) {
@@ -15618,20 +15696,23 @@ function Collaborators({ db, update, setToast }) {
     }
     setAuditLoading(true);
     try {
-      const r = await fetch("/api/collab/audit", {
+      const r = await fetch(`/api/collab/audit${collabQuery}`, {
         method: "POST",
         headers: authHeaders(),
       });
       const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Não foi possível carregar o histórico.");
       setAuditLogs(d.logs || []);
       setAuditOpen(true);
     } catch (e) {
-      setToast("Não foi possível carregar o histórico.");
+      setToast(e.message || "Não foi possível carregar o histórico.");
     } finally {
       setAuditLoading(false);
     }
   };
-  const pendingInvites = data.invites.filter((i) => i.status !== "ativo");
+  const pendingInvites = data.invites.filter(
+    (i) => i.status !== "ativo" && i.status !== "cancelado",
+  );
   return (
     <section className="section">
       <div className="section-head">
@@ -15640,13 +15721,23 @@ function Collaborators({ db, update, setToast }) {
           <h2>Convide colaboradores reais</h2>
         </div>
       </div>
-      {active && (
+      {active && data.canManage && (
         <div className="notice">
           <CircleAlert />
           <span>
-            Você está visualizando outro espaço, mas os convites, papéis e
-            equipes abaixo são sempre do seu próprio espaço — não é possível
-            gerenciar a equipe de outra pessoa por aqui.
+            Você está administrando o espaço de outra pessoa como
+            administrador convidado. Convites, papéis e remoções abaixo
+            afetam a equipe desse espaço, não a sua.
+          </span>
+        </div>
+      )}
+      {active && !data.canManage && (
+        <div className="notice">
+          <CircleAlert />
+          <span>
+            Você está visualizando outro espaço, mas só quem é dono ou
+            administrador convidado pode gerenciar convites, papéis e
+            remoções por aqui.
           </span>
         </div>
       )}
@@ -15757,7 +15848,7 @@ function Collaborators({ db, update, setToast }) {
               </Field>
             )}
             </div>
-            <Button type="submit" icon={Send} disabled={sending}>
+            <Button type="submit" icon={Send} disabled={sending || !data.canManage}>
               {sending ? "Enviando..." : "Enviar convite"}
             </Button>
           </form>
@@ -15779,6 +15870,7 @@ function Collaborators({ db, update, setToast }) {
                         <button
                           className="icon-button"
                           title="Reenviar convite"
+                          disabled={!data.canManage}
                           onClick={() => resend(inv.id)}
                         >
                           <RefreshCw />
@@ -15786,6 +15878,7 @@ function Collaborators({ db, update, setToast }) {
                         <button
                           className="icon-button danger"
                           title="Cancelar convite"
+                          disabled={!data.canManage}
                           onClick={() => cancelInvite(inv.id)}
                         >
                           <X />
@@ -15799,7 +15892,9 @@ function Collaborators({ db, update, setToast }) {
           )}
           {data.members.length > 0 && (
             <div className="member-list">
-              <small className="member-title">No seu espaço</small>
+              <small className="member-title">
+                {active ? "Neste espaço" : "No seu espaço"}
+              </small>
               {data.members.map((m) => (
                 <div key={m.id}>
                   <span className="avatar">{m.name[0]}</span>
@@ -15812,6 +15907,7 @@ function Collaborators({ db, update, setToast }) {
                   <select
                     value={m.role}
                     aria-label={`Papel de ${m.name}`}
+                    disabled={!data.canManage}
                     onChange={(e) => setMemberRole(m.id, e.target.value)}
                   >
                     <option value="colaborador">Colaborador</option>
@@ -15822,6 +15918,7 @@ function Collaborators({ db, update, setToast }) {
                     <button
                       className="icon-button"
                       title={m.status === "suspenso" ? "Reativar acesso" : "Suspender acesso"}
+                      disabled={!data.canManage}
                       onClick={() =>
                         setMemberStatus(
                           m.id,
@@ -15834,6 +15931,7 @@ function Collaborators({ db, update, setToast }) {
                     <button
                       className="icon-button danger"
                       title="Remover"
+                      disabled={!data.canManage}
                       onClick={() => remove(m.id)}
                     >
                       <Trash2 />
@@ -16191,6 +16289,31 @@ function AccountSettings({ db, update, setToast, go }) {
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [deleteErr, setDeleteErr] = useState("");
+  const [errorLogs, setErrorLogs] = useState([]);
+  const [errorLogsOpen, setErrorLogsOpen] = useState(false);
+  const [errorLogsLoading, setErrorLogsLoading] = useState(false);
+  const [errorLogsLoaded, setErrorLogsLoaded] = useState(false);
+  const toggleErrorLogs = async () => {
+    if (errorLogsOpen) {
+      setErrorLogsOpen(false);
+      return;
+    }
+    setErrorLogsOpen(true);
+    if (errorLogsLoaded) return;
+    setErrorLogsLoading(true);
+    try {
+      const r = await fetch("/api/errors", { headers: authHeaders() });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || "Não foi possível carregar os erros.");
+      setErrorLogs(d.logs || []);
+      setErrorLogsLoaded(true);
+    } catch (e) {
+      setToast(e.message);
+      setErrorLogsOpen(false);
+    } finally {
+      setErrorLogsLoading(false);
+    }
+  };
   const workspaceSizeBytes = (() => {
     try {
       return new Blob([JSON.stringify(db)]).size;
@@ -16519,6 +16642,57 @@ function AccountSettings({ db, update, setToast, go }) {
               Termos de Uso e Política de Privacidade
             </button>
           </p>
+        </section>
+        <section className="settings-card">
+          <div className="settings-card-head">
+            <span className="settings-icon">
+              <Bug />
+            </span>
+            <div>
+              <h2>Erros técnicos</h2>
+              <p>
+                Falhas registradas automaticamente enquanto você usava o
+                aplicativo nesta conta.
+              </p>
+            </div>
+          </div>
+          <div className="settings-actions">
+            <Button
+              variant="secondary"
+              icon={Bug}
+              onClick={toggleErrorLogs}
+              disabled={errorLogsLoading}
+            >
+              {errorLogsLoading
+                ? "Carregando..."
+                : errorLogsOpen
+                  ? "Ocultar"
+                  : "Ver erros recentes"}
+            </Button>
+          </div>
+          {errorLogsOpen &&
+            (errorLogs.length === 0 ? (
+              <p className="settings-note">
+                <BadgeCheck />
+                Nenhum erro registrado nesta conta até agora.
+              </p>
+            ) : (
+              <div className="member-list">
+                {errorLogs.map((log) => (
+                  <details key={log.id} className="error-log-entry">
+                    <summary>
+                      <strong>{log.message}</strong>
+                      <small>
+                        {log.url ? `${log.url} · ` : ""}
+                        {new Date(log.createdAt).toLocaleString("pt-BR")}
+                      </small>
+                    </summary>
+                    {log.stack && <pre>{log.stack}</pre>}
+                    {log.componentStack && <pre>{log.componentStack}</pre>}
+                  </details>
+                ))}
+              </div>
+            ))}
         </section>
       </div>
       {deleteOpen && (
