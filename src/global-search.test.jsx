@@ -112,6 +112,57 @@ describe("busca global", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("busca dados reais (tarefas) e navega até a tela com o filtro já aplicado", async () => {
+    stubFetch();
+    seedLoggedIn(
+      businessDb({
+        tasks: [
+          {
+            id: "task-x",
+            title: "Preparar proposta para Ana Souza",
+            status: "A fazer",
+            priority: "Média",
+            due: "",
+            area: "Operação",
+            ownerId: user.id,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          {
+            id: "task-y",
+            title: "Organizar estoque",
+            status: "A fazer",
+            priority: "Média",
+            due: "",
+            area: "Operação",
+            ownerId: user.id,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+      }),
+    );
+    render(<App />);
+    await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
+
+    fireEvent.click(screen.getByRole("button", { name: "Buscar em tudo" }));
+    const dialog = await screen.findByRole("dialog", { name: "Buscar em tudo" });
+    const input = dialog.querySelector("input");
+    fireEvent.change(input, { target: { value: "Ana Souza" } });
+
+    within(dialog).getByText("Resultados");
+    const match = await within(dialog).findByRole("button", {
+      name: /Preparar proposta para Ana Souza/,
+    });
+    fireEvent.click(match);
+
+    await screen.findByText("Preparar proposta para Ana Souza");
+    expect(screen.queryByText("Organizar estoque")).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Pesquisar tarefas")).toHaveValue(
+      "Preparar proposta para Ana Souza",
+    );
+  });
+
   it("abre a busca com o atalho Ctrl+K", async () => {
     stubFetch();
     seedLoggedIn(businessDb());

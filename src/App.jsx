@@ -696,6 +696,65 @@ export const buildTaskCalendar = (yearMonth, tasks) => {
   return cells;
 };
 
+export const CHANGELOG_ENTRIES = [
+  {
+    id: "2026-07-19-busca",
+    date: "2026-07-19",
+    title: "Busca agora encontra tarefas, leads, documentos e contatos",
+    description:
+      "O Buscar em tudo (Ctrl+K) deixou de procurar só nomes de seção do menu — agora encontra o que está dentro delas também, e leva direto para o registro.",
+  },
+  {
+    id: "2026-07-19-toque-kanban",
+    date: "2026-07-19",
+    title: "Arrastar tarefas no Kanban funciona no celular",
+    description:
+      "Pressione e segure um cartão para arrastá-lo entre colunas também em telas de toque, não só no computador.",
+  },
+  {
+    id: "2026-07-19-anexo-ampliado",
+    date: "2026-07-19",
+    title: "Anexos com visualização ampliada",
+    description:
+      "Clique na miniatura de uma imagem anexada a uma tarefa ou entrega para vê-la em tamanho grande.",
+  },
+  {
+    id: "2026-07-19-recorrencia",
+    date: "2026-07-19",
+    title: "Tarefas recorrentes",
+    description:
+      "Configure uma tarefa para repetir todo dia, toda semana ou todo mês — a próxima ocorrência é criada sozinha quando você conclui a atual.",
+  },
+  {
+    id: "2026-07-19-calendario",
+    date: "2026-07-19",
+    title: "Visão de calendário para tarefas",
+    description:
+      "Além de quadro e lista, veja suas tarefas com prazo num calendário mensal navegável.",
+  },
+  {
+    id: "2026-07-19-lote",
+    date: "2026-07-19",
+    title: "Ações em lote em tarefas",
+    description:
+      "Selecione várias tarefas de uma vez na visão em Lista para arquivar ou reatribuir juntas.",
+  },
+  {
+    id: "2026-07-18-compartilhamento",
+    date: "2026-07-18",
+    title: "Compartilhamento opcional em Agendamentos, Produtos e Frota",
+    description:
+      "Essas áreas continuam visíveis para todo o espaço por padrão, mas agora dá para restringir uma tarefa, produto ou veículo específico se precisar.",
+  },
+  {
+    id: "2026-07-17-equipes",
+    date: "2026-07-17",
+    title: "Equipes, projetos e conquistas",
+    description:
+      "Organize colaboradores em equipes, agrupe tarefas por projeto e acompanhe pontos, níveis e conquistas de cada pessoa.",
+  },
+];
+
 export const DEFAULT_LEVELS = [
   { name: "Iniciante", minPoints: 0 },
   { name: "Assistente", minPoints: 50 },
@@ -1499,6 +1558,19 @@ function FilterSelect({ "aria-label": ariaLabel, value, onChange, children }) {
         {children}
       </select>
       <ChevronDown />
+    </div>
+  );
+}
+
+const LIST_PAGE_SIZE = 30;
+
+function LoadMoreButton({ shown, total, onClick }) {
+  if (shown >= total) return null;
+  return (
+    <div className="load-more">
+      <Button variant="ghost" onClick={onClick}>
+        Carregar mais ({total - shown} restantes)
+      </Button>
     </div>
   );
 }
@@ -4786,10 +4858,16 @@ const taskUrgency = (task) => {
   return null;
 };
 
-function Tasks({ db, update, business, setToast, go }) {
+function Tasks({ db, update, business, setToast, go, searchSeed, clearSearchSeed }) {
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState("");
+  useEffect(() => {
+    if (searchSeed) {
+      setSearch(searchSeed);
+      clearSearchSeed?.();
+    }
+  }, [searchSeed]);
   const [view, setView] = useState("board");
   const [calendarMonth, setCalendarMonth] = useState(todayYearMonth);
   const [statusFilter, setStatusFilter] = useState("Todos");
@@ -4797,6 +4875,10 @@ function Tasks({ db, update, business, setToast, go }) {
   const [assigneeFilter, setAssigneeFilter] = useState("Todos");
   const [projectFilter, setProjectFilter] = useState("Todos");
   const [archiveFilter, setArchiveFilter] = useState("Ativas");
+  const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
+  useEffect(() => {
+    setVisibleCount(LIST_PAGE_SIZE);
+  }, [search, statusFilter, priorityFilter, assigneeFilter, projectFilter, archiveFilter]);
   const [realMembers, setRealMembers] = useState([]);
   const [deadlineCalc, setDeadlineCalc] = useState({ open: false, base: today(), days: "5" });
   const [deliveryFeedback, setDeliveryFeedback] = useState({
@@ -5951,7 +6033,7 @@ function Tasks({ db, update, business, setToast, go }) {
               )}
             </div>
           )}
-          {items.map((t) => (
+          {items.slice(0, visibleCount).map((t) => (
             <article key={t.id} className={selectedIds.includes(t.id) ? "selected" : ""}>
               <input
                 type="checkbox"
@@ -6064,6 +6146,11 @@ function Tasks({ db, update, business, setToast, go }) {
               </span>
             </article>
           ))}
+          <LoadMoreButton
+            shown={Math.min(visibleCount, items.length)}
+            total={items.length}
+            onClick={() => setVisibleCount((c) => c + LIST_PAGE_SIZE)}
+          />
         </div>
       )}
       {modal && (
@@ -6789,7 +6876,7 @@ function Tasks({ db, update, business, setToast, go }) {
   );
 }
 
-function CRM({ db, update, business, setToast, go }) {
+function CRM({ db, update, business, setToast, go, searchSeed, clearSearchSeed }) {
   const [modal, setModal] = useState(false),
     [editing, setEditing] = useState(null),
     [search, setSearch] = useState(""),
@@ -6800,6 +6887,16 @@ function CRM({ db, update, business, setToast, go }) {
       note: "",
       at: today(),
     });
+  useEffect(() => {
+    if (searchSeed) {
+      setSearch(searchSeed);
+      clearSearchSeed?.();
+    }
+  }, [searchSeed]);
+  const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
+  useEffect(() => {
+    setVisibleCount(LIST_PAGE_SIZE);
+  }, [search, filter]);
   const blankLead = {
     name: "",
     company: "",
@@ -7004,7 +7101,7 @@ function CRM({ db, update, business, setToast, go }) {
             <span>Próximo contato</span>
             <span />
           </div>
-          {leads.map((l) => (
+          {leads.slice(0, visibleCount).map((l) => (
             <div key={l.id}>
               <button
                 className="contact-cell contact-button"
@@ -7076,6 +7173,13 @@ function CRM({ db, update, business, setToast, go }) {
             </div>
           ))}
         </div>
+      )}
+      {leads.length > 0 && (
+        <LoadMoreButton
+          shown={Math.min(visibleCount, leads.length)}
+          total={leads.length}
+          onClick={() => setVisibleCount((c) => c + LIST_PAGE_SIZE)}
+        />
       )}
       {modal && (
         <Modal
@@ -7597,11 +7701,21 @@ function Appointments({ db, update, business, setToast, go }) {
   );
 }
 
-function Contacts({ db, update, business, setToast, go }) {
+function Contacts({ db, update, business, setToast, go, searchSeed, clearSearchSeed }) {
   const [modal, setModal] = useState(false),
     [editing, setEditing] = useState(null),
     [search, setSearch] = useState(""),
     [emailContact, setEmailContact] = useState(null);
+  useEffect(() => {
+    if (searchSeed) {
+      setSearch(searchSeed);
+      clearSearchSeed?.();
+    }
+  }, [searchSeed]);
+  const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
+  useEffect(() => {
+    setVisibleCount(LIST_PAGE_SIZE);
+  }, [search]);
   const blankContact = { name: "", rawContact: "", company: "", notes: "" };
   const [form, setForm] = useState(blankContact);
   const contacts = (db.contacts || [])
@@ -7683,7 +7797,7 @@ function Contacts({ db, update, business, setToast, go }) {
         />
       ) : (
         <div className="data-list">
-          {contacts.map((c) => (
+          {contacts.slice(0, visibleCount).map((c) => (
             <article key={c.id}>
               <span>
                 <strong>{c.name}</strong>
@@ -7732,6 +7846,11 @@ function Contacts({ db, update, business, setToast, go }) {
               </span>
             </article>
           ))}
+          <LoadMoreButton
+            shown={Math.min(visibleCount, contacts.length)}
+            total={contacts.length}
+            onClick={() => setVisibleCount((c) => c + LIST_PAGE_SIZE)}
+          />
         </div>
       )}
       {modal && (
@@ -7869,6 +7988,10 @@ function Catalog({ db, update, business, setToast, go }) {
           .includes(search.toLowerCase()),
     )
     .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+  const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
+  useEffect(() => {
+    setVisibleCount(LIST_PAGE_SIZE);
+  }, [search, view]);
 
   const openProduct = (item = null) => {
     setEditingProduct(item?.id || null);
@@ -8204,7 +8327,7 @@ function Catalog({ db, update, business, setToast, go }) {
           />
         ) : (
           <div className="data-list">
-            {filteredProducts.map((p) => (
+            {filteredProducts.slice(0, visibleCount).map((p) => (
               <article key={p.id}>
                 <span
                   className={`status-dot ${productStockTotal(p) <= 0 ? "cancelado" : productStockTotal(p) <= (p.lowStockAlert || 0) ? "faltou" : "concluído"}`}
@@ -8238,6 +8361,11 @@ function Catalog({ db, update, business, setToast, go }) {
                 </span>
               </article>
             ))}
+            <LoadMoreButton
+              shown={Math.min(visibleCount, filteredProducts.length)}
+              total={filteredProducts.length}
+              onClick={() => setVisibleCount((c) => c + LIST_PAGE_SIZE)}
+            />
           </div>
         )
       ) : filteredOrders.length === 0 ? (
@@ -8250,7 +8378,7 @@ function Catalog({ db, update, business, setToast, go }) {
         />
       ) : (
         <div className="data-list">
-          {filteredOrders.map((o) => (
+          {filteredOrders.slice(0, visibleCount).map((o) => (
             <article key={o.id}>
               <span>
                 <strong>
@@ -8308,6 +8436,11 @@ function Catalog({ db, update, business, setToast, go }) {
               </span>
             </article>
           ))}
+          <LoadMoreButton
+            shown={Math.min(visibleCount, filteredOrders.length)}
+            total={filteredOrders.length}
+            onClick={() => setVisibleCount((c) => c + LIST_PAGE_SIZE)}
+          />
         </div>
       )}
 
@@ -10701,7 +10834,7 @@ function AttachmentList({ attachments, onRemove }) {
   );
 }
 
-function Documents({ db, update, business, setToast, go }) {
+function Documents({ db, update, business, setToast, go, searchSeed, clearSearchSeed }) {
   const [modal, setModal] = useState(false),
     [editing, setEditing] = useState(null),
     [search, setSearch] = useState(""),
@@ -10710,6 +10843,16 @@ function Documents({ db, update, business, setToast, go }) {
     [uploading, setUploading] = useState(false),
     [uploadErrors, setUploadErrors] = useState([]),
     [dragging, setDragging] = useState(false);
+  useEffect(() => {
+    if (searchSeed) {
+      setSearch(searchSeed);
+      clearSearchSeed?.();
+    }
+  }, [searchSeed]);
+  const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
+  useEffect(() => {
+    setVisibleCount(LIST_PAGE_SIZE);
+  }, [search]);
   const uploadRef = useRef(null);
   const docs = db.documents.filter(
     (x) =>
@@ -11023,7 +11166,7 @@ function Documents({ db, update, business, setToast, go }) {
         />
       ) : (
         <div className="document-grid">
-          {docs.map((d) => (
+          {docs.slice(0, visibleCount).map((d) => (
             <article key={d.id}>
               <span className="doc-icon">
                 <FileText />
@@ -11080,6 +11223,13 @@ function Documents({ db, update, business, setToast, go }) {
             </article>
           ))}
         </div>
+      )}
+      {docs.length > 0 && (
+        <LoadMoreButton
+          shown={Math.min(visibleCount, docs.length)}
+          total={docs.length}
+          onClick={() => setVisibleCount((c) => c + LIST_PAGE_SIZE)}
+        />
       )}
       {modal && (
         <Modal
@@ -16454,6 +16604,20 @@ export default function App() {
     [notifOpen, setNotifOpen] = useState(false),
     [searchOpen, setSearchOpen] = useState(false),
     [searchQuery, setSearchQuery] = useState("");
+  const [searchSeed, setSearchSeed] = useState("");
+  const clearSearchSeed = () => setSearchSeed("");
+  const [changelogOpen, setChangelogOpen] = useState(false);
+  const [changelogSeenId, setChangelogSeenId] = useState(
+    () => localStorage.getItem("sf-changelog-seen") || "",
+  );
+  const hasUnseenChangelog =
+    CHANGELOG_ENTRIES[0] && CHANGELOG_ENTRIES[0].id !== changelogSeenId;
+  const openChangelog = () => {
+    setChangelogOpen(true);
+    const latestId = CHANGELOG_ENTRIES[0]?.id || "";
+    localStorage.setItem("sf-changelog-seen", latestId);
+    setChangelogSeenId(latestId);
+  };
   const [menuHidden, setMenuHidden] = useState(!!savedUi.menuHidden);
   const [updateAvailable, setUpdateAvailable] = useState(
     () => !!window.__SF_UPDATE_AVAILABLE__,
@@ -16576,6 +16740,64 @@ export default function App() {
         normalizeSearch(label).includes(normalizeSearch(searchQuery)),
       )
     : searchableNav;
+  const contentSearchResults = (() => {
+    const q = normalizeSearch(searchQuery);
+    if (!q) return [];
+    return [
+      ...(db.tasks || [])
+        .filter((t) =>
+          normalizeSearch(`${t.title} ${t.description || ""}`).includes(q),
+        )
+        .map((t) => ({
+          kind: "task",
+          key: `task-${t.id}`,
+          icon: Workflow,
+          title: t.title,
+          subtitle: t.project || t.area || "Tarefa",
+          page: "operacao",
+        })),
+      ...(db.leads || [])
+        .filter((l) =>
+          normalizeSearch(`${l.name} ${l.company || ""}`).includes(q),
+        )
+        .map((l) => ({
+          kind: "lead",
+          key: `lead-${l.id}`,
+          icon: Handshake,
+          title: l.name,
+          subtitle: l.company || "Lead",
+          page: "vendas",
+        })),
+      ...(db.documents || [])
+        .filter((d) => normalizeSearch(d.title).includes(q))
+        .map((d) => ({
+          kind: "document",
+          key: `doc-${d.id}`,
+          icon: FileText,
+          title: d.title,
+          subtitle: d.type || "Documento",
+          page: "documentos",
+        })),
+      ...(db.contacts || [])
+        .filter((c) =>
+          normalizeSearch(`${c.name} ${c.company || ""}`).includes(q),
+        )
+        .map((c) => ({
+          kind: "contact",
+          key: `contact-${c.id}`,
+          icon: Users,
+          title: c.name,
+          subtitle: c.company || "Contato",
+          page: "contatos",
+        })),
+    ].slice(0, 20);
+  })();
+  const openContentSearchResult = (result) => {
+    setSearchSeed(result.title);
+    go(result.page);
+    setSearchOpen(false);
+    setSearchQuery("");
+  };
   const go = (p) => {
     setPage(p);
     setMobile(false);
@@ -16614,6 +16836,8 @@ export default function App() {
             business={business}
             setToast={setToast}
             go={go}
+            searchSeed={searchSeed}
+            clearSearchSeed={clearSearchSeed}
           />
         );
       case "contatos":
@@ -16624,6 +16848,8 @@ export default function App() {
             business={business}
             setToast={setToast}
             go={go}
+            searchSeed={searchSeed}
+            clearSearchSeed={clearSearchSeed}
           />
         );
       case "agendamentos":
@@ -16684,6 +16910,8 @@ export default function App() {
             business={business}
             setToast={setToast}
             go={go}
+            searchSeed={searchSeed}
+            clearSearchSeed={clearSearchSeed}
           />
         );
       case "desenvolvimento":
@@ -16714,6 +16942,8 @@ export default function App() {
             business={business}
             setToast={setToast}
             go={go}
+            searchSeed={searchSeed}
+            clearSearchSeed={clearSearchSeed}
           />
         );
       case "ferramentas":
@@ -16963,6 +17193,15 @@ export default function App() {
             >
               <Search />
             </button>
+            <button
+              className="icon-button changelog-trigger"
+              aria-label="Novidades"
+              title="Novidades"
+              onClick={openChangelog}
+            >
+              <Megaphone />
+              {hasUnseenChangelog && <span className="notif-dot" />}
+            </button>
             {activeSpaceId() && (
               <button
                 className="space-badge"
@@ -17054,11 +17293,33 @@ export default function App() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Digite o nome de uma ferramenta ou seção..."
               />
-              {searchResults.length === 0 ? (
+              {searchResults.length === 0 && contentSearchResults.length === 0 ? (
                 <p className="notif-empty">Nada encontrado.</p>
               ) : (
-                <div className="global-search-results">
-                  {searchResults.map(([id, label, I]) => (
+                <>
+                  {contentSearchResults.length > 0 && (
+                    <div className="global-search-results">
+                      <p className="global-search-group-label">Resultados</p>
+                      {contentSearchResults.map((result) => (
+                        <button
+                          key={result.key}
+                          onClick={() => openContentSearchResult(result)}
+                        >
+                          <result.icon />
+                          <span>
+                            {result.title}
+                            <small>{result.subtitle}</small>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {searchResults.length > 0 && (
+                    <div className="global-search-results">
+                      {searchQuery.trim() && contentSearchResults.length > 0 && (
+                        <p className="global-search-group-label">Seções</p>
+                      )}
+                      {searchResults.map(([id, label, I]) => (
                     <button
                       key={id}
                       onClick={() => {
@@ -17071,8 +17332,30 @@ export default function App() {
                       <span>{label}</span>
                     </button>
                   ))}
-                </div>
+                    </div>
+                  )}
+                </>
               )}
+            </div>
+          </Modal>
+        )}
+        {changelogOpen && (
+          <Modal title="Novidades" onClose={() => setChangelogOpen(false)}>
+            <div className="changelog-list">
+              {CHANGELOG_ENTRIES.map((entry) => (
+                <div key={entry.id} className="changelog-item">
+                  <span className="changelog-date">
+                    {new Date(`${entry.date}T00:00:00`).toLocaleDateString(
+                      "pt-BR",
+                      { day: "2-digit", month: "short" },
+                    )}
+                  </span>
+                  <div>
+                    <strong>{entry.title}</strong>
+                    <p>{entry.description}</p>
+                  </div>
+                </div>
+              ))}
             </div>
           </Modal>
         )}
