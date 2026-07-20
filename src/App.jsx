@@ -1160,12 +1160,14 @@ function useDatabase() {
   const [db, setDb] = useState(loadInitialDb);
   const [workspaceConflict, setWorkspaceConflict] = useState(null);
   const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState(null);
   const syncTimer = useRef(null);
   const syncChain = useRef(Promise.resolve());
   const pulled = useRef(false);
   const skipSyncDb = useRef(null);
   const revisionRef = useRef(0);
   const conflictRef = useRef(false);
+  const authInvalidRef = useRef(false);
   const dbRef = useRef(db);
   dbRef.current = db;
   const userId = db.user?.id;
@@ -1203,6 +1205,8 @@ function useDatabase() {
     pulled.current = false;
     conflictRef.current = false;
     setWorkspaceConflict(null);
+    authInvalidRef.current = false;
+    setSyncError(null);
     if (!userId || !localStorage.getItem(AUTH_TOKEN_KEY)) return;
     const localRevision = readWorkspaceRevision(spaceKey);
     revisionRef.current = localRevision;
@@ -1282,6 +1286,66 @@ function useDatabase() {
     };
   }, [userId, space]);
 
+  const performSync = async () => {
+    if (conflictRef.current || authInvalidRef.current) return;
+    const { user, spaceKey: _s, ...rest } = dbRef.current;
+    const data = {
+      ...rest,
+      media: (rest.media || []).map((item) =>
+        item.url && item.url.startsWith("data:")
+          ? { ...item, url: null, localOnly: true }
+          : item,
+      ),
+    };
+    setSyncing(true);
+    try {
+      const baseRevision = revisionRef.current;
+      const response = await fetch(wsUrl, {
+        method: "PUT",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ data, revision: baseRevision }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (response.status === 409) {
+        preserveWorkspaceConflict(spaceKey, data, baseRevision, payload);
+        conflictRef.current = true;
+        setWorkspaceConflict(payload);
+        return;
+      }
+      if (response.status === 401) {
+        authInvalidRef.current = true;
+        setSyncError({
+          code: "auth",
+          message:
+            "Sua sessão expirou. Suas últimas alterações continuam salvas neste navegador — entre novamente para voltar a sincronizar.",
+        });
+        return;
+      }
+      if (!response.ok) {
+        setSyncError({
+          code: "server",
+          message:
+            "Não foi possível salvar suas últimas alterações agora. Vamos tentar de novo.",
+        });
+        return;
+      }
+      const revision = Number(payload.revision);
+      if (Number.isInteger(revision) && revision >= 0) {
+        revisionRef.current = revision;
+        storeWorkspaceRevision(spaceKey, revision);
+      }
+      setSyncError(null);
+    } catch {
+      setSyncError({
+        code: "network",
+        message:
+          "Você está sem conexão. Suas alterações serão sincronizadas assim que a internet voltar.",
+      });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   useEffect(() => {
     if (db.user?.id) {
       localStorage.setItem(ACTIVE_USER_KEY, db.user.id);
@@ -1300,54 +1364,26 @@ function useDatabase() {
     }
     clearTimeout(syncTimer.current);
     syncTimer.current = setTimeout(() => {
-      if (conflictRef.current) return;
-      const { user, spaceKey: _s, ...rest } = db;
-      const data = {
-        ...rest,
-        media: (rest.media || []).map((item) =>
-          item.url && item.url.startsWith("data:")
-            ? { ...item, url: null, localOnly: true }
-            : item,
-        ),
-      };
+      if (conflictRef.current || authInvalidRef.current) return;
       syncChain.current = syncChain.current
         .catch(() => {})
-        .then(async () => {
-          if (conflictRef.current) return;
-          setSyncing(true);
-          try {
-            const baseRevision = revisionRef.current;
-            const response = await fetch(wsUrl, {
-              method: "PUT",
-              headers: { "content-type": "application/json", ...authHeaders() },
-              body: JSON.stringify({ data, revision: baseRevision }),
-            });
-            const payload = await response.json().catch(() => ({}));
-            if (response.status === 409) {
-              preserveWorkspaceConflict(
-                spaceKey,
-                data,
-                baseRevision,
-                payload,
-              );
-              conflictRef.current = true;
-              setWorkspaceConflict(payload);
-              return;
-            }
-            if (!response.ok) return;
-            const revision = Number(payload.revision);
-            if (Number.isInteger(revision) && revision >= 0) {
-              revisionRef.current = revision;
-              storeWorkspaceRevision(spaceKey, revision);
-            }
-          } finally {
-            setSyncing(false);
-          }
-        })
+        .then(performSync)
         .catch(() => {});
     }, 2500);
     return () => clearTimeout(syncTimer.current);
   }, [db, userId, space]);
+
+  const retrySync = () => {
+    syncChain.current = syncChain.current
+      .catch(() => {})
+      .then(performSync)
+      .catch(() => {});
+  };
+  const logoutFromExpiredSession = () => {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(ACTIVE_USER_KEY);
+    setDb(cleanDb(null));
+  };
 
   const update = (fn) =>
     setDb((current) => {
@@ -1355,7 +1391,15 @@ function useDatabase() {
         typeof fn === "function" ? fn(current) : { ...current, ...fn };
       return { ...next, updatedAt: new Date().toISOString() };
     });
-  return [db, update, workspaceConflict, syncing];
+  return [
+    db,
+    update,
+    workspaceConflict,
+    syncing,
+    syncError,
+    retrySync,
+    logoutFromExpiredSession,
+  ];
 }
 
 function Logo({ compact = false }) {
@@ -16881,7 +16925,15 @@ export default function App() {
       return {};
     }
   })();
-  const [db, update, workspaceConflict, syncing] = useDatabase(),
+  const [
+      db,
+      update,
+      workspaceConflict,
+      syncing,
+      syncError,
+      retrySync,
+      logoutFromExpiredSession,
+    ] = useDatabase(),
     [page, setPage] = useState("inicio"),
     [collapsed, setCollapsed] = useState(!!savedUi.collapsed),
     [mobile, setMobile] = useState(false),
@@ -17417,6 +17469,28 @@ export default function App() {
                 automático.
               </span>
             </div>
+          </div>
+        )}
+        {syncError && (
+          <div className="workspace-conflict" role="alert">
+            <CircleAlert />
+            <div>
+              <strong>
+                {syncError.code === "auth"
+                  ? "Sua sessão expirou"
+                  : "Suas alterações não foram salvas"}
+              </strong>
+              <span>{syncError.message}</span>
+            </div>
+            {syncError.code === "auth" ? (
+              <Button variant="secondary" onClick={logoutFromExpiredSession}>
+                Entrar novamente
+              </Button>
+            ) : (
+              <Button variant="secondary" onClick={retrySync}>
+                Tentar agora
+              </Button>
+            )}
           </div>
         )}
         <header className="topbar">

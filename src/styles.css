@@ -639,12 +639,16 @@ aside nav button.active {
   top: 0;
   z-index: 30;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 12px 32px;
   border-bottom: 1px solid #e6b451;
   background: #fff4d6;
   color: #5f4200;
+}
+.workspace-conflict button {
+  margin-left: auto;
 }
 .workspace-conflict svg {
   width: 20px;
