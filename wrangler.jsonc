@@ -12,6 +12,10 @@
   "ai": {
     "binding": "AI"
   },
+  // Resumo semanal por push: toda segunda-feira 12:00 UTC (09:00 BRT).
+  "triggers": {
+    "crons": ["0 12 * * 1"]
+  },
   "d1_databases": [
     {
       "binding": "DB",

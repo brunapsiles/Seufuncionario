@@ -695,6 +695,76 @@ export const buildDasReminder = (
   ].slice(0, 50);
 };
 
+// ── Resumo semanal ──────────────────────────────────────────────────────
+// Prova de valor recorrente: números tangíveis da semana (vendas, caixa,
+// tarefas) entregues por push — não uma tela que a pessoa precisa lembrar de
+// abrir. computeWeeklySummary é puro e existe também em worker.js (que envia
+// o push via Cron mesmo com o app fechado); manter as duas cópias em sincronia.
+export const weekRange = (ymd = today()) => {
+  const d = new Date(`${ymd}T12:00:00`);
+  const dow = (d.getDay() + 6) % 7; // segunda = 0
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - dow);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const fmt = (x) => x.toISOString().slice(0, 10);
+  return { start: fmt(monday), end: fmt(sunday) };
+};
+
+export const previousWeekRange = (ymd = today()) => {
+  const { start } = weekRange(ymd);
+  const prev = new Date(`${start}T12:00:00`);
+  prev.setDate(prev.getDate() - 1);
+  return weekRange(prev.toISOString().slice(0, 10));
+};
+
+const withinRange = (ymd, start, end) => !!ymd && ymd >= start && ymd <= end;
+
+export const computeWeeklySummary = (data, start, end) => {
+  const ymd = (v) => String(v || "").slice(0, 10);
+  const orders = (Array.isArray(data?.orders) ? data.orders : []).filter(
+    (o) => o.status !== "Cancelado" && withinRange(ymd(o.createdAt), start, end),
+  );
+  const weekTx = (Array.isArray(data?.transactions) ? data.transactions : []).filter(
+    (t) => withinRange(ymd(t.date), start, end),
+  );
+  const cashIn = weekTx
+    .filter((t) => t.type === "Receita")
+    .reduce((a, t) => a + Number(t.value || 0), 0);
+  const cashOut = weekTx
+    .filter((t) => t.type === "Despesa")
+    .reduce((a, t) => a + Number(t.value || 0), 0);
+  const tasksDone = (Array.isArray(data?.tasks) ? data.tasks : []).filter(
+    (t) => t.status === "Concluído" && withinRange(ymd(t.updatedAt), start, end),
+  ).length;
+  const newLeads = (Array.isArray(data?.leads) ? data.leads : []).filter((l) =>
+    withinRange(ymd(l.createdAt), start, end),
+  ).length;
+  const salesRevenue = orders.reduce((a, o) => a + Number(o.total || 0), 0);
+  return {
+    start,
+    end,
+    sales: orders.length,
+    salesRevenue,
+    cashIn,
+    cashOut,
+    cashNet: cashIn - cashOut,
+    tasksDone,
+    newLeads,
+    hasActivity:
+      orders.length > 0 || weekTx.length > 0 || tasksDone > 0 || newLeads > 0,
+  };
+};
+
+export const dayRangeLabel = (start, end) => {
+  const fmt = (ymd) =>
+    new Date(`${ymd}T12:00:00`).toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+    });
+  return `${fmt(start)} a ${fmt(end)}`;
+};
+
 export const upsertContact = (contacts, { name, contact, company, businessId }) => {
   const trimmedName = String(name || "").trim();
   const trimmedContact = String(contact || "").trim();
@@ -826,6 +896,13 @@ export const buildTaskCalendar = (yearMonth, tasks) => {
 };
 
 export const CHANGELOG_ENTRIES = [
+  {
+    id: "2026-07-20-resumo-semanal",
+    date: "2026-07-20",
+    title: "Resumo da semana no início e por notificação",
+    description:
+      "O painel Início agora mostra o resumo da sua semana — vendas, entradas em caixa, tarefas concluídas e novos contatos. Com as notificações do navegador ativadas, você recebe esse resumo toda segunda-feira, mesmo com o app fechado.",
+  },
   {
     id: "2026-07-20-whatsapp",
     date: "2026-07-20",
@@ -4142,6 +4219,8 @@ function Dashboard({ db, update, business, go, setToast }) {
     (a, b) =>
       Number(b[2] === recommendedPage) - Number(a[2] === recommendedPage),
   );
+  const thisWeek = weekRange();
+  const weekSummary = computeWeeklySummary(db, thisWeek.start, thisWeek.end);
   const gamificationEnabled = db.preferences.gamificationEnabled !== false;
   const myPoints = computeUserPoints(db.tasks, db.user.id);
   const myLevel = levelForPoints(myPoints, db.levels || DEFAULT_LEVELS);
@@ -4247,6 +4326,60 @@ function Dashboard({ db, update, business, go, setToast }) {
           </small>
         </div>
       </div>
+      {!isEmployeeMode && (
+        <section className="week-summary" id="week-summary">
+          <div className="section-head">
+            <div>
+              <span className="eyebrow">SUA SEMANA</span>
+              <h2>Resumo de {dayRangeLabel(thisWeek.start, thisWeek.end)}</h2>
+            </div>
+          </div>
+          <div className="week-stats">
+            <div>
+              <span className="week-stat-icon g2">
+                <ShoppingBag />
+              </span>
+              <div>
+                <small>Vendas</small>
+                <strong>{weekSummary.sales}</strong>
+                <span>{money(weekSummary.salesRevenue)}</span>
+              </div>
+            </div>
+            <div>
+              <span className="week-stat-icon g5">
+                <ArrowUpRight />
+              </span>
+              <div>
+                <small>Entrou em caixa</small>
+                <strong>{money(weekSummary.cashIn)}</strong>
+                <span>Saldo {money(weekSummary.cashNet)}</span>
+              </div>
+            </div>
+            <div>
+              <span className="week-stat-icon g0">
+                <CheckCircle2 />
+              </span>
+              <div>
+                <small>Tarefas concluídas</small>
+                <strong>{weekSummary.tasksDone}</strong>
+              </div>
+            </div>
+            <div>
+              <span className="week-stat-icon g3">
+                <Users />
+              </span>
+              <div>
+                <small>Novos contatos</small>
+                <strong>{weekSummary.newLeads}</strong>
+              </div>
+            </div>
+          </div>
+          <small className="week-summary-note">
+            Ative as notificações do navegador em Configurações para receber
+            esse resumo toda segunda-feira, mesmo com o app fechado.
+          </small>
+        </section>
+      )}
       <UniversalRequest
         db={db}
         update={update}

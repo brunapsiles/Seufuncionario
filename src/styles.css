@@ -6046,6 +6046,72 @@ aside nav:hover::-webkit-scrollbar-thumb {
 .planning-results span {
   color: var(--muted);
 }
+.week-summary {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  margin-bottom: 18px;
+}
+.week-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 4px;
+}
+.week-stats > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--surface2);
+  border: 1px solid var(--line);
+}
+.week-stat-icon {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+}
+.week-stat-icon svg {
+  width: 20px;
+  height: 20px;
+}
+.week-stat-icon.g0 {
+  background: linear-gradient(135deg, #7c5cff, #a94dff);
+}
+.week-stat-icon.g2 {
+  background: linear-gradient(135deg, #2f9e6f, #45c78a);
+}
+.week-stat-icon.g3 {
+  background: linear-gradient(135deg, #e0574d, #ff8d6b);
+}
+.week-stat-icon.g5 {
+  background: linear-gradient(135deg, #2b7de9, #43a6ff);
+}
+.week-stats small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.week-stats strong {
+  display: block;
+  font-size: 1.35rem;
+  line-height: 1.2;
+}
+.week-stats > div > div > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.week-summary-note {
+  display: block;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
 .das-panel {
   margin-bottom: 18px;
 }
