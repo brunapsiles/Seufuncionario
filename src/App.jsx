@@ -15288,6 +15288,43 @@ function AIToolModal({ config, db, update, onClose, setToast, business }) {
 
 const blankWaTemplate = { name: "", category: "Contato", body: "" };
 
+// As 12 ferramentas inteligentes agrupadas pelo objetivo de quem procura —
+// espelha as categorias do menu lateral em vez de uma parede plana de cartões.
+const smartToolGroups = [
+  {
+    label: "Vendas e clientes",
+    items: [
+      ["sales", "Roteiro de vendas", TrendingUp, "Abordagem, objeções e follow-up para fechar mais.", "g5"],
+      ["support", "Respostas de atendimento", Headphones, "Modelos com empatia para responder clientes.", "g8"],
+      ["ecommerce", "Descrição de produto", ShoppingBag, "Anúncio otimizado para marketplace ou loja.", "g10"],
+      ["post", "Gerador de posts", Megaphone, "Legendas com hashtags para as suas redes sociais.", "g3"],
+    ],
+  },
+  {
+    label: "Dinheiro e números",
+    items: [
+      ["price", "Calculadora de preço", DollarSign, "Descubra o preço de venda ideal a partir dos seus custos.", "g2"],
+      ["dados", "Análise de números (Dados)", Filter, "Cole vendas e despesas e descubra padrões.", "g9"],
+      ["compras", "Comparador de cotações", Boxes, "Compare fornecedores e saiba o que negociar.", "g11"],
+    ],
+  },
+  {
+    label: "Documentos e textos",
+    items: [
+      ["contract", "Gerador de contrato", BriefcaseBusiness, "Minuta de prestação de serviços pronta para revisão.", "g4"],
+      ["translate", "Funcionário Bilíngue", Languages, "Traduza textos, e-mails e propostas para 12 idiomas com IA.", "g0"],
+    ],
+  },
+  {
+    label: "Equipe e operação",
+    items: [
+      ["rh", "Vaga e entrevista (RH)", UserCog, "Descrição de vaga e perguntas de entrevista.", "g6"],
+      ["ops", "Passo a passo (Operações)", Workflow, "Procedimento padrão com checklist para a equipe.", "g7"],
+      ["route", "Roteirizador de entregas", Route, "Monte rotas com várias paradas e abra no Google Maps.", "g1"],
+    ],
+  },
+];
+
 function ToolsHub({ db, update, business, setToast }) {
   const [smart, setSmart] = useState("");
   const [search, setSearch] = useState(""),
@@ -15372,201 +15409,30 @@ function ToolsHub({ db, update, business, setToast }) {
             <h2>Funções que trabalham por dentro do app</h2>
           </div>
         </div>
-        <div className="smart-grid">
-          <button className="smart-card" onClick={() => setSmart("translate")}>
-            <span className="smart-icon g0">
-              <Languages />
-            </span>
-            <div>
-              <strong>Funcionário Bilíngue</strong>
-              <small>
-                Traduza textos, e-mails e propostas para 12 idiomas com IA.
-              </small>
+        {smartToolGroups.map((group) => (
+          <div className="smart-group" key={group.label}>
+            <small className="smart-group-label">{group.label}</small>
+            <div className="smart-grid">
+              {group.items.map(([id, name, Icon, description, tone]) => (
+                <button
+                  className="smart-card"
+                  key={id}
+                  onClick={() => setSmart(id)}
+                >
+                  <span className={`smart-icon ${tone}`}>
+                    <Icon />
+                  </span>
+                  <div>
+                    <strong>{name}</strong>
+                    <small>{description}</small>
+                  </div>
+                  <ArrowUpRight />
+                </button>
+              ))}
             </div>
-            <ArrowUpRight />
-          </button>
-          <button className="smart-card" onClick={() => setSmart("route")}>
-            <span className="smart-icon g1">
-              <Route />
-            </span>
-            <div>
-              <strong>Roteirizador de entregas</strong>
-              <small>
-                Monte rotas com várias paradas e abra no Google Maps.
-              </small>
-            </div>
-            <ArrowUpRight />
-          </button>
-          <button className="smart-card" onClick={() => setSmart("price")}>
-            <span className="smart-icon g2">
-              <DollarSign />
-            </span>
-            <div>
-              <strong>Calculadora de preço</strong>
-              <small>
-                Descubra o preço de venda ideal a partir dos seus custos.
-              </small>
-            </div>
-            <ArrowUpRight />
-          </button>
-          <button className="smart-card" onClick={() => setSmart("post")}>
-            <span className="smart-icon g3">
-              <Megaphone />
-            </span>
-            <div>
-              <strong>Gerador de posts</strong>
-              <small>Legendas com hashtags para as suas redes sociais.</small>
-            </div>
-            <ArrowUpRight />
-          </button>
-          <button className="smart-card" onClick={() => setSmart("contract")}>
-            <span className="smart-icon g4">
-              <BriefcaseBusiness />
-            </span>
-            <div>
-              <strong>Gerador de contrato</strong>
-              <small>
-                Minuta de prestação de serviços pronta para revisão.
-              </small>
-            </div>
-            <ArrowUpRight />
-          </button>
-          <button className="smart-card" onClick={() => setSmart("sales")}>
-            <span className="smart-icon g5">
-              <TrendingUp />
-            </span>
-            <div>
-              <strong>Roteiro de vendas</strong>
-              <small>Abordagem, objeções e follow-up para fechar mais.</small>
-            </div>
-            <ArrowUpRight />
-          </button>
-          <button className="smart-card" onClick={() => setSmart("rh")}>
-            <span className="smart-icon g6">
-              <UserCog />
-            </span>
-            <div>
-              <strong>Vaga e entrevista (RH)</strong>
-              <small>Descrição de vaga e perguntas de entrevista.</small>
-            </div>
-            <ArrowUpRight />
-          </button>
-          <button className="smart-card" onClick={() => setSmart("ops")}>
-            <span className="smart-icon g7">
-              <Workflow />
-            </span>
-            <div>
-              <strong>Passo a passo (Operações)</strong>
-              <small>Procedimento padrão com checklist para a equipe.</small>
-            </div>
-            <ArrowUpRight />
-          </button>
-          <button className="smart-card" onClick={() => setSmart("support")}>
-            <span className="smart-icon g8">
-              <Headphones />
-            </span>
-            <div>
-              <strong>Respostas de atendimento</strong>
-              <small>Modelos com empatia para responder clientes.</small>
-            </div>
-            <ArrowUpRight />
-          </button>
-          <button className="smart-card" onClick={() => setSmart("dados")}>
-            <span className="smart-icon g9">
-              <Filter />
-            </span>
-            <div>
-              <strong>Análise de números (Dados)</strong>
-              <small>Cole vendas e despesas e descubra padrões.</small>
-            </div>
-            <ArrowUpRight />
-          </button>
-          <button className="smart-card" onClick={() => setSmart("ecommerce")}>
-            <span className="smart-icon g10">
-              <ShoppingBag />
-            </span>
-            <div>
-              <strong>Descrição de produto</strong>
-              <small>Anúncio otimizado para marketplace ou loja.</small>
-            </div>
-            <ArrowUpRight />
-          </button>
-          <button className="smart-card" onClick={() => setSmart("compras")}>
-            <span className="smart-icon g11">
-              <Boxes />
-            </span>
-            <div>
-              <strong>Comparador de cotações</strong>
-              <small>Compare fornecedores e saiba o que negociar.</small>
-            </div>
-            <ArrowUpRight />
-          </button>
-        </div>
-      </section>
-      <div className="tool-hero">
-        <div>
-          <span className="eyebrow light">REDIRECIONADOR INTELIGENTE</span>
-          <h2>
-            O Seu Funcionário faz o que pode aqui.
-            <br />
-            Quando não pode, leva você ao lugar certo.
-          </h2>
-        </div>
-        <div className="search tool-search">
-          <Search />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Ex.: emitir nota fiscal, enviar e-mail, criar design..."
-          />
-        </div>
-      </div>
-      <div className="category-tabs">
-        {categories.map((x) => (
-          <button
-            className={category === x ? "active" : ""}
-            onClick={() => setCategory(x)}
-            key={x}
-          >
-            {x}
-          </button>
+          </div>
         ))}
-      </div>
-      <div className="tools-grid">
-        {filtered.map((tool) => {
-          const on = plugged.includes(tool.id);
-          return (
-            <article key={tool.id}>
-              <button
-                className={on ? "plug-toggle on" : "plug-toggle"}
-                title={on ? "Desconectar" : "Plugar no meu painel"}
-                onClick={() => togglePlug(tool.id)}
-              >
-                <Plug />
-              </button>
-              <span className="tool-icon">
-                <DynamicIcon icon={tool.icon} />
-              </span>
-              <div>
-                <span className="tag">{tool.category}</span>
-                <h3>{tool.name}</h3>
-                <p>{tool.description}</p>
-                <small>{toolBadgeLabel(tool)}</small>
-              </div>
-              <a href={tool.url} target="_blank" rel="noreferrer">
-                Abrir ferramenta <ExternalLink />
-              </a>
-            </article>
-          );
-        })}
-      </div>
-      {filtered.length === 0 && (
-        <Empty
-          icon={Search}
-          title="Nenhuma ferramenta encontrada"
-          text="Tente buscar pelo objetivo, como nota fiscal, CRM, design ou agenda."
-        />
-      )}
+      </section>
       <section className="panel wa-templates" id="wa-templates">
         <div className="panel-head">
           <div>
@@ -15678,6 +15544,70 @@ function ToolsHub({ db, update, business, setToast }) {
           ))}
         </div>
       </section>
+      <div className="tool-hero">
+        <div>
+          <span className="eyebrow light">REDIRECIONADOR INTELIGENTE</span>
+          <h2>
+            O Seu Funcionário faz o que pode aqui.
+            <br />
+            Quando não pode, leva você ao lugar certo.
+          </h2>
+        </div>
+        <div className="search tool-search">
+          <Search />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Ex.: emitir nota fiscal, enviar e-mail, criar design..."
+          />
+        </div>
+      </div>
+      <div className="category-tabs">
+        {categories.map((x) => (
+          <button
+            className={category === x ? "active" : ""}
+            onClick={() => setCategory(x)}
+            key={x}
+          >
+            {x}
+          </button>
+        ))}
+      </div>
+      <div className="tools-grid">
+        {filtered.map((tool) => {
+          const on = plugged.includes(tool.id);
+          return (
+            <article key={tool.id}>
+              <button
+                className={on ? "plug-toggle on" : "plug-toggle"}
+                title={on ? "Desconectar" : "Plugar no meu painel"}
+                onClick={() => togglePlug(tool.id)}
+              >
+                <Plug />
+              </button>
+              <span className="tool-icon">
+                <DynamicIcon icon={tool.icon} />
+              </span>
+              <div>
+                <span className="tag">{tool.category}</span>
+                <h3>{tool.name}</h3>
+                <p>{tool.description}</p>
+                <small>{toolBadgeLabel(tool)}</small>
+              </div>
+              <a href={tool.url} target="_blank" rel="noreferrer">
+                Abrir ferramenta <ExternalLink />
+              </a>
+            </article>
+          );
+        })}
+      </div>
+      {filtered.length === 0 && (
+        <Empty
+          icon={Search}
+          title="Nenhuma ferramenta encontrada"
+          text="Tente buscar pelo objetivo, como nota fiscal, CRM, design ou agenda."
+        />
+      )}
       <section className="nf-guide">
         <span className="tool-icon">
           <ReceiptText />
@@ -18598,6 +18528,12 @@ export default function App() {
     window.addEventListener("sf-push-navigate", handler);
     return () => window.removeEventListener("sf-push-navigate", handler);
   }, []);
+  // Sem isso, trocar de tela herda a profundidade de rolagem da tela
+  // anterior — quem estava no fim de Ferramentas abria Configurações já
+  // no rodapé, parecendo que a página carregou "pela metade".
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [page]);
   // Lembrete automático do DAS do MEI. Só roda no espaço do próprio dono
   // (nunca ao visualizar o espaço de outra pessoa) e o dedup por mês+tipo
   // dentro de buildDasReminder evita repetição a cada carregamento.
