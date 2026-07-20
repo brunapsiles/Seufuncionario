@@ -114,7 +114,7 @@ describe("acesso à conta", () => {
       }),
     );
     expect(
-      screen.getByRole("heading", { name: /Vamos fazer acontecer/ }),
+      screen.getByRole("heading", { name: "Onde seu negócio está hoje?" }),
     ).toBeInTheDocument();
   });
 });

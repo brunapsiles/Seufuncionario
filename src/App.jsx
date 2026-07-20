@@ -92,6 +92,8 @@ import {
   Paperclip,
   Repeat,
   Bug,
+  Activity,
+  LifeBuoy,
 } from "lucide-react";
 
 const LEGACY_STORAGE_KEY = "seu-funcionario-v1";
@@ -768,7 +770,10 @@ export const dayRangeLabel = (start, end) => {
   return `${fmt(start)} a ${fmt(end)}`;
 };
 
-export const upsertContact = (contacts, { name, contact, company, businessId }) => {
+export const upsertContact = (
+  contacts,
+  { name, contact, company, businessId, ownerId },
+) => {
   const trimmedName = String(name || "").trim();
   const trimmedContact = String(contact || "").trim();
   if (!trimmedName && !trimmedContact) return contacts;
@@ -793,6 +798,11 @@ export const upsertContact = (contacts, { name, contact, company, businessId }) 
         company: company || "",
         notes: "",
         businessId: businessId || null,
+        ownerId: ownerId || null,
+        visibility: "privado",
+        sharingPermission: "visualizar",
+        sharedWith: [],
+        sharedTeams: [],
         createdAt: now,
         updatedAt: now,
       },
@@ -1369,6 +1379,173 @@ const activeSpaceId = () => {
   }
 };
 
+export const parseDelimitedText = (text) => {
+  const source = String(text || "").replace(/^\uFEFF/, "");
+  const firstLine = source.split(/\r?\n/, 1)[0] || "";
+  const delimiter =
+    (firstLine.match(/;/g) || []).length > (firstLine.match(/,/g) || []).length
+      ? ";"
+      : ",";
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let quoted = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === '"') {
+      if (quoted && source[index + 1] === '"') {
+        cell += '"';
+        index += 1;
+      } else quoted = !quoted;
+    } else if (char === delimiter && !quoted) {
+      row.push(cell.trim());
+      cell = "";
+    } else if ((char === "\n" || char === "\r") && !quoted) {
+      if (char === "\r" && source[index + 1] === "\n") index += 1;
+      row.push(cell.trim());
+      if (row.some(Boolean)) rows.push(row);
+      row = [];
+      cell = "";
+    } else cell += char;
+  }
+  row.push(cell.trim());
+  if (row.some(Boolean)) rows.push(row);
+  if (rows.length < 2) return [];
+  const normalize = (value) =>
+    String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase();
+  const headers = rows[0].map(normalize);
+  return rows.slice(1).map((values) =>
+    Object.fromEntries(headers.map((header, index) => [header, values[index] || ""])),
+  );
+};
+
+export const parseOfxTransactions = (text) => {
+  const source = String(text || "");
+  const blocks = source.match(/<STMTTRN>[\s\S]*?(?=<STMTTRN>|<\/BANKTRANLIST>|$)/gi) || [];
+  const field = (block, name) => {
+    const match = block.match(new RegExp(`<${name}>([^<\\r\\n]+)`, "i"));
+    return match ? match[1].trim() : "";
+  };
+  return blocks
+    .map((block) => {
+      const amount = Number(field(block, "TRNAMT").replace(",", "."));
+      const rawDate = field(block, "DTPOSTED").slice(0, 8);
+      return {
+        fitId: field(block, "FITID"),
+        type: amount >= 0 ? "Receita" : "Despesa",
+        value: Math.abs(amount),
+        date: /^\d{8}$/.test(rawDate)
+          ? `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`
+          : "",
+        description:
+          field(block, "MEMO") || field(block, "NAME") || "Movimentação bancária",
+        category: "Importado do banco",
+      };
+    })
+    .filter((item) => item.value > 0 && item.date);
+};
+
+export const nextBestAction = (data, business, userId, ymdValue = today()) => {
+  const businessMatches = (item) =>
+    !business || !item?.businessId || item.businessId === business.id;
+  const tasks = (data?.tasks || [])
+    .filter((item) => item?.status !== "Concluído" && businessMatches(item))
+    .filter(
+      (item) =>
+        !item.assigneeId ||
+        item.assigneeId === userId ||
+        item.ownerId === userId ||
+        (item.assignees || []).some((person) => person?.userId === userId),
+    )
+    .sort((a, b) => String(a.due || "9999").localeCompare(String(b.due || "9999")));
+  const overdue = tasks.find((item) => item.due && item.due < ymdValue);
+  if (overdue)
+    return {
+      tone: "danger",
+      eyebrow: "PRECISA DE ATENÇÃO",
+      title: overdue.title,
+      text: `O prazo era ${overdue.due}. Abra a tarefa para concluir, ajustar o prazo ou pedir orientação.`,
+      action: "Abrir tarefa",
+      page: "operacao",
+    };
+  const dueToday = tasks.find((item) => item.due === ymdValue);
+  if (dueToday)
+    return {
+      tone: "warning",
+      eyebrow: "PRIORIDADE DE HOJE",
+      title: dueToday.title,
+      text: dueToday.instructions || dueToday.description || "Conclua esta ação para manter o plano em movimento.",
+      action: "Continuar agora",
+      page: "operacao",
+    };
+  const followup = (data?.leads || []).find(
+    (item) =>
+      businessMatches(item) &&
+      item.status !== "Ganho" &&
+      item.status !== "Perdido" &&
+      typeof item.next === "string" &&
+      item.next.slice(0, 10) <= ymdValue,
+  );
+  if (followup)
+    return {
+      tone: "warning",
+      eyebrow: "CLIENTE PARA ACOMPANHAR",
+      title: `Retomar contato com ${followup.name || "este cliente"}`,
+      text: followup.next || "Existe um acompanhamento pendente no CRM.",
+      action: "Abrir CRM",
+      page: "vendas",
+    };
+  const appointment = (data?.appointments || [])
+    .filter((item) => businessMatches(item) && item.date === ymdValue)
+    .sort((a, b) => String(a.time || "").localeCompare(String(b.time || "")))[0];
+  if (appointment)
+    return {
+      tone: "default",
+      eyebrow: "PRÓXIMO COMPROMISSO",
+      title: appointment.title || appointment.client || "Compromisso de hoje",
+      text: appointment.time ? `Marcado para ${appointment.time}.` : "Confira os detalhes na agenda.",
+      action: "Abrir agenda",
+      page: "agendamentos",
+    };
+  if (tasks[0])
+    return {
+      tone: "default",
+      eyebrow: "PRÓXIMA AÇÃO",
+      title: tasks[0].title,
+      text: tasks[0].instructions || tasks[0].description || "Uma pequena entrega agora mantém seu plano avançando.",
+      action: "Continuar",
+      page: "operacao",
+    };
+  return {
+    tone: "default",
+    eyebrow: "COMECE AGORA",
+    title: business?.weeklyGoal || business?.goal || "Escolha um resultado para esta semana",
+    text: "Transforme o resultado em uma tarefa pequena, com prazo e critério de conclusão.",
+    action: "Criar uma ação",
+    page: "operacao",
+  };
+};
+
+const aiWorkspaceContext = (business) => ({
+  workspaceOwnerId: activeSpaceId() || undefined,
+  businessId: business?.id || undefined,
+});
+
+export const trackProductEvent = (event, metadata = {}) => {
+  if (!localStorage.getItem(AUTH_TOKEN_KEY)) return;
+  const space = activeSpaceId();
+  fetch(`/api/events${space ? `?owner=${encodeURIComponent(space)}` : ""}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ event, metadata }),
+    keepalive: true,
+  }).catch(() => {});
+};
+
 function useDatabase() {
   const [db, setDb] = useState(loadInitialDb);
   const [workspaceConflict, setWorkspaceConflict] = useState(null);
@@ -1500,7 +1677,7 @@ function useDatabase() {
   }, [userId, space]);
 
   const performSync = async () => {
-    if (conflictRef.current || authInvalidRef.current) return;
+    if (conflictRef.current || authInvalidRef.current) return false;
     const { user, spaceKey: _s, ...rest } = dbRef.current;
     const data = {
       ...rest,
@@ -1523,7 +1700,7 @@ function useDatabase() {
         preserveWorkspaceConflict(spaceKey, data, baseRevision, payload);
         conflictRef.current = true;
         setWorkspaceConflict(payload);
-        return;
+        return false;
       }
       if (response.status === 401) {
         authInvalidRef.current = true;
@@ -1532,7 +1709,7 @@ function useDatabase() {
           message:
             "Sua sessão expirou. Suas últimas alterações continuam salvas neste navegador — entre novamente para voltar a sincronizar.",
         });
-        return;
+        return false;
       }
       if (!response.ok) {
         setSyncError({
@@ -1540,7 +1717,7 @@ function useDatabase() {
           message:
             "Não foi possível salvar suas últimas alterações agora. Vamos tentar de novo.",
         });
-        return;
+        return false;
       }
       const revision = Number(payload.revision);
       if (Number.isInteger(revision) && revision >= 0) {
@@ -1548,12 +1725,14 @@ function useDatabase() {
         storeWorkspaceRevision(spaceKey, revision);
       }
       setSyncError(null);
+      return true;
     } catch {
       setSyncError({
         code: "network",
         message:
           "Você está sem conexão. Suas alterações serão sincronizadas assim que a internet voltar.",
       });
+      return false;
     } finally {
       setSyncing(false);
     }
@@ -1598,6 +1777,46 @@ function useDatabase() {
     setDb(cleanDb(null));
   };
 
+  const workspaceAction = async (action, taskId) => {
+    clearTimeout(syncTimer.current);
+    await syncChain.current.catch(() => {});
+    const synced = await performSync();
+    if (!synced)
+      throw new Error(
+        "Não foi possível salvar suas alterações antes desta ação.",
+      );
+    const response = await fetch(
+      `/api/tasks/action${space ? `?owner=${encodeURIComponent(space)}` : ""}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ action, taskId }),
+      },
+    );
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok)
+      throw new Error(payload.error || "Não foi possível atualizar esta tarefa.");
+    const revision = Number(payload.revision);
+    if (Number.isInteger(revision) && revision >= 0) {
+      revisionRef.current = revision;
+      storeWorkspaceRevision(spaceKey, revision);
+    }
+    if (payload.task) {
+      setDb((current) => {
+        const next = {
+          ...current,
+          tasks: (current.tasks || []).map((task) =>
+            task.id === payload.task.id ? payload.task : task,
+          ),
+          updatedAt: payload.updatedAt || new Date().toISOString(),
+        };
+        skipSyncDb.current = next;
+        return next;
+      });
+    }
+    return payload;
+  };
+
   const update = (fn) =>
     setDb((current) => {
       const next =
@@ -1612,6 +1831,7 @@ function useDatabase() {
     syncError,
     retrySync,
     logoutFromExpiredSession,
+    workspaceAction,
   ];
 }
 
@@ -1827,7 +2047,7 @@ function LegalContent() {
   return (
     <div className="legal-text">
       <p>
-        Última atualização: 17 de julho de 2026. Este documento explica, em
+        Última atualização: 20 de julho de 2026. Este documento explica, em
         linguagem simples, como o <strong>Seu Funcionário</strong> trata os
         dados da sua conta, em conformidade com a Lei Geral de Proteção de
         Dados (Lei nº 13.709/2018 — LGPD).
@@ -1855,6 +2075,12 @@ function LegalContent() {
           página e horário) usados só para corrigir falhas do aplicativo.
         </li>
         <li>
+          <strong>Eventos de uso:</strong> nome da funcionalidade utilizada,
+          data, resultado da ação e contagens agregadas. Não registramos o
+          texto das conversas, documentos, contatos ou valores financeiros
+          nessa medição.
+        </li>
+        <li>
           <strong>Integrações que você conecta:</strong> se você optar por
           conectar sua conta Google, usamos o acesso apenas para as ações que
           você pedir (enviar um e-mail pelo Gmail, criar um evento na sua
@@ -1867,7 +2093,9 @@ function LegalContent() {
         funcionar e sincronizar entre seus dispositivos), para atender
         solicitações que você faz aos funcionários de IA e, no caso das
         integrações Google, com base no seu consentimento explícito, que pode
-        ser revogado a qualquer momento.
+        ser revogado a qualquer momento. Os eventos de uso servem para medir
+        ativação, estabilidade e utilidade das funcionalidades, sem analisar
+        o conteúdo produzido pelo usuário.
       </p>
       <h3>4. Com quem compartilhamos</h3>
       <p>
@@ -2030,6 +2258,22 @@ function SharingFields({
           <option value="espaco_todo">Visível para todo o espaço</option>
         </select>
       </Field>
+      {visibility !== "privado" && (
+        <Field
+          label="Permissão de quem recebe acesso"
+          hint="Visualizar não permite alterar, excluir, publicar ou compartilhar novamente."
+        >
+          <select
+            value={value.sharingPermission || "visualizar"}
+            onChange={(e) =>
+              onChange({ ...value, sharingPermission: e.target.value })
+            }
+          >
+            <option value="visualizar">Somente visualizar</option>
+            <option value="editar">Pode visualizar e editar</option>
+          </select>
+        </Field>
+      )}
       {visibility === "pessoas" && (
         <div className="field">
           <span>Compartilhar com</span>
@@ -2292,11 +2536,26 @@ function Markdown({ text }) {
 }
 
 function ModeOnboarding({ update }) {
-  const choose = (mode) =>
+  const choose = (mode) => {
     update((d) => ({
       ...d,
-      preferences: { ...d.preferences, mode, modeChosen: true },
+      onboarding: mode === "employee" ? true : d.onboarding,
+      preferences: {
+        ...d.preferences,
+        mode,
+        modeChosen: true,
+        needsBusinessOnboarding:
+          mode === "business" &&
+          d.preferences.needsBusinessOnboardingCandidate === true,
+        needsBusinessOnboardingCandidate: false,
+      },
     }));
+    trackProductEvent("action_completed", {
+      module: "onboarding",
+      kind: "mode_selected",
+      mode,
+    });
+  };
   return (
     <main className="onboarding">
       <header>
@@ -2366,7 +2625,17 @@ function Login({ update }) {
         .then(({ ok, d }) => {
           if (!ok) throw new Error(d.error || "Falha no login com Google.");
           localStorage.setItem(AUTH_TOKEN_KEY, d.token);
-          update(() => startUserSession(d.user));
+          update(() => {
+            const session = startUserSession(d.user);
+            return {
+              ...session,
+              preferences: {
+                ...session.preferences,
+                needsBusinessOnboardingCandidate:
+                  d.created === true || d.isNew === true,
+              },
+            };
+          });
         })
         .catch((e) => setError(e.message));
     };
@@ -2403,9 +2672,18 @@ function Login({ update }) {
     setError("");
     setForm((current) => ({ ...current, password: "" }));
   };
-  const enter = (data) => {
+  const enter = (data, newAccount = false) => {
     localStorage.setItem(AUTH_TOKEN_KEY, data.token);
-    update(() => startUserSession(data.user));
+    update(() => {
+      const session = startUserSession(data.user);
+      return {
+        ...session,
+        preferences: {
+          ...session.preferences,
+          needsBusinessOnboardingCandidate: newAccount,
+        },
+      };
+    });
   };
   const submit = async (e) => {
     e.preventDefault();
@@ -2439,7 +2717,7 @@ function Login({ update }) {
         setCode("");
         return;
       }
-      enter(data);
+      enter(data, mode === "register");
     } catch (reason) {
       setError(
         reason.message === "Failed to fetch"
@@ -2463,7 +2741,7 @@ function Login({ update }) {
       const data = await r.json().catch(() => ({}));
       if (!r.ok)
         throw new Error(data.error || "Não foi possível confirmar o código.");
-      enter(data);
+      enter(data, mode === "register");
     } catch (reason) {
       setError(reason.message);
     } finally {
@@ -3059,20 +3337,32 @@ function Onboarding({ db, update }) {
     name: "",
     segment: "",
     need: "Organizar os próximos passos",
+    weeklyGoal: "",
     areas: ["Estratégia"],
   });
   const finish = (skip) => {
     let business = null;
-    if (!skip && form.name.trim())
+    let starterTask = null;
+    if (!skip) {
+      const businessId = uid();
+      const firstActions = {
+        "Organizar os próximos passos": "Definir as 3 prioridades desta semana",
+        "Conseguir clientes": "Listar 10 possíveis clientes e preparar o primeiro contato",
+        "Criar minha marca": "Registrar a proposta e o tom da marca",
+        "Definir preços": "Calcular o preço do principal produto ou serviço",
+        "Organizar a operação": "Descrever o processo que mais precisa de organização",
+        "Criar um site": "Reunir os textos e informações para o primeiro site",
+      };
       business = {
-        id: uid(),
-        name: form.name.trim(),
+        id: businessId,
+        name: form.name.trim() || "Meu negócio",
         owner: db.user.name,
         segment: form.segment.trim(),
         stage: form.stage,
         goal: form.need,
         hasBusiness: form.hasBusiness,
         focusAreas: form.areas.join(", "),
+        weeklyGoal: form.weeklyGoal.trim() || form.need,
         city: "",
         audience: "",
         offer: "",
@@ -3080,12 +3370,39 @@ function Onboarding({ db, update }) {
         createdAt: today(),
         main: true,
       };
+      starterTask = {
+        id: uid(),
+        title: firstActions[form.need] || "Dar o primeiro passo do meu plano",
+        description: `Primeira ação sugerida para avançar em: ${form.weeklyGoal.trim() || form.need}.`,
+        instructions:
+          "Comece com o que você já sabe, registre o resultado e use o chat da tarefa se precisar de orientação.",
+        priority: "Alta",
+        status: "A fazer",
+        due: today(),
+        area: "Operação",
+        ownerId: db.user.id,
+        businessId,
+        visibility: "privado",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    }
     update((d) => ({
       ...d,
       onboarding: true,
       businesses: business ? [business, ...d.businesses] : d.businesses,
+      tasks: starterTask ? [starterTask, ...(d.tasks || [])] : d.tasks,
       selectedBusinessId: business?.id || d.selectedBusinessId,
+      preferences: {
+        ...d.preferences,
+        needsBusinessOnboarding: false,
+      },
     }));
+    trackProductEvent("onboarding_completed", {
+      mode: db.preferences.mode || "business",
+      success: true,
+      kind: skip ? "skipped" : "guided",
+    });
   };
   const stages = [
     "Tenho apenas uma ideia",
@@ -3192,6 +3509,18 @@ function Onboarding({ db, update }) {
                 </button>
               ))}
             </div>
+            <Field
+              label="Que resultado você quer alcançar nesta semana?"
+              hint="Opcional. Você poderá ajustar essa meta na página inicial."
+            >
+              <input
+                value={form.weeklyGoal}
+                onChange={(e) =>
+                  setForm({ ...form, weeklyGoal: e.target.value })
+                }
+                placeholder="Ex.: enviar 5 propostas ou organizar as despesas"
+              />
+            </Field>
           </>
         )}
         <footer>
@@ -3545,12 +3874,86 @@ function UniversalRequest({ db, update, business, setToast }) {
       result: message.content,
       specialist,
       businessId: business?.id || null,
+      ownerId: db.user.id,
+      visibility: "privado",
       type: "Conversa salva",
       status: "Concluído",
       createdAt: new Date().toISOString(),
     };
     update((d) => ({ ...d, history: [item, ...d.history] }));
     setToast("Resposta salva em Projetos e Histórico");
+  };
+  const saveMessageAsDocument = (message) => {
+    const title = active?.title || "Documento criado com IA";
+    if (
+      !confirm(
+        `Será criado um documento privado chamado "${title}". O texto da resposta será salvo e poderá ser editado antes de qualquer envio. Continuar?`,
+      )
+    )
+      return;
+    const now = new Date().toISOString();
+    update((current) => ({
+      ...current,
+      documents: [
+        {
+          id: uid(),
+          title,
+          type: "Documento criado com IA",
+          content: message.content,
+          businessId: business?.id || null,
+          ownerId: db.user.id,
+          visibility: "privado",
+          sharingPermission: "visualizar",
+          versions: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+        ...(current.documents || []),
+      ],
+    }));
+    trackProductEvent("record_created", {
+      module: "documentos",
+      source: "chat",
+      kind: "ai_response",
+    });
+    setToast("Documento criado; revise antes de compartilhar");
+  };
+  const createTaskFromMessage = (message) => {
+    const title = active?.title || "Aplicar orientação da IA";
+    if (
+      !confirm(
+        `Será criada uma tarefa privada chamada "${title}", com a resposta como orientação. Nenhuma outra ação será executada. Continuar?`,
+      )
+    )
+      return;
+    const now = new Date().toISOString();
+    update((current) => ({
+      ...current,
+      tasks: [
+        {
+          id: uid(),
+          title,
+          description: "Ação criada a partir de uma conversa com a IA.",
+          instructions: message.content.slice(0, 4000),
+          priority: "Média",
+          status: "A fazer",
+          due: today(),
+          area: specialist || "Operação",
+          businessId: business?.id || null,
+          ownerId: db.user.id,
+          visibility: "privado",
+          createdAt: now,
+          updatedAt: now,
+        },
+        ...(current.tasks || []),
+      ],
+    }));
+    trackProductEvent("record_created", {
+      module: "operacao",
+      source: "chat",
+      kind: "task",
+    });
+    setToast("Tarefa criada com a orientação da conversa");
   };
   const submit = async () => {
     if ((!text.trim() && !attachments.length) || busy) return;
@@ -3617,31 +4020,10 @@ function UniversalRequest({ db, update, business, setToast }) {
     const aiBody = {
       prompt: aiPrompt,
       specialist,
-      customSpecialist:
-        (db.customSpecialists || []).find((x) => x.name === specialist) || null,
       messages: [...previousMessages, userMessage]
         .slice(-10)
         .map((x) => ({ role: x.role, content: x.content })),
-      business: business
-        ? {
-            name: business.name,
-            segment: business.segment,
-            stage: business.stage,
-            audience: business.audience,
-            offer: business.offer,
-            goal: business.goal,
-            tone: business.tone,
-            differentiators: business.differentiators,
-            competitors: business.competitors,
-            channels: business.channels,
-            website: business.website,
-            social: business.social,
-            priceRange: business.priceRange,
-            challenges: business.challenges,
-            visualIdentity: business.visualIdentity,
-            focusAreas: business.focusAreas,
-          }
-        : null,
+      ...aiWorkspaceContext(business),
     };
     const controller = new AbortController(),
       timer = setTimeout(() => controller.abort(), 70000);
@@ -3740,6 +4122,11 @@ function UniversalRequest({ db, update, business, setToast }) {
               ),
             }));
             setToast("Resposta pronta");
+            trackProductEvent("ai_completed", {
+              module: "chat",
+              kind: specialist,
+              success: true,
+            });
             streamed = true;
           } else {
             update((d) => ({
@@ -3792,6 +4179,11 @@ function UniversalRequest({ db, update, business, setToast }) {
       }));
       setRevealing({ id: assistantMessage.id, count: 0 });
       setToast(data.degraded ? "Plano inicial preparado" : "Resposta pronta");
+      trackProductEvent("ai_completed", {
+        module: "chat",
+        kind: specialist,
+        success: true,
+      });
       }
     } catch (err) {
       setText(prompt);
@@ -3950,6 +4342,14 @@ function UniversalRequest({ db, update, business, setToast }) {
                       <button onClick={() => saveMessage(message)}>
                         <Save />
                         Salvar em projetos
+                      </button>
+                      <button onClick={() => saveMessageAsDocument(message)}>
+                        <FileText />
+                        Criar documento
+                      </button>
+                      <button onClick={() => createTaskFromMessage(message)}>
+                        <ListTodo />
+                        Criar tarefa
                       </button>
                     </div>
                   )}
@@ -4117,6 +4517,10 @@ function UniversalRequest({ db, update, business, setToast }) {
 function Dashboard({ db, update, business, go, setToast }) {
   const isEmployeeMode = (db.preferences.mode || "business") === "employee";
   const [team, setTeam] = useState({ members: [], invites: [] });
+  const [goalDraft, setGoalDraft] = useState(business?.weeklyGoal || "");
+  useEffect(() => {
+    setGoalDraft(business?.weeklyGoal || "");
+  }, [business?.id, business?.weeklyGoal]);
   useEffect(() => {
     if (isEmployeeMode) return;
     const space = activeSpaceId();
@@ -4229,6 +4633,21 @@ function Dashboard({ db, update, business, go, setToast }) {
   const myLevel = levelForPoints(myPoints, db.levels || DEFAULT_LEVELS);
   const myLevelProgress = levelProgress(myPoints, db.levels || DEFAULT_LEVELS);
   const myAchievements = computeAchievements(db.tasks, db.user.id);
+  const focus = nextBestAction(db, business, db.user.id);
+  const saveWeeklyGoal = (event) => {
+    event.preventDefault();
+    if (!business || !goalDraft.trim()) return;
+    update((current) => ({
+      ...current,
+      businesses: (current.businesses || []).map((item) =>
+        item.id === business.id
+          ? { ...item, weeklyGoal: goalDraft.trim() }
+          : item,
+      ),
+    }));
+    trackProductEvent("weekly_goal_saved", { module: "inicio", success: true });
+    setToast("Meta da semana atualizada");
+  };
   useEffect(() => {
     if (!gamificationEnabled || myAchievements.length === 0) return;
     const key = `seu-funcionario-achievements-seen:${db.user.id}`;
@@ -4329,6 +4748,30 @@ function Dashboard({ db, update, business, go, setToast }) {
           </small>
         </div>
       </div>
+      <section className={`today-focus ${focus.tone || "default"}`} id="today-focus">
+        <div className="today-focus-main">
+          <span className="eyebrow">{focus.eyebrow}</span>
+          <h2>{focus.title}</h2>
+          <p>{focus.text}</p>
+          <Button icon={ArrowUpRight} onClick={() => go(focus.page)}>
+            {focus.action}
+          </Button>
+        </div>
+        {!isEmployeeMode && business && (
+          <form className="weekly-goal" onSubmit={saveWeeklyGoal}>
+            <label htmlFor="weekly-goal-input">Meta desta semana</label>
+            <input
+              id="weekly-goal-input"
+              value={goalDraft}
+              onChange={(event) => setGoalDraft(event.target.value)}
+              placeholder="Qual resultado precisa estar pronto?"
+            />
+            <Button variant="secondary" type="submit" disabled={!goalDraft.trim()}>
+              Salvar meta
+            </Button>
+          </form>
+        )}
+      </section>
       {!isEmployeeMode && (
         <section className="week-summary" id="week-summary">
           <div className="section-head">
@@ -5315,7 +5758,16 @@ const taskUrgency = (task) => {
   return null;
 };
 
-function Tasks({ db, update, business, setToast, go, searchSeed, clearSearchSeed }) {
+function Tasks({
+  db,
+  update,
+  business,
+  setToast,
+  go,
+  searchSeed,
+  clearSearchSeed,
+  workspaceAction,
+}) {
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState("");
@@ -5724,26 +6176,40 @@ function Tasks({ db, update, business, setToast, go, searchSeed, clearSearchSeed
       }),
     }));
   };
-  const expressInterest = (task) => {
+  const expressInterest = async (task) => {
     const already = (task.interested || []).some((i) => i.userId === db.user.id);
     if (already) return;
-    changeTask(task.id, {
-      interested: [
-        ...(task.interested || []),
-        { userId: db.user.id, name: db.user.name, at: new Date().toISOString() },
-      ],
-      missionStatus: "interesse_enviado",
-    });
-    notifyUser(task.ownerId, `Novo interesse em "${task.title}"`);
-    setToast("Interesse enviado");
+    try {
+      const payload = await workspaceAction("interest", task.id);
+      if (!payload?.task) {
+        changeTask(task.id, {
+          interested: [
+            ...(task.interested || []),
+            { userId: db.user.id, name: db.user.name, at: new Date().toISOString() },
+          ],
+        });
+        notifyUser(task.ownerId, `Novo interesse em "${task.title}"`);
+      }
+      setToast("Interesse enviado");
+    } catch (error) {
+      setToast(error.message || "Não foi possível enviar o interesse");
+    }
   };
-  const withdrawInterest = (task) => {
-    changeTask(task.id, {
-      interested: (task.interested || []).filter((i) => i.userId !== db.user.id),
-    });
-    setToast("Interesse retirado");
+  const withdrawInterest = async (task) => {
+    try {
+      const payload = await workspaceAction("withdraw-interest", task.id);
+      if (!payload?.task)
+        changeTask(task.id, {
+          interested: (task.interested || []).filter(
+            (i) => i.userId !== db.user.id,
+          ),
+        });
+      setToast("Interesse retirado");
+    } catch (error) {
+      setToast(error.message || "Não foi possível retirar o interesse");
+    }
   };
-  const assumeTask = (task) => {
+  const assumeTask = async (task) => {
     if (isBlocked(task)) {
       setToast(
         `Bloqueada: conclua antes "${blockingTasks(task)
@@ -5759,18 +6225,30 @@ function Tasks({ db, update, business, setToast, go, searchSeed, clearSearchSeed
       setToast("Não há mais vagas disponíveis para esta missão");
       return;
     }
-    const nextAssignees = [
-      ...assignees,
-      { userId: db.user.id, name: db.user.name, at: new Date().toISOString() },
-    ];
-    const full = nextAssignees.length >= slots;
-    changeTask(task.id, {
-      assignees: nextAssignees,
-      missionStatus: full ? "em_andamento" : "disponivel",
-      status: full ? "Em andamento" : task.status,
-    });
-    notifyUser(task.ownerId, `Vaga assumida em "${task.title}"`);
-    setToast("Missão assumida");
+    try {
+      const payload = await workspaceAction("assume", task.id);
+      if (!payload?.task) {
+        const nextAssignees = [
+          ...assignees,
+          { userId: db.user.id, name: db.user.name, at: new Date().toISOString() },
+        ];
+        const full = nextAssignees.length >= slots;
+        changeTask(task.id, {
+          assignees: nextAssignees,
+          missionStatus: full ? "em_andamento" : "disponivel",
+          status: full ? "Em andamento" : task.status,
+        });
+        notifyUser(task.ownerId, `Vaga assumida em "${task.title}"`);
+      }
+      trackProductEvent("task_claimed", {
+        module: "operacao",
+        kind: "mission",
+        success: true,
+      });
+      setToast("Missão assumida");
+    } catch (error) {
+      setToast(error.message || "Não foi possível assumir a missão");
+    }
   };
   const approveInterested = (task, userId) => {
     const person = (task.interested || []).find((i) => i.userId === userId);
@@ -7437,6 +7915,7 @@ function CRM({ db, update, business, setToast, go, searchSeed, clearSearchSeed }
           contact: item.contact,
           company: item.company,
           businessId: item.businessId,
+          ownerId: db.user.id,
         }),
       };
     });
@@ -7892,6 +8371,7 @@ function Appointments({ db, update, business, setToast, go }) {
         name: item.clientName,
         contact: item.clientContact,
         businessId: item.businessId,
+        ownerId: db.user.id,
       }),
     }));
     setModal(false);
@@ -8177,6 +8657,7 @@ function Appointments({ db, update, business, setToast, go }) {
 
 function Contacts({ db, update, business, setToast, go, searchSeed, clearSearchSeed }) {
   const wa = useWhatsappSender({ db, setToast });
+  const importRef = useRef(null);
   const [modal, setModal] = useState(false),
     [editing, setEditing] = useState(null),
     [search, setSearch] = useState(""),
@@ -8191,7 +8672,16 @@ function Contacts({ db, update, business, setToast, go, searchSeed, clearSearchS
   useEffect(() => {
     setVisibleCount(LIST_PAGE_SIZE);
   }, [search]);
-  const blankContact = { name: "", rawContact: "", company: "", notes: "" };
+  const blankContact = {
+    name: "",
+    rawContact: "",
+    company: "",
+    notes: "",
+    visibility: "privado",
+    sharingPermission: "visualizar",
+    sharedWith: [],
+    sharedTeams: [],
+  };
   const [form, setForm] = useState(blankContact);
   const contacts = (db.contacts || [])
     .filter((c) => !business || c.businessId === business.id)
@@ -8220,6 +8710,7 @@ function Contacts({ db, update, business, setToast, go, searchSeed, clearSearchS
       email,
       id: editing || uid(),
       businessId: business?.id || null,
+      ownerId: form.ownerId || db.user.id,
       createdAt: form.createdAt || now,
       updatedAt: now,
     };
@@ -8231,6 +8722,70 @@ function Contacts({ db, update, business, setToast, go, searchSeed, clearSearchS
     }));
     setModal(false);
     setToast(editing ? "Contato atualizado" : "Contato adicionado");
+  };
+  const importContacts = async (file) => {
+    if (!file) return;
+    try {
+      const rows = parseDelimitedText(await file.text());
+      const existingKeys = new Set(
+        (db.contacts || []).flatMap((item) =>
+          [item.email, item.phone]
+            .filter(Boolean)
+            .map((value) => String(value).toLowerCase()),
+        ),
+      );
+      const now = new Date().toISOString();
+      const imported = rows
+        .map((row) => {
+          const name = row.nome || row.name || row.contato || "";
+          const email = row.email || row["e-mail"] || "";
+          const phone =
+            row.telefone || row.whatsapp || row.celular || row.phone || "";
+          return {
+            id: uid(),
+            name: name.trim(),
+            email: email.trim(),
+            phone: phone.trim(),
+            rawContact: phone.trim() || email.trim(),
+            company: (row.empresa || row.company || row.organizacao || "").trim(),
+            notes: (row.observacoes || row.observacao || row.notes || "").trim(),
+            businessId: business?.id || null,
+            ownerId: db.user.id,
+            visibility: "privado",
+            sharingPermission: "visualizar",
+            sharedWith: [],
+            sharedTeams: [],
+            createdAt: now,
+            updatedAt: now,
+          };
+        })
+        .filter((item) => item.name)
+        .filter((item) => {
+          const keys = [item.email, item.phone]
+            .filter(Boolean)
+            .map((value) => value.toLowerCase());
+          if (keys.some((key) => existingKeys.has(key))) return false;
+          keys.forEach((key) => existingKeys.add(key));
+          return true;
+        });
+      if (!imported.length)
+        throw new Error("Nenhum contato novo foi encontrado no arquivo.");
+      update((current) => ({
+        ...current,
+        contacts: [...imported, ...(current.contacts || [])],
+      }));
+      trackProductEvent("import_completed", {
+        module: "contatos",
+        kind: "csv",
+        count: imported.length,
+        success: true,
+      });
+      setToast(`${imported.length} contato(s) importado(s)`);
+    } catch (error) {
+      setToast(error.message || "Não foi possível importar os contatos");
+    } finally {
+      if (importRef.current) importRef.current.value = "";
+    }
   };
   const removeContact = (id) => {
     if (!confirm("Excluir este contato?")) return;
@@ -8245,9 +8800,25 @@ function Contacts({ db, update, business, setToast, go, searchSeed, clearSearchS
       title="Todas as pessoas em um só lugar"
       text="Reúne automaticamente quem você cadastra no CRM, em Agendamentos e em Pedidos — também dá para adicionar direto por aqui."
       action={
-        <Button icon={Plus} onClick={() => openContact()}>
-          Novo contato
-        </Button>
+        <div className="page-actions">
+          <input
+            ref={importRef}
+            type="file"
+            accept=".csv,text/csv,text/plain"
+            hidden
+            onChange={(event) => importContacts(event.target.files?.[0])}
+          />
+          <Button
+            variant="secondary"
+            icon={Upload}
+            onClick={() => importRef.current?.click()}
+          >
+            Importar CSV
+          </Button>
+          <Button icon={Plus} onClick={() => openContact()}>
+            Novo contato
+          </Button>
+        </div>
       }
     >
       <div className="toolbar">
@@ -8367,6 +8938,11 @@ function Contacts({ db, update, business, setToast, go, searchSeed, clearSearchS
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
               />
             </Field>
+            <SharingFields
+              value={form}
+              onChange={(next) => setForm({ ...form, ...next })}
+              teams={db.teams}
+            />
             <div className="modal-actions">
               <Button variant="ghost" onClick={() => setModal(false)}>
                 Cancelar
@@ -8678,6 +9254,7 @@ function Catalog({ db, update, business, setToast, go }) {
               name: item.clientName,
               contact: item.clientContact,
               businessId: item.businessId,
+              ownerId: db.user.id,
             }),
     }));
     setOrderModal(false);
@@ -10313,6 +10890,8 @@ function TimeTracking({ db, update, business, setToast, go }) {
       rate: Number(form.rate) || 0,
       id: editing || uid(),
       businessId: business?.id || null,
+      ownerId: form.ownerId || db.user.id,
+      visibility: form.visibility || "privado",
       createdAt: form.createdAt || now,
       updatedAt: now,
     };
@@ -10656,6 +11235,7 @@ function RewardsPanel({ db, update, business, setToast }) {
 }
 
 function Finance({ db, update, business, setToast, go }) {
+  const importRef = useRef(null);
   const [modal, setModal] = useState(false),
     [calc, setCalc] = useState({
       materials: "",
@@ -10735,6 +11315,86 @@ function Finance({ db, update, business, setToast, go }) {
     }));
     setModal(false);
     setToast("Movimentação registrada");
+  };
+  const importTransactions = async (file) => {
+    if (!file) return;
+    const parseMoney = (value) => {
+      const clean = String(value || "")
+        .replace(/R\$/gi, "")
+        .replace(/\s/g, "");
+      const normalized = clean.includes(",")
+        ? clean.replace(/\./g, "").replace(",", ".")
+        : clean;
+      return Number(normalized);
+    };
+    try {
+      const text = await file.text();
+      const isOfx = /\.ofx$/i.test(file.name) || /<OFX>/i.test(text);
+      const sourceRows = isOfx
+        ? parseOfxTransactions(text)
+        : parseDelimitedText(text).map((row) => {
+            const rawValue = row.valor || row.value || row.quantia || row.amount;
+            const amount = parseMoney(rawValue);
+            const informedType = String(row.tipo || row.type || "").toLowerCase();
+            return {
+              fitId: row.id || row.fitid || "",
+              type:
+                informedType.includes("desp") || amount < 0
+                  ? "Despesa"
+                  : "Receita",
+              value: Math.abs(amount),
+              date: row.data || row.date || "",
+              description:
+                row.descricao || row.description || row.historico || row.memo || "",
+              category: row.categoria || row.category || "Importado",
+            };
+          });
+      const existingKeys = new Set(
+        (db.transactions || []).map(
+          (item) =>
+            item.importId ||
+            `${item.date}|${Number(item.value || 0).toFixed(2)}|${String(item.description || "").toLowerCase()}`,
+        ),
+      );
+      const imported = sourceRows
+        .filter(
+          (item) =>
+            item.date && item.description && Number.isFinite(item.value) && item.value > 0,
+        )
+        .map((item) => ({
+          ...item,
+          id: uid(),
+          importId:
+            item.fitId ||
+            `${item.date}|${Number(item.value).toFixed(2)}|${item.description.toLowerCase()}`,
+          businessId: business?.id || null,
+          ownerId: db.user.id,
+          visibility: "privado",
+          createdAt: new Date().toISOString(),
+        }))
+        .filter((item) => {
+          if (existingKeys.has(item.importId)) return false;
+          existingKeys.add(item.importId);
+          return true;
+        });
+      if (!imported.length)
+        throw new Error("Nenhuma movimentação nova foi encontrada no arquivo.");
+      update((current) => ({
+        ...current,
+        transactions: [...imported, ...(current.transactions || [])],
+      }));
+      trackProductEvent("import_completed", {
+        module: "financeiro",
+        kind: isOfx ? "ofx" : "csv",
+        count: imported.length,
+        success: true,
+      });
+      setToast(`${imported.length} movimentação(ões) importada(s)`);
+    } catch (error) {
+      setToast(error.message || "Não foi possível importar o extrato");
+    } finally {
+      if (importRef.current) importRef.current.value = "";
+    }
   };
   const savePlanning = () => {
     update((d) => ({
@@ -10818,6 +11478,11 @@ function Finance({ db, update, business, setToast, go }) {
     link.click();
     URL.revokeObjectURL(link.href);
     setToast("Relatório financeiro exportado");
+    trackProductEvent("export_completed", {
+      module: "financeiro",
+      kind: "csv",
+      success: true,
+    });
   };
   return (
     <PageTitle
@@ -10825,9 +11490,25 @@ function Finance({ db, update, business, setToast, go }) {
       title="Números claros para decisões melhores"
       text="Registre apenas valores reais. Projeções aparecem sempre identificadas como estimativas."
       action={
-        <Button icon={Plus} onClick={() => setModal(true)}>
-          Registrar movimentação
-        </Button>
+        <div className="page-actions">
+          <input
+            ref={importRef}
+            type="file"
+            accept=".csv,.ofx,text/csv,text/plain,application/x-ofx"
+            hidden
+            onChange={(event) => importTransactions(event.target.files?.[0])}
+          />
+          <Button
+            variant="secondary"
+            icon={Upload}
+            onClick={() => importRef.current?.click()}
+          >
+            Importar CSV ou OFX
+          </Button>
+          <Button icon={Plus} onClick={() => setModal(true)}>
+            Registrar movimentação
+          </Button>
+        </div>
       }
     >
       <AreaToolkit
@@ -11572,6 +12253,11 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
         `${imported.length} importados; ${errors.length} não puderam ser lidos`,
       );
     else setToast("Nenhum documento pôde ser importado");
+    trackProductEvent("import_completed", {
+      module: "documentos",
+      count: imported.length,
+      success: imported.length > 0,
+    });
     setUploading(false);
     if (uploadRef.current) uploadRef.current.value = "";
   };
@@ -11676,6 +12362,11 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
         pdf.save(`${slugify(d.title)}.pdf`);
       }
       setToast(`Documento exportado em ${format.toUpperCase()}`);
+      trackProductEvent("export_completed", {
+        module: "documentos",
+        kind: format,
+        success: true,
+      });
     } catch {
       setToast("Não foi possível exportar este documento");
     } finally {
@@ -11692,7 +12383,7 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
         body: JSON.stringify({
           specialist: "Conteúdo",
           prompt: `Aprimore o documento abaixo. Preserve todos os fatos, números e compromissos informados; corrija clareza, estrutura e linguagem. Não invente dados. Entregue somente a versão final do documento em Markdown.\n\nTítulo: ${form.title}\nTipo: ${form.type}\n\n${form.content}`,
-          business,
+          ...aiWorkspaceContext(business),
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -12635,7 +13326,7 @@ function Sites({ db, update, business, setToast, go }) {
         headers: { "content-type": "application/json", ...authHeaders() },
         body: JSON.stringify({
           specialist: "Criador de Sites",
-          business,
+          ...aiWorkspaceContext(business),
           prompt: `Transforme o briefing abaixo em conteúdo público de um site profissional e único, evitando um layout genérico igual para qualquer negócio. O briefing é uma instrução interna e NUNCA pode aparecer literalmente nos textos do site. Não invente clientes, números, depoimentos ou fatos. Responda SOMENTE com JSON válido, sem Markdown, usando os campos: headline, description (até 240 caracteres, texto para visitantes), aboutTitle, about, services (lista de objetos com title e description), cta, faq (lista de 3 a 5 objetos com question e answer, dúvidas genéricas sobre como funciona o atendimento, sem inventar preços, prazos ou números específicos), features (lista de 3 a 4 objetos com title e description, diferenciais genuínos com base no briefing, sem números inventados), heroStyle (escolha "centrado", "dividido" ou "impacto" conforme o tom do negócio: "impacto" para algo mais ousado/moderno, "dividido" para algo visual, "centrado" para algo clássico/confiável), homeBlocks (lista ordenada com a combinação que fizer mais sentido, usando somente os ids: "features", "gallery", "testimonials", "cta").\n\nNome: ${form.name}\nSegmento: ${form.segment}\nBriefing interno: ${form.instructions.slice(0, 4000)}\nServiços informados: ${String(form.services || "").slice(0, 1600)}\nTexto público informado: ${form.description.slice(0, 800)}`,
         }),
       });
@@ -12792,7 +13483,7 @@ function Sites({ db, update, business, setToast, go }) {
         headers: { "content-type": "application/json", ...authHeaders() },
         body: JSON.stringify({
           specialist: "Criador de Sites",
-          business,
+          ...aiWorkspaceContext(business),
           prompt: `Você está editando um site existente por conversa. Altere APENAS o que o usuário pediu e preserve todo o resto. O pedido é uma instrução interna e nunca deve aparecer como texto do site. Não invente fatos. Você também pode reorganizar a estrutura da página inicial quando pedido (adicionar, remover ou reordenar seções). Responda SOMENTE com um objeto JSON contendo apenas os campos alterados entre: name, segment, headline, description, aboutTitle, about, services (lista de objetos com title e description), cta, contact, color, faq (lista de objetos com question e answer, sem inventar preços, prazos ou números específicos), features (lista de objetos com title e description, diferenciais sem números inventados), heroStyle ("centrado", "dividido" ou "impacto"), homeBlocks (lista ordenada usando somente os ids "features", "gallery", "testimonials", "cta" — inclua só o que deve aparecer na página inicial, na ordem pedida).\n\nSite atual:\n${JSON.stringify(current.brief || {}).slice(0, 10000)}\n\nAlteração pedida: ${request.slice(0, 3000)}`,
         }),
       });
@@ -14434,7 +15125,12 @@ function AIToolModal({ config, db, update, onClose, setToast, business }) {
     const r = await fetch("/api/ai", {
       method: "POST",
       headers: { "content-type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ prompt, specialist: config.specialist, messages }),
+      body: JSON.stringify({
+        prompt,
+        specialist: config.specialist,
+        messages,
+        ...aiWorkspaceContext(business),
+      }),
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || "Não foi possível gerar agora.");
@@ -15123,6 +15819,8 @@ function CreativeStudio({ db, update, business, setToast }) {
         requestId: data.requestId || null,
         freeTier: !!data.freeTier,
         businessId: business?.id || null,
+        ownerId: db.user.id,
+        visibility: "privado",
         createdAt: new Date().toISOString(),
       };
       update((d) => ({ ...d, media: [item, ...(d.media || [])] }));
@@ -15475,7 +16173,7 @@ function HistoryPage({ db, update, business, setToast, go }) {
         body: JSON.stringify({
           specialist: item.specialist || "Diretor",
           prompt: `Revise e aprofunde o projeto abaixo. Preserve fatos e números fornecidos, elimine generalidades e acrescente próximas ações verificáveis. Entregue a versão final completa em Markdown.\n\n${item.result}`,
-          business,
+          ...aiWorkspaceContext(business),
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -15887,6 +16585,8 @@ function Certifications({ db, update, business, setToast, go }) {
       projectName: site.name,
       name: db.user.name,
       title: "Competência Aplicada em Criação de Websites No-Code",
+      ownerId: db.user.id,
+      visibility: "privado",
       issuedAt: new Date().toISOString(),
       code: `PRX-WEB-${new Date().getFullYear()}-${site.id.slice(0, 8).toUpperCase()}`,
     };
@@ -15910,6 +16610,8 @@ function Certifications({ db, update, business, setToast, go }) {
       projectName: plan.title,
       name: db.user.name,
       title: `Plano de Desenvolvimento Concluído: ${plan.title}`,
+      ownerId: db.user.id,
+      visibility: "privado",
       issuedAt: new Date().toISOString(),
       code: `PRX-DEV-${new Date().getFullYear()}-${plan.id.slice(0, 8).toUpperCase()}`,
     };
@@ -17075,18 +17777,65 @@ function AccountSettings({ db, update, setToast, go }) {
   const [pushSubscribed, setPushSubscribed] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushChecked, setPushChecked] = useState(false);
+  const [supportEmail, setSupportEmail] = useState("");
+  const [serviceStatus, setServiceStatus] = useState(null);
+  const [usageMetrics, setUsageMetrics] = useState(null);
+  const [metricsBusy, setMetricsBusy] = useState(false);
   useEffect(() => {
-    if (!pushSupported) return;
     fetch("/api/config")
       .then((r) => r.json())
-      .then((d) => setVapidPublicKey(d.vapidPublicKey || ""))
+      .then((d) => {
+        setVapidPublicKey(d.vapidPublicKey || "");
+        setSupportEmail(d.supportEmail || "");
+      })
       .catch(() => {});
+    fetch("/api/status")
+      .then((r) => r.json())
+      .then((d) => setServiceStatus(d))
+      .catch(() => setServiceStatus({ status: "indisponível" }));
+    if (!pushSupported) return;
     navigator.serviceWorker.ready
       .then((registration) => registration.pushManager.getSubscription())
       .then((subscription) => setPushSubscribed(!!subscription))
       .catch(() => {})
       .finally(() => setPushChecked(true));
   }, [pushSupported]);
+  const loadUsageMetrics = async () => {
+    setMetricsBusy(true);
+    try {
+      const space = activeSpaceId();
+      const response = await fetch(
+        `/api/events${space ? `?owner=${encodeURIComponent(space)}` : ""}`,
+        { headers: authHeaders() },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok)
+        throw new Error(data.error || "Não foi possível carregar os indicadores.");
+      setUsageMetrics(data);
+    } catch (error) {
+      setToast(error.message);
+    } finally {
+      setMetricsBusy(false);
+    }
+  };
+  const downloadDiagnostics = () => {
+    const payload = {
+      generatedAt: new Date().toISOString(),
+      appVersion: serviceStatus?.version || "desconhecida",
+      serviceStatus: serviceStatus?.status || "desconhecido",
+      browser: navigator.userAgent,
+      recentErrors: errorLogs.slice(0, 10),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "diagnostico-seu-funcionario.json";
+    link.click();
+    URL.revokeObjectURL(link.href);
+    setToast("Diagnóstico preparado para o suporte");
+  };
   const enablePush = async () => {
     if (!vapidPublicKey) {
       setToast("Notificações do navegador não estão configuradas.");
@@ -17202,6 +17951,11 @@ function AccountSettings({ db, update, setToast, go }) {
     a.click();
     URL.revokeObjectURL(a.href);
     setToast("Dados exportados");
+    trackProductEvent("export_completed", {
+      module: "config",
+      kind: "workspace_json",
+      success: true,
+    });
   };
   const deleteAccount = async () => {
     setDeleting(true);
@@ -17395,6 +18149,79 @@ function AccountSettings({ db, update, setToast, go }) {
                 <strong>{db.businesses.length}</strong> negócios cadastrados
               </span>
             </div>
+          </div>
+        </section>
+        <section className="settings-card">
+          <div className="settings-card-head">
+            <span className="settings-icon">
+              <TrendingUp />
+            </span>
+            <div>
+              <h2>Indicadores de uso</h2>
+              <p>Adoção real do espaço nos últimos 30 dias, sem armazenar o conteúdo do trabalho.</p>
+            </div>
+          </div>
+          {usageMetrics ? (
+            <div className="settings-links">
+              <div className="settings-stat">
+                <Users />
+                <span>
+                  <strong>{usageMetrics.activeUsers || 0}</strong> pessoas ativas
+                </span>
+              </div>
+              {(usageMetrics.events || []).slice(0, 5).map((item) => (
+                <div className="settings-stat" key={item.event}>
+                  <Activity />
+                  <span>
+                    <strong>{item.total}</strong> {item.event.replaceAll("_", " ")}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="muted-copy">
+              Carregue os indicadores para acompanhar ativação, uso da IA,
+              importações, exportações e conclusão de ações.
+            </p>
+          )}
+          <div className="settings-actions">
+            <Button variant="secondary" onClick={loadUsageMetrics} disabled={metricsBusy}>
+              {metricsBusy ? "Carregando..." : "Atualizar indicadores"}
+            </Button>
+          </div>
+        </section>
+        <section className="settings-card">
+          <div className="settings-card-head">
+            <span className="settings-icon">
+              <LifeBuoy />
+            </span>
+            <div>
+              <h2>Ajuda e continuidade</h2>
+              <p>Consulte o estado do serviço e leve um diagnóstico seguro ao suporte.</p>
+            </div>
+          </div>
+          <div className="settings-stat">
+            <Activity />
+            <span>
+              Serviço: <strong>{serviceStatus?.status || "verificando..."}</strong>
+              {serviceStatus?.version ? ` · ${serviceStatus.version}` : ""}
+            </span>
+          </div>
+          <div className="settings-actions">
+            <Button variant="secondary" onClick={downloadDiagnostics}>
+              Baixar diagnóstico
+            </Button>
+            {supportEmail && (
+              <a
+                className="button secondary"
+                href={`mailto:${supportEmail}?subject=${encodeURIComponent("Suporte — Seu Funcionário")}`}
+              >
+                Enviar ao suporte
+              </a>
+            )}
+            <a className="text-button" href="/api/status" target="_blank" rel="noreferrer">
+              Ver estado técnico
+            </a>
           </div>
         </section>
         <section className="settings-card">
@@ -17632,6 +18459,7 @@ export default function App() {
       syncError,
       retrySync,
       logoutFromExpiredSession,
+      workspaceAction,
     ] = useDatabase(),
     [page, setPage] = useState("inicio"),
     [collapsed, setCollapsed] = useState(!!savedUi.collapsed),
@@ -17713,6 +18541,18 @@ export default function App() {
     document.documentElement.dataset.theme = db.preferences.theme;
   }, [db.preferences.theme]);
   useEffect(() => {
+    if (!db.user?.id) return;
+    const key = `sf-session-event:${db.user.id}:${db.spaceKey || "own"}:${today()}`;
+    try {
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, "1");
+    } catch {}
+    trackProductEvent("session_started", {
+      module: "app",
+      mode: db.preferences.mode || "business",
+    });
+  }, [db.user?.id, db.spaceKey]);
+  useEffect(() => {
     if (!db.user) return;
     const m = location.search.match(/[?&]convite=([^&]+)/);
     if (!m) return;
@@ -17776,6 +18616,11 @@ export default function App() {
   if (!db.preferences.modeChosen && !hasAnyWorkspaceData(db))
     return <ModeOnboarding update={update} />;
   const mode = db.preferences.mode || "business";
+  if (
+    mode === "business" &&
+    db.preferences.needsBusinessOnboarding === true
+  )
+    return <Onboarding db={db} update={update} />;
   const isEmployeeMode = mode === "employee";
   const visibleNav = navForMode(mode);
   const business =
@@ -17857,6 +18702,7 @@ export default function App() {
   const go = (p) => {
     setPage(p);
     setMobile(false);
+    trackProductEvent("navigation", { module: p });
   };
   const content = () => {
     switch (page) {
@@ -17968,6 +18814,7 @@ export default function App() {
             go={go}
             searchSeed={searchSeed}
             clearSearchSeed={clearSearchSeed}
+            workspaceAction={workspaceAction}
           />
         );
       case "desenvolvimento":

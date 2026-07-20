@@ -23,9 +23,10 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.{js,jsx}'],
     // A interface completa e os parsers de documentos tornam alguns fluxos
-    // jsdom mais pesados. Dez segundos evita falhas intermitentes sem esconder
-    // travamentos reais.
-    testTimeout: 10_000,
-    hookTimeout: 10_000,
+    // jsdom mais pesados. Limitar a concorrência evita que vários renders do
+    // aplicativo disputem memória e estourem o prazo apenas por carga da máquina.
+    maxWorkers: 4,
+    testTimeout: 20_000,
+    hookTimeout: 20_000,
   },
 })

@@ -117,7 +117,7 @@ describe("privacidade das conversas de IA entre membros de um espaço", () => {
     ]);
   });
 
-  it("conversas antigas sem ownerId (dados legados) continuam visíveis, mas novas ficam restritas ao dono", async () => {
+  it("conversas antigas sem ownerId ficam protegidas para evitar vazamento entre membros", async () => {
     const owner = await createUser("cp-owner-2");
     const member = await createUser("cp-member-2");
     await addMember(owner.id, member.id, "colaborador");
@@ -137,8 +137,6 @@ describe("privacidade das conversas de IA entre membros de um espaço", () => {
     const asMember = await readJson(
       await workspaceRequest(member, { owner: owner.id }),
     );
-    expect(asMember.body.data.conversations.map((c) => c.id)).toEqual([
-      "conv-legacy",
-    ]);
+    expect(asMember.body.data.conversations).toEqual([]);
   });
 });

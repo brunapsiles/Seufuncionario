@@ -74,6 +74,46 @@ async function readJson(response) {
 }
 
 describe("integridade de missões e recompensas ao sincronizar como colaborador", () => {
+  it("separa acesso de leitura de permissão para editar uma tarefa compartilhada", async () => {
+    const owner = await createUser("mi-owner-access");
+    const member = await createUser("mi-member-access");
+    await addMember(owner.id, member.id, "colaborador");
+    await workspaceRequest(owner, {
+      method: "PUT",
+      body: {
+        data: {
+          tasks: [
+            {
+              id: "shared-view-only",
+              title: "Título protegido",
+              ownerId: owner.id,
+              visibility: "espaco_todo",
+              sharingPermission: "visualizar",
+            },
+          ],
+        },
+        revision: 0,
+      },
+    });
+    const asMember = await readJson(
+      await workspaceRequest(member, { owner: owner.id }),
+    );
+    await workspaceRequest(member, {
+      method: "PUT",
+      owner: owner.id,
+      body: {
+        data: {
+          tasks: [
+            { ...asMember.body.data.tasks[0], title: "Título adulterado" },
+          ],
+        },
+        revision: asMember.body.revision,
+      },
+    });
+    const after = await readJson(await workspaceRequest(owner));
+    expect(after.body.data.tasks[0].title).toBe("Título protegido");
+  });
+
   it("impede que o colaborador aprove a própria missão ou altere pontos, recompensa, vagas e visibilidade", async () => {
     const owner = await createUser("mi-owner-1");
     const member = await createUser("mi-member-1");

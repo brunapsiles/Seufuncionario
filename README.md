@@ -11,6 +11,9 @@ Plataforma de inteligência empresarial em português do Brasil, publicada em ht
 - Painel de tarefas, CRM de leads, controle financeiro, documentos versionados, criador de sites com publicação e captação de contatos, estúdio de logos/imagens com IA, vídeo opcional e trilhas de certificação
 - **Aplicativo instalável (PWA)**: funciona como site e como app no celular e no computador
 - **Sincronização multi-dispositivo**: os projetos acompanham a conta — entre de qualquer aparelho e continue de onde parou
+- **Central Hoje**: prioriza tarefas, clientes, agenda e meta semanal em uma única próxima ação
+- **Importação aberta**: contatos por CSV, financeiro por CSV/OFX e documentos em formatos comuns
+- **Ações confirmáveis da IA**: respostas podem virar tarefa, documento ou projeto sem executar alterações silenciosas
 
 O núcleo foi desenhado para combinar as cotas gratuitas de Google, Cloudflare, Groq, Cerebras, Mistral, OpenRouter, GitHub Models e Hugging Face. Cotas e filas dos provedores ainda podem existir. O xAI não participa da cascata automática: só é acionado após confirmação explícita de uso pago. Se todas as rotas gratuitas falharem, o app entrega um plano de contingência local sem inventar informações.
 
@@ -66,8 +69,9 @@ npm test       # roda os testes
 | `HF_TOKEN`                        | Hugging Face, crédito gratuito muito limitado      |
 | `XAI_API_KEY`                     | Uso pago opcional e sempre confirmado pelo usuário |
 | `VIDEO_AI_URL` + `VIDEO_AI_TOKEN` | Servidor próprio de vídeo (`video-ai/`)            |
+| `SUPPORT_EMAIL`                    | Canal de suporte mostrado no aplicativo              |
 
-Cadastre cada segredo com `npx wrangler secret put NOME_DO_SEGREDO`. A tela **Configurações → Rede de IA gratuita** informa quais provedores estão efetivamente conectados sem devolver os tokens ao navegador.
+Cadastre cada segredo com `npx wrangler secret put NOME_DO_SEGREDO`. A rede de provedores é uma decisão interna do backend: nomes, chaves, custos e estado da infraestrutura não são exibidos ao usuário final.
 
 Sem as opcionais o app continua funcionando: o chat usa a cascata disponível, imagens e logos usam o FLUX na cota gratuita do Cloudflare, e o gerador de vídeo indica a alternativa gratuita no Hugging Face. O estúdio não afirma que o vídeo próprio está disponível sem `VIDEO_AI_URL` e `VIDEO_AI_TOKEN`.
 
@@ -77,3 +81,10 @@ Sem as opcionais o app continua funcionando: o chat usa a cascata disponível, i
 - As rotas de IA exigem login, evitando que estranhos consumam sua cota gratuita.
 - Limite de 8 requisições por minuto por IP contra abuso.
 - Sites públicos recebem HTML higienizado e uma política CSP; os leads ficam vinculados ao dono do site.
+
+## Operação e piloto
+
+- [Plano de piloto institucional](docs/PILOTO_INSTITUCIONAL.md)
+- [Operação de produção](docs/OPERACAO_PRODUCAO.md)
+- [Resposta a incidentes e LGPD](docs/RESPOSTA_A_INCIDENTES_E_LGPD.md)
+- [Política de segurança](SECURITY.md)

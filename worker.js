@@ -448,6 +448,15 @@ async function handleAuth(request, env, url) {
       env.DB.prepare("DELETE FROM push_subscriptions WHERE user_id = ?").bind(
         account.id,
       ),
+      env.DB.prepare(
+        "DELETE FROM product_events WHERE user_id = ? OR workspace_owner_id = ?",
+      ).bind(account.id, account.id),
+      env.DB.prepare("DELETE FROM weekly_summary_log WHERE user_id = ?").bind(
+        account.id,
+      ),
+      env.DB.prepare("DELETE FROM audit_log WHERE owner_id = ?").bind(
+        account.id,
+      ),
       env.DB.prepare("DELETE FROM users WHERE id = ?").bind(account.id),
     ]);
     return json({ ok: true });
@@ -920,7 +929,6 @@ async function membershipRole(env, userId, ownerId) {
 
 export function canSeeTask(record, userId, ctx = {}) {
   if (!record || !userId) return false;
-  if (record.ownerId == null) return true;
   if (record.ownerId === userId) return true;
   if (record.assigneeId === userId) return true;
   if (
@@ -952,6 +960,31 @@ export function canSeeTask(record, userId, ctx = {}) {
   return false;
 }
 
+export function canEditRecord(record, userId, ctx = {}) {
+  if (!record || !userId) return false;
+  if (record.ownerId === userId) return true;
+  if (Array.isArray(record.editors) && record.editors.includes(userId))
+    return true;
+  if (record.sharingPermission !== "editar") return false;
+  if (Array.isArray(record.sharedWith) && record.sharedWith.includes(userId))
+    return true;
+  if (
+    ctx.teamIds instanceof Set &&
+    Array.isArray(record.sharedTeams) &&
+    record.sharedTeams.some((teamId) => ctx.teamIds.has(teamId))
+  )
+    return true;
+  if (
+    ctx.projects instanceof Set &&
+    record.visibility === "projeto" &&
+    record.project &&
+    ctx.projects.has(record.project)
+  )
+    return true;
+  if (record.visibility === "espaco_todo") return true;
+  return false;
+}
+
 const RESTRICTED_FIELDS = [
   "tasks",
   "leads",
@@ -967,6 +1000,26 @@ const RESTRICTED_FIELDS = [
   "trips",
   "conversations",
   "emailDrafts",
+  "contacts",
+  "timeEntries",
+  "history",
+  "certificates",
+  "media",
+];
+
+const OWNER_ONLY_TOP_LEVEL_FIELDS = [
+  "businesses",
+  "selectedBusinessId",
+  "financeSettings",
+  "taxProfile",
+  "deliveryZones",
+  "levels",
+  "preferences",
+  "journeys",
+  "pluggedTools",
+  "waTemplates",
+  "teams",
+  "projects",
 ];
 
 function resolveViewerContext(data, userId) {
@@ -1008,6 +1061,8 @@ const OWNER_LOCKED_FIELDS = new Set([
   "approvalMode",
   "distribution",
   "rewardStatus",
+  "sharingPermission",
+  "editors",
 ]);
 
 function sanitizeMemberEdit(existing, incoming) {
@@ -1023,7 +1078,71 @@ function sanitizeMemberEdit(existing, incoming) {
   return safe;
 }
 
-function mergeRecordsFromMember(currentRecords, incomingRecords, memberId, ctx) {
+function sanitizeTaskParticipation(existing, incoming, memberId) {
+  const safe = { ...existing };
+  const beforeDeliveries = Array.isArray(existing.deliveries)
+    ? existing.deliveries
+    : [];
+  const requestedDeliveries = Array.isArray(incoming.deliveries)
+    ? incoming.deliveries
+    : beforeDeliveries;
+  const previousIds = new Set(beforeDeliveries.map((item) => item?.id));
+  const appended = requestedDeliveries.filter(
+    (item) =>
+      item &&
+      item.id &&
+      !previousIds.has(item.id) &&
+      item.authorId === memberId,
+  );
+  if (appended.length) {
+    safe.deliveries = [
+      ...beforeDeliveries,
+      ...appended.map((item) => ({
+        ...item,
+        status: "enviada",
+        feedback: undefined,
+      })),
+    ];
+    safe.missionStatus = "enviada_para_revisao";
+    safe.updatedAt = incoming.updatedAt || new Date().toISOString();
+  }
+
+  if (Array.isArray(existing.checklist) && Array.isArray(incoming.checklist)) {
+    const requested = new Map(
+      incoming.checklist
+        .filter((item) => item?.id)
+        .map((item) => [item.id, item]),
+    );
+    safe.checklist = existing.checklist.map((item) =>
+      requested.has(item.id)
+        ? { ...item, done: !!requested.get(item.id).done }
+        : item,
+    );
+  }
+
+  const beforeInterested = Array.isArray(existing.interested)
+    ? existing.interested
+    : [];
+  const requestedInterested = Array.isArray(incoming.interested)
+    ? incoming.interested
+    : beforeInterested;
+  const otherPeople = beforeInterested.filter(
+    (item) => item?.userId !== memberId,
+  );
+  const ownInterest = requestedInterested.find(
+    (item) => item?.userId === memberId,
+  );
+  safe.interested = ownInterest ? [...otherPeople, ownInterest] : otherPeople;
+  return safe;
+}
+
+function mergeRecordsFromMember(
+  currentRecords,
+  incomingRecords,
+  memberId,
+  ctx,
+  field,
+) {
   const current = Array.isArray(currentRecords) ? currentRecords : [];
   const incoming = Array.isArray(incomingRecords) ? incomingRecords : [];
   const incomingById = new Map(
@@ -1040,7 +1159,7 @@ function mergeRecordsFromMember(currentRecords, incomingRecords, memberId, ctx) 
       result.push(existing);
       continue;
     }
-    const isOwner = existing.ownerId == null || existing.ownerId === memberId;
+    const isOwner = existing.ownerId === memberId;
     const incomingVersion = incomingById.get(existing.id);
     if (!incomingVersion) {
       // Member's payload dropped this record: only the owner (or a legacy
@@ -1051,15 +1170,22 @@ function mergeRecordsFromMember(currentRecords, incomingRecords, memberId, ctx) 
       result.push(existing);
       continue;
     }
-    result.push(
-      isOwner
-        ? incomingVersion
-        : sanitizeMemberEdit(existing, incomingVersion),
-    );
+    if (isOwner) result.push(incomingVersion);
+    else if (canEditRecord(existing, memberId, ctx))
+      result.push(sanitizeMemberEdit(existing, incomingVersion));
+    else if (field === "tasks")
+      result.push(sanitizeTaskParticipation(existing, incomingVersion, memberId));
+    else result.push(existing);
   }
   for (const r of incoming) {
     if (!r || !r.id || seen.has(r.id)) continue;
     if (r.ownerId === memberId) result.push(r);
+    else if (r.ownerId == null)
+      result.push({
+        ...r,
+        ownerId: memberId,
+        visibility: r.visibility || "privado",
+      });
   }
   return result;
 }
@@ -1092,7 +1218,7 @@ async function canManageSite(env, actorId, ownerId, siteId) {
   );
   if (!site) return false;
   const ctx = resolveViewerContext(data, actorId);
-  return canSeeTask(site, actorId, ctx);
+  return canEditRecord(site, actorId, ctx);
 }
 
 async function handleWorkspace(request, env, user, url) {
@@ -1117,6 +1243,13 @@ async function handleWorkspace(request, env, user, url) {
       const filtered = { ...data };
       for (const field of RESTRICTED_FIELDS)
         filtered[field] = filterRecordsForViewer(data[field], user.id, ctx);
+      filtered.financeSettings = {};
+      filtered.taxProfile = {
+        isMEI: false,
+        dueDay: 20,
+        cnpj: "",
+        dasHistory: {},
+      };
       data = filtered;
     }
     return json({
@@ -1165,11 +1298,10 @@ async function handleWorkspace(request, env, user, url) {
         data[field],
         user.id,
         ctx,
+        field,
       );
-    merged.teams = Array.isArray(currentData?.teams) ? currentData.teams : [];
-    merged.projects = Array.isArray(currentData?.projects)
-      ? currentData.projects
-      : [];
+    for (const field of OWNER_ONLY_TOP_LEVEL_FIELDS)
+      merged[field] = currentData?.[field];
     data = merged;
   }
   const text = JSON.stringify(data);
@@ -1221,6 +1353,248 @@ async function handleWorkspace(request, env, user, url) {
     ok: true,
     updatedAt: updated.updated_at,
     revision: updated.revision,
+  });
+}
+
+async function handleTaskAction(request, env, user, url) {
+  if (request.method !== "POST")
+    return json({ error: "Método não permitido." }, 405);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Solicitação inválida." }, 400);
+  }
+  const ownerId = url.searchParams.get("owner") || user.id;
+  const role = await membershipRole(env, user.id, ownerId);
+  if (!role) return json({ error: "Você não tem acesso a este espaço." }, 403);
+  const taskId = typeof body.taskId === "string" ? body.taskId : "";
+  const action = typeof body.action === "string" ? body.action : "";
+  if (!taskId || !["assume", "interest", "withdraw-interest"].includes(action))
+    return json({ error: "Ação de tarefa inválida." }, 400);
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const row = await env.DB.prepare(
+      "SELECT data, revision FROM workspaces WHERE user_id = ?",
+    )
+      .bind(ownerId)
+      .first();
+    if (!row) return json({ error: "Tarefa não encontrada." }, 404);
+    let data;
+    try {
+      data = JSON.parse(row.data);
+    } catch {
+      return json({ error: "Não foi possível ler esta tarefa." }, 500);
+    }
+    const tasks = Array.isArray(data.tasks) ? data.tasks : [];
+    const index = tasks.findIndex((item) => item?.id === taskId);
+    if (index < 0) return json({ error: "Tarefa não encontrada." }, 404);
+    const task = tasks[index];
+    const elevated = role === "owner" || role === "admin";
+    const ctx = resolveViewerContext(data, user.id);
+    if (!elevated && !canSeeTask(task, user.id, ctx))
+      return json({ error: "Tarefa não encontrada." }, 404);
+    if (!task.isMission || task.distribution !== "disponivel")
+      return json({ error: "Esta tarefa não está aberta para participação." }, 409);
+
+    const slots = Math.max(1, Number(task.slots) || 1);
+    const assignees = Array.isArray(task.assignees) ? task.assignees : [];
+    const interested = Array.isArray(task.interested) ? task.interested : [];
+    let nextTask = task;
+    let message = "";
+    if (action === "assume") {
+      if (task.approvalMode === "aprovacao")
+        return json(
+          { error: "Esta missão exige aprovação. Demonstre interesse primeiro." },
+          409,
+        );
+      if (assignees.some((item) => item?.userId === user.id))
+        return json({ ok: true, task, revision: row.revision, unchanged: true });
+      if (assignees.length >= slots)
+        return json({ error: "A última vaga já foi assumida." }, 409);
+      const blocked = (Array.isArray(task.dependsOn) ? task.dependsOn : [])
+        .map((id) => tasks.find((item) => item?.id === id))
+        .some((dependency) => dependency && dependency.status !== "Concluído");
+      if (blocked)
+        return json({ error: "Conclua as tarefas anteriores antes de assumir esta missão." }, 409);
+      const nextAssignees = [
+        ...assignees,
+        { userId: user.id, name: user.name, at: new Date().toISOString() },
+      ];
+      const full = nextAssignees.length >= slots;
+      nextTask = {
+        ...task,
+        assignees: nextAssignees,
+        missionStatus: full ? "em_andamento" : "disponivel",
+        status: full ? "Em andamento" : task.status,
+        updatedAt: new Date().toISOString(),
+      };
+      message = `Vaga assumida em "${task.title}"`;
+    } else if (action === "interest") {
+      if (interested.some((item) => item?.userId === user.id))
+        return json({ ok: true, task, revision: row.revision, unchanged: true });
+      if (assignees.length >= slots)
+        return json({ error: "Esta missão não possui mais vagas." }, 409);
+      nextTask = {
+        ...task,
+        interested: [
+          ...interested,
+          { userId: user.id, name: user.name, at: new Date().toISOString() },
+        ],
+        updatedAt: new Date().toISOString(),
+      };
+      message = `Novo interesse em "${task.title}"`;
+    } else {
+      nextTask = {
+        ...task,
+        interested: interested.filter((item) => item?.userId !== user.id),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
+    const nextTasks = tasks.map((item, taskIndex) =>
+      taskIndex === index ? nextTask : item,
+    );
+    const beforeNotifications = Array.isArray(data.notifications)
+      ? data.notifications
+      : [];
+    const nextNotifications = message && task.ownerId && task.ownerId !== user.id
+      ? [
+          {
+            id: crypto.randomUUID(),
+            ownerId: user.id,
+            assigneeId: task.ownerId,
+            visibility: "atribuido",
+            message,
+            link: "operacao",
+            read: false,
+            createdBy: user.id,
+            createdAt: new Date().toISOString(),
+          },
+          ...beforeNotifications,
+        ]
+      : beforeNotifications;
+    const nextData = {
+      ...data,
+      tasks: nextTasks,
+      notifications: nextNotifications,
+    };
+    const updatedAt = new Date().toISOString();
+    const updated = await env.DB.prepare(
+      `UPDATE workspaces
+       SET data = ?, updated_at = ?, revision = revision + 1
+       WHERE user_id = ? AND revision = ?
+       RETURNING revision, updated_at`,
+    )
+      .bind(JSON.stringify(nextData), updatedAt, ownerId, row.revision)
+      .first();
+    if (!updated) continue;
+    try {
+      await notifyNewNotifications(env, beforeNotifications, nextNotifications);
+    } catch (error) {
+      console.error("task action push", error);
+    }
+    return json({
+      ok: true,
+      task: nextTask,
+      revision: updated.revision,
+      updatedAt: updated.updated_at,
+    });
+  }
+  return json(
+    { error: "A tarefa mudou enquanto você agia. Atualize e tente novamente." },
+    409,
+  );
+}
+
+const PRODUCT_EVENT_NAMES = new Set([
+  "session_started",
+  "onboarding_completed",
+  "navigation",
+  "ai_completed",
+  "record_created",
+  "action_completed",
+  "import_completed",
+  "export_completed",
+  "weekly_goal_saved",
+  "task_claimed",
+]);
+const PRODUCT_METADATA_KEYS = new Set([
+  "module",
+  "source",
+  "kind",
+  "mode",
+  "success",
+  "count",
+  "elapsedBucket",
+]);
+
+async function handleProductEvents(request, env, user, url) {
+  const ownerId = url.searchParams.get("owner") || user.id;
+  const role = await membershipRole(env, user.id, ownerId);
+  if (!role) return json({ error: "Você não tem acesso a este espaço." }, 403);
+  if (request.method === "POST") {
+    if (!allowed(`events:${user.id}`, 120))
+      return json({ error: "Muitos eventos em pouco tempo." }, 429);
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return json({ error: "Evento inválido." }, 400);
+    }
+    if (!PRODUCT_EVENT_NAMES.has(body.event))
+      return json({ error: "Evento inválido." }, 400);
+    const metadata = {};
+    if (body.metadata && typeof body.metadata === "object") {
+      for (const [key, value] of Object.entries(body.metadata)) {
+        if (!PRODUCT_METADATA_KEYS.has(key)) continue;
+        if (["string", "number", "boolean"].includes(typeof value))
+          metadata[key] = typeof value === "string" ? value.slice(0, 80) : value;
+      }
+    }
+    await env.DB.prepare(
+      `INSERT INTO product_events
+        (id, user_id, workspace_owner_id, event_name, metadata_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        crypto.randomUUID(),
+        user.id,
+        ownerId,
+        body.event,
+        JSON.stringify(metadata),
+        new Date().toISOString(),
+      )
+      .run();
+    return json({ ok: true });
+  }
+  if (request.method !== "GET")
+    return json({ error: "Método não permitido." }, 405);
+  if (role !== "owner" && role !== "admin")
+    return json({ error: "Acesso restrito à administração do espaço." }, 403);
+  const days = Math.min(90, Math.max(7, Number(url.searchParams.get("days")) || 30));
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+  const grouped = await env.DB.prepare(
+    `SELECT event_name AS event, COUNT(*) AS total,
+            COUNT(DISTINCT user_id) AS users
+       FROM product_events
+      WHERE workspace_owner_id = ? AND created_at >= ?
+      GROUP BY event_name
+      ORDER BY total DESC`,
+  )
+    .bind(ownerId, since)
+    .all();
+  const active = await env.DB.prepare(
+    `SELECT COUNT(DISTINCT user_id) AS users
+       FROM product_events
+      WHERE workspace_owner_id = ? AND created_at >= ?`,
+  )
+    .bind(ownerId, since)
+    .first();
+  return json({
+    days,
+    activeUsers: Number(active?.users || 0),
+    events: grouped.results || [],
   });
 }
 
@@ -1364,6 +1738,7 @@ async function sendWeeklySummaries(env, now) {
       },
       options: { ttl: 86400, urgency: "normal" },
     };
+    let delivered = 0;
     for (const s of rows) {
       const subscription = {
         endpoint: s.endpoint,
@@ -1372,7 +1747,10 @@ async function sendWeeklySummaries(env, now) {
       };
       try {
         const result = await sendWebPush(env, subscription, message);
-        if (result.ok) sent += 1;
+        if (result.ok) {
+          sent += 1;
+          delivered += 1;
+        }
         else if (result.gone)
           await env.DB.prepare(
             "DELETE FROM push_subscriptions WHERE endpoint = ?",
@@ -1381,6 +1759,20 @@ async function sendWeeklySummaries(env, now) {
             .run();
       } catch (error) {
         console.error("weekly summary push", error);
+      }
+    }
+    // Uma reserva só representa envio concluído quando ao menos um
+    // dispositivo confirmou a entrega. Se todos falharem, libere a semana
+    // para a próxima execução tentar novamente.
+    if (!delivered) {
+      try {
+        await env.DB.prepare(
+          "DELETE FROM weekly_summary_log WHERE user_id = ? AND week_start = ?",
+        )
+          .bind(row.user_id, start)
+          .run();
+      } catch (error) {
+        console.error("weekly summary release", error);
       }
     }
   }
@@ -2779,12 +3171,75 @@ function localContingency(prompt, specialist, business, failures) {
   };
 }
 
-function buildAiContext(body, env) {
+const SAFE_AI_BUSINESS_FIELDS = [
+  "name",
+  "segment",
+  "stage",
+  "audience",
+  "offer",
+  "goal",
+  "tone",
+  "differentiators",
+  "competitors",
+  "channels",
+  "website",
+  "social",
+  "priceRange",
+  "challenges",
+  "visualIdentity",
+  "focusAreas",
+];
+
+async function resolveAiWorkspaceContext(env, user, body) {
+  if (!env.DB) return { allowed: true, business: null, custom: null };
+  const requestedOwner =
+    typeof body.workspaceOwnerId === "string" && body.workspaceOwnerId
+      ? body.workspaceOwnerId
+      : user.id;
+  const role = await membershipRole(env, user.id, requestedOwner);
+  if (!role) return { allowed: false, business: null, custom: null };
+  const row = await env.DB.prepare(
+    "SELECT data FROM workspaces WHERE user_id = ?",
+  )
+    .bind(requestedOwner)
+    .first();
+  let data = {};
+  try {
+    data = row?.data ? JSON.parse(row.data) : {};
+  } catch {
+    data = {};
+  }
+  const businessId =
+    typeof body.businessId === "string" && body.businessId
+      ? body.businessId
+      : data.selectedBusinessId;
+  const storedBusiness = (Array.isArray(data.businesses) ? data.businesses : [])
+    .find((item) => item?.id === businessId);
+  const business = storedBusiness
+    ? Object.fromEntries(
+        SAFE_AI_BUSINESS_FIELDS.map((key) => [key, storedBusiness[key]]),
+      )
+    : null;
+  const storedCustom = (
+    Array.isArray(data.customSpecialists) ? data.customSpecialists : []
+  ).find(
+    (item) =>
+      item?.name &&
+      typeof body.specialist === "string" &&
+      item.name === body.specialist,
+  );
+  const custom = storedCustom
+    ? {
+        name: String(storedCustom.name).slice(0, 48),
+        instructions: String(storedCustom.instructions || "").slice(0, 800),
+      }
+    : null;
+  return { allowed: true, business, custom };
+}
+
+function buildAiContext(body, serverContext = {}) {
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
-  const custom =
-    body.customSpecialist && typeof body.customSpecialist === "object"
-      ? body.customSpecialist
-      : null;
+  const custom = serverContext.custom || null;
   const customName =
     custom && typeof custom.name === "string" ? custom.name.trim().slice(0, 48) : "";
   const customInstructions =
@@ -2796,8 +3251,7 @@ function buildAiContext(body, env) {
     : customInstructions && body.specialist === customName
       ? customName
       : "Consultor";
-  const business =
-    body.business && typeof body.business === "object" ? body.business : null;
+  const business = serverContext.business || null;
   const system = systemPrompt(
     specialist,
     business,
@@ -2819,7 +3273,7 @@ function buildAiContext(body, env) {
   const contextualPrompt = previous.length
     ? `Continue a conversa considerando as mensagens anteriores abaixo. Não repita respostas já dadas.\n\n${previous.join("\n\n")}\n\nMensagem atual do usuário: ${prompt}`
     : prompt;
-  return { prompt, specialist, system, contextualPrompt };
+  return { prompt, specialist, system, contextualPrompt, business };
 }
 
 async function handleAiStream(request, env, user) {
@@ -2829,7 +3283,10 @@ async function handleAiStream(request, env, user) {
   if (!env.GEMINI_API_KEY) return json({ error: "Streaming indisponível.", fallback: true }, 503);
   let body;
   try { body = await request.json(); } catch { return json({ error: "Solicitação inválida." }, 400); }
-  const { prompt, system, contextualPrompt } = buildAiContext(body, env);
+  const serverContext = await resolveAiWorkspaceContext(env, user, body);
+  if (!serverContext.allowed)
+    return json({ error: "Você não tem acesso aos dados deste espaço." }, 403);
+  const { prompt, system, contextualPrompt } = buildAiContext(body, serverContext);
   if (prompt.length < 3) return json({ error: "Explique um pouco mais sobre o que precisa." }, 400);
   if (prompt.length > 50000) return json({ error: "O texto e os anexos ultrapassam o limite." }, 413);
   const model = env.GEMINI_MODEL || "gemini-flash-lite-latest";
@@ -2913,24 +3370,11 @@ async function handleAi(request, env, user) {
   } catch {
     return json({ error: "Solicitação inválida." }, 400);
   }
-  const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
-  const custom =
-    body.customSpecialist && typeof body.customSpecialist === "object"
-      ? body.customSpecialist
-      : null;
-  const customName =
-    custom && typeof custom.name === "string"
-      ? custom.name.trim().slice(0, 48)
-      : "";
-  const customInstructions =
-    customName && typeof custom.instructions === "string"
-      ? custom.instructions.trim().slice(0, 800)
-      : "";
-  const specialist = specialistInstructions[body.specialist]
-    ? body.specialist
-    : customInstructions && body.specialist === customName
-      ? customName
-      : "Consultor";
+  const serverContext = await resolveAiWorkspaceContext(env, user, body);
+  if (!serverContext.allowed)
+    return json({ error: "Você não tem acesso aos dados deste espaço." }, 403);
+  const { prompt, specialist, system, contextualPrompt, business } =
+    buildAiContext(body, serverContext);
   if (prompt.length < 3)
     return json({ error: "Explique um pouco mais sobre o que precisa." }, 400);
   if (prompt.length > 50000)
@@ -2940,13 +3384,6 @@ async function handleAi(request, env, user) {
       },
       413,
     );
-  const business =
-    body.business && typeof body.business === "object" ? body.business : null;
-  const system = systemPrompt(
-    specialist,
-    business,
-    specialistInstructions[specialist] ? "" : customInstructions,
-  );
   const previous = Array.isArray(body.messages)
     ? body.messages
         .slice(-9, -1)
@@ -2960,9 +3397,6 @@ async function handleAi(request, env, user) {
             `${item.role === "user" ? "Usuário" : "Assistente"}: ${item.content.slice(0, 1800)}`,
         )
     : [];
-  const contextualPrompt = previous.length
-    ? `Continue a conversa considerando as mensagens anteriores abaixo. Não repita respostas já dadas.\n\n${previous.join("\n\n")}\n\nMensagem atual do usuário: ${prompt}`
-    : prompt;
   const errors = [];
   const deepSignals =
     /\b(estrat[eé]g|analis|compare|decis[aã]o|plano|planej|precific|margem|finance|fluxo de caixa|proje[cç][aã]o|contrato|jur[ií]dic|tribut|risco|processo|diagn[oó]stico|cen[aá]rio|pesquisa|posicionamento)\b/i;
@@ -3365,6 +3799,21 @@ export default {
   },
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === "/api/status") {
+      let database = "indisponível";
+      try {
+        if (env.DB) {
+          await env.DB.prepare("SELECT 1 AS ok").first();
+          database = "operacional";
+        }
+      } catch {}
+      return json({
+        status: database === "operacional" ? "operacional" : "degradado",
+        database,
+        version: "v81",
+        checkedAt: new Date().toISOString(),
+      });
+    }
     if (
       url.pathname.startsWith("/s/") ||
       url.pathname.startsWith("/loja/") ||
@@ -3391,6 +3840,7 @@ export default {
         googleClientId: env.GOOGLE_CLIENT_ID || "",
         videoEnabled: !!(env.VIDEO_AI_URL && env.VIDEO_AI_TOKEN),
         vapidPublicKey: pushEnabled(env) ? env.VAPID_PUBLIC_KEY : null,
+        supportEmail: env.SUPPORT_EMAIL || env.MAIL_SENDER || "",
       });
     if (url.pathname === "/api/errors") {
       try {
@@ -3425,6 +3875,8 @@ export default {
       url.pathname === "/api/ai/stream" ||
       url.pathname === "/api/media" ||
       url.pathname === "/api/workspace" ||
+      url.pathname === "/api/tasks/action" ||
+      url.pathname === "/api/events" ||
       url.pathname.startsWith("/api/collab") ||
       url.pathname === "/api/tasks/notify" ||
       url.pathname.startsWith("/api/sites/") ||
@@ -3434,6 +3886,8 @@ export default {
         return json({ error: "Método não permitido." }, 405);
       if (
         (url.pathname === "/api/workspace" ||
+          url.pathname === "/api/tasks/action" ||
+          url.pathname === "/api/events" ||
           url.pathname.startsWith("/api/collab") ||
           url.pathname.startsWith("/api/sites/") ||
           url.pathname.startsWith("/api/push/")) &&
@@ -3461,6 +3915,22 @@ export default {
             { error: "Não foi possível sincronizar seus dados." },
             500,
           );
+        }
+      }
+      if (url.pathname === "/api/tasks/action") {
+        try {
+          return await handleTaskAction(request, env, user, url);
+        } catch (error) {
+          console.error("Task action error", error);
+          return json({ error: "Não foi possível atualizar esta tarefa." }, 500);
+        }
+      }
+      if (url.pathname === "/api/events") {
+        try {
+          return await handleProductEvents(request, env, user, url);
+        } catch (error) {
+          console.error("Product event error", error);
+          return json({ error: "Não foi possível registrar este evento." }, 500);
         }
       }
       if (url.pathname === "/api/tasks/notify") {

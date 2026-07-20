@@ -199,7 +199,7 @@ describe("visibilidade de leads, documentos e sites com D1 local", () => {
     expect(asOwner.body.data.developmentPlans).toHaveLength(2);
   });
 
-  it("filtra lançamentos financeiros por dono, mas mantém visíveis os lançamentos antigos sem dono definido", async () => {
+  it("filtra lançamentos financeiros por dono e protege legados sem dono definido", async () => {
     const owner = await createUser("rec-owner-4");
     const member = await createUser("rec-member-4");
     const other = await createUser("rec-other-4");
@@ -222,7 +222,6 @@ describe("visibilidade de leads, documentos e sites com D1 local", () => {
       await workspaceRequest(member, { owner: owner.id }),
     );
     expect(asMember.body.data.transactions.map((t) => t.id).sort()).toEqual([
-      "tx-legacy",
       "tx-mine",
     ]);
 
