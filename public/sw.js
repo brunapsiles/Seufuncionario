@@ -1,4 +1,4 @@
-const CACHE = "seu-funcionario-v75";
+const CACHE = "seu-funcionario-v76";
 
 self.addEventListener("install", () => self.skipWaiting());
 
@@ -52,11 +52,12 @@ self.addEventListener("push", (event) => {
   } catch {}
   const title = data.title || "Seu Funcionário";
   const link = data.link || "/";
+  const extra = data.count > 1 ? ` (+${data.count - 1} outra${data.count > 2 ? "s" : ""})` : "";
   event.waitUntil(
     self.registration.showNotification(title, {
-      body: data.body || "Você tem uma novidade.",
-      icon: "/favicon.svg",
-      badge: "/favicon.svg",
+      body: `${data.body || "Você tem uma novidade."}${extra}`,
+      icon: "/notification-icon.png",
+      badge: "/notification-badge.png",
       tag: link,
       data: { link },
     }),
