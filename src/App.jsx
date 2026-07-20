@@ -122,6 +122,7 @@ const emptyDb = {
   projects: [],
   transactions: [],
   financeSettings: {},
+  taxProfile: { isMEI: false, dueDay: 20, cnpj: "", dasHistory: {} },
   documents: [],
   sites: [],
   history: [],
@@ -555,6 +556,60 @@ const urlBase64ToUint8Array = (base64) => {
 const whatsappLink = (phone, message) =>
   `https://wa.me/${phone}${message ? `?text=${encodeURIComponent(message)}` : ""}`;
 
+// ── Modelos de mensagem do WhatsApp ─────────────────────────────────────
+// O público faz vendas inteiras pelo WhatsApp; digitar a mesma mensagem toda
+// vez é atrito. Modelos reutilizáveis com variáveis ({{nome}}, {{valor}}...)
+// preenchidas a partir do próprio registro (lead, pedido, agendamento) fecham
+// esse ciclo — 100% grátis, sem API paga do Meta e sem credenciais externas.
+export const DEFAULT_WA_TEMPLATES = [
+  {
+    id: "wa-boasvindas",
+    name: "Boas-vindas",
+    category: "Contato",
+    body: "Olá {{nome}}, tudo bem? Aqui é da {{negocio}}. Obrigado pelo contato! Como posso te ajudar?",
+  },
+  {
+    id: "wa-pedido",
+    name: "Confirmação de pedido",
+    category: "Pedido",
+    body: "Olá {{nome}}! Seu pedido na {{negocio}} ({{itens}}) está no status: {{status}}. Total: {{valor}}. Qualquer dúvida, é só chamar.",
+  },
+  {
+    id: "wa-agendamento",
+    name: "Confirmação de agendamento",
+    category: "Agendamento",
+    body: "Olá {{nome}}, confirmando seu horário na {{negocio}}: {{servico}}, no dia {{data}} às {{hora}}. Até lá!",
+  },
+  {
+    id: "wa-cobranca",
+    name: "Cobrança amigável",
+    category: "Cobrança",
+    body: "Oi {{nome}}, tudo bem? Passando para lembrar do pagamento de {{valor}} referente a {{descricao}}. Qualquer coisa, estou à disposição!",
+  },
+  {
+    id: "wa-agradecimento",
+    name: "Agradecimento pós-venda",
+    category: "Pedido",
+    body: "{{nome}}, muito obrigado pela preferência! Espero que tenha gostado. Se puder, me conta o que achou. 🙏",
+  },
+];
+
+export const WA_TEMPLATE_CATEGORIES = [
+  "Contato",
+  "Pedido",
+  "Agendamento",
+  "Cobrança",
+  "Outros",
+];
+
+// Substitui {{chave}} pelo valor correspondente; variáveis sem valor viram
+// [chave] para o usuário perceber e completar antes de enviar.
+export const fillWhatsappTemplate = (body, vars = {}) =>
+  String(body || "").replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => {
+    const value = vars[key];
+    return value == null || value === "" ? `[${key}]` : String(value);
+  });
+
 // Constrói a agenda de contatos automaticamente a partir do uso do CRM,
 // Agendamentos e Pedidos, sem exigir nenhum passo extra do usuário.
 export const pushNotification = (
@@ -569,6 +624,70 @@ export const pushNotification = (
       ownerId: createdBy || null,
       message,
       link: link || "",
+      read: false,
+      createdAt: new Date().toISOString(),
+    },
+    ...(notifications || []),
+  ].slice(0, 50);
+};
+
+// ── DAS do MEI ──────────────────────────────────────────────────────────
+// O imposto mensal do MEI (guia DAS) vence todo dia 20. Atraso gera juros e,
+// acumulado, pode até desenquadrar o MEI — por isso um lembrete automático é
+// a dor mais universal de quem usa o app. Tudo aqui é função pura para ser
+// fácil de testar; a notificação real reaproveita db.notifications, que já
+// dispara o Web Push quando aparece um item novo na sincronização.
+export const DAS_DEFAULT_DUE_DAY = 20;
+
+export const monthLabelPt = (ym) => {
+  const label = new Date(`${ym}-01T12:00:00`).toLocaleDateString("pt-BR", {
+    month: "long",
+    year: "numeric",
+  });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+};
+
+export const dasStatus = (taxProfile, ymd = today()) => {
+  const dueDay = Number(taxProfile?.dueDay) || DAS_DEFAULT_DUE_DAY;
+  const ym = ymd.slice(0, 7);
+  const day = Number(ymd.slice(8, 10));
+  if (!taxProfile?.isMEI) return { status: "off", ym, dueDay, paid: false };
+  const paid = !!taxProfile?.dasHistory?.[ym]?.paid;
+  if (paid) return { status: "pago", ym, dueDay, paid: true };
+  if (day > dueDay) return { status: "atrasado", ym, dueDay, paid: false };
+  return { status: "a_pagar", ym, dueDay, paid: false };
+};
+
+// Retorna um novo array de notificações (com o lembrete adicionado) ou null
+// quando não há nada a notificar. Idempotente: o id determinístico por mês+tipo
+// impede lembretes duplicados a cada sincronização.
+export const buildDasReminder = (
+  taxProfile,
+  notifications,
+  userId,
+  ymd = today(),
+) => {
+  if (!userId) return null;
+  const { status, ym, dueDay } = dasStatus(taxProfile, ymd);
+  const day = Number(ymd.slice(8, 10));
+  let type = null;
+  if (status === "atrasado") type = "atrasado";
+  else if (status === "a_pagar" && day >= dueDay - 5) type = "lembrete";
+  if (!type) return null;
+  const notifId = `das-${ym}-${type}`;
+  if ((notifications || []).some((n) => n && n.id === notifId)) return null;
+  const label = monthLabelPt(ym);
+  const message =
+    type === "atrasado"
+      ? `O DAS do MEI de ${label} venceu no dia ${dueDay} e ainda não está marcado como pago. Regularize para não acumular juros.`
+      : `O DAS do MEI de ${label} vence no dia ${dueDay}. Não esqueça de emitir e pagar a guia.`;
+  return [
+    {
+      id: notifId,
+      assigneeId: userId,
+      ownerId: userId,
+      message,
+      link: "financeiro",
       read: false,
       createdAt: new Date().toISOString(),
     },
@@ -707,6 +826,20 @@ export const buildTaskCalendar = (yearMonth, tasks) => {
 };
 
 export const CHANGELOG_ENTRIES = [
+  {
+    id: "2026-07-20-whatsapp",
+    date: "2026-07-20",
+    title: "Modelos de mensagem do WhatsApp",
+    description:
+      "Crie mensagens prontas com variáveis (nome, valor, pedido...) em Ferramentas. Ao enviar um WhatsApp por um lead, contato, pedido ou agendamento, o app preenche tudo automaticamente — você só revisa e manda.",
+  },
+  {
+    id: "2026-07-20-das",
+    date: "2026-07-20",
+    title: "Controle do DAS do MEI com lembrete automático",
+    description:
+      "Ative 'Sou MEI' no Financeiro para acompanhar o pagamento da guia mês a mês e receber um aviso automático antes do vencimento (todo dia 20) — inclusive no navegador, com as notificações ativadas.",
+  },
   {
     id: "2026-07-19-busca",
     date: "2026-07-19",
@@ -1529,6 +1662,85 @@ function Modal({ title, children, onClose, wide = false }) {
       </section>
     </div>
   );
+}
+
+function WhatsappSendModal({ templates, payload, onClose }) {
+  const list = templates && templates.length ? templates : DEFAULT_WA_TEMPLATES;
+  const preferred =
+    list.find((t) => t.category === payload.category) || list[0];
+  const [templateId, setTemplateId] = useState(preferred?.id || "");
+  const selected = list.find((t) => t.id === templateId) || preferred;
+  const [text, setText] = useState(
+    fillWhatsappTemplate(selected?.body || "", payload.vars),
+  );
+  const pickTemplate = (id) => {
+    setTemplateId(id);
+    const tpl = list.find((t) => t.id === id);
+    setText(fillWhatsappTemplate(tpl?.body || "", payload.vars));
+  };
+  const send = () => {
+    window.open(
+      whatsappLink(payload.phone, text.trim()),
+      "_blank",
+      "noopener",
+    );
+    onClose();
+  };
+  return (
+    <Modal title="Enviar pelo WhatsApp" onClose={onClose}>
+      <div className="wa-send">
+        <Field label="Modelo">
+          <select value={templateId} onChange={(e) => pickTemplate(e.target.value)}>
+            {list.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Mensagem" hint="Você pode editar antes de enviar.">
+          <textarea
+            rows={5}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+        </Field>
+        <div className="wa-send-actions">
+          <Button variant="ghost" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button icon={Send} disabled={!text.trim()} onClick={send}>
+            Abrir no WhatsApp
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// Hook reutilizável: cada página que envia WhatsApp instancia isto, chama
+// open({ phone, category, vars }) no clique e renderiza `modal` no JSX.
+function useWhatsappSender({ db, setToast }) {
+  const [payload, setPayload] = useState(null);
+  const templates =
+    db.waTemplates && db.waTemplates.length
+      ? db.waTemplates
+      : DEFAULT_WA_TEMPLATES;
+  const open = (p) => {
+    if (!p || !p.phone) {
+      setToast?.("Este contato não tem um número de WhatsApp válido.");
+      return;
+    }
+    setPayload(p);
+  };
+  const modal = payload ? (
+    <WhatsappSendModal
+      templates={templates}
+      payload={payload}
+      onClose={() => setPayload(null)}
+    />
+  ) : null;
+  return { open, modal };
 }
 
 function LegalContent() {
@@ -6975,6 +7187,7 @@ function Tasks({ db, update, business, setToast, go, searchSeed, clearSearchSeed
 }
 
 function CRM({ db, update, business, setToast, go, searchSeed, clearSearchSeed }) {
+  const wa = useWhatsappSender({ db, setToast });
   const [modal, setModal] = useState(false),
     [editing, setEditing] = useState(null),
     [search, setSearch] = useState(""),
@@ -7223,19 +7436,24 @@ function CRM({ db, update, business, setToast, go, searchSeed, clearSearchSeed }
               <span>{l.next || "Não agendado"}</span>
               <span className="crm-actions">
                 {contactLinks(l.contact).phone && (
-                  <a
+                  <button
                     className="icon-button"
                     aria-label={`Enviar WhatsApp para ${l.name}`}
                     title="Enviar WhatsApp"
-                    href={whatsappLink(
-                      contactLinks(l.contact).phone,
-                      `Olá ${l.name}, tudo bem? Aqui é da equipe${business?.name ? ` da ${business.name}` : ""}.`,
-                    )}
-                    target="_blank"
-                    rel="noreferrer"
+                    onClick={() =>
+                      wa.open({
+                        phone: contactLinks(l.contact).phone,
+                        category: "Contato",
+                        vars: {
+                          nome: l.name || "",
+                          negocio: business?.name || "",
+                          valor: l.value ? money(l.value) : "",
+                        },
+                      })
+                    }
                   >
                     <MessageSquareText />
-                  </a>
+                  </button>
                 )}
                 {contactLinks(l.contact).email && (
                   <button
@@ -7443,12 +7661,14 @@ function CRM({ db, update, business, setToast, go, searchSeed, clearSearchSeed }
           }}
         />
       )}
+      {wa.modal}
     </PageTitle>
   );
 }
 
 function Appointments({ db, update, business, setToast, go }) {
   const isEmployeeMode = (db.preferences.mode || "business") === "employee";
+  const wa = useWhatsappSender({ db, setToast });
   const [modal, setModal] = useState(false),
     [editing, setEditing] = useState(null),
     [view, setView] = useState("dia"),
@@ -7548,10 +7768,18 @@ function Appointments({ db, update, business, setToast, go }) {
     }));
   const remindWhatsapp = (item) => {
     const { phone } = contactLinks(item.clientContact);
-    if (!phone) return;
     const when = new Date(`${item.date}T12:00`).toLocaleDateString("pt-BR");
-    const message = `Olá${item.clientName ? ` ${item.clientName}` : ""}, tudo bem? Confirmando seu horário${business?.name ? ` na ${business.name}` : ""}: ${item.title}, dia ${when} às ${item.time}.`;
-    window.open(whatsappLink(phone, message), "_blank", "noopener");
+    wa.open({
+      phone,
+      category: "Agendamento",
+      vars: {
+        nome: item.clientName || "",
+        negocio: business?.name || "",
+        servico: item.title || "",
+        data: when,
+        hora: item.time || "",
+      },
+    });
   };
   const addToCalendar = async (item) => {
     const task = {
@@ -7795,11 +8023,13 @@ function Appointments({ db, update, business, setToast, go }) {
           </form>
         </Modal>
       )}
+      {wa.modal}
     </PageTitle>
   );
 }
 
 function Contacts({ db, update, business, setToast, go, searchSeed, clearSearchSeed }) {
+  const wa = useWhatsappSender({ db, setToast });
   const [modal, setModal] = useState(false),
     [editing, setEditing] = useState(null),
     [search, setSearch] = useState(""),
@@ -7906,16 +8136,20 @@ function Contacts({ db, update, business, setToast, go, searchSeed, clearSearchS
               </span>
               <span className="task-actions">
                 {c.phone && (
-                  <a
+                  <button
                     className="icon-button"
                     aria-label={`Enviar WhatsApp para ${c.name}`}
                     title="Enviar WhatsApp"
-                    href={whatsappLink(c.phone, `Olá ${c.name}, tudo bem?`)}
-                    target="_blank"
-                    rel="noreferrer"
+                    onClick={() =>
+                      wa.open({
+                        phone: c.phone,
+                        category: "Contato",
+                        vars: { nome: c.name || "", negocio: business?.name || "" },
+                      })
+                    }
                   >
                     <MessageSquareText />
-                  </a>
+                  </button>
                 )}
                 {c.email && (
                   <button
@@ -8007,6 +8241,7 @@ function Contacts({ db, update, business, setToast, go, searchSeed, clearSearchS
           }}
         />
       )}
+      {wa.modal}
     </PageTitle>
   );
 }
@@ -8022,6 +8257,7 @@ const orderStatuses = [
 const orderChannels = ["Balcão", "Retirada", "Delivery", "Online", "Mesa"];
 
 function Catalog({ db, update, business, setToast, go }) {
+  const wa = useWhatsappSender({ db, setToast });
   const [view, setView] = useState("produtos"),
     [search, setSearch] = useState(""),
     [productModal, setProductModal] = useState(false),
@@ -8317,10 +8553,18 @@ function Catalog({ db, update, business, setToast, go }) {
     }));
   const confirmOrderWhatsapp = (item) => {
     const { phone } = contactLinks(item.clientContact);
-    if (!phone) return;
     const list = item.items.map((i) => `${i.quantity}x ${i.name}`).join(", ");
-    const message = `Olá ${item.clientName}, tudo bem? Seu pedido${business?.name ? ` na ${business.name}` : ""} (${list}) está no status: ${item.status}. Total: ${money(item.total)}.`;
-    window.open(whatsappLink(phone, message), "_blank", "noopener");
+    wa.open({
+      phone,
+      category: "Pedido",
+      vars: {
+        nome: item.clientName || "",
+        negocio: business?.name || "",
+        itens: list,
+        status: item.status || "",
+        valor: money(item.total),
+      },
+    });
   };
 
   const openZone = (item = null) => {
@@ -8962,6 +9206,7 @@ function Catalog({ db, update, business, setToast, go }) {
           )}
         </Modal>
       )}
+      {wa.modal}
     </PageTitle>
   );
 }
@@ -10354,6 +10599,45 @@ function Finance({ db, update, business, setToast, go }) {
     }));
     setToast("Metas e ponto de equilíbrio salvos");
   };
+  const taxProfile = db.taxProfile || {
+    isMEI: false,
+    dueDay: 20,
+    cnpj: "",
+    dasHistory: {},
+  };
+  const das = dasStatus(taxProfile);
+  const dasMonths = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - i);
+    return d.toISOString().slice(0, 7);
+  });
+  const patchTaxProfile = (patch) =>
+    update((d) => ({
+      ...d,
+      taxProfile: {
+        isMEI: false,
+        dueDay: 20,
+        cnpj: "",
+        dasHistory: {},
+        ...(d.taxProfile || {}),
+        ...patch,
+      },
+    }));
+  const setDasPaid = (ym, paid) =>
+    update((d) => {
+      const current = {
+        isMEI: false,
+        dueDay: 20,
+        cnpj: "",
+        dasHistory: {},
+        ...(d.taxProfile || {}),
+      };
+      const history = { ...(current.dasHistory || {}) };
+      if (paid) history[ym] = { paid: true, paidAt: new Date().toISOString() };
+      else delete history[ym];
+      return { ...d, taxProfile: { ...current, dasHistory: history } };
+    });
   const exportReport = () => {
     const safe = (value) => {
       const text = String(value ?? "");
@@ -10499,6 +10783,121 @@ function Finance({ db, update, business, setToast, go }) {
             </span>
           </div>
         </div>
+      </section>
+      <section className="panel das-panel" id="finance-das">
+        <div className="panel-head">
+          <div>
+            <span className="eyebrow">IMPOSTO DO MEI</span>
+            <h2>Controle do DAS</h2>
+          </div>
+          <label className="das-toggle">
+            <input
+              type="checkbox"
+              checked={!!taxProfile.isMEI}
+              onChange={(e) => patchTaxProfile({ isMEI: e.target.checked })}
+            />
+            <span>Sou MEI</span>
+          </label>
+        </div>
+        {!taxProfile.isMEI ? (
+          <p className="das-intro">
+            Ative "Sou MEI" para acompanhar o pagamento da guia DAS mês a mês e
+            receber um lembrete automático antes do vencimento (todo dia 20).
+          </p>
+        ) : (
+          <>
+            <div
+              className={`das-current das-${das.status}`}
+              role="status"
+            >
+              <div>
+                <small>
+                  DAS de {monthLabelPt(das.ym)} · vence dia {das.dueDay}
+                </small>
+                <strong>
+                  {das.status === "pago"
+                    ? "Pago ✓"
+                    : das.status === "atrasado"
+                      ? "Atrasado"
+                      : "A pagar"}
+                </strong>
+              </div>
+              <div className="das-actions">
+                <label className="das-paid-check">
+                  <input
+                    type="checkbox"
+                    checked={das.paid}
+                    onChange={(e) => setDasPaid(das.ym, e.target.checked)}
+                  />
+                  <span>Marcar como pago</span>
+                </label>
+                <a
+                  className="button secondary"
+                  href="https://www.gov.br/pt-br/servicos/pagar-o-das-do-microempreendedor-individual"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Emitir/pagar no Portal do MEI <ExternalLink />
+                </a>
+              </div>
+            </div>
+            <div className="das-history">
+              <small className="das-history-title">Meses recentes</small>
+              <div className="das-months">
+                {dasMonths.map((ym) => {
+                  const st = dasStatus(taxProfile, `${ym}-28`);
+                  const paid = st.paid;
+                  return (
+                    <button
+                      key={ym}
+                      type="button"
+                      className={`das-month das-${st.status}`}
+                      onClick={() => setDasPaid(ym, !paid)}
+                      title={
+                        paid
+                          ? "Pago — clique para desmarcar"
+                          : "Não pago — clique para marcar como pago"
+                      }
+                    >
+                      <span>{monthLabelPt(ym)}</span>
+                      <strong>{paid ? "Pago" : "Em aberto"}</strong>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="das-fields">
+              <Field label="Dia de vencimento">
+                <input
+                  type="number"
+                  min="1"
+                  max="28"
+                  value={taxProfile.dueDay || 20}
+                  onChange={(e) =>
+                    patchTaxProfile({
+                      dueDay: Math.min(
+                        28,
+                        Math.max(1, Number(e.target.value) || 20),
+                      ),
+                    })
+                  }
+                />
+              </Field>
+              <Field label="CNPJ (opcional)">
+                <input
+                  value={taxProfile.cnpj || ""}
+                  onChange={(e) => patchTaxProfile({ cnpj: e.target.value })}
+                  placeholder="00.000.000/0001-00"
+                />
+              </Field>
+            </div>
+            <p className="das-note">
+              O controle é manual e serve como lembrete — o pagamento continua
+              sendo feito no portal oficial. Dúvidas sobre enquadramento ou
+              valores? Fale com um contador.
+            </p>
+          </>
+        )}
       </section>
       <div className="finance-grid">
         <section className="panel calculator" id="finance-price">
@@ -14044,11 +14443,53 @@ function AIToolModal({ config, db, update, onClose, setToast, business }) {
   );
 }
 
+const blankWaTemplate = { name: "", category: "Contato", body: "" };
+
 function ToolsHub({ db, update, business, setToast }) {
   const [smart, setSmart] = useState("");
   const [search, setSearch] = useState(""),
     [category, setCategory] = useState("Todas"),
     [emailOpen, setEmailOpen] = useState(false);
+  const [waForm, setWaForm] = useState(blankWaTemplate);
+  const [waEditing, setWaEditing] = useState(null);
+  const waTemplates =
+    db.waTemplates && db.waTemplates.length
+      ? db.waTemplates
+      : DEFAULT_WA_TEMPLATES;
+  const saveWaTemplate = (e) => {
+    e.preventDefault();
+    if (!waForm.name.trim() || !waForm.body.trim()) return;
+    const list = waTemplates;
+    const next = waEditing
+      ? list.map((t) =>
+          t.id === waEditing ? { ...t, ...waForm, id: waEditing } : t,
+        )
+      : [...list, { ...waForm, id: uid() }];
+    update((d) => ({ ...d, waTemplates: next }));
+    setWaForm(blankWaTemplate);
+    setWaEditing(null);
+    setToast(waEditing ? "Modelo atualizado" : "Modelo criado");
+  };
+  const editWaTemplate = (t) => {
+    setWaEditing(t.id);
+    setWaForm({ name: t.name, category: t.category, body: t.body });
+  };
+  const deleteWaTemplate = (id) => {
+    if (!confirm("Excluir este modelo?")) return;
+    update((d) => ({ ...d, waTemplates: waTemplates.filter((t) => t.id !== id) }));
+    if (waEditing === id) {
+      setWaEditing(null);
+      setWaForm(blankWaTemplate);
+    }
+    setToast("Modelo excluído");
+  };
+  const restoreWaTemplates = () => {
+    update((d) => ({
+      ...d,
+      waTemplates: DEFAULT_WA_TEMPLATES.map((t) => ({ ...t })),
+    }));
+    setToast("Modelos padrão restaurados");
+  };
   const plugged = db.pluggedTools || [];
   const togglePlug = (id) => {
     const on = plugged.includes(id);
@@ -14283,6 +14724,117 @@ function ToolsHub({ db, update, business, setToast }) {
           text="Tente buscar pelo objetivo, como nota fiscal, CRM, design ou agenda."
         />
       )}
+      <section className="panel wa-templates" id="wa-templates">
+        <div className="panel-head">
+          <div>
+            <span className="eyebrow">WHATSAPP</span>
+            <h2>Modelos de mensagem</h2>
+          </div>
+          <Button
+            variant="ghost"
+            icon={RotateCcw}
+            onClick={restoreWaTemplates}
+          >
+            Restaurar padrão
+          </Button>
+        </div>
+        <p className="das-intro">
+          Crie mensagens reutilizáveis com variáveis entre chaves duplas. Ao
+          enviar um WhatsApp a partir de um lead, contato, pedido ou
+          agendamento, o app preenche as variáveis automaticamente e você só
+          revisa antes de mandar.
+        </p>
+        <form className="wa-template-form" onSubmit={saveWaTemplate}>
+          <Field label="Nome do modelo">
+            <input
+              value={waForm.name}
+              onChange={(e) => setWaForm({ ...waForm, name: e.target.value })}
+              placeholder="Ex.: Confirmação de pedido"
+            />
+          </Field>
+          <Field label="Categoria">
+            <select
+              value={waForm.category}
+              onChange={(e) =>
+                setWaForm({ ...waForm, category: e.target.value })
+              }
+            >
+              {WA_TEMPLATE_CATEGORIES.map((c) => (
+                <option key={c}>{c}</option>
+              ))}
+            </select>
+          </Field>
+          <div className="wa-template-body">
+            <Field label="Mensagem">
+              <textarea
+                rows={3}
+                value={waForm.body}
+                onChange={(e) => setWaForm({ ...waForm, body: e.target.value })}
+                placeholder="Olá {{nome}}, tudo bem? Aqui é da {{negocio}}..."
+              />
+            </Field>
+          </div>
+          <p className="wa-template-vars">
+            Variáveis disponíveis: <code>{"{{nome}}"}</code>{" "}
+            <code>{"{{negocio}}"}</code> <code>{"{{valor}}"}</code>{" "}
+            <code>{"{{itens}}"}</code> <code>{"{{status}}"}</code>{" "}
+            <code>{"{{servico}}"}</code> <code>{"{{data}}"}</code>{" "}
+            <code>{"{{hora}}"}</code> <code>{"{{descricao}}"}</code>
+          </p>
+          <div className="wa-template-body">
+            <div className="modal-actions">
+              {waEditing && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setWaEditing(null);
+                    setWaForm(blankWaTemplate);
+                  }}
+                >
+                  Cancelar edição
+                </Button>
+              )}
+              <Button
+                type="submit"
+                icon={waEditing ? Save : Plus}
+                disabled={!waForm.name.trim() || !waForm.body.trim()}
+              >
+                {waEditing ? "Salvar modelo" : "Adicionar modelo"}
+              </Button>
+            </div>
+          </div>
+        </form>
+        <div className="wa-template-list">
+          {waTemplates.map((t) => (
+            <div className="wa-template-item" key={t.id}>
+              <div>
+                <span className="tag">{t.category}</span>
+                <strong>{t.name}</strong>
+                <p>{t.body}</p>
+              </div>
+              <span className="task-actions">
+                <button
+                  className="icon-button"
+                  aria-label={`Editar modelo ${t.name}`}
+                  title="Editar"
+                  onClick={() => editWaTemplate(t)}
+                >
+                  <Edit3 />
+                </button>
+                <button
+                  className="icon-button danger"
+                  aria-label={`Excluir modelo ${t.name}`}
+                  title="Excluir"
+                  onClick={() => deleteWaTemplate(t.id)}
+                >
+                  <Trash2 />
+                </button>
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
       <section className="nf-guide">
         <span className="tool-icon">
           <ReceiptText />
@@ -16988,6 +17540,14 @@ export default function App() {
     window.addEventListener("sf-push-navigate", handler);
     return () => window.removeEventListener("sf-push-navigate", handler);
   }, []);
+  // Lembrete automático do DAS do MEI. Só roda no espaço do próprio dono
+  // (nunca ao visualizar o espaço de outra pessoa) e o dedup por mês+tipo
+  // dentro de buildDasReminder evita repetição a cada carregamento.
+  useEffect(() => {
+    if (activeSpaceId() || !db.user?.id) return;
+    const next = buildDasReminder(db.taxProfile, db.notifications, db.user.id);
+    if (next) update((d) => ({ ...d, notifications: next }));
+  }, [db.taxProfile?.isMEI, db.taxProfile?.dasHistory, db.user?.id]);
   const startResize = (e) => {
     e.preventDefault();
     document.body.style.userSelect = "none";

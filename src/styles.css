@@ -2343,6 +2343,75 @@ aside nav button.active {
   gap: 9px;
   padding-top: 8px;
 }
+.wa-send {
+  display: grid;
+  gap: 14px;
+}
+.wa-send textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 110px;
+}
+.wa-send-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  padding-top: 4px;
+}
+.wa-templates {
+  margin-top: 24px;
+}
+.wa-template-form {
+  display: grid;
+  grid-template-columns: 1fr 180px;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.wa-template-form .wa-template-body {
+  grid-column: 1 / -1;
+}
+.wa-template-form textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 80px;
+}
+.wa-template-vars {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 12px;
+}
+.wa-template-list {
+  display: grid;
+  gap: 8px;
+}
+.wa-template-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface2);
+}
+.wa-template-item > div {
+  flex: 1;
+  min-width: 0;
+}
+.wa-template-item .tag {
+  margin-bottom: 4px;
+}
+.wa-template-item p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+}
+@media (max-width: 640px) {
+  .wa-template-form {
+    grid-template-columns: 1fr;
+  }
+}
 .toast {
   position: fixed;
   bottom: 24px;
@@ -5976,6 +6045,131 @@ aside nav:hover::-webkit-scrollbar-thumb {
 .planning-results small,
 .planning-results span {
   color: var(--muted);
+}
+.das-panel {
+  margin-bottom: 18px;
+}
+.das-toggle,
+.das-paid-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.das-toggle input,
+.das-paid-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+.das-intro {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.das-current {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface2);
+  margin-bottom: 16px;
+}
+.das-current small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.das-current strong {
+  display: block;
+  font-size: 1.3rem;
+  margin-top: 2px;
+}
+.das-current.das-pago {
+  border-color: #3fb27f;
+  background: color-mix(in srgb, #3fb27f 12%, var(--surface2));
+}
+.das-current.das-atrasado {
+  border-color: #e0574d;
+  background: color-mix(in srgb, #e0574d 12%, var(--surface2));
+}
+.das-current.das-a_pagar {
+  border-color: #e6b451;
+  background: color-mix(in srgb, #e6b451 12%, var(--surface2));
+}
+.das-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+}
+.das-actions a.button {
+  text-decoration: none;
+}
+.das-actions a.button svg {
+  width: 16px;
+  height: 16px;
+}
+.das-history-title {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.das-months {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.das-month {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+}
+.das-month span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.das-month strong {
+  font-size: 14px;
+}
+.das-month.das-pago {
+  border-color: #3fb27f;
+  background: color-mix(in srgb, #3fb27f 10%, var(--surface));
+}
+.das-month.das-atrasado {
+  border-color: #e0574d;
+}
+.das-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.das-note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+@media (max-width: 640px) {
+  .das-fields {
+    grid-template-columns: 1fr;
+  }
 }
 .journey-steps article {
   display: grid;
