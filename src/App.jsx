@@ -5330,10 +5330,10 @@ function Journeys({ db, update, go }) {
   );
 }
 
-function PageTitle({ eyebrow, title, text, action, children }) {
+function PageTitle({ eyebrow, title, text, action, children, className = "" }) {
   return (
     <>
-      <div className="page-title">
+      <div className={`page-title ${className}`.trim()}>
         <div>
           <span className="eyebrow">{eyebrow}</span>
           <h1>{title}</h1>
@@ -17985,11 +17985,93 @@ function AccountSettings({ db, update, setToast, go }) {
   return (
     <PageTitle
       eyebrow="CONFIGURAÇÕES"
-      title="Sua conta"
-      text="Gerencie seu perfil, a aparência do aplicativo e seus dados."
+      title="Seu espaço, do seu jeito"
+      text="Cuide da sua conta, das preferências e da segurança em um só lugar."
+      className="settings-title"
     >
+      <div className="settings-page">
+        <section className="settings-overview" aria-label="Resumo da conta">
+          <div className="settings-overview-profile">
+            <span className="settings-avatar" aria-hidden="true">
+              {String(db.user.name || "U").trim().charAt(0).toUpperCase()}
+            </span>
+            <div>
+              <span className="eyebrow light">CONTA PRINCIPAL</span>
+              <h2>{db.user.name}</h2>
+              <p>{db.user.email}</p>
+            </div>
+          </div>
+          <div className="settings-overview-status">
+            <span
+              className={`service-pill ${serviceStatus?.status === "operacional" ? "online" : ""}`}
+            >
+              <span aria-hidden="true" />
+              {serviceStatus?.status === "operacional"
+                ? "Tudo funcionando"
+                : "Verificando serviço"}
+            </span>
+            <small>{serviceStatus?.version || "Versão atual"}</small>
+          </div>
+        </section>
+
+        <nav
+          className="settings-jump-nav"
+          aria-label="Seções das configurações"
+        >
+          <button
+            type="button"
+            onClick={() =>
+              document
+                .getElementById("settings-account")
+                ?.scrollIntoView({ behavior: "smooth" })
+            }
+          >
+            <UserRound /> Conta
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              document
+                .getElementById("settings-preferences")
+                ?.scrollIntoView({ behavior: "smooth" })
+            }
+          >
+            <Palette /> Preferências
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              document
+                .getElementById("settings-workspace")
+                ?.scrollIntoView({ behavior: "smooth" })
+            }
+          >
+            <Layers /> Espaço e equipe
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              document
+                .getElementById("settings-support")
+                ?.scrollIntoView({ behavior: "smooth" })
+            }
+          >
+            <LifeBuoy /> Suporte
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              document
+                .getElementById("settings-security")
+                ?.scrollIntoView({ behavior: "smooth" })
+            }
+          >
+            <ShieldCheck /> Privacidade
+          </button>
+        </nav>
+
       <div className="settings-grid">
-        <section className="settings-card">
+        <section className="settings-card" id="settings-account">
           <div className="settings-card-head">
             <span className="settings-icon">
               <UserRound />
@@ -18025,7 +18107,7 @@ function AccountSettings({ db, update, setToast, go }) {
             </Button>
           </div>
         </section>
-        <section className="settings-card">
+        <section className="settings-card" id="settings-preferences">
           <div className="settings-card-head">
             <span className="settings-icon">
               <Palette />
@@ -18119,7 +18201,7 @@ function AccountSettings({ db, update, setToast, go }) {
             <span>Mostrar pontos, nível e conquistas no painel</span>
           </label>
         </section>
-        <section className="settings-card">
+        <section className="settings-card" id="settings-workspace">
           <div className="settings-card-head">
             <span className="settings-icon">
               <Layers />
@@ -18190,7 +18272,7 @@ function AccountSettings({ db, update, setToast, go }) {
             </Button>
           </div>
         </section>
-        <section className="settings-card">
+        <section className="settings-card" id="settings-support">
           <div className="settings-card-head">
             <span className="settings-icon">
               <LifeBuoy />
@@ -18224,7 +18306,7 @@ function AccountSettings({ db, update, setToast, go }) {
             </a>
           </div>
         </section>
-        <section className="settings-card">
+        <section className="settings-card" id="settings-security">
           <div className="settings-card-head">
             <span className="settings-icon">
               <ShieldCheck />
@@ -18376,6 +18458,7 @@ function AccountSettings({ db, update, setToast, go }) {
             </div>
           </section>
         )}
+      </div>
       </div>
       {deleteOpen && (
         <Modal title="Excluir minha conta" onClose={() => setDeleteOpen(false)}>

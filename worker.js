@@ -3810,7 +3810,7 @@ export default {
       return json({
         status: database === "operacional" ? "operacional" : "degradado",
         database,
-        version: "v81",
+        version: "v82",
         checkedAt: new Date().toISOString(),
       });
     }

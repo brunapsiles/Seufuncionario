@@ -127,7 +127,7 @@ describe("termos de uso, política de privacidade e exclusão de conta", () => {
       screen.getByRole("button", { name: "Voltar para Configurações" }),
     );
     expect(
-      screen.getByRole("heading", { name: "Sua conta" }),
+      screen.getByRole("heading", { name: "Seu espaço, do seu jeito" }),
     ).toBeInTheDocument();
   });
 
