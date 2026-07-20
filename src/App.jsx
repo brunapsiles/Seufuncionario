@@ -734,9 +734,11 @@ export const computeWeeklySummary = (data, start, end) => {
   const cashOut = weekTx
     .filter((t) => t.type === "Despesa")
     .reduce((a, t) => a + Number(t.value || 0), 0);
-  const tasksDone = (Array.isArray(data?.tasks) ? data.tasks : []).filter(
+  const doneTasks = (Array.isArray(data?.tasks) ? data.tasks : []).filter(
     (t) => t.status === "Concluído" && withinRange(ymd(t.updatedAt), start, end),
-  ).length;
+  );
+  const tasksDone = doneTasks.length;
+  const tasksReward = doneTasks.reduce((a, t) => a + Number(t.reward || 0), 0);
   const newLeads = (Array.isArray(data?.leads) ? data.leads : []).filter((l) =>
     withinRange(ymd(l.createdAt), start, end),
   ).length;
@@ -750,6 +752,7 @@ export const computeWeeklySummary = (data, start, end) => {
     cashOut,
     cashNet: cashIn - cashOut,
     tasksDone,
+    tasksReward,
     newLeads,
     hasActivity:
       orders.length > 0 || weekTx.length > 0 || tasksDone > 0 || newLeads > 0,
@@ -4334,46 +4337,57 @@ function Dashboard({ db, update, business, go, setToast }) {
               <h2>Resumo de {dayRangeLabel(thisWeek.start, thisWeek.end)}</h2>
             </div>
           </div>
-          <div className="week-stats">
-            <div>
-              <span className="week-stat-icon g2">
-                <ShoppingBag />
-              </span>
+          {weekSummary.hasActivity ? (
+            <div className="week-stats">
               <div>
-                <small>Vendas</small>
-                <strong>{weekSummary.sales}</strong>
-                <span>{money(weekSummary.salesRevenue)}</span>
+                <span className="week-stat-icon g2">
+                  <ShoppingBag />
+                </span>
+                <div>
+                  <small>Vendas</small>
+                  <strong>{weekSummary.sales}</strong>
+                  <span>{money(weekSummary.salesRevenue)}</span>
+                </div>
+              </div>
+              <div>
+                <span className="week-stat-icon g5">
+                  <ArrowUpRight />
+                </span>
+                <div>
+                  <small>Entrou em caixa</small>
+                  <strong>{money(weekSummary.cashIn)}</strong>
+                  <span>Saldo {money(weekSummary.cashNet)}</span>
+                </div>
+              </div>
+              <div>
+                <span className="week-stat-icon g0">
+                  <CheckCircle2 />
+                </span>
+                <div>
+                  <small>Tarefas concluídas</small>
+                  <strong>{weekSummary.tasksDone}</strong>
+                  {weekSummary.tasksReward > 0 && (
+                    <span>{money(weekSummary.tasksReward)}</span>
+                  )}
+                </div>
+              </div>
+              <div>
+                <span className="week-stat-icon g3">
+                  <Users />
+                </span>
+                <div>
+                  <small>Novos contatos</small>
+                  <strong>{weekSummary.newLeads}</strong>
+                </div>
               </div>
             </div>
-            <div>
-              <span className="week-stat-icon g5">
-                <ArrowUpRight />
-              </span>
-              <div>
-                <small>Entrou em caixa</small>
-                <strong>{money(weekSummary.cashIn)}</strong>
-                <span>Saldo {money(weekSummary.cashNet)}</span>
-              </div>
-            </div>
-            <div>
-              <span className="week-stat-icon g0">
-                <CheckCircle2 />
-              </span>
-              <div>
-                <small>Tarefas concluídas</small>
-                <strong>{weekSummary.tasksDone}</strong>
-              </div>
-            </div>
-            <div>
-              <span className="week-stat-icon g3">
-                <Users />
-              </span>
-              <div>
-                <small>Novos contatos</small>
-                <strong>{weekSummary.newLeads}</strong>
-              </div>
-            </div>
-          </div>
+          ) : (
+            <p className="week-empty">
+              Sem movimento registrado nesta semana ainda. Registre uma venda,
+              conclua uma tarefa ou adicione um contato — os números aparecem
+              aqui na hora.
+            </p>
+          )}
           <small className="week-summary-note">
             Ative as notificações do navegador em Configurações para receber
             esse resumo toda segunda-feira, mesmo com o app fechado.

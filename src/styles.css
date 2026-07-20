@@ -6112,6 +6112,15 @@ aside nav:hover::-webkit-scrollbar-thumb {
   color: var(--muted);
   font-size: 12px;
 }
+.week-empty {
+  padding: 16px;
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
 .das-panel {
   margin-bottom: 18px;
 }

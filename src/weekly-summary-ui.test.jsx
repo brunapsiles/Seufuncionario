@@ -18,7 +18,7 @@ const businessDb = () => ({
   selectedBusinessId: business.id,
   businesses: [business],
   tasks: [
-    { id: "k1", title: "Feita", status: "Concluído", updatedAt: "2026-07-15T09:00:00Z", businessId: business.id },
+    { id: "k1", title: "Feita", status: "Concluído", updatedAt: "2026-07-15T09:00:00Z", businessId: business.id, reward: 50 },
   ],
   leads: [
     { id: "l1", name: "Novo", createdAt: "2026-07-14T09:00:00Z", businessId: business.id, status: "Novo" },
@@ -105,8 +105,28 @@ describe("card 'Sua semana' no Dashboard", () => {
     expect(within(card).getByText("R$ 120,00")).toBeInTheDocument();
     // Entrou em caixa: R$ 200,00
     expect(within(card).getByText("R$ 200,00")).toBeInTheDocument();
-    // Tarefas concluídas e novos contatos aparecem
+    // Tarefas concluídas mostram também o valor (recompensa) somado
     expect(within(card).getByText("Tarefas concluídas")).toBeInTheDocument();
+    expect(within(card).getByText("R$ 50,00")).toBeInTheDocument();
     expect(within(card).getByText("Novos contatos")).toBeInTheDocument();
+  });
+
+  it("mostra um estado vazio convidativo em vez de zeros quando a semana não tem movimento", async () => {
+    const db = businessDb();
+    db.tasks = [];
+    db.leads = [];
+    db.orders = [];
+    db.transactions = [];
+    seedLoggedIn(db);
+    render(<App />);
+    await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
+
+    const card = document.getElementById("week-summary");
+    expect(card).toBeInTheDocument();
+    expect(
+      within(card).getByText(/Sem movimento registrado nesta semana/),
+    ).toBeInTheDocument();
+    // Nenhuma parede de zeros: os cartões de métrica não são renderizados.
+    expect(within(card).queryByText("Vendas")).not.toBeInTheDocument();
   });
 });

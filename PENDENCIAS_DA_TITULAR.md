@@ -4,7 +4,24 @@ Ações que somente você pode realizar. **Nenhuma delas impede o uso do app**, 
 
 ## 🔴 Recomendadas agora
 
-Nenhuma ação imediata. Login Google, cadastro por e-mail, Gmail API e Google Calendar API foram configurados e validados em produção em 17/07/2026.
+### 1. Cadastrar as chaves VAPID (notificações do navegador)
+
+Tudo de notificação push já está construído e no ar — lembrete do DAS do MEI, avisos de missão/entrega e o resumo semanal de segunda-feira — mas **nada é enviado** até estes dois segredos existirem no cofre do Worker. Sem eles o app funciona normalmente, só sem push.
+
+Como fazer (uma vez só, ~2 minutos, no terminal do projeto):
+
+```bash
+# 1. Gerar um par de chaves novo (o comando imprime as duas linhas):
+node -e "crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']).then(async k=>{const b=b=>Buffer.from(b).toString('base64').replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');console.log('PUBLICA :',b(await crypto.subtle.exportKey('raw',k.publicKey)));console.log('PRIVADA :',(await crypto.subtle.exportKey('jwk',k.privateKey)).d)})"
+
+# 2. Cadastrar cada uma no cofre (cola o valor quando o comando pedir):
+npx wrangler secret put VAPID_PUBLIC_KEY
+npx wrangler secret put VAPID_PRIVATE_KEY
+```
+
+Alternativa: um par de chaves já foi gerado e compartilhado na conversa com o assistente em 19/07/2026 — pode usar aquele em vez de gerar um novo. As chaves nunca ficam no código, só no cofre (por isso não estão escritas aqui).
+
+Depois de cadastrar, teste: Configurações → "Notificações do navegador" → Ativar. Deve pedir permissão e confirmar.
 
 ## 🟡 Opcionais / segurança
 

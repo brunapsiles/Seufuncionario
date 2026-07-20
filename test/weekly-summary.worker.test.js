@@ -140,6 +140,33 @@ describe("resumo semanal por push (handler scheduled)", () => {
     expect(pushCalls.every((c) => !c.url.includes("owner-3"))).toBe(true);
   });
 
+  it("não envia o mesmo resumo duas vezes quando o Cron dispara em dobro", async () => {
+    await createUser("ws-owner-5");
+    await seedWorkspace("ws-owner-5", {
+      orders: [],
+      transactions: [{ id: "t1", type: "Receita", value: 150, date: "2026-07-15" }],
+      tasks: [],
+      leads: [],
+    });
+    await addSubscription("ws-owner-5", "https://push.example.com/ep-week-5");
+
+    await runScheduled();
+    const firstRun = pushCalls.filter((c) => c.url.includes("ep-week-5"));
+    expect(firstRun).toHaveLength(1);
+
+    const logged = await env.DB.prepare(
+      "SELECT week_start FROM weekly_summary_log WHERE user_id = ?",
+    )
+      .bind("ws-owner-5")
+      .first();
+    expect(logged.week_start).toBe("2026-07-13");
+
+    pushCalls.length = 0;
+    await runScheduled();
+    const secondRun = pushCalls.filter((c) => c.url.includes("ep-week-5"));
+    expect(secondRun).toHaveLength(0);
+  });
+
   it("remove a assinatura quando o endpoint responde 410", async () => {
     await createUser("ws-owner-4");
     await seedWorkspace("ws-owner-4", {

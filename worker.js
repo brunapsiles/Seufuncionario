@@ -1270,9 +1270,11 @@ function computeWeeklySummary(data, start, end) {
   const cashOut = weekTx
     .filter((t) => t.type === "Despesa")
     .reduce((a, t) => a + Number(t.value || 0), 0);
-  const tasksDone = (Array.isArray(data?.tasks) ? data.tasks : []).filter(
+  const doneTasks = (Array.isArray(data?.tasks) ? data.tasks : []).filter(
     (t) => t.status === "Concluído" && within(t.updatedAt),
-  ).length;
+  );
+  const tasksDone = doneTasks.length;
+  const tasksReward = doneTasks.reduce((a, t) => a + Number(t.reward || 0), 0);
   const newLeads = (Array.isArray(data?.leads) ? data.leads : []).filter((l) =>
     within(l.createdAt),
   ).length;
@@ -1283,6 +1285,7 @@ function computeWeeklySummary(data, start, end) {
     cashIn,
     cashNet: cashIn - cashOut,
     tasksDone,
+    tasksReward,
     newLeads,
     hasActivity: sales > 0 || weekTx.length > 0 || tasksDone > 0 || newLeads > 0,
   };
@@ -1338,6 +1341,21 @@ async function sendWeeklySummaries(env, now) {
     }
     const rows = subs.results || [];
     if (!rows.length) continue;
+    // O Cron do Cloudflare é "pelo menos uma vez": em raros casos dispara em
+    // dobro. Reservar a semana com INSERT OR IGNORE garante um único envio por
+    // dono por semana — se a linha já existe, outro disparo chegou primeiro.
+    try {
+      const claim = await env.DB.prepare(
+        `INSERT OR IGNORE INTO weekly_summary_log (user_id, week_start, sent_at)
+        VALUES (?, ?, ?)`,
+      )
+        .bind(row.user_id, start, new Date().toISOString())
+        .run();
+      if (!claim.meta.changes) continue;
+    } catch (error) {
+      console.error("weekly summary claim", error);
+      continue;
+    }
     const message = {
       data: {
         title: "Seu resumo da semana",

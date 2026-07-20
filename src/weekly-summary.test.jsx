@@ -47,9 +47,9 @@ describe("computeWeeklySummary", () => {
       { id: "t3", type: "Receita", value: 500, date: "2026-06-30" },
     ],
     tasks: [
-      { id: "k1", status: "Concluído", updatedAt: "2026-07-17T09:00:00Z" },
-      { id: "k2", status: "A fazer", updatedAt: "2026-07-17T09:00:00Z" },
-      { id: "k3", status: "Concluído", updatedAt: "2026-07-01T09:00:00Z" },
+      { id: "k1", status: "Concluído", updatedAt: "2026-07-17T09:00:00Z", reward: 30 },
+      { id: "k2", status: "A fazer", updatedAt: "2026-07-17T09:00:00Z", reward: 500 },
+      { id: "k3", status: "Concluído", updatedAt: "2026-07-01T09:00:00Z", reward: 900 },
     ],
     leads: [
       { id: "l1", createdAt: "2026-07-14T09:00:00Z" },
@@ -64,6 +64,9 @@ describe("computeWeeklySummary", () => {
     expect(s.cashIn).toBe(200);
     expect(s.cashNet).toBe(150);
     expect(s.tasksDone).toBe(1);
+    // Só a recompensa da tarefa concluída DENTRO da semana conta (nem a
+    // pendente, nem a concluída fora do intervalo).
+    expect(s.tasksReward).toBe(30);
     expect(s.newLeads).toBe(1);
     expect(s.hasActivity).toBe(true);
   });
@@ -73,6 +76,7 @@ describe("computeWeeklySummary", () => {
     expect(s.hasActivity).toBe(false);
     expect(s.sales).toBe(0);
     expect(s.cashIn).toBe(0);
+    expect(s.tasksReward).toBe(0);
   });
 });
 
