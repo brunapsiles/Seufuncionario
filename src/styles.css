@@ -6795,33 +6795,68 @@ aside nav:hover::-webkit-scrollbar-thumb {
 
 /* ===== v21 · centrais completas por área ===== */
 .area-toolkit {
-  margin: 0 0 26px;
-  padding: 22px;
-  border: 1px solid color-mix(in srgb, var(--primary) 16%, var(--line));
-  border-radius: 20px;
-  background:
-    radial-gradient(
-      circle at 100% 0,
-      color-mix(in srgb, var(--pink) 10%, transparent),
-      transparent 34%
-    ),
-    color-mix(in srgb, var(--primary) 3%, var(--surface));
+  margin: 0 0 22px;
+  border: 1px solid color-mix(in srgb, var(--primary) 15%, var(--line));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--primary) 3%, var(--surface));
+  overflow: hidden;
 }
-.area-toolkit .section-head {
-  margin-bottom: 16px;
+.area-toolkit-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 18px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
 }
-.area-toolkit .section-head h2 {
-  margin: 5px 0 4px;
-  font-size: clamp(1.25rem, 2.6vw, 1.75rem);
+.area-toolkit-toggle:hover {
+  background: color-mix(in srgb, var(--primary) 4%, transparent);
 }
-.area-toolkit .section-head p {
-  margin: 0;
+.area-toolkit-label {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+.area-toolkit-label .eyebrow {
+  color: var(--primary);
+  font-size: 0.66rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.area-toolkit-label strong {
+  font-size: 1rem;
+  line-height: 1.25;
+}
+.area-toolkit-count {
+  flex-shrink: 0;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary);
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.area-toolkit-caret {
+  flex-shrink: 0;
+  width: 18px;
   color: var(--muted);
+  transition: transform 0.2s ease;
+}
+.area-toolkit.is-open .area-toolkit-caret {
+  transform: rotate(180deg);
 }
 .area-tools-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+  padding: 0 18px 18px;
 }
 .area-tools-grid > button,
 .area-tools-grid > a {
@@ -6897,11 +6932,12 @@ aside nav:hover::-webkit-scrollbar-thumb {
 }
 
 @media (max-width: 620px) {
-  .area-toolkit {
-    padding: 16px;
+  .area-toolkit-toggle {
+    padding: 12px 14px;
   }
   .area-tools-grid {
     grid-template-columns: 1fr;
+    padding: 0 14px 14px;
   }
   .area-tools-grid > button,
   .area-tools-grid > a {

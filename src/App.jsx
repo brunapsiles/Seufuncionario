@@ -5378,7 +5378,6 @@ const areaToolkits = {
         description: "Continue, refine ou duplique trabalhos anteriores.",
         icon: History,
       },
-      { kind: "external", tool: "notion" },
       { kind: "external", tool: "sheets" },
     ],
   },
@@ -5427,7 +5426,6 @@ const areaToolkits = {
       { kind: "ai", tool: "support" },
       { kind: "special", tool: "email" },
       { kind: "external", tool: "whatsapp" },
-      { kind: "external", tool: "hubspot" },
       { kind: "external", tool: "gmail" },
       { kind: "external", tool: "outlook" },
     ],
@@ -5469,13 +5467,6 @@ const areaToolkits = {
     label: "Operação",
     items: [
       {
-        kind: "scroll",
-        target: "task-board",
-        title: "Tarefas e projetos",
-        description: "Planeje, delegue e acompanhe a execução.",
-        icon: ListTodo,
-      },
-      {
         kind: "page",
         page: "produtos",
         title: "Produtos, estoque e pedidos",
@@ -5487,8 +5478,6 @@ const areaToolkits = {
       { kind: "ai", tool: "compras" },
       { kind: "special", tool: "route" },
       { kind: "external", tool: "calendar" },
-      { kind: "external", tool: "trello" },
-      { kind: "external", tool: "notion" },
     ],
   },
   sites: {
@@ -5540,14 +5529,22 @@ const areaToolkits = {
         icon: Bot,
       },
       { kind: "external", tool: "drive" },
-      { kind: "external", tool: "notion" },
     ],
   },
 };
 
 function AreaToolkit({ area, db, update, business, setToast, go }) {
-  const [activeTool, setActiveTool] = useState("");
   const config = areaToolkits[area];
+  const storageKey = `sf-toolkit-open:${area}`;
+  const [open, setOpen] = useState(() => {
+    if (typeof localStorage === "undefined") return false;
+    try {
+      return localStorage.getItem(storageKey) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [activeTool, setActiveTool] = useState("");
   if (!config) return null;
   const resolve = (item) => {
     if (item.kind === "external") {
@@ -5559,7 +5556,7 @@ function AreaToolkit({ area, db, update, business, setToast, go }) {
             description: item.description || external.description,
             icon: item.icon || external.icon,
             url: external.url,
-            badge: external.badge,
+            badge: "Serviço externo",
           }
         : null;
     }
@@ -5571,7 +5568,7 @@ function AreaToolkit({ area, db, update, business, setToast, go }) {
             title: item.title || tool.title.replace(/^.*? — /, ""),
             description: item.description || tool.hint,
             icon: item.icon || tool.icon,
-            badge: "Ferramenta inteligente",
+            badge: "Com IA",
           }
         : null;
     }
@@ -5592,7 +5589,7 @@ function AreaToolkit({ area, db, update, business, setToast, go }) {
         icon: Mail,
       },
     }[item.tool];
-    return special ? { ...item, ...special, badge: "Dentro do app" } : item;
+    return special ? { ...item, ...special, badge: "No app" } : item;
   };
   const items = config.items.map(resolve).filter(Boolean);
   const run = (item) => {
@@ -5606,54 +5603,67 @@ function AreaToolkit({ area, db, update, business, setToast, go }) {
     }
     setActiveTool(item.tool);
   };
+  const toggle = () => {
+    setOpen((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(storageKey, next ? "1" : "0");
+      } catch {}
+      return next;
+    });
+  };
   return (
-    <section className="area-toolkit">
-      <div className="section-head">
-        <div>
-          <span className="eyebrow">RECURSOS DESTA ÁREA</span>
-          <h2>Tudo de {config.label} em um só lugar</h2>
-          <p>{items.length} ferramentas e caminhos disponíveis agora.</p>
+    <section className={`area-toolkit${open ? " is-open" : ""}`}>
+      <button
+        type="button"
+        className="area-toolkit-toggle"
+        onClick={toggle}
+        aria-expanded={open}
+      >
+        <span className="area-toolkit-label">
+          <span className="eyebrow">Recursos desta área</span>
+          <strong>Tudo de {config.label} em um só lugar</strong>
+        </span>
+        <span className="area-toolkit-count">{items.length} recursos</span>
+        <ChevronDown className="area-toolkit-caret" />
+      </button>
+      {open && (
+        <div className="area-tools-grid">
+          {items.map((item, index) => {
+            const Icon = item.icon || Wrench;
+            const content = (
+              <>
+                <span className={`quick-icon q${index % 6}`}>
+                  <Icon />
+                </span>
+                <span>
+                  <small>{item.badge || "No app"}</small>
+                  <strong>{item.title}</strong>
+                  <p>{item.description}</p>
+                </span>
+                {item.kind === "external" ? <ExternalLink /> : <ArrowUpRight />}
+              </>
+            );
+            return item.kind === "external" ? (
+              <a
+                key={`${item.kind}-${item.tool}`}
+                href={item.url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {content}
+              </a>
+            ) : (
+              <button
+                key={`${item.kind}-${item.tool || item.page || item.target}`}
+                onClick={() => run(item)}
+              >
+                {content}
+              </button>
+            );
+          })}
         </div>
-      </div>
-      <div className="area-tools-grid">
-        {items.map((item, index) => {
-          const Icon = item.icon || Wrench;
-          const content = (
-            <>
-              <span className={`quick-icon q${index % 6}`}>
-                <Icon />
-              </span>
-              <span>
-                <small>
-                  {item.kind === "external"
-                    ? item.badge
-                    : item.badge || "Módulo do app"}
-                </small>
-                <strong>{item.title}</strong>
-                <p>{item.description}</p>
-              </span>
-              {item.kind === "external" ? <ExternalLink /> : <ArrowUpRight />}
-            </>
-          );
-          return item.kind === "external" ? (
-            <a
-              key={`${item.kind}-${item.tool}`}
-              href={item.url}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {content}
-            </a>
-          ) : (
-            <button
-              key={`${item.kind}-${item.tool || item.page || item.target}`}
-              onClick={() => run(item)}
-            >
-              {content}
-            </button>
-          );
-        })}
-      </div>
+      )}
       {activeTool === "translate" && (
         <TranslatorModal
           onClose={() => setActiveTool("")}

@@ -214,11 +214,16 @@ describe("fluxos de trabalho", () => {
 
   it("mostra todas as ferramentas relacionadas dentro de cada área", () => {
     render(<App />);
+    const openToolkit = (labelRegex) => {
+      const toggle = screen.getByRole("button", { name: labelRegex });
+      if (toggle.getAttribute("aria-expanded") !== "true") {
+        fireEvent.click(toggle);
+      }
+      return toggle.closest("section");
+    };
+
     fireEvent.click(screen.getByRole("button", { name: "Financeiro" }));
-    const financeHeading = screen.getByRole("heading", {
-      name: "Tudo de Financeiro em um só lugar",
-    });
-    const financeHub = financeHeading.closest("section");
+    const financeHub = openToolkit(/Tudo de Financeiro em um só lugar/);
     expect(within(financeHub).getByText("Fluxo de caixa")).toBeInTheDocument();
     expect(
       within(financeHub).getByText("Metas e ponto de equilíbrio"),
@@ -232,11 +237,7 @@ describe("fluxos de trabalho", () => {
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Marca e Marketing" }));
-    const marketingHub = screen
-      .getByRole("heading", {
-        name: "Tudo de Marca e Marketing em um só lugar",
-      })
-      .closest("section");
+    const marketingHub = openToolkit(/Tudo de Marca e Marketing em um só lugar/);
     expect(
       within(marketingHub).getByText("Gerador de posts"),
     ).toBeInTheDocument();
@@ -246,11 +247,7 @@ describe("fluxos de trabalho", () => {
     expect(within(marketingHub).getByText("Canva")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Vendas e Clientes" }));
-    const salesHub = screen
-      .getByRole("heading", {
-        name: "Tudo de Vendas e Clientes em um só lugar",
-      })
-      .closest("section");
+    const salesHub = openToolkit(/Tudo de Vendas e Clientes em um só lugar/);
     expect(
       within(salesHub).getByText("CRM e funil de vendas"),
     ).toBeInTheDocument();
@@ -260,12 +257,7 @@ describe("fluxos de trabalho", () => {
     expect(within(salesHub).getByText("WhatsApp Web")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Operação" }));
-    const operationHub = screen
-      .getByRole("heading", { name: "Tudo de Operação em um só lugar" })
-      .closest("section");
-    expect(
-      within(operationHub).getByText("Tarefas e projetos"),
-    ).toBeInTheDocument();
+    const operationHub = openToolkit(/Tudo de Operação em um só lugar/);
     expect(
       within(operationHub).getByText("Passo a passo (POP)"),
     ).toBeInTheDocument();
@@ -275,16 +267,12 @@ describe("fluxos de trabalho", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Sites e Materiais" }));
     expect(
-      screen.getByRole("heading", {
-        name: "Tudo de Sites e Materiais em um só lugar",
-      }),
+      openToolkit(/Tudo de Sites e Materiais em um só lugar/),
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Documentos" }));
     expect(
-      screen.getByRole("heading", {
-        name: "Tudo de Documentos em um só lugar",
-      }),
+      openToolkit(/Tudo de Documentos em um só lugar/),
     ).toBeInTheDocument();
   });
 
