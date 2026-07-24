@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildOrderReceita, buildLeadWonSideEffects } from "./App";
+import {
+  buildOrderReceita,
+  buildLeadWonSideEffects,
+  quoteTotal,
+  orderFromQuote,
+} from "./App";
 
 describe("buildOrderReceita (pedido → caixa)", () => {
   it("cria uma receita a partir do total do pedido", () => {
@@ -54,5 +59,59 @@ describe("buildLeadWonSideEffects (lead ganho → tarefa + timeline)", () => {
       subject: "Negócio ganho",
     });
     expect(interaction.contactHandle).toBe("bruno@empresa.com");
+  });
+});
+
+describe("quoteTotal (orçamento)", () => {
+  it("soma as linhas e desconta, nunca negativo", () => {
+    expect(
+      quoteTotal({
+        items: [
+          { price: 50, quantity: 2 },
+          { price: 30, quantity: 1 },
+        ],
+        discount: 10,
+      }),
+    ).toBe(120);
+    expect(quoteTotal({ items: [{ price: 10, quantity: 1 }], discount: 999 })).toBe(0);
+    expect(quoteTotal({})).toBe(0);
+  });
+});
+
+describe("orderFromQuote (orçamento aprovado → pedido)", () => {
+  it("gera um pedido a partir do orçamento, preservando itens e total", () => {
+    const order = orderFromQuote(
+      {
+        id: "q1",
+        clientName: "Ana",
+        clientContact: "5511911112222",
+        items: [{ name: "Lavagem", price: 40, quantity: 3 }],
+        discount: 20,
+      },
+      { businessId: "b1", ownerId: "u1" },
+    );
+    expect(order).toMatchObject({
+      clientName: "Ana",
+      channel: "Orçamento",
+      status: "Novo",
+      total: 100,
+      businessId: "b1",
+      ownerId: "u1",
+      sourceQuoteId: "q1",
+    });
+    expect(order.items).toHaveLength(1);
+    expect(order.items[0]).toMatchObject({ name: "Lavagem", price: 40, quantity: 3 });
+  });
+
+  it("um pedido vindo de orçamento também vira receita no caixa", () => {
+    const order = orderFromQuote(
+      { id: "q2", clientName: "Ana", items: [{ name: "X", price: 100, quantity: 1 }] },
+      { businessId: "b1", ownerId: "u1" },
+    );
+    const receita = buildOrderReceita(order, {
+      businessId: order.businessId,
+      ownerId: order.ownerId,
+    });
+    expect(receita).toMatchObject({ type: "Receita", value: 100, sourceOrderId: order.id });
   });
 });
