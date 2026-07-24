@@ -7471,3 +7471,179 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
     grid-template-columns: minmax(0, 1fr) 56px 90px 34px;
   }
 }
+
+/* ── Meu trabalho (modo funcionário) ────────────────────────────────── */
+.mywork-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.mywork-stat {
+  display: grid;
+  gap: 4px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+.mywork-stat svg {
+  width: 20px;
+  color: var(--primary);
+}
+.mywork-stat strong {
+  font-size: 1.7rem;
+  line-height: 1;
+}
+.mywork-stat span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.mywork-attention {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--red, #dc2626) 35%, var(--line));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--red, #dc2626) 7%, var(--surface));
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.mywork-attention > svg:first-child {
+  flex-shrink: 0;
+  width: 20px;
+  color: var(--red, #dc2626);
+}
+.mywork-attention span {
+  flex: 1;
+}
+.mywork-attention > svg:last-child {
+  flex-shrink: 0;
+  width: 17px;
+  color: var(--muted);
+}
+.mywork-tasks {
+  display: grid;
+  gap: 8px;
+}
+.mywork-task {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: 0.15s ease;
+}
+.mywork-task:hover {
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--line));
+  transform: translateY(-1px);
+}
+.mywork-dot {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.mywork-dot.info {
+  background: var(--primary);
+}
+.mywork-dot.warn {
+  background: #d97706;
+}
+.mywork-dot.ok {
+  background: var(--green, #16a34a);
+}
+.mywork-task-body {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+.mywork-task-body strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mywork-task-body small {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.mywork-late {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--red, #dc2626) 14%, transparent);
+  color: var(--red, #dc2626);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+.mywork-task > svg:last-child {
+  flex-shrink: 0;
+  width: 16px;
+  color: var(--muted);
+}
+.mywork-progress {
+  display: grid;
+  gap: 14px;
+}
+.mywork-level-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.mywork-level-top small {
+  color: var(--muted);
+}
+.mywork-bar {
+  height: 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 12%, var(--line));
+  overflow: hidden;
+}
+.mywork-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--primary), var(--pink));
+}
+.mywork-achievements {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.mywork-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+  border: 1px solid var(--line);
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+.mywork-badge svg {
+  width: 15px;
+  color: var(--primary);
+}
+.mywork-links {
+  display: grid;
+  gap: 8px;
+}
+@media (max-width: 720px) {
+  .mywork-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

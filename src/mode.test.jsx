@@ -164,7 +164,9 @@ describe("modos de uso: business e employee", () => {
     expect(
       await screen.findByRole("heading", { name: /Vamos fazer acontecer/ }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Meu trabalho")).toBeInTheDocument();
+    expect(
+      document.querySelector(".top-business")?.textContent,
+    ).toContain("Meu trabalho");
     // modo funcionário tem todos os acessos: nenhum item de navegação some
     for (const label of ALL_NAV)
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
@@ -186,7 +188,9 @@ describe("modos de uso: business e employee", () => {
       }),
     );
 
-    expect(screen.getByText("Meu trabalho")).toBeInTheDocument();
+    expect(
+      document.querySelector(".top-business")?.textContent,
+    ).toContain("Meu trabalho");
     for (const label of ALL_NAV)
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
   });
@@ -264,12 +268,16 @@ describe("modos de uso: business e employee", () => {
     seedLoggedIn(employeeDb());
     const { unmount } = render(<App />);
     await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
-    expect(screen.getByText("Meu trabalho")).toBeInTheDocument();
+    expect(
+      document.querySelector(".top-business")?.textContent,
+    ).toContain("Meu trabalho");
     unmount();
 
     render(<App />);
     await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
-    expect(screen.getByText("Meu trabalho")).toBeInTheDocument();
+    expect(
+      document.querySelector(".top-business")?.textContent,
+    ).toContain("Meu trabalho");
     for (const label of ALL_NAV)
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
   });
@@ -288,7 +296,9 @@ describe("modos de uso: business e employee", () => {
         name: "Me ajudar no meu trabalho",
       }),
     );
-    expect(screen.getByText("Meu trabalho")).toBeInTheDocument();
+    expect(
+      document.querySelector(".top-business")?.textContent,
+    ).toContain("Meu trabalho");
     for (const label of ALL_NAV)
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
 

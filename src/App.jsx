@@ -168,6 +168,7 @@ export const hasAnyWorkspaceData = (db) =>
 
 const nav = [
   ["inicio", "Início", Home],
+  ["meu-trabalho", "Meu trabalho", BriefcaseBusiness],
   ["comecar", "Começar do zero", Rocket],
   ["estrategia", "Estratégia", Target],
   ["marketing", "Marca e Marketing", Megaphone],
@@ -196,7 +197,7 @@ const navSecondary = [
 ];
 
 const navGroups = [
-  { label: null, items: ["inicio", "comecar"] },
+  { label: null, items: ["inicio", "meu-trabalho", "comecar"] },
   {
     label: "VENDAS E CLIENTES",
     items: [
@@ -1062,6 +1063,34 @@ export const computeAchievements = (tasks, userId) => {
       label: "Entrega aprovada sem correções",
     });
   return achievements;
+};
+
+// Consolida o "meu trabalho" da pessoa logada dentro do espaço ativo: tarefas
+// atribuídas a ela, o que precisa de atenção e seu desempenho. Puro e testável.
+export const computeMyWork = (db, userId, business, ymdValue = today()) => {
+  const inBiz = (t) => !business || !t.businessId || t.businessId === business.id;
+  const mine = (db?.tasks || []).filter(
+    (t) =>
+      inBiz(t) &&
+      (t.assigneeId === userId ||
+        (t.assignees || []).some((a) => a?.userId === userId)),
+  );
+  const active = mine
+    .filter((t) => t.status !== "Concluído")
+    .sort((a, b) =>
+      String(a.due || "9999").localeCompare(String(b.due || "9999")),
+    );
+  return {
+    all: mine,
+    active,
+    inProgress: active.length,
+    inReview: mine.filter((t) => t.missionStatus === "enviada_para_revisao")
+      .length,
+    corrections: mine.filter((t) => t.missionStatus === "correcao_solicitada")
+      .length,
+    overdue: active.filter((t) => t.due && t.due < ymdValue).length,
+    done: mine.filter((t) => t.status === "Concluído").length,
+  };
 };
 
 export const businessDaysBetween = (fromYmd, toYmd) => {
@@ -9044,6 +9073,167 @@ function InboxThread({ thread, onMarkRead }) {
         </div>
       )}
     </div>
+  );
+}
+
+const TASK_STATUS_TONE = {
+  "A fazer": "muted",
+  "Em andamento": "info",
+  Aguardando: "warn",
+  Concluído: "ok",
+};
+
+function MyWork({ db, business, setToast, go }) {
+  const userId = db.user?.id;
+  const work = computeMyWork(db, userId, business);
+  const gamificationEnabled = db.preferences?.gamificationEnabled !== false;
+  const points = computeUserPoints(db.tasks, userId);
+  const level = levelForPoints(points, db.levels || DEFAULT_LEVELS);
+  const progress = levelProgress(points, db.levels || DEFAULT_LEVELS);
+  const achievements = computeAchievements(db.tasks, userId);
+  const myPlan = (db.developmentPlans || []).find(
+    (p) => p.assigneeId === userId,
+  );
+  const firstName = (db.user?.name || "").trim().split(" ")[0] || "";
+  const needsAttention = work.corrections + work.overdue + work.inReview;
+  const stats = [
+    [work.inProgress, "Em andamento", ListTodo],
+    [work.inReview, "Aguardando revisão", Clock3],
+    [work.corrections, "Correções pedidas", CircleAlert],
+    [work.overdue, "Atrasadas", CalendarDays],
+  ];
+  return (
+    <PageTitle
+      eyebrow="MEU TRABALHO"
+      title={firstName ? `Olá, ${firstName}` : "Meu trabalho"}
+      text="Tudo que está com você agora — tarefas, entregas e seu progresso — reunido em um só lugar."
+    >
+      <div className="mywork-stats">
+        {stats.map(([n, label, Icon]) => (
+          <div key={label} className="mywork-stat">
+            <Icon />
+            <strong>{n}</strong>
+            <span>{label}</span>
+          </div>
+        ))}
+      </div>
+      {needsAttention > 0 && (
+        <button className="mywork-attention" onClick={() => go("operacao")}>
+          <CircleAlert />
+          <span>
+            Você tem {needsAttention} item(ns) pedindo atenção — abra suas
+            tarefas para resolver.
+          </span>
+          <ArrowUpRight />
+        </button>
+      )}
+      <section className="section">
+        <div className="section-head">
+          <div>
+            <span className="eyebrow">MINHAS TAREFAS</span>
+            <h2>Próximas a fazer</h2>
+          </div>
+          <button className="text-button" onClick={() => go("operacao")}>
+            Ver todas
+          </button>
+        </div>
+        {work.active.length === 0 ? (
+          <Empty
+            icon={BriefcaseBusiness}
+            title="Nada na sua fila"
+            text="Quando alguém atribuir uma tarefa a você (ou você assumir uma missão), ela aparece aqui."
+            action="Ver missões disponíveis"
+            onAction={() => go("operacao")}
+          />
+        ) : (
+          <div className="mywork-tasks">
+            {work.active.slice(0, 8).map((t) => (
+              <button
+                key={t.id}
+                className="mywork-task"
+                onClick={() => go("operacao")}
+              >
+                <span
+                  className={`mywork-dot ${TASK_STATUS_TONE[t.status] || "muted"}`}
+                />
+                <span className="mywork-task-body">
+                  <strong>{t.title}</strong>
+                  <small>
+                    {t.status}
+                    {t.priority ? ` · ${t.priority}` : ""}
+                    {t.due ? ` · prazo ${t.due}` : ""}
+                  </small>
+                </span>
+                {t.due && t.due < today() && t.status !== "Concluído" && (
+                  <span className="mywork-late">Atrasada</span>
+                )}
+                <ArrowUpRight />
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+      {gamificationEnabled && (
+        <section className="section">
+          <div className="section-head">
+            <div>
+              <span className="eyebrow">MEU PROGRESSO</span>
+              <h2>{level.name}</h2>
+            </div>
+          </div>
+          <div className="mywork-progress">
+            <div className="mywork-level">
+              <div className="mywork-level-top">
+                <strong>{points} pontos</strong>
+                {progress.next && (
+                  <small>
+                    faltam {progress.pointsToNext} para {progress.next.name}
+                  </small>
+                )}
+              </div>
+              <div className="mywork-bar">
+                <span style={{ width: `${progress.pct}%` }} />
+              </div>
+            </div>
+            {achievements.length > 0 && (
+              <div className="mywork-achievements">
+                {achievements.map((a) => (
+                  <span key={a.id} className="mywork-badge">
+                    <Award />
+                    {a.label}
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="mywork-links">
+              <button
+                className="settings-stat as-button"
+                onClick={() => go("desenvolvimento")}
+              >
+                <TrendingUp />
+                <span>
+                  {myPlan ? (
+                    <>
+                      Meu plano de desenvolvimento:{" "}
+                      <strong>{myPlan.status}</strong>
+                    </>
+                  ) : (
+                    "Ver plano de desenvolvimento"
+                  )}
+                </span>
+              </button>
+              <button
+                className="settings-stat as-button"
+                onClick={() => go("certificacoes")}
+              >
+                <Award />
+                <span>Minhas certificações</span>
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+    </PageTitle>
   );
 }
 
@@ -19716,6 +19906,10 @@ export default function App() {
             searchSeed={searchSeed}
             clearSearchSeed={clearSearchSeed}
           />
+        );
+      case "meu-trabalho":
+        return (
+          <MyWork db={db} business={business} setToast={setToast} go={go} />
         );
       case "orcamentos":
         return (
