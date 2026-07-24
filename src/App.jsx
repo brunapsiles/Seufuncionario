@@ -1577,6 +1577,61 @@ export const logInteraction = (interaction) => {
     .catch(() => null);
 };
 
+// Jornada transversal: um pedido registrado vira, opcionalmente, uma receita
+// no caixa — para o negócio não precisar digitar a mesma venda duas vezes.
+// Pura e testável; devolve null quando não há valor a lançar.
+export const buildOrderReceita = (order, { businessId, ownerId, dateYmd } = {}) => {
+  const value = Number(order?.total || 0);
+  if (!(value > 0)) return null;
+  return {
+    id: uid(),
+    type: "Receita",
+    description: `Pedido — ${order.clientName || "cliente"}`,
+    value,
+    date: dateYmd || today(),
+    category: "Vendas",
+    businessId: businessId || null,
+    ownerId: ownerId || null,
+    sourceOrderId: order.id || null,
+  };
+};
+
+// Jornada transversal: quando um lead é marcado como "Ganho", o negócio
+// ganha uma tarefa de primeiro atendimento (Vendas → Operação) e um registro
+// na linha do tempo do cliente. Puro e testável.
+export const buildLeadWonSideEffects = (lead, { businessId, ownerId, dateYmd } = {}) => {
+  const now = new Date().toISOString();
+  const handle =
+    contactLinks(lead?.contact).phone ||
+    contactLinks(lead?.contact).email ||
+    lead?.contact ||
+    "";
+  const task = {
+    id: uid(),
+    title: `Iniciar atendimento — ${lead?.name || "novo cliente"}`,
+    description:
+      "Negócio fechado no CRM. Faça o primeiro atendimento e combine os próximos passos.",
+    status: "A fazer",
+    priority: "Alta",
+    due: dateYmd || today(),
+    project: lead?.project || "",
+    businessId: businessId || null,
+    ownerId: ownerId || null,
+    sourceLeadId: lead?.id || null,
+    createdAt: now,
+    updatedAt: now,
+  };
+  const interaction = {
+    channel: "note",
+    direction: "out",
+    contactName: lead?.name || "",
+    contactHandle: handle,
+    subject: "Negócio ganho",
+    body: "Lead convertido em cliente. Uma tarefa de primeiro atendimento foi criada automaticamente.",
+  };
+  return { task, interaction };
+};
+
 function useDatabase() {
   const [db, setDb] = useState(loadInitialDb);
   const [workspaceConflict, setWorkspaceConflict] = useState(null);
@@ -7938,48 +7993,64 @@ function CRM({ db, update, business, setToast, go, searchSeed, clearSearchSeed }
     e.preventDefault();
     if (!form.name.trim()) return;
     const now = new Date().toISOString();
-    update((d) => {
-      const previous = d.leads.find((lead) => lead.id === editing);
-      const stageChanged = previous && previous.status !== form.status;
-      const item = {
-        ...form,
-        name: form.name.trim(),
-        id: editing || uid(),
-        businessId: business?.id || form.businessId || null,
-        ownerId: form.ownerId || db.user.id,
-        createdAt: form.createdAt || now,
-        updatedAt: now,
-        interactions: stageChanged
-          ? [
-              {
-                id: uid(),
-                type: "Mudança de etapa",
-                note: `${previous.status} → ${form.status}`,
-                at: today(),
-                createdAt: now,
-              },
-              ...(form.interactions || []),
-            ]
-          : form.interactions || [],
-      };
-      return {
-        ...d,
-        leads: editing
-          ? d.leads.map((lead) => (lead.id === editing ? item : lead))
-          : [item, ...d.leads],
-        contacts: upsertContact(d.contacts || [], {
-          name: item.name,
-          contact: item.contact,
-          company: item.company,
+    const previous = editing
+      ? db.leads.find((lead) => lead.id === editing)
+      : null;
+    const stageChanged = previous && previous.status !== form.status;
+    const item = {
+      ...form,
+      name: form.name.trim(),
+      id: editing || uid(),
+      businessId: business?.id || form.businessId || null,
+      ownerId: form.ownerId || db.user.id,
+      createdAt: form.createdAt || now,
+      updatedAt: now,
+      interactions: stageChanged
+        ? [
+            {
+              id: uid(),
+              type: "Mudança de etapa",
+              note: `${previous.status} → ${form.status}`,
+              at: today(),
+              createdAt: now,
+            },
+            ...(form.interactions || []),
+          ]
+        : form.interactions || [],
+    };
+    const wonNow =
+      form.status === "Ganho" && (!previous || previous.status !== "Ganho");
+    const won = wonNow
+      ? buildLeadWonSideEffects(item, {
           businessId: item.businessId,
           ownerId: db.user.id,
-        }),
-      };
-    });
+        })
+      : null;
+    update((d) => ({
+      ...d,
+      leads: editing
+        ? d.leads.map((lead) => (lead.id === editing ? item : lead))
+        : [item, ...d.leads],
+      contacts: upsertContact(d.contacts || [], {
+        name: item.name,
+        contact: item.contact,
+        company: item.company,
+        businessId: item.businessId,
+        ownerId: db.user.id,
+      }),
+      tasks: won ? [won.task, ...(d.tasks || [])] : d.tasks || [],
+    }));
+    if (won) logInteraction(won.interaction);
     setModal(false);
     setEditing(null);
     setForm(blankLead);
-    setToast(editing ? "Lead atualizado" : "Lead adicionado ao CRM");
+    setToast(
+      won
+        ? "Negócio ganho! Cliente e tarefa de atendimento criados"
+        : editing
+          ? "Lead atualizado"
+          : "Lead adicionado ao CRM",
+    );
   };
   const addInteraction = () => {
     if (!interaction.note.trim()) return;
@@ -7998,6 +8069,13 @@ function CRM({ db, update, business, setToast, go, searchSeed, clearSearchSeed }
   const changeStage = (lead, status) => {
     if (lead.status === status) return;
     const now = new Date().toISOString();
+    const won =
+      status === "Ganho" && lead.status !== "Ganho"
+        ? buildLeadWonSideEffects(lead, {
+            businessId: lead.businessId || business?.id || null,
+            ownerId: db.user.id,
+          })
+        : null;
     update((d) => ({
       ...d,
       leads: d.leads.map((item) =>
@@ -8019,7 +8097,12 @@ function CRM({ db, update, business, setToast, go, searchSeed, clearSearchSeed }
             }
           : item,
       ),
+      tasks: won ? [won.task, ...(d.tasks || [])] : d.tasks || [],
     }));
+    if (won) {
+      logInteraction(won.interaction);
+      setToast?.("Negócio ganho! Tarefa de primeiro atendimento criada");
+    }
   };
   return (
     <PageTitle
@@ -9383,6 +9466,7 @@ function Catalog({ db, update, business, setToast, go }) {
     notes: "",
     items: [],
     deliveryZoneId: "",
+    postToFinance: true,
     visibility: "espaco_todo",
     sharedWith: [],
     sharedTeams: [],
@@ -9595,6 +9679,15 @@ function Catalog({ db, update, business, setToast, go }) {
       createdAt: orderForm.createdAt || now,
       updatedAt: now,
     };
+    // Jornada transversal: o pedido também vira receita no caixa (se marcado)
+    // e um registro na linha do tempo do cliente.
+    const receita =
+      !editingOrder && orderForm.postToFinance
+        ? buildOrderReceita(item, {
+            businessId: item.businessId,
+            ownerId: db.user.id,
+          })
+        : null;
     update((d) => ({
       ...d,
       orders: editingOrder
@@ -9628,12 +9721,28 @@ function Catalog({ db, update, business, setToast, go }) {
               businessId: item.businessId,
               ownerId: db.user.id,
             }),
+      transactions: receita
+        ? [receita, ...(d.transactions || [])]
+        : d.transactions || [],
     }));
+    if (!editingOrder && item.channel !== "Mesa" && item.clientName) {
+      const links = contactLinks(item.clientContact);
+      logInteraction({
+        channel: "note",
+        direction: "out",
+        contactName: item.clientName,
+        contactHandle: links.phone || links.email || item.clientContact || "",
+        subject: "Pedido registrado",
+        body: `Pedido de ${money(item.total)} · ${item.items.length} item(ns).`,
+      });
+    }
     setOrderModal(false);
     setToast(
       editingOrder
         ? "Pedido atualizado"
-        : "Pedido criado e estoque atualizado",
+        : receita
+          ? "Pedido criado — estoque e caixa atualizados"
+          : "Pedido criado e estoque atualizado",
     );
   };
   const removeOrder = (id) => {
@@ -10176,6 +10285,18 @@ function Catalog({ db, update, business, setToast, go }) {
                   </span>
                 </div>
               </div>
+            )}
+            {!editingOrder && (
+              <label className="cost-check">
+                <input
+                  type="checkbox"
+                  checked={orderForm.postToFinance !== false}
+                  onChange={(e) =>
+                    setOrderForm({ ...orderForm, postToFinance: e.target.checked })
+                  }
+                />
+                <span>Lançar este pedido como receita no Financeiro</span>
+              </label>
             )}
             <Field label="Observações">
               <textarea
