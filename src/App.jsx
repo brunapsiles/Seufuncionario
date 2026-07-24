@@ -68,6 +68,9 @@ import {
   LockKeyhole,
   Printer,
   Mail,
+  Inbox,
+  Phone,
+  NotebookPen,
   Image as ImageIcon,
   Video,
   Link2,
@@ -167,6 +170,7 @@ const nav = [
   ["estrategia", "Estratégia", Target],
   ["marketing", "Marca e Marketing", Megaphone],
   ["vendas", "Vendas e Clientes", Handshake],
+  ["caixa", "Caixa de entrada", Inbox],
   ["contatos", "Contatos", Users],
   ["agendamentos", "Agendamentos", CalendarDays],
   ["produtos", "Produtos e Pedidos", ShoppingBag],
@@ -192,7 +196,14 @@ const navGroups = [
   { label: null, items: ["inicio", "comecar"] },
   {
     label: "VENDAS E CLIENTES",
-    items: ["estrategia", "marketing", "vendas", "contatos", "agendamentos"],
+    items: [
+      "estrategia",
+      "marketing",
+      "vendas",
+      "caixa",
+      "contatos",
+      "agendamentos",
+    ],
   },
   {
     label: "OPERAÇÃO",
@@ -1546,6 +1557,26 @@ export const trackProductEvent = (event, metadata = {}) => {
   }).catch(() => {});
 };
 
+const inboxUrl = () => {
+  const space = activeSpaceId();
+  return `/api/inbox${space ? `?owner=${encodeURIComponent(space)}` : ""}`;
+};
+
+// Registra uma interação (mensagem enviada/recebida, ligação, nota) na caixa
+// de entrada unificada. Chamado nos pontos de envio (WhatsApp, e-mail) para
+// que todo canal caia num só lugar, ligado ao contato.
+export const logInteraction = (interaction) => {
+  if (!localStorage.getItem(AUTH_TOKEN_KEY)) return Promise.resolve(null);
+  return fetch(inboxUrl(), {
+    method: "POST",
+    headers: { "content-type": "application/json", ...authHeaders() },
+    body: JSON.stringify(interaction),
+    keepalive: true,
+  })
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null);
+};
+
 function useDatabase() {
   const [db, setDb] = useState(loadInitialDb);
   const [workspaceConflict, setWorkspaceConflict] = useState(null);
@@ -1964,7 +1995,7 @@ function Modal({ title, children, onClose, wide = false }) {
   );
 }
 
-function WhatsappSendModal({ templates, payload, onClose }) {
+function WhatsappSendModal({ templates, payload, onClose, onSent }) {
   const list = templates && templates.length ? templates : DEFAULT_WA_TEMPLATES;
   const preferred =
     list.find((t) => t.category === payload.category) || list[0];
@@ -1984,6 +2015,7 @@ function WhatsappSendModal({ templates, payload, onClose }) {
       "_blank",
       "noopener",
     );
+    onSent?.(text.trim());
     onClose();
   };
   return (
@@ -2038,6 +2070,21 @@ function useWhatsappSender({ db, setToast }) {
       templates={templates}
       payload={payload}
       onClose={() => setPayload(null)}
+      onSent={(text) =>
+        logInteraction({
+          channel: "whatsapp",
+          direction: "out",
+          contactId: payload.contactId || "",
+          contactName:
+            payload.contactName ||
+            payload.vars?.nome ||
+            payload.vars?.cliente ||
+            payload.vars?.name ||
+            "",
+          contactHandle: payload.phone || "",
+          body: text,
+        })
+      }
     />
   ) : null;
   return { open, modal };
@@ -8665,6 +8712,321 @@ function Appointments({ db, update, business, setToast, go }) {
   );
 }
 
+const INBOX_CHANNEL_META = {
+  whatsapp: { label: "WhatsApp", icon: MessageSquareText },
+  email: { label: "E-mail", icon: Mail },
+  sms: { label: "SMS", icon: Phone },
+  phone: { label: "Ligação", icon: Phone },
+  form: { label: "Formulário do site", icon: Globe2 },
+  note: { label: "Nota interna", icon: NotebookPen },
+};
+
+const inboxChannel = (id) =>
+  INBOX_CHANNEL_META[id] || { label: id, icon: Inbox };
+
+// Agrupa interações por contato (id, telefone/e-mail ou nome), mais recente
+// primeiro, contando as não lidas de cada thread.
+export const groupInteractions = (items) => {
+  const map = new Map();
+  for (const it of items || []) {
+    const key =
+      it.contactId || it.contactHandle || it.contactName || "sem-contato";
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        name: it.contactName || it.contactHandle || "Sem identificação",
+        handle: it.contactHandle || "",
+        items: [],
+        unread: 0,
+        last: it.createdAt,
+      });
+    }
+    const thread = map.get(key);
+    thread.items.push(it);
+    if (!it.readAt) thread.unread += 1;
+    if (String(it.createdAt) > String(thread.last)) thread.last = it.createdAt;
+    if (thread.name === "Sem identificação" && it.contactName)
+      thread.name = it.contactName;
+    if (!thread.handle && it.contactHandle) thread.handle = it.contactHandle;
+  }
+  return [...map.values()].sort((a, b) =>
+    String(b.last).localeCompare(String(a.last)),
+  );
+};
+
+function InboxRegisterModal({ onClose, onSaved, setToast }) {
+  const [form, setForm] = useState({
+    channel: "note",
+    direction: "in",
+    contactName: "",
+    contactHandle: "",
+    subject: "",
+    body: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    if (!form.body.trim() || saving) return;
+    setSaving(true);
+    const res = await logInteraction(form);
+    setSaving(false);
+    if (res?.ok) {
+      onSaved();
+      onClose();
+      setToast?.("Registro adicionado à caixa de entrada");
+    } else {
+      setToast?.("Não foi possível registrar agora.");
+    }
+  };
+  return (
+    <Modal title="Registrar contato" onClose={onClose}>
+      <div className="modal-body">
+        <div className="form-grid">
+          <Field label="Canal">
+            <select
+              value={form.channel}
+              onChange={(e) => setForm({ ...form, channel: e.target.value })}
+            >
+              {Object.entries(INBOX_CHANNEL_META).map(([id, meta]) => (
+                <option key={id} value={id}>
+                  {meta.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Sentido">
+            <select
+              value={form.direction}
+              onChange={(e) => setForm({ ...form, direction: e.target.value })}
+            >
+              <option value="in">Recebido</option>
+              <option value="out">Enviado</option>
+            </select>
+          </Field>
+        </div>
+        <div className="form-grid">
+          <Field label="Contato">
+            <input
+              value={form.contactName}
+              onChange={(e) =>
+                setForm({ ...form, contactName: e.target.value })
+              }
+              placeholder="Nome do cliente ou empresa"
+            />
+          </Field>
+          <Field label="Telefone ou e-mail" hint="Ajuda a reunir a conversa.">
+            <input
+              value={form.contactHandle}
+              onChange={(e) =>
+                setForm({ ...form, contactHandle: e.target.value })
+              }
+              placeholder="(11) 90000-0000 ou email@..."
+            />
+          </Field>
+        </div>
+        <Field label="Mensagem ou anotação">
+          <textarea
+            rows={4}
+            value={form.body}
+            onChange={(e) => setForm({ ...form, body: e.target.value })}
+            placeholder="O que foi conversado?"
+          />
+        </Field>
+        <div className="wa-send-actions">
+          <Button variant="ghost" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button icon={Check} disabled={!form.body.trim() || saving} onClick={save}>
+            {saving ? "Registrando..." : "Registrar"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function InboxThread({ thread, onMarkRead }) {
+  const [open, setOpen] = useState(thread.unread > 0);
+  return (
+    <div className={`inbox-thread${thread.unread ? " has-unread" : ""}`}>
+      <button
+        type="button"
+        className="inbox-thread-head"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <span className="inbox-avatar">
+          {(thread.name || "?").trim().charAt(0).toUpperCase()}
+        </span>
+        <span className="inbox-thread-info">
+          <strong>{thread.name}</strong>
+          {thread.handle && <small>{thread.handle}</small>}
+        </span>
+        <span className="inbox-thread-meta">
+          {thread.unread > 0 && (
+            <span className="inbox-unread">{thread.unread}</span>
+          )}
+          <small>{new Date(thread.last).toLocaleDateString("pt-BR")}</small>
+        </span>
+      </button>
+      {open && (
+        <div className="inbox-messages">
+          {thread.items
+            .slice()
+            .sort((a, b) =>
+              String(b.createdAt).localeCompare(String(a.createdAt)),
+            )
+            .map((it) => {
+              const meta = inboxChannel(it.channel);
+              const Icon = meta.icon;
+              return (
+                <div
+                  key={it.id}
+                  className={`inbox-message ${it.direction}${it.readAt ? "" : " unread"}`}
+                >
+                  <span className="inbox-message-icon">
+                    <Icon />
+                  </span>
+                  <span className="inbox-message-body">
+                    <span className="inbox-message-top">
+                      <span className="inbox-chip">
+                        {meta.label} ·{" "}
+                        {it.direction === "out" ? "Enviado" : "Recebido"}
+                      </span>
+                      <small>{new Date(it.createdAt).toLocaleString("pt-BR")}</small>
+                    </span>
+                    {it.subject && <strong>{it.subject}</strong>}
+                    {it.body && <p>{it.body}</p>}
+                  </span>
+                </div>
+              );
+            })}
+          {thread.unread > 0 && (
+            <div className="inbox-thread-actions">
+              <Button
+                variant="ghost"
+                icon={Check}
+                onClick={() =>
+                  onMarkRead(
+                    thread.items.filter((i) => !i.readAt).map((i) => i.id),
+                  )
+                }
+              >
+                Marcar como lidas
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InboxPage({ db, business, setToast, go }) {
+  const [items, setItems] = useState(null);
+  const [filter, setFilter] = useState("todos");
+  const [registering, setRegistering] = useState(false);
+  const load = () => {
+    setItems(null);
+    fetch(inboxUrl(), { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((d) => setItems(d.items || []))
+      .catch(() => setItems([]));
+  };
+  useEffect(() => {
+    load();
+  }, []);
+  const markRead = (ids) => {
+    if (!ids.length) return;
+    const now = new Date().toISOString();
+    setItems((prev) =>
+      (prev || []).map((it) =>
+        ids.includes(it.id) ? { ...it, readAt: it.readAt || now } : it,
+      ),
+    );
+    fetch(inboxUrl(), {
+      method: "PATCH",
+      headers: { "content-type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ ids }),
+    }).catch(() => {});
+  };
+  const all = items || [];
+  const unreadTotal = all.filter((i) => !i.readAt).length;
+  const filtered = all.filter((it) => {
+    if (filter === "todos") return true;
+    if (filter === "naolidas") return !it.readAt;
+    return it.channel === filter;
+  });
+  const threads = groupInteractions(filtered);
+  const chips = [
+    ["todos", "Tudo"],
+    ["naolidas", `Não lidas${unreadTotal ? ` (${unreadTotal})` : ""}`],
+    ["whatsapp", "WhatsApp"],
+    ["email", "E-mail"],
+    ["form", "Formulários"],
+    ["note", "Notas"],
+  ];
+  return (
+    <PageTitle
+      eyebrow="VENDAS E CLIENTES"
+      title="Caixa de entrada"
+      text="Tudo que entra e sai — WhatsApp, e-mail, formulários e ligações — reunido por contato."
+      action={
+        <Button icon={Plus} onClick={() => setRegistering(true)}>
+          Registrar contato
+        </Button>
+      }
+    >
+      <div className="inbox-filters">
+        {chips.map(([id, label]) => (
+          <button
+            key={id}
+            className={`inbox-chip-btn${filter === id ? " active" : ""}`}
+            onClick={() => setFilter(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {items === null ? (
+        <p className="inbox-loading">Carregando a caixa de entrada...</p>
+      ) : threads.length === 0 ? (
+        <Empty
+          icon={Inbox}
+          title={
+            all.length === 0
+              ? "Sua caixa de entrada está pronta"
+              : "Nada neste filtro"
+          }
+          text={
+            all.length === 0
+              ? "Cada WhatsApp ou e-mail que você enviar pelo app aparece aqui, reunido por contato. Você também pode registrar uma conversa manualmente."
+              : "Troque o filtro acima para ver outros registros."
+          }
+          action={all.length === 0 ? "Registrar um contato" : undefined}
+          onAction={all.length === 0 ? () => setRegistering(true) : undefined}
+        />
+      ) : (
+        <div className="inbox-list">
+          {threads.map((thread) => (
+            <InboxThread
+              key={thread.key}
+              thread={thread}
+              onMarkRead={markRead}
+            />
+          ))}
+        </div>
+      )}
+      {registering && (
+        <InboxRegisterModal
+          onClose={() => setRegistering(false)}
+          onSaved={load}
+          setToast={setToast}
+        />
+      )}
+    </PageTitle>
+  );
+}
+
 function Contacts({ db, update, business, setToast, go, searchSeed, clearSearchSeed }) {
   const wa = useWhatsappSender({ db, setToast });
   const importRef = useRef(null);
@@ -14240,12 +14602,23 @@ function EmailComposer({ onClose, setToast, initial }) {
       .then((d) => setGoogleId(d.googleClientId || ""))
       .catch(() => {});
   }, []);
+  const logEmail = () =>
+    logInteraction({
+      channel: "email",
+      direction: "out",
+      contactId: initial?.contactId || "",
+      contactName: initial?.contactName || "",
+      contactHandle: form.to.trim(),
+      subject: form.subject,
+      body: form.body,
+    });
   const sendReal = async () => {
     if (!form.to.trim() || sending) return;
     setSending(true);
     setSendError("");
     try {
       await sendGmailReal(googleId, form);
+      logEmail();
       setToast("E-mail enviado pela sua conta Google");
       onClose();
     } catch (error) {
@@ -14262,6 +14635,7 @@ function EmailComposer({ onClose, setToast, initial }) {
       "_blank",
       "noopener",
     );
+    logEmail();
     setToast("Rascunho aberto no Gmail para sua confirmação");
   };
   const openOutlook = () => {
@@ -14270,9 +14644,11 @@ function EmailComposer({ onClose, setToast, initial }) {
       "_blank",
       "noopener",
     );
+    logEmail();
     setToast("Rascunho aberto no Outlook para sua confirmação");
   };
   const openClient = () => {
+    logEmail();
     location.href = `mailto:${encodeURIComponent(form.to)}?subject=${encodeURIComponent(form.subject)}&body=${encodeURIComponent(form.body)}`;
   };
   return (
@@ -18769,6 +19145,15 @@ export default function App() {
             go={go}
             searchSeed={searchSeed}
             clearSearchSeed={clearSearchSeed}
+          />
+        );
+      case "caixa":
+        return (
+          <InboxPage
+            db={db}
+            business={business}
+            setToast={setToast}
+            go={go}
           />
         );
       case "contatos":

@@ -1598,6 +1598,138 @@ async function handleProductEvents(request, env, user, url) {
   });
 }
 
+const safeParseJson = (value) => {
+  try {
+    const parsed = JSON.parse(value || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const INBOX_CHANNELS = new Set([
+  "whatsapp",
+  "email",
+  "sms",
+  "phone",
+  "form",
+  "note",
+]);
+const INBOX_DIRECTIONS = new Set(["in", "out"]);
+
+// Caixa de entrada unificada. Tabela relacional por espaço (migração 0015):
+// todo membro do espaço enxerga a caixa compartilhada do negócio; o autor de
+// cada registro fica gravado. É o primeiro passo de tirar dado de alto volume
+// do blob JSON do workspace.
+async function handleInbox(request, env, user, url) {
+  const ownerId = url.searchParams.get("owner") || user.id;
+  const role = await membershipRole(env, user.id, ownerId);
+  if (!role) return json({ error: "Você não tem acesso a este espaço." }, 403);
+
+  if (request.method === "GET") {
+    const rows = await env.DB.prepare(
+      `SELECT id, author_id, contact_id, contact_name, contact_handle,
+              channel, direction, subject, body, meta_json, created_at, read_at
+         FROM interactions
+        WHERE workspace_owner_id = ?
+        ORDER BY created_at DESC
+        LIMIT 500`,
+    )
+      .bind(ownerId)
+      .all();
+    const items = (rows.results || []).map((r) => ({
+      id: r.id,
+      authorId: r.author_id,
+      contactId: r.contact_id || "",
+      contactName: r.contact_name || "",
+      contactHandle: r.contact_handle || "",
+      channel: r.channel,
+      direction: r.direction,
+      subject: r.subject || "",
+      body: r.body || "",
+      meta: safeParseJson(r.meta_json),
+      createdAt: r.created_at,
+      readAt: r.read_at || null,
+    }));
+    return json({ items });
+  }
+
+  if (request.method === "POST") {
+    if (!allowed(`inbox:${user.id}`, 120))
+      return json({ error: "Muitos registros em pouco tempo." }, 429);
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return json({ error: "Registro inválido." }, 400);
+    }
+    const channel = String(body.channel || "").trim();
+    if (!INBOX_CHANNELS.has(channel))
+      return json({ error: "Canal inválido." }, 400);
+    const direction = INBOX_DIRECTIONS.has(body.direction)
+      ? body.direction
+      : "out";
+    const text = String(body.body || "").slice(0, 4000);
+    const subject = String(body.subject || "").slice(0, 200);
+    if (!text.trim() && !subject.trim())
+      return json({ error: "Escreva algo para registrar." }, 400);
+    const meta =
+      body.meta && typeof body.meta === "object" ? body.meta : {};
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await env.DB.prepare(
+      `INSERT INTO interactions
+        (id, workspace_owner_id, author_id, contact_id, contact_name,
+         contact_handle, channel, direction, subject, body, meta_json,
+         created_at, read_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        id,
+        ownerId,
+        user.id,
+        String(body.contactId || "").slice(0, 80) || null,
+        String(body.contactName || "").slice(0, 160),
+        String(body.contactHandle || "").slice(0, 160),
+        channel,
+        direction,
+        subject,
+        text,
+        JSON.stringify(meta).slice(0, 2000),
+        now,
+        // registros que eu mesmo envio já nascem lidos; recebidos ficam por ler
+        direction === "out" ? now : null,
+      )
+      .run();
+    return json({ ok: true, id, createdAt: now });
+  }
+
+  if (request.method === "PATCH") {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return json({ error: "Requisição inválida." }, 400);
+    }
+    const ids = Array.isArray(body.ids)
+      ? body.ids.filter((v) => typeof v === "string").slice(0, 500)
+      : [];
+    if (!ids.length) return json({ ok: true, updated: 0 });
+    const now = new Date().toISOString();
+    const placeholders = ids.map(() => "?").join(", ");
+    const result = await env.DB.prepare(
+      `UPDATE interactions SET read_at = ?
+        WHERE workspace_owner_id = ? AND read_at IS NULL
+          AND id IN (${placeholders})`,
+    )
+      .bind(now, ownerId, ...ids)
+      .run();
+    return json({ ok: true, updated: result.meta?.changes || 0 });
+  }
+
+  return json({ error: "Método não permitido." }, 405);
+}
+
 const escMail = (v) =>
   String(v || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
@@ -3877,6 +4009,7 @@ export default {
       url.pathname === "/api/workspace" ||
       url.pathname === "/api/tasks/action" ||
       url.pathname === "/api/events" ||
+      url.pathname === "/api/inbox" ||
       url.pathname.startsWith("/api/collab") ||
       url.pathname === "/api/tasks/notify" ||
       url.pathname.startsWith("/api/sites/") ||
@@ -3888,6 +4021,7 @@ export default {
         (url.pathname === "/api/workspace" ||
           url.pathname === "/api/tasks/action" ||
           url.pathname === "/api/events" ||
+          url.pathname === "/api/inbox" ||
           url.pathname.startsWith("/api/collab") ||
           url.pathname.startsWith("/api/sites/") ||
           url.pathname.startsWith("/api/push/")) &&
@@ -3931,6 +4065,17 @@ export default {
         } catch (error) {
           console.error("Product event error", error);
           return json({ error: "Não foi possível registrar este evento." }, 500);
+        }
+      }
+      if (url.pathname === "/api/inbox") {
+        try {
+          return await handleInbox(request, env, user, url);
+        } catch (error) {
+          console.error("Inbox error", error);
+          return json(
+            { error: "Não foi possível acessar a caixa de entrada." },
+            500,
+          );
         }
       }
       if (url.pathname === "/api/tasks/notify") {
