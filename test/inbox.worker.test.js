@@ -133,6 +133,39 @@ describe("caixa de entrada unificada (/api/inbox)", () => {
     expect(after.body.items[0].readAt).toBeTruthy();
   });
 
+  it("uma mensagem do formulário do site cai na caixa de entrada", async () => {
+    const owner = await createUser("ib-site-owner");
+    const now = new Date().toISOString();
+    await env.DB.prepare(
+      `INSERT INTO public_sites
+        (id, owner_id, slug, name, description, html, pages_json, published, created_at, updated_at)
+      VALUES (?, ?, ?, 'Site de teste', '', '<html></html>', '[]', 1, ?, ?)`,
+    )
+      .bind("site-ib", owner.id, "site-ib-slug", now, now)
+      .run();
+
+    const submit = await worker.fetch(
+      new Request("https://app.test/api/public-sites/site-ib-slug/leads", {
+        method: "POST",
+        headers: { "content-type": "application/json", "cf-connecting-ip": nextIp() },
+        body: JSON.stringify({
+          name: "Cliente do Site",
+          email: "cliente@site.com",
+          message: "Vocês lavam tapetes?",
+        }),
+      }),
+      env,
+    );
+    expect(submit.status).toBe(200);
+
+    const list = await readJson(await inboxRequest(owner));
+    const formItem = list.body.items.find((i) => i.channel === "form");
+    expect(formItem).toBeTruthy();
+    expect(formItem.direction).toBe("in");
+    expect(formItem.contactName).toBe("Cliente do Site");
+    expect(formItem.readAt).toBeNull();
+  });
+
   it("recusa canal inválido e registro vazio", async () => {
     const owner = await createUser("ib-owner-4");
     const badChannel = await readJson(

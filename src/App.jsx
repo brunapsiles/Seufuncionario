@@ -9812,6 +9812,81 @@ function InboxPage({ db, business, setToast, go }) {
   );
 }
 
+// Linha do tempo de um contato: reúne as interações da caixa de entrada que
+// batem com este contato (por id, telefone, e-mail ou nome). Reaproveita o
+// visual das mensagens da caixa. Read-only.
+function ContactTimeline({ contact }) {
+  const [items, setItems] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(inboxUrl(), { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((d) => {
+        if (!cancelled) setItems(d.items || []);
+      })
+      .catch(() => {
+        if (!cancelled) setItems([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const links = contactLinks(
+    contact?.rawContact || contact?.phone || contact?.email || "",
+  );
+  const digits = (s) => String(s || "").replace(/\D/g, "");
+  const phone = digits(links.phone || contact?.phone);
+  const email = String(links.email || contact?.email || "").toLowerCase();
+  const name = String(contact?.name || "").toLowerCase();
+  const matches = (it) => {
+    if (contact?.id && it.contactId && it.contactId === contact.id) return true;
+    const handleDigits = digits(it.contactHandle);
+    if (phone && handleDigits && handleDigits.slice(-8) === phone.slice(-8))
+      return true;
+    if (email && String(it.contactHandle || "").toLowerCase() === email)
+      return true;
+    if (name && String(it.contactName || "").toLowerCase() === name)
+      return true;
+    return false;
+  };
+  const mine = (items || []).filter(matches);
+  if (items === null)
+    return <p className="inbox-loading">Carregando histórico...</p>;
+  if (mine.length === 0)
+    return (
+      <div className="contact-timeline-empty">
+        Ainda não há mensagens registradas com este contato. WhatsApp e e-mails
+        que você enviar pelo app aparecem aqui.
+      </div>
+    );
+  return (
+    <div className="contact-timeline">
+      {mine.slice(0, 20).map((it) => {
+        const meta = inboxChannel(it.channel);
+        const Icon = meta.icon;
+        return (
+          <div key={it.id} className={`inbox-message ${it.direction}`}>
+            <span className="inbox-message-icon">
+              <Icon />
+            </span>
+            <span className="inbox-message-body">
+              <span className="inbox-message-top">
+                <span className="inbox-chip">
+                  {meta.label} ·{" "}
+                  {it.direction === "out" ? "Enviado" : "Recebido"}
+                </span>
+                <small>{new Date(it.createdAt).toLocaleString("pt-BR")}</small>
+              </span>
+              {it.subject && <strong>{it.subject}</strong>}
+              {it.body && <p>{it.body}</p>}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Contacts({ db, update, business, setToast, go, searchSeed, clearSearchSeed }) {
   const wa = useWhatsappSender({ db, setToast });
   const importRef = useRef(null);
@@ -10100,6 +10175,18 @@ function Contacts({ db, update, business, setToast, go, searchSeed, clearSearchS
               onChange={(next) => setForm({ ...form, ...next })}
               teams={db.teams}
             />
+            {editing && (
+              <div className="field">
+                <span>Histórico com este contato</span>
+                <ContactTimeline
+                  contact={{
+                    id: editing,
+                    name: form.name,
+                    rawContact: form.rawContact,
+                  }}
+                />
+              </div>
+            )}
             <div className="modal-actions">
               <Button variant="ghost" onClick={() => setModal(false)}>
                 Cancelar

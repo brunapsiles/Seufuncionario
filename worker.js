@@ -2850,7 +2850,7 @@ async function handlePublicSite(request, env, url) {
   const dedupe = await sha256(
     `${site.id}|${ip}|${email}|${phone}|${message}|${day}`,
   );
-  await env.DB.prepare(
+  const leadResult = await env.DB.prepare(
     `INSERT OR IGNORE INTO public_site_leads (id, site_id, owner_id, name, email, phone, message, dedupe_key, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
@@ -2866,6 +2866,38 @@ async function handlePublicSite(request, env, url) {
       new Date().toISOString(),
     )
     .run();
+  // Jornada transversal: a mensagem do formulário do site cai também na caixa
+  // de entrada unificada (canal de entrada real, sem serviço pago). Só quando
+  // o lead é genuinamente novo, para respeitar a deduplicação diária.
+  if (leadResult.meta?.changes > 0) {
+    try {
+      await env.DB.prepare(
+        `INSERT INTO interactions
+          (id, workspace_owner_id, author_id, contact_id, contact_name,
+           contact_handle, channel, direction, subject, body, meta_json,
+           created_at, read_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+        .bind(
+          crypto.randomUUID(),
+          site.owner_id,
+          site.owner_id,
+          null,
+          name,
+          email || phone,
+          "form",
+          "in",
+          "Mensagem pelo site",
+          message || "(sem mensagem)",
+          "{}",
+          new Date().toISOString(),
+          null,
+        )
+        .run();
+    } catch (error) {
+      console.error("inbox from site form", error);
+    }
+  }
   return json({ ok: true });
 }
 
