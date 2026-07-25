@@ -649,6 +649,69 @@ export const pushNotification = (
   ].slice(0, 50);
 };
 
+// ── Saúde do espaço de sincronização ────────────────────────────────────
+// O workspace é sincronizado como um único JSON; quando ele cresce demais,
+// a sincronização fica lenta e pode falhar. Estas funções puras mostram o
+// que ocupa espaço (por coleção) e permitem liberar o maior ofensor seguro
+// (conversas de IA antigas) sem tocar no coração da sincronização.
+const WORKSPACE_COLLECTION_LABELS = {
+  conversations: "Conversas de IA",
+  media: "Mídia gerada",
+  documents: "Documentos",
+  history: "Histórico de projetos",
+  sites: "Sites",
+  tasks: "Tarefas",
+  leads: "CRM (leads)",
+  transactions: "Financeiro",
+  orders: "Pedidos",
+  quotes: "Orçamentos",
+  products: "Produtos",
+  timeEntries: "Apontamentos de horas",
+  appointments: "Agendamentos",
+  contacts: "Contatos",
+  certificates: "Certificados",
+  notifications: "Notificações",
+};
+
+const approxBytes = (value) => {
+  const str = JSON.stringify(value) || "";
+  try {
+    return new Blob([str]).size;
+  } catch {
+    return str.length;
+  }
+};
+
+export const workspaceBreakdown = (db) => {
+  const rows = Object.keys(WORKSPACE_COLLECTION_LABELS)
+    .map((key) => {
+      const value = db?.[key];
+      if (!Array.isArray(value) || value.length === 0) return null;
+      return {
+        key,
+        label: WORKSPACE_COLLECTION_LABELS[key],
+        count: value.length,
+        bytes: approxBytes(value),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.bytes - a.bytes);
+  const total = rows.reduce((sum, row) => sum + row.bytes, 0);
+  return { rows, total };
+};
+
+// Mantém apenas as `keep` conversas mais recentes (por createdAt), para
+// liberar espaço sem perder o histórico ativo. Pura e testável.
+export const trimOldConversations = (conversations, keep = 5) => {
+  const list = Array.isArray(conversations) ? conversations : [];
+  if (list.length <= keep) return list;
+  return [...list]
+    .sort((a, b) =>
+      String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
+    )
+    .slice(0, keep);
+};
+
 // ── DAS do MEI ──────────────────────────────────────────────────────────
 // O imposto mensal do MEI (guia DAS) vence todo dia 20. Atraso gera juros e,
 // acumulado, pode até desenquadrar o MEI — por isso um lembrete automático é
@@ -18976,6 +19039,25 @@ function AccountSettings({ db, update, setToast, go }) {
     100,
     Math.round((workspaceSizeBytes / workspaceSizeLimit) * 100),
   );
+  const spaceBreakdown = workspaceBreakdown(db);
+  const oldConversations = Math.max(
+    0,
+    (db.conversations || []).length - 5,
+  );
+  const freeUpSpace = () => {
+    if (
+      !confirm(
+        `Isto vai apagar ${oldConversations} conversa(s) de IA mais antiga(s), mantendo as 5 mais recentes. O histórico apagado não pode ser recuperado — exporte seus dados antes se quiser guardá-lo. Continuar?`,
+      )
+    )
+      return;
+    update((d) => ({
+      ...d,
+      conversations: trimOldConversations(d.conversations, 5),
+      selectedConversationId: null,
+    }));
+    setToast("Conversas de IA antigas removidas — espaço liberado");
+  };
   const theme = db.preferences.theme;
   const setTheme = (t) =>
     update((d) => ({ ...d, preferences: { ...d.preferences, theme: t } }));
@@ -19408,6 +19490,41 @@ function AccountSettings({ db, update, setToast, go }) {
                   ? "Seu espaço está quase cheio. Exporte ou arquive itens antigos (documentos, tarefas concluídas, histórico) para evitar falhas de sincronização."
                   : "Seu espaço de sincronização está enchendo. Vale exportar ou arquivar itens antigos com o tempo."}
               </span>
+            </div>
+          )}
+          {spaceBreakdown.rows.length > 0 && (
+            <div className="space-breakdown">
+              <span className="space-breakdown-title">
+                O que está usando o espaço
+              </span>
+              {spaceBreakdown.rows.slice(0, 6).map((row) => {
+                const pct = spaceBreakdown.total
+                  ? Math.round((row.bytes / spaceBreakdown.total) * 100)
+                  : 0;
+                return (
+                  <div key={row.key} className="space-row">
+                    <div className="space-row-head">
+                      <span>{row.label}</span>
+                      <small>
+                        {Math.max(1, Math.round(row.bytes / 1024))} KB · {row.count}
+                      </small>
+                    </div>
+                    <div className="space-bar">
+                      <span style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+              {oldConversations > 0 && (
+                <Button
+                  variant="ghost"
+                  icon={Trash2}
+                  onClick={freeUpSpace}
+                >
+                  Liberar espaço: apagar {oldConversations} conversa(s) de IA
+                  antiga(s)
+                </Button>
+              )}
             </div>
           )}
           <div className="settings-actions col">
