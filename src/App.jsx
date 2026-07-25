@@ -9507,10 +9507,44 @@ function Quotes({ db, update, business, setToast, go }) {
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(blankQuote);
+  const [publicStatus, setPublicStatus] = useState({});
   const wa = useWhatsappSender({ db, setToast });
   const quotes = (db.quotes || []).filter(
     (q) => !business || !q.businessId || q.businessId === business.id,
   );
+  useEffect(() => {
+    fetch("/api/quotes/status", { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((d) => {
+        const map = {};
+        for (const it of d.items || []) map[it.quoteId] = it;
+        setPublicStatus(map);
+      })
+      .catch(() => {});
+  }, [db.quotes?.length]);
+  const shareQuote = async (q) => {
+    try {
+      const r = await fetch("/api/quotes/share", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ quote: q, businessName: business?.name || "" }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.url) throw new Error(d.error || "Falha ao gerar o link");
+      setPublicStatus((prev) => ({
+        ...prev,
+        [q.id]: { quoteId: q.id, token: d.token, status: "pendente" },
+      }));
+      try {
+        await navigator.clipboard.writeText(d.url);
+        setToast("Link do orçamento copiado — envie ao cliente");
+      } catch {
+        setToast(`Link do orçamento: ${d.url}`);
+      }
+    } catch (error) {
+      setToast(error.message || "Não foi possível gerar o link agora");
+    }
+  };
   const openQuote = (q = null) => {
     setEditing(q?.id || null);
     setForm(
@@ -9709,6 +9743,19 @@ function Quotes({ db, update, business, setToast, go }) {
                   <span className={`quote-status ${st.tone}`}>{st.label}</span>
                 </div>
                 <div className="quote-total">{money(quoteTotal(q))}</div>
+                {publicStatus[q.id]?.status === "aprovado" &&
+                  q.status !== "aprovado" && (
+                    <div className="quote-client-decision ok">
+                      <CheckCircle2 /> Aprovado pelo cliente — gere o pedido
+                      abaixo
+                    </div>
+                  )}
+                {publicStatus[q.id]?.status === "recusado" &&
+                  q.status !== "recusado" && (
+                    <div className="quote-client-decision bad">
+                      <CircleAlert /> Recusado pelo cliente
+                    </div>
+                  )}
                 <div className="quote-actions">
                   <Button variant="ghost" icon={Pencil} onClick={() => openQuote(q)}>
                     Editar
@@ -9723,6 +9770,15 @@ function Quotes({ db, update, business, setToast, go }) {
                         Enviar
                       </Button>
                     )}
+                  {q.status !== "aprovado" && (
+                    <Button
+                      variant="ghost"
+                      icon={Link2}
+                      onClick={() => shareQuote(q)}
+                    >
+                      {publicStatus[q.id] ? "Copiar link" : "Link para aprovar"}
+                    </Button>
+                  )}
                   {q.status !== "aprovado" && (
                     <Button icon={CheckCircle2} onClick={() => approveToOrder(q)}>
                       Aprovar e gerar pedido
