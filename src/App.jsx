@@ -10693,9 +10693,20 @@ function Catalog({ db, update, business, setToast, go }) {
               businessId: item.businessId,
               ownerId: db.user.id,
             }),
-      transactions: receita
-        ? [receita, ...(d.transactions || [])]
-        : d.transactions || [],
+      transactions: editingOrder
+        ? // ao editar, mantém a receita vinculada em sincronia com o novo total
+          (d.transactions || []).map((t) =>
+            t.sourceOrderId === item.id
+              ? {
+                  ...t,
+                  value: item.total,
+                  description: `Pedido — ${item.clientName}`,
+                }
+              : t,
+          )
+        : receita
+          ? [receita, ...(d.transactions || [])]
+          : d.transactions || [],
     }));
     if (!editingOrder && item.channel !== "Mesa" && item.clientName) {
       const links = contactLinks(item.clientContact);
