@@ -72,6 +72,8 @@ import {
   Phone,
   NotebookPen,
   Pencil,
+  BarChart3,
+  TrendingDown,
   Image as ImageIcon,
   Video,
   Link2,
@@ -181,6 +183,7 @@ const nav = [
   ["frota", "Frota e Fretes", Truck],
   ["horas", "Horas e Faturamento", Clock3],
   ["financeiro", "Financeiro", WalletCards],
+  ["resultados", "Resultados", BarChart3],
   ["operacao", "Operação", Workflow],
   ["desenvolvimento", "Desenvolvimento", TrendingUp],
   ["sites", "Sites e Materiais", PanelsTopLeft],
@@ -214,7 +217,7 @@ const navGroups = [
     label: "OPERAÇÃO",
     items: ["produtos", "frota", "horas", "operacao", "desenvolvimento"],
   },
-  { label: "FINANCEIRO", items: ["financeiro"] },
+  { label: "FINANCEIRO", items: ["financeiro", "resultados"] },
   {
     label: "CONTEÚDO",
     items: ["sites", "documentos", "ferramentas", "estudio"],
@@ -1153,6 +1156,77 @@ export const computeMyWork = (db, userId, business, ymdValue = today()) => {
       .length,
     overdue: active.filter((t) => t.due && t.due < ymdValue).length,
     done: mine.filter((t) => t.status === "Concluído").length,
+  };
+};
+
+// Painel de resultados do dono: transforma os dados já conectados (caixa,
+// pedidos, orçamentos) em indicadores. Puro e testável. Janela de 30 dias
+// com comparação contra os 30 anteriores para a tendência.
+export const computeBusinessInsights = (db, business, nowMs = Date.now()) => {
+  const inBiz = (x) =>
+    !business || !x?.businessId || x.businessId === business.id;
+  const ymd = (ms) => new Date(ms).toISOString().slice(0, 10);
+  const cut30 = ymd(nowMs - 30 * 86400000);
+  const cut60 = ymd(nowMs - 60 * 86400000);
+  const dateOf = (x) => String(x?.date || x?.createdAt || "").slice(0, 10);
+
+  const receitas = (db?.transactions || []).filter(
+    (t) => inBiz(t) && t.type === "Receita",
+  );
+  const sumIn = (from, to) =>
+    receitas
+      .filter((t) => {
+        const d = dateOf(t);
+        return d && d >= from && (!to || d < to);
+      })
+      .reduce((s, t) => s + Number(t.value || 0), 0);
+  const revenue30 = sumIn(cut30, null);
+  const revenuePrev = sumIn(cut60, cut30);
+  const revenueTrend =
+    revenuePrev > 0
+      ? Math.round(((revenue30 - revenuePrev) / revenuePrev) * 100)
+      : revenue30 > 0
+        ? 100
+        : 0;
+
+  const orders = (db?.orders || []).filter(inBiz);
+  const orders30 = orders.filter((o) => dateOf(o) >= cut30);
+  const ordersCount = orders30.length;
+  const avgTicket = ordersCount
+    ? Math.round(
+        orders30.reduce((s, o) => s + Number(o.total || 0), 0) / ordersCount,
+      )
+    : 0;
+
+  const quotes = (db?.quotes || []).filter(inBiz);
+  const decided = quotes.filter(
+    (q) => q.status === "aprovado" || q.status === "recusado",
+  ).length;
+  const approved = quotes.filter((q) => q.status === "aprovado").length;
+  const conversion = decided ? Math.round((approved / decided) * 100) : 0;
+
+  const byClient = new Map();
+  for (const o of orders) {
+    const key = (o.clientName || "").trim() || "Sem nome";
+    const cur = byClient.get(key) || { name: key, total: 0, orders: 0 };
+    cur.total += Number(o.total || 0);
+    cur.orders += 1;
+    byClient.set(key, cur);
+  }
+  const topClients = [...byClient.values()]
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 5);
+
+  return {
+    revenue30,
+    revenueTrend,
+    ordersCount,
+    avgTicket,
+    conversion,
+    approved,
+    decided,
+    topClients,
+    hasData: receitas.length > 0 || orders.length > 0 || quotes.length > 0,
   };
 };
 
@@ -9136,6 +9210,115 @@ function InboxThread({ thread, onMarkRead }) {
         </div>
       )}
     </div>
+  );
+}
+
+function Insights({ db, business, go }) {
+  const ins = computeBusinessInsights(db, business);
+  const trendUp = ins.revenueTrend >= 0;
+  const maxClient = Math.max(1, ...ins.topClients.map((c) => c.total));
+  const cards = [
+    {
+      label: "Receita (30 dias)",
+      value: money(ins.revenue30),
+      sub: `${trendUp ? "+" : ""}${ins.revenueTrend}% vs. 30 dias anteriores`,
+      icon: WalletCards,
+      trend: trendUp,
+    },
+    {
+      label: "Pedidos (30 dias)",
+      value: String(ins.ordersCount),
+      sub: "registrados no período",
+      icon: ShoppingBag,
+    },
+    {
+      label: "Ticket médio",
+      value: money(ins.avgTicket),
+      sub: "por pedido no período",
+      icon: BarChart3,
+    },
+    {
+      label: "Conversão de orçamentos",
+      value: `${ins.conversion}%`,
+      sub: `${ins.approved} de ${ins.decided} decididos`,
+      icon: ReceiptText,
+    },
+  ];
+  return (
+    <PageTitle
+      eyebrow="RESULTADOS"
+      title="Como o negócio está indo"
+      text="Os números que os seus dados conectados já revelam — receita, pedidos, ticket médio e conversão de orçamentos."
+    >
+      {!ins.hasData ? (
+        <Empty
+          icon={BarChart3}
+          title="Ainda sem números para mostrar"
+          text="Registre vendas, pedidos e orçamentos que este painel passa a mostrar receita, ticket médio e conversão automaticamente."
+          action="Registrar um pedido"
+          onAction={() => go("produtos")}
+        />
+      ) : (
+        <>
+          <div className="insight-cards">
+            {cards.map((c) => {
+              const Icon = c.icon;
+              return (
+                <div key={c.label} className="insight-card">
+                  <span className="insight-icon">
+                    <Icon />
+                  </span>
+                  <strong>{c.value}</strong>
+                  <span className="insight-label">{c.label}</span>
+                  <small
+                    className={
+                      c.trend === undefined ? "" : c.trend ? "up" : "down"
+                    }
+                  >
+                    {c.trend === true && <TrendingUp />}
+                    {c.trend === false && <TrendingDown />}
+                    {c.sub}
+                  </small>
+                </div>
+              );
+            })}
+          </div>
+          <section className="section">
+            <div className="section-head">
+              <div>
+                <span className="eyebrow">TOP CLIENTES</span>
+                <h2>Quem mais comprou</h2>
+              </div>
+            </div>
+            {ins.topClients.length === 0 ? (
+              <p className="inbox-loading">
+                Registre pedidos com o nome do cliente para ver o ranking.
+              </p>
+            ) : (
+              <div className="insight-clients">
+                {ins.topClients.map((c) => (
+                  <div key={c.name} className="insight-client">
+                    <div className="insight-client-head">
+                      <span>{c.name}</span>
+                      <small>
+                        {money(c.total)} · {c.orders} pedido(s)
+                      </small>
+                    </div>
+                    <div className="space-bar">
+                      <span
+                        style={{
+                          width: `${Math.round((c.total / maxClient) * 100)}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </>
+      )}
+    </PageTitle>
   );
 }
 
@@ -20115,6 +20298,8 @@ export default function App() {
         return (
           <MyWork db={db} business={business} setToast={setToast} go={go} />
         );
+      case "resultados":
+        return <Insights db={db} business={business} go={go} />;
       case "orcamentos":
         return (
           <Quotes
