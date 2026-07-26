@@ -49,6 +49,10 @@ não sejam a `main` também estão habilitados como versões de prévia.
 7. Dados de usuários são isolados por conta; qualquer rota nova de dados exige sessão (ver `sessionUser`).
 8. Ao subir mudança visual, incrementar a versão do cache em `public/sw.js` (`seu-funcionario-vN`).
 
+## Arquitetura do frontend (quebra do monólito, em andamento)
+
+`src/App.jsx` ainda é grande (~20,8 mil linhas), mas a **camada de lógica pura** (sem React/JSX) está sendo movida para `src/domain.js`: helpers fundamentais (`uid`, `today`, `contactLinks`), gamificação (`DEFAULT_LEVELS`, `computeUserPoints`, `levelForPoints`, `levelProgress`, `computeAchievements`), `computeMyWork` e `computeBusinessInsights`. **Padrão:** `App.jsx` importa de `./domain.js` para uso interno **e reexporta** o que os testes consomem via `import { ... } from "./App"` — assim testes existentes não quebram. Ao adicionar nova lógica pura/testável, colocar em `domain.js` (não em `App.jsx`) e, se algum teste importar de `./App`, adicionar à linha de reexport. Próximos passos da quebra (ainda não feitos): extrair componentes de página com `React.lazy` para code-splitting.
+
 ## Mapa do que já existe (não duplicar)
 
 - **Auth**: e-mail+senha (PBKDF2), verificação por código de 6 dígitos via Brevo (`pending_signups`, `/api/auth/verify|resend`), login Google (`/api/auth/google`; origem autorizada e fluxo real validados), perfil (`/api/auth/profile`)
