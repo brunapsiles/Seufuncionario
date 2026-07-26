@@ -22,5 +22,7 @@ jobs:
           cache: npm
       - name: Instalar dependências
         run: npm ci
+      - name: Lint (trava em erros; avisos não bloqueiam)
+        run: npm run lint
       - name: Testar e construir
         run: npm run build

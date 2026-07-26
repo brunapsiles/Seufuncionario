@@ -16,11 +16,14 @@ Este arquivo orienta qualquer assistente de IA que trabalhe neste projeto. A tit
 
 ```bash
 npm ci            # instalar
-npm run build     # executa os testes e, se passarem, gera dist/ (não commitado)
+npm run lint      # ESLint (flat config); trava só em ERROS, avisos não bloqueiam
+npm run build     # roda lint + testes e, se passarem, gera dist/ (não commitado)
 npm test          # executa a suíte Vitest isoladamente
 npm run deploy:cloudflare                             # aplica migrações e publica
 npx wrangler d1 migrations apply seu-funcionario-db --remote   # aplica migrações novas
 ```
+
+**Lint** (`eslint.config.js`, flat config): roda no `prebuild` (antes de todo build/deploy) e no CI. Trava o build só em ERROS; hoje o único rule como erro é `react-hooks/rules-of-hooks` (0 violações — de guarda contra a classe de bug de "hooks depois de return condicional" que já mordeu aqui). O resto é AVISO (backlog para reduzir aos poucos, ~80): `no-unused-vars`, `react-hooks/exhaustive-deps`, regras novas do React Compiler (`set-state-in-effect` etc.) e `jsx-a11y` (acessibilidade). Ao mexer no código, não precisa zerar os avisos, mas **não introduza erros** (o build/CI barra).
 
 ## Deploy automático
 
