@@ -42,6 +42,10 @@ Depois de cadastrar, teste: Configurações → "Notificações do navegador" �
 
 - Exige conta de desenvolvedor Apple (US$ 99/ano). Recomendação: não fazer por enquanto.
 
+### 5. WhatsApp bidirecional de verdade (receber mensagens no app)
+
+- Hoje a Caixa de entrada registra o WhatsApp que **sai** (pelos botões do app) e recebe **e-mail e formulários do site**. Receber mensagens de WhatsApp dentro do app exige a **WhatsApp Cloud API** da Meta: tem faixa gratuita, mas pede verificação da sua empresa na Meta, um número dedicado e configuração de webhook. É uma decisão sua — sem ela, tudo o mais da caixa funciona normalmente.
+
 ## ✅ Já resolvidas
 
 - Conta Cloudflare conectada, app publicado e permanente
