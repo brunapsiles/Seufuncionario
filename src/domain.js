@@ -174,3 +174,90 @@ export const computeBusinessInsights = (db, business, nowMs = Date.now()) => {
     hasData: receitas.length > 0 || orders.length > 0 || quotes.length > 0,
   };
 };
+
+// ── Contratos / receita recorrente ──────────────────────────────────────
+// Um contrato recorrente (ex.: mensalidade de lavanderia) gera receita todo
+// mês. `history["AAAA-MM"]` guarda o mês já lançado (idempotência).
+export const recurringStatus = (contract, ymd = today()) => {
+  const ym = ymd.slice(0, 7);
+  const day = Number(ymd.slice(8, 10));
+  const dueDay = Math.min(28, Math.max(1, Number(contract?.dueDay) || 1));
+  const posted = !!contract?.history?.[ym];
+  if (!contract?.active) return { status: "off", ym, dueDay, posted };
+  if (posted) return { status: "lancado", ym, dueDay, posted: true };
+  if (day >= dueDay) return { status: "a_lancar", ym, dueDay, posted: false };
+  return { status: "agendado", ym, dueDay, posted: false };
+};
+
+// Uma receita no caixa a partir de um contrato, para o mês corrente. Pura.
+export const buildRecurringTransaction = (
+  contract,
+  { userId, businessId } = {},
+  ymd = today(),
+) => {
+  const value = Number(contract?.amount) || 0;
+  if (!(value > 0)) return null;
+  return {
+    id: uid(),
+    type: "Receita",
+    description: `Contrato — ${contract?.clientName || contract?.description || "recorrente"}`,
+    value,
+    date: ymd,
+    category: "Contratos",
+    businessId: businessId || contract?.businessId || null,
+    ownerId: userId || contract?.ownerId || null,
+    sourceRecurringId: contract?.id || null,
+  };
+};
+
+// Lançamentos automáticos: só dos contratos marcados como autoPost que estão
+// vencidos e ainda não lançados no mês. Idempotente via history[ym]. Pura.
+export const buildRecurringPostings = (
+  recurring,
+  ctx = {},
+  ymd = today(),
+) => {
+  const ym = ymd.slice(0, 7);
+  const postings = [];
+  for (const c of recurring || []) {
+    if (!c?.autoPost) continue;
+    if (recurringStatus(c, ymd).status !== "a_lancar") continue;
+    const transaction = buildRecurringTransaction(c, ctx, ymd);
+    if (transaction) postings.push({ contractId: c.id, ym, transaction });
+  }
+  return postings;
+};
+
+// Lembrete (uma notificação/mês) dos contratos MANUAIS vencidos e não lançados.
+// Os autoPost entram sozinhos, então não geram lembrete. Idempotente. Pura.
+export const buildRecurringReminder = (
+  recurring,
+  notifications,
+  userId,
+  ymd = today(),
+) => {
+  if (!userId) return null;
+  const ym = ymd.slice(0, 7);
+  const manual = (recurring || []).filter(
+    (c) => !c?.autoPost && recurringStatus(c, ymd).status === "a_lancar",
+  );
+  if (manual.length === 0) return null;
+  const notifId = `recurring-${ym}`;
+  if ((notifications || []).some((n) => n && n.id === notifId)) return null;
+  const message =
+    manual.length === 1
+      ? `O contrato recorrente de ${manual[0].clientName || "cliente"} vence este mês. Lance no caixa quando receber.`
+      : `${manual.length} contratos recorrentes vencem este mês. Lance no caixa quando receber.`;
+  return [
+    {
+      id: notifId,
+      assigneeId: userId,
+      ownerId: userId,
+      message,
+      link: "financeiro",
+      read: false,
+      createdAt: new Date().toISOString(),
+    },
+    ...(notifications || []),
+  ];
+};

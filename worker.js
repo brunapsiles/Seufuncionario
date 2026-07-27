@@ -997,6 +997,7 @@ const RESTRICTED_FIELDS = [
   "products",
   "orders",
   "quotes",
+  "recurring",
   "vehicles",
   "trips",
   "conversations",

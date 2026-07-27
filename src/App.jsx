@@ -10,6 +10,10 @@ import {
   computeAchievements,
   computeMyWork,
   computeBusinessInsights,
+  recurringStatus,
+  buildRecurringTransaction,
+  buildRecurringPostings,
+  buildRecurringReminder,
 } from "./domain.js";
 // Reexporta a camada de lógica pura para os testes que importam de "./App".
 export {
@@ -21,6 +25,10 @@ export {
   computeAchievements,
   computeMyWork,
   computeBusinessInsights,
+  recurringStatus,
+  buildRecurringTransaction,
+  buildRecurringPostings,
+  buildRecurringReminder,
 } from "./domain.js";
 import {
   Sparkles,
@@ -143,6 +151,7 @@ const emptyDb = {
   products: [],
   orders: [],
   quotes: [],
+  recurring: [],
   timeEntries: [],
   contacts: [],
   deliveryZones: [],
@@ -12703,6 +12712,83 @@ function Finance({ db, update, business, setToast, go }) {
     setModal(false);
     setToast("Movimentação registrada");
   };
+  const recurring = (db.recurring || []).filter(
+    (c) => !business || !c.businessId || c.businessId === business.id,
+  );
+  const [recModal, setRecModal] = useState(false);
+  const [recForm, setRecForm] = useState(null);
+  const openRecurring = (c = null) => {
+    setRecForm(
+      c
+        ? { ...c }
+        : {
+            clientName: "",
+            description: "",
+            amount: "",
+            dueDay: 5,
+            autoPost: false,
+            active: true,
+          },
+    );
+    setRecModal(true);
+  };
+  const saveRecurring = (e) => {
+    e.preventDefault();
+    if (!recForm?.clientName?.trim() || !(Number(recForm.amount) > 0)) {
+      setToast("Informe o cliente e um valor mensal");
+      return;
+    }
+    const now = new Date().toISOString();
+    const item = {
+      ...recForm,
+      clientName: recForm.clientName.trim(),
+      amount: Number(recForm.amount) || 0,
+      dueDay: Math.min(28, Math.max(1, Number(recForm.dueDay) || 1)),
+      id: recForm.id || uid(),
+      history: recForm.history || {},
+      businessId: business?.id || recForm.businessId || null,
+      ownerId: recForm.ownerId || db.user.id,
+      createdAt: recForm.createdAt || now,
+      updatedAt: now,
+    };
+    update((d) => ({
+      ...d,
+      recurring: recForm.id
+        ? (d.recurring || []).map((c) => (c.id === item.id ? item : c))
+        : [item, ...(d.recurring || [])],
+    }));
+    setRecModal(false);
+    setToast(recForm.id ? "Contrato atualizado" : "Contrato recorrente criado");
+  };
+  const removeRecurring = (id) =>
+    update((d) => ({
+      ...d,
+      recurring: (d.recurring || []).filter((c) => c.id !== id),
+    }));
+  const postRecurring = (contract) => {
+    const ym = today().slice(0, 7);
+    const transaction = buildRecurringTransaction(contract, {
+      userId: db.user.id,
+      businessId: business?.id,
+    });
+    if (!transaction) return;
+    update((d) => ({
+      ...d,
+      transactions: [transaction, ...(d.transactions || [])],
+      recurring: (d.recurring || []).map((c) =>
+        c.id === contract.id
+          ? {
+              ...c,
+              history: {
+                ...(c.history || {}),
+                [ym]: { postedAt: new Date().toISOString() },
+              },
+            }
+          : c,
+      ),
+    }));
+    setToast("Receita do contrato lançada no caixa");
+  };
   const importTransactions = async (file) => {
     if (!file) return;
     const parseMoney = (value) => {
@@ -13192,6 +13278,178 @@ function Finance({ db, update, business, setToast, go }) {
             </small>
           </div>
         </section>
+        <section className="panel recurring-panel" id="finance-recurring">
+          <div className="panel-head">
+            <div>
+              <h3>Contratos recorrentes</h3>
+              <p>
+                Mensalidades e contratos fixos — lembrete todo mês e
+                lançamento no caixa com um clique (ou automático).
+              </p>
+            </div>
+            <Button icon={Plus} onClick={() => openRecurring()}>
+              Novo contrato
+            </Button>
+          </div>
+          {recurring.length === 0 ? (
+            <Empty
+              icon={CalendarDays}
+              title="Nenhum contrato recorrente"
+              text="Cadastre mensalidades e contratos fixos (ex.: contrato mensal de um condomínio). Todo mês o app lembra você e lança no caixa com um clique."
+              action="Cadastrar contrato"
+              onAction={() => openRecurring()}
+            />
+          ) : (
+            <div className="recurring-list">
+              {recurring.map((c) => {
+                const st = recurringStatus(c);
+                const label = !c.active
+                  ? "Inativo"
+                  : st.status === "lancado"
+                    ? "Lançado este mês"
+                    : st.status === "a_lancar"
+                      ? "Vence — lançar"
+                      : "Agendado";
+                const tone = !c.active
+                  ? "muted"
+                  : st.status === "lancado"
+                    ? "ok"
+                    : st.status === "a_lancar"
+                      ? "warn"
+                      : "info";
+                return (
+                  <div key={c.id} className="recurring-row">
+                    <div className="recurring-info">
+                      <strong>{c.clientName}</strong>
+                      <small>
+                        {money(c.amount)}/mês · vence dia {c.dueDay}
+                        {c.autoPost ? " · automático" : ""}
+                      </small>
+                    </div>
+                    <span className={`recurring-status ${tone}`}>{label}</span>
+                    <div className="recurring-actions">
+                      {c.active && st.status === "a_lancar" && (
+                        <Button
+                          variant="ghost"
+                          icon={WalletCards}
+                          onClick={() => postRecurring(c)}
+                        >
+                          Lançar mês
+                        </Button>
+                      )}
+                      <button
+                        className="icon-button"
+                        aria-label={`Editar ${c.clientName}`}
+                        onClick={() => openRecurring(c)}
+                      >
+                        <Edit3 />
+                      </button>
+                      <button
+                        className="icon-button danger"
+                        aria-label={`Excluir ${c.clientName}`}
+                        onClick={() => {
+                          if (confirm("Excluir este contrato recorrente?"))
+                            removeRecurring(c.id);
+                        }}
+                      >
+                        <Trash2 />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+        {recModal && recForm && (
+          <Modal
+            title={recForm.id ? "Editar contrato" : "Novo contrato recorrente"}
+            onClose={() => setRecModal(false)}
+          >
+            <form className="modal-body" onSubmit={saveRecurring}>
+              <div className="form-grid">
+                <Field label="Cliente">
+                  <input
+                    value={recForm.clientName}
+                    onChange={(e) =>
+                      setRecForm({ ...recForm, clientName: e.target.value })
+                    }
+                    placeholder="Ex.: Condomínio Jardim"
+                  />
+                </Field>
+                <Field label="Valor mensal (R$)">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={recForm.amount}
+                    onChange={(e) =>
+                      setRecForm({ ...recForm, amount: e.target.value })
+                    }
+                    placeholder="600,00"
+                  />
+                </Field>
+              </div>
+              <div className="form-grid">
+                <Field label="Dia de vencimento">
+                  <input
+                    type="number"
+                    min="1"
+                    max="28"
+                    value={recForm.dueDay}
+                    onChange={(e) =>
+                      setRecForm({ ...recForm, dueDay: e.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="Descrição (opcional)">
+                  <input
+                    value={recForm.description}
+                    onChange={(e) =>
+                      setRecForm({ ...recForm, description: e.target.value })
+                    }
+                    placeholder="Ex.: Lavagem mensal de rouparia"
+                  />
+                </Field>
+              </div>
+              <label className="cost-check">
+                <input
+                  type="checkbox"
+                  checked={!!recForm.autoPost}
+                  onChange={(e) =>
+                    setRecForm({ ...recForm, autoPost: e.target.checked })
+                  }
+                />
+                <span>
+                  Lançar a receita no caixa automaticamente todo mês (senão, o
+                  app só lembra e você lança com um clique)
+                </span>
+              </label>
+              <label className="cost-check">
+                <input
+                  type="checkbox"
+                  checked={recForm.active !== false}
+                  onChange={(e) =>
+                    setRecForm({ ...recForm, active: e.target.checked })
+                  }
+                />
+                <span>Contrato ativo</span>
+              </label>
+              <div className="modal-actions">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setRecModal(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit" icon={Save}>
+                  {recForm.id ? "Salvar" : "Criar contrato"}
+                </Button>
+              </div>
+            </form>
+          </Modal>
+        )}
         <section className="panel" id="finance-transactions">
           <div className="panel-head">
             <div>
@@ -19997,6 +20255,45 @@ export default function App() {
     const next = buildDasReminder(db.taxProfile, db.notifications, db.user.id);
     if (next) update((d) => ({ ...d, notifications: next }));
   }, [db.taxProfile?.isMEI, db.taxProfile?.dasHistory, db.user?.id]);
+  // Contratos recorrentes: lembrete mensal dos manuais + lançamento automático
+  // dos marcados como autoPost. Só no espaço do próprio dono, idempotente por
+  // mês (history[ym] dentro de buildRecurringPostings/Reminder).
+  useEffect(() => {
+    if (activeSpaceId() || !db.user?.id) return;
+    const reminder = buildRecurringReminder(
+      db.recurring,
+      db.notifications,
+      db.user.id,
+    );
+    const postings = buildRecurringPostings(db.recurring, {
+      userId: db.user.id,
+    });
+    if (!reminder && postings.length === 0) return;
+    update((d) => {
+      const next = { ...d };
+      if (reminder) next.notifications = reminder;
+      if (postings.length) {
+        const ym = today().slice(0, 7);
+        const postedIds = new Set(postings.map((p) => p.contractId));
+        next.transactions = [
+          ...postings.map((p) => p.transaction),
+          ...(d.transactions || []),
+        ];
+        next.recurring = (d.recurring || []).map((c) =>
+          postedIds.has(c.id)
+            ? {
+                ...c,
+                history: {
+                  ...(c.history || {}),
+                  [ym]: { postedAt: new Date().toISOString() },
+                },
+              }
+            : c,
+        );
+      }
+      return next;
+    });
+  }, [db.recurring, db.user?.id]);
   const startResize = (e) => {
     e.preventDefault();
     document.body.style.userSelect = "none";
