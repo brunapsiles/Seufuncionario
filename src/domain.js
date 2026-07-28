@@ -520,3 +520,165 @@ export const parseMindMap = (raw) => {
     .slice(0, 12);
   return { title: oneLine(obj.title || obj.titulo || obj.tema || ""), branches };
 };
+
+// Modelos prontos de documentos para pequenos negócios (BR). O corpo usa
+// {{empresa}} e {{data}} (preenchidos automaticamente) e campos entre
+// [COLCHETES] que a pessoa completa. Conteúdo genérico e editável — NÃO é
+// aconselhamento jurídico.
+export const DOCUMENT_TEMPLATES = [
+  {
+    id: "contrato-servico",
+    name: "Contrato de prestação de serviços",
+    type: "Contrato",
+    segment: "Serviços",
+    body: `CONTRATO DE PRESTAÇÃO DE SERVIÇOS
+
+CONTRATADA: {{empresa}}, doravante denominada PRESTADORA.
+CONTRATANTE: [NOME DO CLIENTE], CPF/CNPJ [DOCUMENTO], doravante denominado CLIENTE.
+
+1. OBJETO
+A PRESTADORA se compromete a executar os seguintes serviços: [DESCREVER O SERVIÇO].
+
+2. PRAZO
+Os serviços serão executados no período de [DATA INÍCIO] a [DATA FIM].
+
+3. VALOR E PAGAMENTO
+O valor total é de R$ [VALOR], pago da seguinte forma: [FORMA DE PAGAMENTO].
+
+4. OBRIGAÇÕES
+A PRESTADORA executará os serviços com zelo e qualidade. O CLIENTE fornecerá as informações necessárias e efetuará os pagamentos nas datas combinadas.
+
+5. RESCISÃO
+Este contrato pode ser rescindido por qualquer parte mediante aviso de [PRAZO] dias.
+
+Local e data: [CIDADE], {{data}}.
+
+_______________________________        _______________________________
+PRESTADORA                              CLIENTE`,
+  },
+  {
+    id: "recibo",
+    name: "Recibo de pagamento",
+    type: "Recibo",
+    segment: "Financeiro",
+    body: `RECIBO
+
+Recebi de [NOME DE QUEM PAGOU], CPF/CNPJ [DOCUMENTO], a quantia de R$ [VALOR] ([VALOR POR EXTENSO]), referente a [DESCRIÇÃO DO PAGAMENTO].
+
+Para clareza, firmo o presente recibo.
+
+[CIDADE], {{data}}.
+
+_______________________________
+{{empresa}}`,
+  },
+  {
+    id: "proposta",
+    name: "Proposta comercial",
+    type: "Proposta comercial",
+    segment: "Vendas",
+    body: `PROPOSTA COMERCIAL
+
+De: {{empresa}}
+Para: [NOME DO CLIENTE]
+Data: {{data}}
+
+1. APRESENTAÇÃO
+[Breve apresentação do seu negócio e do que resolve para o cliente.]
+
+2. ESCOPO
+- [Item ou entrega 1]
+- [Item ou entrega 2]
+- [Item ou entrega 3]
+
+3. INVESTIMENTO
+Valor: R$ [VALOR]
+Condições de pagamento: [CONDIÇÕES]
+
+4. PRAZO
+Entrega estimada em [PRAZO] após a aprovação.
+
+5. VALIDADE
+Esta proposta é válida por [X] dias.
+
+Qualquer dúvida, estou à disposição.
+{{empresa}}`,
+  },
+  {
+    id: "nda",
+    name: "Termo de confidencialidade (NDA)",
+    type: "Termo",
+    segment: "Serviços",
+    body: `TERMO DE CONFIDENCIALIDADE
+
+PARTES: {{empresa}} e [NOME DA OUTRA PARTE].
+
+As partes comprometem-se a manter em sigilo todas as informações confidenciais a que tiverem acesso em razão de [MOTIVO / PROJETO], não as divulgando a terceiros sem autorização por escrito.
+
+Este compromisso permanece válido pelo prazo de [X] anos após o término da relação.
+
+[CIDADE], {{data}}.
+
+_______________________________        _______________________________
+{{empresa}}                             [OUTRA PARTE]`,
+  },
+  {
+    id: "ordem-servico",
+    name: "Ordem de serviço",
+    type: "Ordem de serviço",
+    segment: "Operação",
+    body: `ORDEM DE SERVIÇO Nº [NÚMERO]
+
+Empresa: {{empresa}}
+Cliente: [NOME DO CLIENTE] — Contato: [TELEFONE]
+Data de abertura: {{data}}
+
+SERVIÇO SOLICITADO
+[Descrever o que será feito.]
+
+MATERIAIS / PEÇAS
+- [Item] — R$ [Valor]
+
+MÃO DE OBRA: R$ [VALOR]
+TOTAL: R$ [VALOR]
+
+Prazo de execução: [PRAZO].
+Observações: [OBSERVAÇÕES].
+
+_______________________________
+Assinatura do cliente`,
+  },
+  {
+    id: "cobranca",
+    name: "Carta de cobrança amigável",
+    type: "Comunicado",
+    segment: "Financeiro",
+    body: `Assunto: Lembrete de pagamento
+
+Olá, [NOME DO CLIENTE], tudo bem?
+
+Passando para lembrar, com todo respeito, que consta em aberto o valor de R$ [VALOR], referente a [DESCRIÇÃO], com vencimento em [DATA].
+
+Se já efetuou o pagamento, por favor desconsidere esta mensagem. Caso contrário, o pagamento pode ser feito por [FORMA DE PAGAMENTO].
+
+Qualquer dificuldade, podemos combinar a melhor forma juntos. Fico à disposição.
+
+Atenciosamente,
+{{empresa}} — {{data}}`,
+  },
+];
+
+export const fillDocTemplate = (template, ctx = {}) => {
+  if (!template || !template.body) return "";
+  const empresa = (ctx.business || "").trim() || "[SUA EMPRESA]";
+  const data =
+    ctx.date ||
+    new Date().toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
+  return template.body
+    .replace(/\{\{\s*empresa\s*\}\}/gi, empresa)
+    .replace(/\{\{\s*data\s*\}\}/gi, data);
+};

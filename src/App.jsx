@@ -21,6 +21,8 @@ import {
   buildCsv,
   parseAnalysis,
   parseMindMap,
+  DOCUMENT_TEMPLATES,
+  fillDocTemplate,
 } from "./domain.js";
 // Reexporta a camada de lógica pura para os testes que importam de "./App".
 export {
@@ -43,6 +45,8 @@ export {
   buildCsv,
   parseAnalysis,
   parseMindMap,
+  DOCUMENT_TEMPLATES,
+  fillDocTemplate,
 } from "./domain.js";
 import {
   Sparkles,
@@ -15807,6 +15811,7 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
     [exportBusy, setExportBusy] = useState(""),
     [uploading, setUploading] = useState(false),
     [uploadErrors, setUploadErrors] = useState([]),
+    [templatePicker, setTemplatePicker] = useState(false),
     [dragging, setDragging] = useState(false);
   useEffect(() => {
     if (searchSeed) {
@@ -15846,6 +15851,19 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
     setForm(d ? { ...blankDocument, ...d } : blankDocument);
     setEditing(d?.id || null);
     setModal(true);
+  };
+  const applyTemplate = (template) => {
+    setTemplatePicker(false);
+    open({
+      ...blankDocument,
+      title: template.name,
+      type: template.type,
+      content: fillDocTemplate(template, { business: business?.name }),
+    });
+    trackProductEvent("document_template_used", {
+      module: "documentos",
+      template: template.id,
+    });
   };
   const importFiles = async (fileList) => {
     const files = [...(fileList || [])].slice(0, 10);
@@ -16054,12 +16072,51 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
           >
             {uploading ? "Importando..." : "Enviar arquivos"}
           </Button>
+          <Button
+            variant="secondary"
+            icon={FileText}
+            onClick={() => setTemplatePicker(true)}
+          >
+            Modelos prontos
+          </Button>
           <Button icon={Plus} onClick={() => open(null)}>
             Novo documento
           </Button>
         </div>
       }
     >
+      {templatePicker && (
+        <Modal
+          title="Comece de um modelo pronto"
+          wide
+          onClose={() => setTemplatePicker(false)}
+        >
+          <div className="modal-body">
+            <div className="notice">
+              <FileText />
+              <span>
+                Escolha um modelo, preencha os campos entre [colchetes] e ajuste
+                à sua realidade. Não é aconselhamento jurídico — revise antes de
+                usar.
+              </span>
+            </div>
+            <div className="template-grid">
+              {DOCUMENT_TEMPLATES.map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  className="template-card"
+                  onClick={() => applyTemplate(template)}
+                >
+                  <span className="template-card-type">{template.type}</span>
+                  <strong>{template.name}</strong>
+                  <span className="template-card-seg">{template.segment}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </Modal>
+      )}
       <AreaToolkit
         area="documentos"
         db={db}
