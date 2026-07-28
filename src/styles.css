@@ -8438,3 +8438,148 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
 :root[data-theme="dark"] .analysis-answer h4 {
   color: #7dd3fc;
 }
+
+/* ===== Mapa de ideias (brainstorm) ===== */
+.mindmap-generator .mindmap-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 12px;
+}
+.mindmap-active {
+  margin-top: 20px;
+}
+.mindmap-active-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.mindmap-title-input {
+  font-weight: 700;
+  font-size: 17px;
+  flex: 1;
+  min-width: 160px;
+}
+.mindmap-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mindmap-toolbar .btn.sm {
+  padding: 5px 9px;
+  font-size: 12px;
+}
+.mindmap-branches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+.mindmap-branch {
+  padding: 12px;
+  border-top: 3px solid #38bdf8;
+}
+.mindmap-branch-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.mindmap-branch-title {
+  font-weight: 700;
+  font-size: 14px;
+  flex: 1;
+}
+.mindmap-ideas {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mindmap-ideas li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.mindmap-ideas li input {
+  flex: 1;
+  font-size: 13px;
+  padding: 6px 8px;
+}
+.mindmap-idea-task {
+  border: none;
+  background: transparent;
+  color: #16a34a;
+  cursor: pointer;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+}
+.mindmap-idea-task:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.mindmap-idea-task:hover:not(:disabled) {
+  color: #15803d;
+}
+.mindmap-add-idea {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.mindmap-hint {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 14px;
+}
+.link-btn {
+  border: none;
+  background: transparent;
+  color: #0369a1;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+:root[data-theme="dark"] .link-btn {
+  color: #7dd3fc;
+}
+.mindmap-saved {
+  margin-top: 24px;
+}
+.mindmap-saved > h3 {
+  font-size: 15px;
+  margin: 0 0 10px;
+}
+.mindmap-saved-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+.mindmap-saved-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+}
+.mindmap-saved-item h4 {
+  margin: 0;
+  font-size: 14px;
+}
+.mindmap-saved-meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 4px 0 0;
+}
+.mindmap-saved-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.mindmap-saved-actions .btn.sm {
+  padding: 5px 8px;
+  font-size: 12px;
+}

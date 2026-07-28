@@ -478,3 +478,45 @@ export const parseAnalysis = (raw) => {
     return null;
   return { summary, keyPoints, risks, actions, answer };
 };
+
+// Normaliza a resposta da IA num mapa de ideias
+// { title, branches: [{ title, ideas: string[] }] }. Tolera cercas ```json,
+// texto ao redor e chaves em português. Retorna { title, branches: [] } vazio
+// quando não há ramos utilizáveis.
+export const parseMindMap = (raw) => {
+  const text = String(raw || "").trim();
+  const empty = { title: "", branches: [] };
+  if (!text) return empty;
+  const oneLine = (s) =>
+    String(s == null ? "" : s)
+      .replace(/\s+/g, " ")
+      .replace(/^[-*•\d.)\s]+/, "")
+      .trim();
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const body = fenced ? fenced[1].trim() : text;
+  const start = body.indexOf("{");
+  const end = body.lastIndexOf("}");
+  if (start === -1 || end <= start) return empty;
+  let obj;
+  try {
+    obj = JSON.parse(body.slice(start, end + 1));
+  } catch {
+    return empty;
+  }
+  const rawBranches = obj.branches || obj.ramos || obj.temas || obj.categorias || [];
+  const branches = (Array.isArray(rawBranches) ? rawBranches : [])
+    .map((b) => {
+      if (!b || typeof b !== "object") return null;
+      const title = oneLine(b.title || b.titulo || b.tema || b.nome || "");
+      const rawIdeas = b.ideas || b.ideias || b.itens || b.pontos || [];
+      const ideas = (Array.isArray(rawIdeas) ? rawIdeas : [rawIdeas])
+        .map((x) => oneLine(typeof x === "object" ? x.text || x.ideia || "" : x))
+        .filter(Boolean)
+        .slice(0, 10);
+      if (!title && ideas.length === 0) return null;
+      return { title: title || "Ramo", ideas };
+    })
+    .filter(Boolean)
+    .slice(0, 12);
+  return { title: oneLine(obj.title || obj.titulo || obj.tema || ""), branches };
+};

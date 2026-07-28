@@ -20,6 +20,7 @@ import {
   parseSheet,
   buildCsv,
   parseAnalysis,
+  parseMindMap,
 } from "./domain.js";
 // Reexporta a camada de lógica pura para os testes que importam de "./App".
 export {
@@ -41,6 +42,7 @@ export {
   parseSheet,
   buildCsv,
   parseAnalysis,
+  parseMindMap,
 } from "./domain.js";
 import {
   Sparkles,
@@ -184,6 +186,7 @@ const emptyDb = {
   contentPlan: [],
   sheets: [],
   analyses: [],
+  brainstorms: [],
   sites: [],
   history: [],
   certificates: [],
@@ -240,6 +243,7 @@ const nav = [
   ["sites", "Sites e Materiais", PanelsTopLeft],
   ["documentos", "Documentos", FileText],
   ["analise", "Análise de textos", FileSearch],
+  ["ideias", "Mapa de ideias", Lightbulb],
   ["apresentacoes", "Apresentações", Layers],
   ["conteudo", "Calendário de conteúdo", CalendarDays],
   ["planilhas", "Planilhas", Table],
@@ -279,6 +283,7 @@ const navGroups = [
       "sites",
       "documentos",
       "analise",
+      "ideias",
       "apresentacoes",
       "conteudo",
       "planilhas",
@@ -13888,6 +13893,375 @@ function AttachmentList({ attachments, onRemove }) {
   );
 }
 
+const MINDMAP_EXAMPLES = [
+  "Como atrair mais clientes para o meu negócio",
+  "Organizar o lançamento de um novo produto",
+  "Reduzir custos sem perder qualidade",
+  "Ideias de conteúdo para as redes sociais",
+];
+
+// Tarefa criada a partir de uma ideia do mapa — espelha o blankTask de Tasks
+// para aparecer corretamente no quadro de Operação.
+const taskFromIdea = (title, ctx = {}) => ({
+  id: uid(),
+  title,
+  description: "",
+  priority: "Média",
+  status: "A fazer",
+  due: "",
+  area: "Operação",
+  assigneeType: "real",
+  assignee: "",
+  assigneeId: "",
+  project: "",
+  isMission: false,
+  distribution: "atribuida",
+  difficulty: "Simples",
+  slots: "1",
+  points: "",
+  reward: "",
+  approvalMode: "imediata",
+  allowWithdrawal: true,
+  assignees: [],
+  interested: [],
+  missionStatus: "",
+  deliveries: [],
+  deliveryDraft: "",
+  visibility: "privado",
+  sharedWith: [],
+  sharedTeams: [],
+  subtasks: [],
+  subtaskDraft: "",
+  dependsOn: [],
+  attachments: [],
+  recurrence: { frequency: "none" },
+  businessId: ctx.businessId || null,
+  ownerId: ctx.ownerId || null,
+  createdAt: new Date().toISOString(),
+});
+
+function MindMap({ db, update, business, setToast, go }) {
+  const [theme, setTheme] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [active, setActive] = useState(null);
+
+  const saved = db.brainstorms
+    .filter((b) => !business || b.businessId === business.id)
+    .slice()
+    .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+
+  const generate = async () => {
+    const t = theme.trim();
+    if (t.length < 4 || busy) {
+      if (t.length < 4) setErr("Descreva o tema em pelo menos 4 letras.");
+      return;
+    }
+    setBusy(true);
+    setErr("");
+    const prompt = `Você facilita um brainstorming para um pequeno negócio no Brasil. Explore o tema abaixo num mapa de ideias.
+
+Tema central: ${t}
+
+Responda SOMENTE com um objeto JSON válido, sem comentários e sem cercas de código, no formato:
+{"title": "tema central", "branches": [{"title": "nome do ramo", "ideas": ["ideia", ...]}, ...]}
+
+Regras:
+- De 4 a 6 ramos (ângulos/categorias diferentes do tema).
+- De 3 a 5 ideias curtas e acionáveis por ramo.
+- Português do Brasil, concreto e ético. Não invente números, preços ou resultados.`;
+    try {
+      const response = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ prompt, specialist: "Estrategista" }),
+      });
+      const data = await response.json();
+      if (!response.ok)
+        throw new Error(data.error || "Não foi possível gerar agora.");
+      const map = parseMindMap(data.content || "");
+      if (!map.branches.length)
+        throw new Error(
+          "A IA respondeu, mas não consegui montar o mapa. Tente de novo.",
+        );
+      setActive({
+        id: null,
+        title: map.title || t,
+        branches: map.branches,
+      });
+      trackProductEvent("mindmap_generated", {
+        module: "ideias",
+        branches: map.branches.length,
+      });
+      setTheme("");
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const setBranch = (bi, patch) =>
+    setActive((s) => ({
+      ...s,
+      branches: s.branches.map((b, i) => (i === bi ? { ...b, ...patch } : b)),
+    }));
+  const setIdea = (bi, ii, value) =>
+    setBranch(bi, {
+      ideas: active.branches[bi].ideas.map((v, i) => (i === ii ? value : v)),
+    });
+  const addIdea = (bi) =>
+    setBranch(bi, { ideas: [...active.branches[bi].ideas, ""] });
+  const removeIdea = (bi, ii) =>
+    setBranch(bi, { ideas: active.branches[bi].ideas.filter((_, i) => i !== ii) });
+  const addBranch = () =>
+    setActive((s) => ({
+      ...s,
+      branches: [...s.branches, { title: "Novo ramo", ideas: [""] }],
+    }));
+  const removeBranch = (bi) =>
+    setActive((s) => ({ ...s, branches: s.branches.filter((_, i) => i !== bi) }));
+
+  const ideaToTask = (idea) => {
+    const title = idea.trim();
+    if (!title) return;
+    update((prev) => ({
+      ...prev,
+      tasks: [
+        taskFromIdea(title, { businessId: business?.id, ownerId: db.user.id }),
+        ...prev.tasks,
+      ],
+    }));
+    setToast("Ideia virou tarefa em Operação");
+  };
+
+  const mapToText = (map) =>
+    [
+      `# ${map.title}`,
+      ...map.branches.map(
+        (b) =>
+          `\n## ${b.title}\n${b.ideas.map((i) => `- ${i}`).join("\n")}`,
+      ),
+    ].join("\n");
+  const copyMap = async () => {
+    try {
+      await navigator.clipboard.writeText(mapToText(active));
+      setToast("Mapa copiado");
+    } catch {
+      setToast("Não foi possível copiar agora");
+    }
+  };
+  const saveMap = () => {
+    if (!active) return;
+    const now = new Date().toISOString();
+    const id = active.id || uid();
+    const record = {
+      id,
+      title: active.title || "Mapa de ideias",
+      branches: active.branches,
+      businessId: business?.id || null,
+      ownerId: active.ownerId || db.user.id,
+      createdAt: active.createdAt || now,
+      updatedAt: now,
+    };
+    update((prev) => ({
+      ...prev,
+      brainstorms: prev.brainstorms.some((b) => b.id === id)
+        ? prev.brainstorms.map((b) => (b.id === id ? record : b))
+        : [record, ...prev.brainstorms],
+    }));
+    setActive((s) => ({ ...s, id, createdAt: record.createdAt, ownerId: record.ownerId }));
+    setToast("Mapa salvo");
+  };
+  const openMap = (b) =>
+    setActive({
+      id: b.id,
+      title: b.title,
+      branches: b.branches || [],
+      createdAt: b.createdAt,
+      ownerId: b.ownerId,
+    });
+  const removeSaved = (id) => {
+    if (!window.confirm("Excluir este mapa?")) return;
+    update((prev) => ({
+      ...prev,
+      brainstorms: prev.brainstorms.filter((b) => b.id !== id),
+    }));
+    if (active?.id === id) setActive(null);
+    setToast("Mapa excluído");
+  };
+
+  return (
+    <div className="page mindmap-page">
+      <header className="page-head">
+        <div>
+          <h1>Mapa de ideias</h1>
+          <p className="page-sub">
+            Escreva um desafio ou tema e a IA abre em ramos e ideias. Edite,
+            transforme ideias em tarefas e salve. Tudo gratuito.
+          </p>
+        </div>
+      </header>
+
+      <div className="card mindmap-generator">
+        <div className="notice">
+          <Lightbulb />
+          <span>
+            Ótimo para destravar um problema, planejar algo novo ou juntar
+            ideias antes de agir. A IA não inventa números nem resultados.
+          </span>
+        </div>
+        <Field label="Qual é o tema ou desafio?">
+          <textarea
+            rows={2}
+            value={theme}
+            onChange={(e) => setTheme(e.target.value)}
+            placeholder="Ex.: Como conseguir meus primeiros 10 clientes"
+          />
+        </Field>
+        <div className="mindmap-examples">
+          {MINDMAP_EXAMPLES.map((ex) => (
+            <button
+              key={ex}
+              type="button"
+              className="chip-btn"
+              onClick={() => setTheme(ex)}
+            >
+              {ex}
+            </button>
+          ))}
+        </div>
+        {err && <p className="form-error">{err}</p>}
+        <div className="form-actions">
+          <button className="btn primary" onClick={generate} disabled={busy}>
+            <Sparkles size={16} />
+            {busy ? "Pensando..." : "Gerar mapa de ideias"}
+          </button>
+        </div>
+      </div>
+
+      {active && (
+        <div className="mindmap-active">
+          <div className="mindmap-active-head">
+            <input
+              className="mindmap-title-input"
+              value={active.title}
+              onChange={(e) => setActive((s) => ({ ...s, title: e.target.value }))}
+              placeholder="Tema central"
+            />
+            <div className="mindmap-toolbar">
+              <button className="btn ghost sm" onClick={addBranch}>
+                <Plus size={15} /> Ramo
+              </button>
+              <button className="btn ghost sm" onClick={copyMap}>
+                <Copy size={15} /> Copiar
+              </button>
+              <button className="btn primary sm" onClick={saveMap}>
+                Salvar
+              </button>
+              <button className="btn ghost sm" onClick={() => setActive(null)}>
+                <X size={15} />
+              </button>
+            </div>
+          </div>
+          <div className="mindmap-branches">
+            {active.branches.map((branch, bi) => (
+              <div key={bi} className="card mindmap-branch">
+                <div className="mindmap-branch-head">
+                  <input
+                    className="mindmap-branch-title"
+                    value={branch.title}
+                    onChange={(e) => setBranch(bi, { title: e.target.value })}
+                    aria-label={`Nome do ramo ${bi + 1}`}
+                  />
+                  <button
+                    className="sheet-col-del"
+                    onClick={() => removeBranch(bi)}
+                    title="Excluir ramo"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+                <ul className="mindmap-ideas">
+                  {branch.ideas.map((idea, ii) => (
+                    <li key={ii}>
+                      <input
+                        value={idea}
+                        onChange={(e) => setIdea(bi, ii, e.target.value)}
+                        aria-label={`Ideia ${ii + 1} de ${branch.title}`}
+                        placeholder="Nova ideia"
+                      />
+                      <button
+                        className="mindmap-idea-task"
+                        onClick={() => ideaToTask(idea)}
+                        title="Virar tarefa"
+                        disabled={!idea.trim()}
+                      >
+                        <CheckCircle2 size={14} />
+                      </button>
+                      <button
+                        className="sheet-col-del"
+                        onClick={() => removeIdea(bi, ii)}
+                        title="Remover ideia"
+                      >
+                        <X size={13} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <button className="btn ghost sm mindmap-add-idea" onClick={() => addIdea(bi)}>
+                  <Plus size={14} /> Ideia
+                </button>
+              </div>
+            ))}
+          </div>
+          <p className="mindmap-hint">
+            Dica: clique no ✓ de uma ideia para transformá-la numa tarefa em{" "}
+            <button className="link-btn" onClick={() => go?.("operacao")}>
+              Operação
+            </button>
+            .
+          </p>
+        </div>
+      )}
+
+      {saved.length > 0 && (
+        <div className="mindmap-saved">
+          <h3>Mapas salvos</h3>
+          <div className="mindmap-saved-list">
+            {saved.map((b) => (
+              <article key={b.id} className="card mindmap-saved-item">
+                <div>
+                  <h4>{b.title}</h4>
+                  <p className="mindmap-saved-meta">
+                    {(b.branches || []).length} ramos ·{" "}
+                    {(b.branches || []).reduce(
+                      (n, x) => n + (x.ideas || []).length,
+                      0,
+                    )}{" "}
+                    ideias
+                  </p>
+                </div>
+                <div className="mindmap-saved-actions">
+                  <button className="btn ghost sm" onClick={() => openMap(b)}>
+                    <Pencil size={15} /> Abrir
+                  </button>
+                  <button
+                    className="btn ghost sm danger"
+                    onClick={() => removeSaved(b.id)}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AnalysisResultView({ r, q }) {
   return (
     <div className="analysis-result">
@@ -22300,6 +22674,16 @@ export default function App() {
             update={update}
             business={business}
             setToast={setToast}
+          />
+        );
+      case "ideias":
+        return (
+          <MindMap
+            db={db}
+            update={update}
+            business={business}
+            setToast={setToast}
+            go={go}
           />
         );
       case "ferramentas":
