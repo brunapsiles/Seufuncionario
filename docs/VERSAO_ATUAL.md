@@ -10,3 +10,4 @@
 - 279 testes de interface e 105 testes do servidor aprovados.
 
 A fonte técnica da versão é o histórico de commits da branch `main`.
+A integração de publicação foi reconectada em 28/07/2026.
