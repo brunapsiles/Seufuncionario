@@ -1116,6 +1116,20 @@ export const buildTaskCalendar = (yearMonth, tasks) => {
 
 export const CHANGELOG_ENTRIES = [
   {
+    id: "2026-07-28-automacoes-servidor",
+    date: "2026-07-28",
+    title: "Automações continuam trabalhando com o app fechado",
+    description:
+      "As regras semanais e mensais agora são verificadas de hora em hora no servidor. Cada execução cria a tarefa ou o lembrete uma única vez, mantém histórico e preserva uma versão anterior dos dados.",
+  },
+  {
+    id: "2026-07-28-compras-backups",
+    date: "2026-07-28",
+    title: "Compras, cotações e recuperação de versões",
+    description:
+      "Compare propostas de fornecedores por item, registre a melhor oferta e exporte o mapa de cotação. Em Configurações, também é possível consultar e restaurar versões anteriores do espaço.",
+  },
+  {
     id: "2026-07-20-resumo-semanal",
     date: "2026-07-20",
     title: "Resumo da semana no início e por notificação",
