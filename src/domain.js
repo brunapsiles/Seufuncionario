@@ -909,3 +909,47 @@ export const kanbanColumns = (base, fieldId) => {
   if (groups["—"]?.length) cols.push({ key: "—", rows: groups["—"] });
   return cols;
 };
+
+// ===== Wiki / páginas aninhadas =====
+// Monta a árvore de páginas a partir da lista plana (cada página tem parentId).
+// Ordena por título. Filhos órfãos (parent inexistente) sobem para a raiz.
+export const buildPageTree = (pages = []) => {
+  const byId = new Map((pages || []).map((p) => [p.id, { ...p, children: [] }]));
+  const roots = [];
+  for (const node of byId.values()) {
+    const parent = node.parentId && byId.get(node.parentId);
+    if (parent && parent.id !== node.id) parent.children.push(node);
+    else roots.push(node);
+  }
+  const sortRec = (list) => {
+    list.sort((a, b) =>
+      String(a.title || "").localeCompare(String(b.title || ""), "pt-BR"),
+    );
+    list.forEach((n) => sortRec(n.children));
+    return list;
+  };
+  return sortRec(roots);
+};
+
+// IDs de uma página e de todos os seus descendentes (para excluir em cascata).
+export const pageDescendantIds = (pages = [], id) => {
+  const childrenOf = (pid) => (pages || []).filter((p) => p.parentId === pid);
+  const acc = [id];
+  const walk = (pid) => {
+    for (const child of childrenOf(pid)) {
+      acc.push(child.id);
+      walk(child.id);
+    }
+  };
+  walk(id);
+  return acc;
+};
+
+// Filtra páginas por texto no título ou conteúdo (case-insensitive).
+export const searchPages = (pages = [], query = "") => {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return pages || [];
+  return (pages || []).filter((p) =>
+    `${p.title || ""} ${p.content || ""}`.toLowerCase().includes(q),
+  );
+};

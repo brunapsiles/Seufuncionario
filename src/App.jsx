@@ -31,6 +31,9 @@ import {
   formatCellValue,
   groupRowsByField,
   kanbanColumns,
+  buildPageTree,
+  pageDescendantIds,
+  searchPages,
 } from "./domain.js";
 // Reexporta a camada de lógica pura para os testes que importam de "./App".
 export {
@@ -63,6 +66,9 @@ export {
   formatCellValue,
   groupRowsByField,
   kanbanColumns,
+  buildPageTree,
+  pageDescendantIds,
+  searchPages,
 } from "./domain.js";
 import {
   Sparkles,
@@ -152,6 +158,7 @@ import {
   FileSearch,
   QrCode,
   Database,
+  BookOpen,
   RefreshCw,
   Settings,
   Star,
@@ -212,6 +219,7 @@ const emptyDb = {
   signatures: [],
   pixCharges: [],
   databases: [],
+  wikiPages: [],
   sites: [],
   history: [],
   certificates: [],
@@ -269,6 +277,7 @@ const nav = [
   ["desenvolvimento", "Desenvolvimento", TrendingUp],
   ["sites", "Sites e Materiais", PanelsTopLeft],
   ["documentos", "Documentos", FileText],
+  ["wiki", "Base de conhecimento", BookOpen],
   ["analise", "Análise de textos", FileSearch],
   ["ideias", "Mapa de ideias", Lightbulb],
   ["apresentacoes", "Apresentações", Layers],
@@ -310,6 +319,7 @@ const navGroups = [
     items: [
       "sites",
       "documentos",
+      "wiki",
       "analise",
       "ideias",
       "apresentacoes",
@@ -13922,6 +13932,229 @@ function AttachmentList({ attachments, onRemove }) {
   );
 }
 
+function WikiTreeNodes({ nodes, selectedId, onSelect, depth }) {
+  return nodes.map((node) => (
+    <div key={node.id}>
+      <button
+        className={`wiki-tree-item ${node.id === selectedId ? "active" : ""}`}
+        style={{ paddingLeft: depth * 14 + 10 }}
+        onClick={() => onSelect(node.id)}
+      >
+        <FileText size={14} />
+        <span>{node.title || "Sem título"}</span>
+      </button>
+      {node.children.length > 0 && (
+        <WikiTreeNodes
+          nodes={node.children}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          depth={depth + 1}
+        />
+      )}
+    </div>
+  ));
+}
+
+function Wiki({ db, update, business, setToast }) {
+  const pages = (db.wikiPages || []).filter(
+    (p) => !business || p.businessId === business.id,
+  );
+  const [selectedId, setSelectedId] = useState(pages[0]?.id || null);
+  const [search, setSearch] = useState("");
+  const [preview, setPreview] = useState(false);
+
+  const selected = pages.find((p) => p.id === selectedId) || null;
+  const visiblePages = search.trim() ? searchPages(pages, search) : pages;
+  const tree = buildPageTree(visiblePages);
+
+  const createPage = (parentId = null) => {
+    const now = new Date().toISOString();
+    const page = {
+      id: uid(),
+      title: "Nova página",
+      content: "",
+      parentId: parentId || null,
+      businessId: business?.id || null,
+      ownerId: db.user.id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    update((prev) => ({ ...prev, wikiPages: [...(prev.wikiPages || []), page] }));
+    setSelectedId(page.id);
+    setPreview(false);
+  };
+  const patchPage = (id, patch) =>
+    update((prev) => ({
+      ...prev,
+      wikiPages: (prev.wikiPages || []).map((p) =>
+        p.id === id ? { ...p, ...patch, updatedAt: new Date().toISOString() } : p,
+      ),
+    }));
+  const deletePage = (id) => {
+    const ids = pageDescendantIds(pages, id);
+    const msg =
+      ids.length > 1
+        ? `Excluir esta página e as ${ids.length - 1} subpáginas?`
+        : "Excluir esta página?";
+    if (!window.confirm(msg)) return;
+    update((prev) => ({
+      ...prev,
+      wikiPages: (prev.wikiPages || []).filter((p) => !ids.includes(p.id)),
+    }));
+    if (ids.includes(selectedId))
+      setSelectedId(pages.find((p) => !ids.includes(p.id))?.id || null);
+    setToast("Página excluída");
+  };
+
+  const parentOptions = selected
+    ? pages.filter((p) => !pageDescendantIds(pages, selected.id).includes(p.id))
+    : [];
+
+  if (pages.length === 0) {
+    return (
+      <div className="page wiki-page">
+        <header className="page-head">
+          <div>
+            <h1>Base de conhecimento</h1>
+            <p className="page-sub">
+              Crie páginas em pastas e subpáginas, com busca — a sua wiki
+              interna para processos, manuais e anotações. Grátis.
+            </p>
+          </div>
+        </header>
+        <div className="empty-state">
+          <BookOpen />
+          <h3>Nenhuma página ainda</h3>
+          <p>Crie a primeira página da sua base de conhecimento.</p>
+          <button className="btn primary" onClick={() => createPage(null)}>
+            <Plus size={16} /> Criar primeira página
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="page wiki-page">
+      <header className="page-head">
+        <div>
+          <h1>Base de conhecimento</h1>
+          <p className="page-sub">Sua wiki interna: páginas, subpáginas e busca.</p>
+        </div>
+      </header>
+
+      <div className="wiki-layout">
+        <aside className="wiki-sidebar">
+          <div className="wiki-search">
+            <Search size={15} />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar páginas..."
+            />
+          </div>
+          <button className="btn ghost sm wiki-newroot" onClick={() => createPage(null)}>
+            <Plus size={15} /> Nova página
+          </button>
+          <div className="wiki-tree">
+            {tree.length === 0 ? (
+              <p className="wiki-empty-hint">Nenhuma página encontrada.</p>
+            ) : (
+              <WikiTreeNodes
+                nodes={tree}
+                selectedId={selectedId}
+                onSelect={(id) => {
+                  setSelectedId(id);
+                  setPreview(false);
+                }}
+                depth={0}
+              />
+            )}
+          </div>
+        </aside>
+
+        {selected ? (
+          <section className="wiki-main">
+            <div className="wiki-toolbar">
+              <input
+                className="wiki-title-input"
+                value={selected.title}
+                onChange={(e) => patchPage(selected.id, { title: e.target.value })}
+                placeholder="Título da página"
+                aria-label="Título da página"
+              />
+              <div className="wiki-toolbar-actions">
+                <button
+                  className="btn ghost sm"
+                  onClick={() => createPage(selected.id)}
+                  title="Nova subpágina"
+                >
+                  <Plus size={15} /> Subpágina
+                </button>
+                <button
+                  className={`btn ghost sm ${preview ? "active" : ""}`}
+                  onClick={() => setPreview((p) => !p)}
+                >
+                  {preview ? "Editar" : "Ler"}
+                </button>
+                <button
+                  className="btn ghost sm danger"
+                  onClick={() => deletePage(selected.id)}
+                  title="Excluir página"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </div>
+            <div className="wiki-meta">
+              <label>
+                Dentro de:{" "}
+                <select
+                  value={selected.parentId || ""}
+                  onChange={(e) =>
+                    patchPage(selected.id, { parentId: e.target.value || null })
+                  }
+                >
+                  <option value="">— Raiz —</option>
+                  {parentOptions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.title || "Sem título"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {preview ? (
+              <div className="wiki-preview">
+                {selected.content.trim() ? (
+                  <Markdown text={selected.content} />
+                ) : (
+                  <p className="wiki-empty-hint">Página vazia. Clique em “Editar”.</p>
+                )}
+              </div>
+            ) : (
+              <textarea
+                className="wiki-editor"
+                value={selected.content}
+                onChange={(e) => patchPage(selected.id, { content: e.target.value })}
+                placeholder="Escreva aqui. Aceita Markdown: # títulos, - listas, **negrito**, links..."
+              />
+            )}
+          </section>
+        ) : (
+          <section className="wiki-main">
+            <div className="empty-state">
+              <BookOpen />
+              <h3>Selecione uma página</h3>
+              <p>Escolha uma página na lista ou crie uma nova.</p>
+            </div>
+          </section>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const DB_TEMPLATES = [
   {
     name: "Clientes",
@@ -23775,6 +24008,15 @@ export default function App() {
       case "bases":
         return (
           <DataBases
+            db={db}
+            update={update}
+            business={business}
+            setToast={setToast}
+          />
+        );
+      case "wiki":
+        return (
+          <Wiki
             db={db}
             update={update}
             business={business}
