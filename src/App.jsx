@@ -23,6 +23,7 @@ import {
   parseMindMap,
   DOCUMENT_TEMPLATES,
   fillDocTemplate,
+  buildEmailSignature,
 } from "./domain.js";
 // Reexporta a camada de lógica pura para os testes que importam de "./App".
 export {
@@ -47,6 +48,7 @@ export {
   parseMindMap,
   DOCUMENT_TEMPLATES,
   fillDocTemplate,
+  buildEmailSignature,
 } from "./domain.js";
 import {
   Sparkles,
@@ -191,6 +193,7 @@ const emptyDb = {
   sheets: [],
   analyses: [],
   brainstorms: [],
+  signatures: [],
   sites: [],
   history: [],
   certificates: [],
@@ -251,6 +254,7 @@ const nav = [
   ["apresentacoes", "Apresentações", Layers],
   ["conteudo", "Calendário de conteúdo", CalendarDays],
   ["planilhas", "Planilhas", Table],
+  ["assinatura", "Assinatura de e-mail", Mail],
   ["ferramentas", "Ferramentas", Wrench],
   ["estudio", "Estúdio de IA", WandSparkles],
   ["historico", "Histórico", History],
@@ -291,6 +295,7 @@ const navGroups = [
       "apresentacoes",
       "conteudo",
       "planilhas",
+      "assinatura",
       "ferramentas",
       "estudio",
     ],
@@ -13897,6 +13902,263 @@ function AttachmentList({ attachments, onRemove }) {
   );
 }
 
+function EmailSignature({ db, update, business, setToast }) {
+  const blank = {
+    id: null,
+    label: "",
+    name: db.user?.name || "",
+    role: "",
+    business: business?.name || "",
+    phone: "",
+    email: db.user?.email || "",
+    site: "",
+    city: "",
+    instagram: "",
+    accent: "#0369a1",
+  };
+  const [form, setForm] = useState(blank);
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const sig = buildEmailSignature(form);
+  const saved = db.signatures
+    .filter((s) => !business || s.businessId === business.id)
+    .slice()
+    .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+
+  const waDigits = String(form.whatsapp || form.phone || "").replace(/\D/g, "");
+  const waLink = waDigits
+    ? `https://wa.me/${waDigits.startsWith("55") ? waDigits : `55${waDigits}`}`
+    : "";
+  const igLink = form.instagram
+    ? /^https?:\/\//i.test(form.instagram)
+      ? form.instagram
+      : `https://instagram.com/${form.instagram.replace(/^@/, "")}`
+    : "";
+  const accent = /^#[0-9a-f]{3,8}$/i.test(form.accent) ? form.accent : "#0369a1";
+
+  const copyRich = async () => {
+    try {
+      if (navigator.clipboard && window.ClipboardItem) {
+        await navigator.clipboard.write([
+          new window.ClipboardItem({
+            "text/html": new Blob([sig.html], { type: "text/html" }),
+            "text/plain": new Blob([sig.text], { type: "text/plain" }),
+          }),
+        ]);
+      } else {
+        await navigator.clipboard.writeText(sig.text);
+      }
+      setToast("Assinatura copiada — cole no seu e-mail");
+      trackProductEvent("signature_copied", { module: "assinatura", format: "html" });
+    } catch {
+      setToast("Não foi possível copiar agora");
+    }
+  };
+  const copyText = async () => {
+    try {
+      await navigator.clipboard.writeText(sig.text);
+      setToast("Texto copiado");
+    } catch {
+      setToast("Não foi possível copiar agora");
+    }
+  };
+  const downloadHtml = () => {
+    const blob = new Blob(
+      [`<!doctype html><meta charset="utf-8"><body>${sig.html}</body>`],
+      { type: "text/html;charset=utf-8" },
+    );
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `assinatura-${slugify(form.name || "email")}.html`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+  const saveSignature = () => {
+    const now = new Date().toISOString();
+    const id = form.id || uid();
+    const record = {
+      ...form,
+      id,
+      label: form.label || form.name || "Assinatura",
+      businessId: business?.id || null,
+      ownerId: form.ownerId || db.user.id,
+      createdAt: form.createdAt || now,
+      updatedAt: now,
+    };
+    update((prev) => ({
+      ...prev,
+      signatures: prev.signatures.some((s) => s.id === id)
+        ? prev.signatures.map((s) => (s.id === id ? record : s))
+        : [record, ...prev.signatures],
+    }));
+    setForm((f) => ({ ...f, id, createdAt: record.createdAt, ownerId: record.ownerId }));
+    setToast("Assinatura salva");
+  };
+  const openSaved = (s) => setForm({ ...blank, ...s });
+  const removeSaved = (id) => {
+    if (!window.confirm("Excluir esta assinatura?")) return;
+    update((prev) => ({
+      ...prev,
+      signatures: prev.signatures.filter((s) => s.id !== id),
+    }));
+    if (form.id === id) setForm(blank);
+    setToast("Assinatura excluída");
+  };
+
+  return (
+    <div className="page signature-page">
+      <header className="page-head">
+        <div>
+          <h1>Assinatura de e-mail</h1>
+          <p className="page-sub">
+            Monte uma assinatura profissional e copie pronta para o Gmail,
+            Outlook ou qualquer e-mail. Gratuito e instantâneo.
+          </p>
+        </div>
+      </header>
+
+      <div className="signature-layout">
+        <div className="card signature-form">
+          <div className="form-grid">
+            <Field label="Seu nome">
+              <input value={form.name} onChange={(e) => set("name", e.target.value)} />
+            </Field>
+            <Field label="Cargo / função">
+              <input
+                value={form.role}
+                onChange={(e) => set("role", e.target.value)}
+                placeholder="Ex.: Fundadora"
+              />
+            </Field>
+            <Field label="Negócio">
+              <input
+                value={form.business}
+                onChange={(e) => set("business", e.target.value)}
+              />
+            </Field>
+            <Field label="Cidade (opcional)">
+              <input
+                value={form.city}
+                onChange={(e) => set("city", e.target.value)}
+                placeholder="Ex.: Recife, PE"
+              />
+            </Field>
+            <Field label="Telefone">
+              <input
+                value={form.phone}
+                onChange={(e) => set("phone", e.target.value)}
+                placeholder="(81) 99999-9999"
+              />
+            </Field>
+            <Field label="E-mail">
+              <input value={form.email} onChange={(e) => set("email", e.target.value)} />
+            </Field>
+            <Field label="Site (opcional)">
+              <input
+                value={form.site}
+                onChange={(e) => set("site", e.target.value)}
+                placeholder="www.seunegocio.com.br"
+              />
+            </Field>
+            <Field label="Instagram (opcional)">
+              <input
+                value={form.instagram}
+                onChange={(e) => set("instagram", e.target.value)}
+                placeholder="@seunegocio"
+              />
+            </Field>
+            <Field label="Cor de destaque">
+              <input
+                type="color"
+                value={accent}
+                onChange={(e) => set("accent", e.target.value)}
+                aria-label="Cor de destaque"
+              />
+            </Field>
+          </div>
+          <div className="form-actions">
+            <button className="btn primary" onClick={copyRich}>
+              <Copy size={16} /> Copiar assinatura
+            </button>
+            <button className="btn ghost" onClick={copyText}>
+              Copiar texto
+            </button>
+            <button className="btn ghost" onClick={downloadHtml}>
+              <Download size={16} /> Baixar HTML
+            </button>
+            <button className="btn ghost" onClick={saveSignature}>
+              Salvar
+            </button>
+          </div>
+        </div>
+
+        <div className="signature-preview-wrap">
+          <span className="signature-preview-label">Prévia</span>
+          <div className="card signature-preview">
+            <div
+              className="signature-card"
+              style={{ borderLeft: `3px solid ${accent}` }}
+            >
+              {form.name && <div className="sig-name">{form.name}</div>}
+              {(form.role || form.business) && (
+                <div className="sig-role">
+                  {[form.role, form.business].filter(Boolean).join(" — ")}
+                </div>
+              )}
+              {form.city && <div className="sig-city">{form.city}</div>}
+              {(form.phone || form.email || form.site) && (
+                <div className="sig-contact">
+                  {[form.phone, form.email, form.site].filter(Boolean).map((bit, i, arr) => (
+                    <span key={i}>
+                      <span style={{ color: accent }}>{bit}</span>
+                      {i < arr.length - 1 && <span className="sig-sep"> | </span>}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {(waLink || igLink) && (
+                <div className="sig-links">
+                  {waLink && <span style={{ color: accent }}>WhatsApp</span>}
+                  {waLink && igLink && <span className="sig-sep"> | </span>}
+                  {igLink && <span style={{ color: accent }}>Instagram</span>}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {saved.length > 0 && (
+        <div className="signature-saved">
+          <h3>Assinaturas salvas</h3>
+          <div className="signature-saved-list">
+            {saved.map((s) => (
+              <article key={s.id} className="card signature-saved-item">
+                <div>
+                  <h4>{s.label}</h4>
+                  <p className="signature-saved-meta">
+                    {[s.role, s.business].filter(Boolean).join(" — ")}
+                  </p>
+                </div>
+                <div className="signature-saved-actions">
+                  <button className="btn ghost sm" onClick={() => openSaved(s)}>
+                    <Pencil size={15} /> Abrir
+                  </button>
+                  <button
+                    className="btn ghost sm danger"
+                    onClick={() => removeSaved(s.id)}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const MINDMAP_EXAMPLES = [
   "Como atrair mais clientes para o meu negócio",
   "Organizar o lançamento de um novo produto",
@@ -22741,6 +23003,15 @@ export default function App() {
             business={business}
             setToast={setToast}
             go={go}
+          />
+        );
+      case "assinatura":
+        return (
+          <EmailSignature
+            db={db}
+            update={update}
+            business={business}
+            setToast={setToast}
           />
         );
       case "ferramentas":

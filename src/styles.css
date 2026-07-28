@@ -8630,3 +8630,106 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
 :root[data-theme="dark"] .template-card-type {
   color: #7dd3fc;
 }
+
+/* ===== Assinatura de e-mail ===== */
+.signature-layout {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 860px) {
+  .signature-layout {
+    grid-template-columns: 1fr;
+  }
+}
+.signature-form .form-actions {
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.signature-form input[type="color"] {
+  width: 56px;
+  height: 36px;
+  padding: 2px;
+  cursor: pointer;
+}
+.signature-preview-wrap {
+  position: sticky;
+  top: 12px;
+}
+.signature-preview-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  display: block;
+  margin-bottom: 8px;
+}
+.signature-preview {
+  padding: 20px;
+  background: #fff;
+}
+.signature-card {
+  padding-left: 12px;
+  font-family: Arial, Helvetica, sans-serif;
+}
+.sig-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+}
+.sig-role {
+  font-size: 13px;
+  color: #6b7280;
+}
+.sig-city {
+  font-size: 12px;
+  color: #9ca3af;
+}
+.sig-contact {
+  font-size: 13px;
+  color: #374151;
+  margin-top: 6px;
+  word-break: break-word;
+}
+.sig-links {
+  font-size: 13px;
+  margin-top: 4px;
+}
+.sig-sep {
+  color: #d1d5db;
+}
+.signature-saved {
+  margin-top: 24px;
+}
+.signature-saved > h3 {
+  font-size: 15px;
+  margin: 0 0 10px;
+}
+.signature-saved-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+.signature-saved-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+}
+.signature-saved-item h4 {
+  margin: 0;
+  font-size: 14px;
+}
+.signature-saved-meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 4px 0 0;
+}
+.signature-saved-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}

@@ -682,3 +682,115 @@ export const fillDocTemplate = (template, ctx = {}) => {
     .replace(/\{\{\s*empresa\s*\}\}/gi, empresa)
     .replace(/\{\{\s*data\s*\}\}/gi, data);
 };
+
+// Normaliza um número de telefone brasileiro para link de WhatsApp (só dígitos,
+// com DDI 55 quando parecer um número nacional sem DDI).
+export const normalizeWhatsappNumber = (raw) => {
+  const digits = String(raw || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("55")) return digits;
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  return digits;
+};
+
+const normalizeUrl = (raw) => {
+  const v = String(raw || "").trim();
+  if (!v) return "";
+  return /^https?:\/\//i.test(v) ? v : `https://${v.replace(/^\/+/, "")}`;
+};
+
+const instagramUrl = (raw) => {
+  const v = String(raw || "").trim();
+  if (!v) return "";
+  if (/^https?:\/\//i.test(v)) return v;
+  return `https://instagram.com/${v.replace(/^@/, "")}`;
+};
+
+// Monta uma assinatura de e-mail profissional a partir dos dados do usuário.
+// Retorna { html, text } — o HTML usa estilos inline (compatível com clientes
+// de e-mail) e o texto é a versão simples para colar em qualquer lugar.
+export const buildEmailSignature = (data = {}) => {
+  const clean = (s) => String(s == null ? "" : s).trim();
+  const esc = (s) =>
+    clean(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  const name = clean(data.name);
+  const role = clean(data.role);
+  const business = clean(data.business);
+  const phone = clean(data.phone);
+  const email = clean(data.email);
+  const site = clean(data.site);
+  const city = clean(data.city);
+  const instagram = clean(data.instagram);
+  const whatsapp = clean(data.whatsapp || data.phone);
+  const accent = /^#[0-9a-f]{3,8}$/i.test(clean(data.accent))
+    ? clean(data.accent)
+    : "#0369a1";
+
+  // Linha de contato (texto)
+  const contactBits = [];
+  if (phone) contactBits.push(`Tel: ${phone}`);
+  if (email) contactBits.push(email);
+  if (site) contactBits.push(site);
+  const linkBits = [];
+  const waNumber = normalizeWhatsappNumber(whatsapp);
+  if (waNumber) linkBits.push(`WhatsApp: https://wa.me/${waNumber}`);
+  if (instagram) linkBits.push(`Instagram: ${instagramUrl(instagram)}`);
+
+  const textLines = [
+    name,
+    [role, business].filter(Boolean).join(" — "),
+    city,
+    ...contactBits,
+    ...linkBits,
+  ].filter(Boolean);
+  const text = textLines.join("\n");
+
+  // HTML (estilos inline)
+  const rows = [];
+  if (name)
+    rows.push(
+      `<div style="font-size:16px;font-weight:700;color:#111827;">${esc(name)}</div>`,
+    );
+  const roleLine = [role, business].filter(Boolean).map(esc).join(" — ");
+  if (roleLine)
+    rows.push(`<div style="font-size:13px;color:#6b7280;">${roleLine}</div>`);
+  if (city)
+    rows.push(`<div style="font-size:12px;color:#9ca3af;">${esc(city)}</div>`);
+
+  const htmlContact = [];
+  if (phone) htmlContact.push(esc(phone));
+  if (email)
+    htmlContact.push(
+      `<a href="mailto:${esc(email)}" style="color:${accent};text-decoration:none;">${esc(email)}</a>`,
+    );
+  if (site)
+    htmlContact.push(
+      `<a href="${esc(normalizeUrl(site))}" style="color:${accent};text-decoration:none;">${esc(site)}</a>`,
+    );
+  if (htmlContact.length)
+    rows.push(
+      `<div style="font-size:13px;color:#374151;margin-top:6px;">${htmlContact.join(' <span style="color:#d1d5db;">|</span> ')}</div>`,
+    );
+
+  const htmlLinks = [];
+  if (waNumber)
+    htmlLinks.push(
+      `<a href="https://wa.me/${waNumber}" style="color:${accent};text-decoration:none;">WhatsApp</a>`,
+    );
+  if (instagram)
+    htmlLinks.push(
+      `<a href="${esc(instagramUrl(instagram))}" style="color:${accent};text-decoration:none;">Instagram</a>`,
+    );
+  if (htmlLinks.length)
+    rows.push(
+      `<div style="font-size:13px;margin-top:4px;">${htmlLinks.join(' <span style="color:#d1d5db;">|</span> ')}</div>`,
+    );
+
+  const html = `<table cellpadding="0" cellspacing="0" style="font-family:Arial,Helvetica,sans-serif;border-left:3px solid ${accent};padding-left:12px;"><tr><td>${rows.join("")}</td></tr></table>`;
+
+  return { html, text };
+};
