@@ -116,6 +116,10 @@ function json(data, status = 200) {
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "referrer-policy": "no-referrer",
+      "permissions-policy": "camera=(), microphone=(), geolocation=()",
     },
   });
 }
@@ -907,16 +911,6 @@ function allowed(key, cap = 8) {
   return item.count <= cap;
 }
 
-async function canAccessWorkspace(env, userId, ownerId) {
-  if (userId === ownerId) return true;
-  const m = await env.DB.prepare(
-    "SELECT id FROM memberships WHERE owner_id = ? AND member_id = ? AND status = 'ativo'",
-  )
-    .bind(ownerId, userId)
-    .first();
-  return !!m;
-}
-
 async function membershipRole(env, userId, ownerId) {
   if (userId === ownerId) return "owner";
   const m = await env.DB.prepare(
@@ -997,6 +991,7 @@ const RESTRICTED_FIELDS = [
   "products",
   "orders",
   "quotes",
+  "supplierRfqs",
   "recurring",
   "vehicles",
   "trips",
@@ -1223,6 +1218,26 @@ async function canManageSite(env, actorId, ownerId, siteId) {
   return canEditRecord(site, actorId, ctx);
 }
 
+async function ensureWorkspaceSnapshotsSchema(env) {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS workspace_snapshots (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL,
+      revision INTEGER NOT NULL,
+      data TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      created_by TEXT NOT NULL,
+      FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(owner_id, revision)
+    )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE INDEX IF NOT EXISTS idx_workspace_snapshots_owner_created
+    ON workspace_snapshots(owner_id, created_at DESC)`,
+  ).run();
+}
+
 async function handleWorkspace(request, env, user, url) {
   const ownerId = url.searchParams.get("owner") || user.id;
   const role = await membershipRole(env, user.id, ownerId);
@@ -1316,6 +1331,23 @@ async function handleWorkspace(request, env, user, url) {
       413,
     );
   const updatedAt = new Date().toISOString();
+  if (priorRow) {
+    await ensureWorkspaceSnapshotsSchema(env);
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO workspace_snapshots
+        (id, owner_id, revision, data, created_at, created_by)
+      VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        crypto.randomUUID(),
+        ownerId,
+        baseRevision,
+        priorRow.data,
+        updatedAt,
+        user.id,
+      )
+      .run();
+  }
   const updated = await env.DB.prepare(
     `INSERT INTO workspaces (user_id, data, updated_at, revision)
     VALUES (?, ?, ?, 1)
@@ -1346,6 +1378,17 @@ async function handleWorkspace(request, env, user, url) {
       409,
     );
   }
+  await env.DB.prepare(
+    `DELETE FROM workspace_snapshots
+    WHERE owner_id = ? AND id NOT IN (
+      SELECT id FROM workspace_snapshots
+      WHERE owner_id = ?
+      ORDER BY revision DESC
+      LIMIT 20
+    )`,
+  )
+    .bind(ownerId, ownerId)
+    .run();
   try {
     await notifyNewNotifications(env, currentData?.notifications, data.notifications);
   } catch (error) {
@@ -1355,6 +1398,110 @@ async function handleWorkspace(request, env, user, url) {
     ok: true,
     updatedAt: updated.updated_at,
     revision: updated.revision,
+  });
+}
+
+async function handleWorkspaceBackups(request, env, user, url) {
+  const ownerId = url.searchParams.get("owner") || user.id;
+  const role = await membershipRole(env, user.id, ownerId);
+  if (!role) return json({ error: "Você não tem acesso a este espaço." }, 403);
+  if (role !== "owner" && role !== "admin")
+    return json(
+      { error: "Somente proprietários e administradores podem restaurar dados." },
+      403,
+    );
+  await ensureWorkspaceSnapshotsSchema(env);
+
+  if (request.method === "GET") {
+    const result = await env.DB.prepare(
+      `SELECT id, revision, created_at, created_by, length(data) AS size
+      FROM workspace_snapshots
+      WHERE owner_id = ?
+      ORDER BY revision DESC
+      LIMIT 20`,
+    )
+      .bind(ownerId)
+      .all();
+    return json({
+      backups: (result.results || []).map((item) => ({
+        id: item.id,
+        revision: item.revision,
+        createdAt: item.created_at,
+        createdBy: item.created_by,
+        size: item.size,
+      })),
+    });
+  }
+
+  if (request.method !== "POST")
+    return json({ error: "Método não permitido." }, 405);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Solicitação inválida." }, 400);
+  }
+  const snapshotId =
+    typeof body?.snapshotId === "string" ? body.snapshotId.trim() : "";
+  const baseRevision = body?.revision;
+  if (!snapshotId || !Number.isInteger(baseRevision) || baseRevision < 0)
+    return json({ error: "Backup ou revisão inválida." }, 400);
+
+  const snapshot = await env.DB.prepare(
+    `SELECT data FROM workspace_snapshots
+    WHERE id = ? AND owner_id = ?`,
+  )
+    .bind(snapshotId, ownerId)
+    .first();
+  if (!snapshot) return json({ error: "Backup não encontrado." }, 404);
+  const current = await env.DB.prepare(
+    "SELECT data, revision FROM workspaces WHERE user_id = ?",
+  )
+    .bind(ownerId)
+    .first();
+  if (!current) return json({ error: "Espaço não encontrado." }, 404);
+  if (current.revision !== baseRevision)
+    return json(
+      {
+        error:
+          "Este espaço foi alterado em outra aba ou dispositivo. Atualize antes de restaurar.",
+        serverRevision: current.revision,
+      },
+      409,
+    );
+
+  const restoredAt = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO workspace_snapshots
+      (id, owner_id, revision, data, created_at, created_by)
+    VALUES (?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      crypto.randomUUID(),
+      ownerId,
+      current.revision,
+      current.data,
+      restoredAt,
+      user.id,
+    )
+    .run();
+  const restored = await env.DB.prepare(
+    `UPDATE workspaces
+    SET data = ?, updated_at = ?, revision = revision + 1
+    WHERE user_id = ? AND revision = ?
+    RETURNING revision, updated_at`,
+  )
+    .bind(snapshot.data, restoredAt, ownerId, baseRevision)
+    .first();
+  if (!restored)
+    return json(
+      { error: "O espaço mudou durante a restauração. Tente novamente." },
+      409,
+    );
+  return json({
+    ok: true,
+    revision: restored.revision,
+    updatedAt: restored.updated_at,
   });
 }
 
@@ -3676,7 +3823,7 @@ async function handleAiStream(request, env, user) {
             } catch {}
           }
         }
-      } catch (e) {
+      } catch {
         if (!any) { send({ error: "Falha no streaming.", fallback: true }); controller.close(); return; }
       }
       send({ done: true, provider, model });
@@ -4075,7 +4222,7 @@ async function handleMedia(request, env, url) {
           mimeType: "image/jpeg",
           freeTier: true,
         });
-    } catch (error) {
+    } catch {
       if (body.confirmPaid !== true)
         return json(
           {
@@ -4234,6 +4381,7 @@ export default {
       url.pathname === "/api/ai/stream" ||
       url.pathname === "/api/media" ||
       url.pathname === "/api/workspace" ||
+      url.pathname === "/api/workspace/backups" ||
       url.pathname === "/api/tasks/action" ||
       url.pathname === "/api/events" ||
       url.pathname === "/api/inbox" ||
@@ -4247,6 +4395,7 @@ export default {
         return json({ error: "Método não permitido." }, 405);
       if (
         (url.pathname === "/api/workspace" ||
+          url.pathname === "/api/workspace/backups" ||
           url.pathname === "/api/tasks/action" ||
           url.pathname === "/api/events" ||
           url.pathname === "/api/inbox" ||
@@ -4275,6 +4424,17 @@ export default {
           console.error("Workspace error", error);
           return json(
             { error: "Não foi possível sincronizar seus dados." },
+            500,
+          );
+        }
+      }
+      if (url.pathname === "/api/workspace/backups") {
+        try {
+          return await handleWorkspaceBackups(request, env, user, url);
+        } catch (error) {
+          console.error("Workspace backup error", error);
+          return json(
+            { error: "Não foi possível acessar os backups deste espaço." },
             500,
           );
         }

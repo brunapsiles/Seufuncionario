@@ -98,7 +98,7 @@ describe("painel de novidades", () => {
     expect(trigger.querySelector(".notif-dot")).toBeInTheDocument();
 
     fireEvent.click(trigger);
-    const dialog = await screen.findByRole("dialog", { name: "Novidades" });
+    await screen.findByRole("dialog", { name: "Novidades" });
     expect(
       screen.getByText(CHANGELOG_ENTRIES[0].title),
     ).toBeInTheDocument();

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   uid,
   today,
@@ -25,18 +25,15 @@ import {
   fillDocTemplate,
   buildEmailSignature,
   buildPixCode,
-  pixCrc16,
   DB_FIELD_TYPES,
   coerceCellValue,
   formatCellValue,
-  groupRowsByField,
   kanbanColumns,
   buildPageTree,
   pageDescendantIds,
   searchPages,
   AUTOMATION_WEEKDAYS,
   AUTOMATION_ACTIONS,
-  automationDue,
   runAutomations,
 } from "./domain.js";
 // Reexporta a camada de lógica pura para os testes que importam de "./App".
@@ -77,6 +74,12 @@ export {
   AUTOMATION_ACTIONS,
   automationDue,
   runAutomations,
+  procurementNumber,
+  supplierBidTotals,
+  compareSupplierBids,
+  bestOffersByItem,
+  buildProcurementCsv,
+  parseSupplierProposal,
 } from "./domain.js";
 import {
   Sparkles,
@@ -105,7 +108,6 @@ import {
   Clock3,
   Search,
   Filter,
-  MoreHorizontal,
   Trash2,
   Edit3,
   Copy,
@@ -170,7 +172,6 @@ import {
   Zap,
   RefreshCw,
   Settings,
-  Star,
   Plug,
   KeyRound,
   Sparkle,
@@ -187,6 +188,10 @@ import {
   Activity,
   LifeBuoy,
 } from "lucide-react";
+
+const Procurement = lazy(
+  () => import("./features/procurement/Procurement.jsx"),
+);
 
 const LEGACY_STORAGE_KEY = "seu-funcionario-v1";
 const ACTIVE_USER_KEY = "seu-funcionario-active-user";
@@ -206,6 +211,7 @@ const emptyDb = {
   products: [],
   orders: [],
   quotes: [],
+  supplierRfqs: [],
   recurring: [],
   timeEntries: [],
   contacts: [],
@@ -273,6 +279,7 @@ const nav = [
   ["marketing", "Marca e Marketing", Megaphone],
   ["vendas", "Vendas e Clientes", Handshake],
   ["orcamentos", "Orçamentos", ReceiptText],
+  ["compras", "Compras e Cotações", Boxes],
   ["caixa", "Caixa de entrada", Inbox],
   ["contatos", "Contatos", Users],
   ["agendamentos", "Agendamentos", CalendarDays],
@@ -324,6 +331,7 @@ const navGroups = [
     label: "OPERAÇÃO",
     items: [
       "produtos",
+      "compras",
       "frota",
       "horas",
       "operacao",
@@ -1813,7 +1821,9 @@ function useDatabase() {
   const conflictRef = useRef(false);
   const authInvalidRef = useRef(false);
   const dbRef = useRef(db);
-  dbRef.current = db;
+  useEffect(() => {
+    dbRef.current = db;
+  }, [db]);
   const userId = db.user?.id;
   const space = activeSpaceId();
   const spaceKey = space || userId;
@@ -1932,7 +1942,7 @@ function useDatabase() {
 
   const performSync = async () => {
     if (conflictRef.current || authInvalidRef.current) return false;
-    const { user, spaceKey: _s, ...rest } = dbRef.current;
+    const { user: _user, spaceKey: _s, ...rest } = dbRef.current;
     const data = {
       ...rest,
       media: (rest.media || []).map((item) =>
@@ -5855,7 +5865,7 @@ const areaToolkits = {
   },
 };
 
-function AreaToolkit({ area, db, update, business, setToast, go }) {
+function AreaToolkit({ area, db: _db, update, business, setToast, go }) {
   const config = areaToolkits[area];
   const storageKey = `sf-toolkit-open:${area}`;
   const [open, setOpen] = useState(() => {
@@ -6357,7 +6367,11 @@ function Tasks({
     }
     const now = new Date().toISOString();
     update((d) => {
-      const { deliveryDraft, subtaskDraft, ...rest } = form;
+      const {
+        deliveryDraft: _deliveryDraft,
+        subtaskDraft: _subtaskDraft,
+        ...rest
+      } = form;
       const isMission = !!form.isMission;
       const item = {
         ...rest,
@@ -8652,7 +8666,7 @@ function CRM({ db, update, business, setToast, go, searchSeed, clearSearchSeed }
   );
 }
 
-function Appointments({ db, update, business, setToast, go }) {
+function Appointments({ db, update, business, setToast, go: _go }) {
   const isEmployeeMode = (db.preferences.mode || "business") === "employee";
   const wa = useWhatsappSender({ db, setToast });
   const [modal, setModal] = useState(false),
@@ -9340,7 +9354,7 @@ const TASK_STATUS_TONE = {
   Concluído: "ok",
 };
 
-function MyWork({ db, business, setToast, go }) {
+function MyWork({ db, business, setToast: _setToast, go }) {
   const userId = db.user?.id;
   const work = computeMyWork(db, userId, business);
   const gamificationEnabled = db.preferences?.gamificationEnabled !== false;
@@ -9956,7 +9970,7 @@ function Quotes({ db, update, business, setToast, go }) {
   );
 }
 
-function InboxPage({ db, business, setToast, go }) {
+function InboxPage({ db: _db, business: _business, setToast, go: _go }) {
   const [items, setItems] = useState(null);
   const [filter, setFilter] = useState("todos");
   const [registering, setRegistering] = useState(false);
@@ -10137,7 +10151,7 @@ function ContactTimeline({ contact }) {
   );
 }
 
-function Contacts({ db, update, business, setToast, go, searchSeed, clearSearchSeed }) {
+function Contacts({ db, update, business, setToast, go: _go, searchSeed, clearSearchSeed }) {
   const wa = useWhatsappSender({ db, setToast });
   const importRef = useRef(null);
   const [modal, setModal] = useState(false),
@@ -10473,7 +10487,7 @@ const orderStatuses = [
 ];
 const orderChannels = ["Balcão", "Retirada", "Delivery", "Online", "Mesa"];
 
-function Catalog({ db, update, business, setToast, go }) {
+function Catalog({ db, update, business, setToast, go: _go }) {
   const wa = useWhatsappSender({ db, setToast });
   const [view, setView] = useState("produtos"),
     [search, setSearch] = useState(""),
@@ -11481,7 +11495,7 @@ function Catalog({ db, update, business, setToast, go }) {
 const vehicleStatuses = ["Ativo", "Manutenção", "Inativo"];
 const tripStatuses = ["Agendado", "Em rota", "Entregue", "Cancelado"];
 
-function Fleet({ db, update, business, setToast, go }) {
+function Fleet({ db, update, business, setToast, go: _go }) {
   const [view, setView] = useState("frota"),
     [search, setSearch] = useState(""),
     [vehicleModal, setVehicleModal] = useState(false),
@@ -12076,7 +12090,7 @@ const suggestedCompetencies = [
   "Resolução de problemas",
 ];
 
-function DevelopmentPlans({ db, update, business, setToast, go }) {
+function DevelopmentPlans({ db, update, business, setToast, go: _go }) {
   const [modal, setModal] = useState(false),
     [editing, setEditing] = useState(null),
     [search, setSearch] = useState(""),
@@ -12380,7 +12394,7 @@ function DevelopmentPlans({ db, update, business, setToast, go }) {
   );
 }
 
-function TimeTracking({ db, update, business, setToast, go }) {
+function TimeTracking({ db, update, business, setToast, go: _go }) {
   const [modal, setModal] = useState(false),
     [editing, setEditing] = useState(null),
     [search, setSearch] = useState(""),
@@ -13249,7 +13263,7 @@ function Finance({ db, update, business, setToast, go }) {
         </div>
         {!taxProfile.isMEI ? (
           <p className="das-intro">
-            Ative "Sou MEI" para acompanhar o pagamento da guia DAS mês a mês e
+            Ative &quot;Sou MEI&quot; para acompanhar o pagamento da guia DAS mês a mês e
             receber um lembrete automático antes do vencimento (todo dia 20).
           </p>
         ) : (
@@ -15095,7 +15109,7 @@ function PixCharge({ db, update, business, setToast }) {
         <div>
           <h1>Cobrança Pix</h1>
           <p className="page-sub">
-            Gere um Pix "copia e cola" com o valor e a descrição, e envie ao
+            Gere um Pix &quot;copia e cola&quot; com o valor e a descrição, e envie ao
             cliente. Gratuito — o dinheiro cai direto na conta da sua chave.
           </p>
         </div>
@@ -19554,7 +19568,7 @@ function EmailComposer({ onClose, setToast, initial }) {
         <div className="notice">
           <ShieldCheck />
           <span>
-            "Enviar pelo Gmail" pede sua permissão do Google e envia direto
+            &quot;Enviar pelo Gmail&quot; pede sua permissão do Google e envia direto
             pela sua conta. As demais opções só preparam um rascunho para você
             revisar e enviar manualmente.
           </span>
@@ -20322,7 +20336,7 @@ const aiTools = {
   },
 };
 
-function AIToolModal({ config, db, update, onClose, setToast, business }) {
+function AIToolModal({ config, db: _db, update, onClose, setToast, business }) {
   const [vals, setVals] = useState(
     Object.fromEntries(
       config.fields.map((f) => [f.key, f.type === "select" ? f.options[0] : ""]),
@@ -20456,26 +20470,6 @@ function AIToolModal({ config, db, update, onClose, setToast, business }) {
     } finally {
       setBusy(false);
     }
-  };
-  const saveDoc = () => {
-    update((d) => ({
-      ...d,
-      documents: [
-        { id: uid(), title: `${config.outTitle} — ${new Date().toLocaleDateString("pt-BR")}`, type: config.outTitle, content: out, businessId: d.selectedBusinessId || null, updatedAt: new Date().toISOString(), versions: [] },
-        ...d.documents,
-      ],
-    }));
-    setToast("Salvo em Documentos");
-  };
-  const saveTask = () => {
-    update((d) => ({
-      ...d,
-      tasks: [
-        { id: uid(), title: `${config.outTitle} — aplicar`, description: out.slice(0, 400), priority: "Média", status: "A fazer", due: "", area: config.specialist, businessId: d.selectedBusinessId || null },
-        ...d.tasks,
-      ],
-    }));
-    setToast("Tarefa criada a partir do resultado");
   };
   return (
     <Modal title={config.title} wide onClose={onClose}>
@@ -21527,7 +21521,7 @@ function HistoryPage({ db, update, business, setToast, go }) {
       {open &&
         (() => {
           const x = db.history.find((i) => i.id === open);
-          const rename = () => {
+          const promptRename = () => {
             const t = prompt("Novo nome para este item:", x.title);
             if (!t || !t.trim()) return;
             update((d) => ({ ...d, history: d.history.map((i) => (i.id === x.id ? { ...i, title: t.trim() } : i)) }));
@@ -21672,7 +21666,7 @@ function HistoryPage({ db, update, business, setToast, go }) {
                   <Button variant="secondary" icon={MessageSquareText} onClick={continueChat}>
                     Continuar no chat
                   </Button>
-                  <Button variant="ghost" icon={Edit3} onClick={rename}>
+                  <Button variant="ghost" icon={Edit3} onClick={promptRename}>
                     Renomear
                   </Button>
                   <Button variant="ghost" icon={Copy} onClick={duplicate}>
@@ -23046,6 +23040,8 @@ function AccountSettings({ db, update, setToast, go }) {
   const [serviceStatus, setServiceStatus] = useState(null);
   const [usageMetrics, setUsageMetrics] = useState(null);
   const [metricsBusy, setMetricsBusy] = useState(false);
+  const [backups, setBackups] = useState([]);
+  const [backupsBusy, setBackupsBusy] = useState(false);
   useEffect(() => {
     fetch("/api/config")
       .then((r) => r.json())
@@ -23081,6 +23077,54 @@ function AccountSettings({ db, update, setToast, go }) {
       setToast(error.message);
     } finally {
       setMetricsBusy(false);
+    }
+  };
+  const backupUrl = () => {
+    const space = activeSpaceId();
+    return `/api/workspace/backups${space ? `?owner=${encodeURIComponent(space)}` : ""}`;
+  };
+  const loadBackups = async () => {
+    setBackupsBusy(true);
+    try {
+      const response = await fetch(backupUrl(), { headers: authHeaders() });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok)
+        throw new Error(data.error || "Não foi possível carregar os backups.");
+      setBackups(data.backups || []);
+    } catch (error) {
+      setToast(error.message);
+    } finally {
+      setBackupsBusy(false);
+    }
+  };
+  const restoreBackup = async (backup) => {
+    const when = new Date(backup.createdAt).toLocaleString("pt-BR");
+    if (
+      !confirm(
+        `Restaurar a versão ${backup.revision}, salva em ${when}? A versão atual também será preservada no histórico.`,
+      )
+    )
+      return;
+    setBackupsBusy(true);
+    try {
+      const spaceKey = activeSpaceId() || db.user.id;
+      const response = await fetch(backupUrl(), {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          snapshotId: backup.id,
+          revision: readWorkspaceRevision(spaceKey),
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok)
+        throw new Error(data.error || "Não foi possível restaurar o backup.");
+      storeWorkspaceRevision(spaceKey, data.revision);
+      setToast("Versão restaurada. Atualizando o espaço...");
+      window.setTimeout(() => window.location.reload(), 400);
+    } catch (error) {
+      setToast(error.message);
+      setBackupsBusy(false);
     }
   };
   const downloadDiagnostics = () => {
@@ -23225,7 +23269,7 @@ function AccountSettings({ db, update, setToast, go }) {
     }
   };
   const exportData = () => {
-    const { user, spaceKey, ...rest } = db;
+    const { user: _user, spaceKey: _spaceKey, ...rest } = db;
     const blob = new Blob([JSON.stringify(rest, null, 2)], {
         type: "application/json",
       }),
@@ -23659,6 +23703,37 @@ function AccountSettings({ db, update, setToast, go }) {
               Exportar meus dados
             </Button>
             <Button
+              variant="secondary"
+              icon={History}
+              onClick={loadBackups}
+              disabled={backupsBusy}
+            >
+              {backupsBusy ? "Carregando versões..." : "Ver versões anteriores"}
+            </Button>
+            {backups.length > 0 && (
+              <div className="settings-links">
+                {backups.map((backup) => (
+                  <div className="settings-stat" key={backup.id}>
+                    <History />
+                    <span>
+                      <strong>Versão {backup.revision}</strong>
+                      <small>
+                        {new Date(backup.createdAt).toLocaleString("pt-BR")} ·{" "}
+                        {Math.max(1, Math.round(backup.size / 1024))} KB
+                      </small>
+                    </span>
+                    <Button
+                      variant="ghost"
+                      onClick={() => restoreBackup(backup)}
+                      disabled={backupsBusy}
+                    >
+                      Restaurar
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <Button
               variant="ghost"
               icon={LogOut}
               onClick={() => {
@@ -23880,6 +23955,10 @@ export default function App() {
   );
   const hasUnseenChangelog =
     CHANGELOG_ENTRIES[0] && CHANGELOG_ENTRIES[0].id !== changelogSeenId;
+  const business =
+    db.businesses.find((x) => x.id === db.selectedBusinessId) ||
+    db.businesses[0] ||
+    null;
   const openChangelog = () => {
     setChangelogOpen(true);
     const latestId = CHANGELOG_ENTRIES[0]?.id || "";
@@ -24102,10 +24181,6 @@ export default function App() {
     return <Onboarding db={db} update={update} />;
   const isEmployeeMode = mode === "employee";
   const visibleNav = navForMode(mode);
-  const business =
-    db.businesses.find((x) => x.id === db.selectedBusinessId) ||
-    db.businesses[0] ||
-    null;
   const myNotifications = (db.notifications || []).filter(
     (n) => n.assigneeId === db.user.id,
   );
@@ -24236,6 +24311,21 @@ export default function App() {
             setToast={setToast}
             go={go}
           />
+        );
+      case "compras":
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando compras...</div>}
+          >
+            <Procurement
+              db={db}
+              update={update}
+              business={business}
+              setToast={setToast}
+              extractDocumentText={extractDocumentText}
+              authHeaders={authHeaders}
+            />
+          </Suspense>
         );
       case "caixa":
         return (

@@ -57,3 +57,10 @@ Depois de cadastrar, teste: Configurações → "Notificações do navegador" �
 - Verificação de e-mail por código no cadastro: entrega real e criação de conta validadas
 - Recuperação de senha por código de e-mail
 - Guia `AGENTS.md` para revezamento entre assistentes
+- Compras e suprimentos: solicitações de cotação, propostas por fornecedor,
+  comparação por item, melhor oferta, totais e exportação CSV, com vínculos
+  opcionais a negócio, projeto, fornecedor e contrato
+- Histórico de recuperação do workspace: até 20 versões anteriores no servidor,
+  restauração protegida por revisão e preservação da versão substituída
+- Cabeçalhos defensivos nas respostas da API contra incorporação, interpretação
+  indevida de conteúdo, vazamento de referência e acesso desnecessário a sensores

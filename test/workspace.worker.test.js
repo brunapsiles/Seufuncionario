@@ -57,6 +57,23 @@ async function workspaceRequest(user, { method = "GET", owner, body } = {}) {
   );
 }
 
+async function backupRequest(user, { method = "GET", owner, body } = {}) {
+  requestNumber += 1;
+  const suffix = owner ? `?owner=${encodeURIComponent(owner)}` : "";
+  return worker.fetch(
+    new Request(`https://app.test/api/workspace/backups${suffix}`, {
+      method,
+      headers: {
+        authorization: `Bearer ${user.token}`,
+        "content-type": "application/json",
+        "cf-connecting-ip": `203.0.113.${(requestNumber % 250) + 1}`,
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }),
+    env,
+  );
+}
+
 async function readJson(response) {
   return { status: response.status, body: await response.json() };
 }
@@ -119,6 +136,75 @@ describe("/api/workspace com D1 local", () => {
     expect(first.body.revision).toBe(1);
     expect(second.status).toBe(200);
     expect(second.body.revision).toBe(2);
+    const loaded = await readJson(await workspaceRequest(user));
+    expect(loaded.body.data).toEqual({ value: 2 });
+  });
+
+  it("mantém snapshots e restaura uma versão sem apagar a atual", async () => {
+    const user = await createUser("backup-owner");
+    const first = await readJson(
+      await workspaceRequest(user, {
+        method: "PUT",
+        body: { data: { value: "original" }, revision: 0 },
+      }),
+    );
+    const second = await readJson(
+      await workspaceRequest(user, {
+        method: "PUT",
+        body: { data: { value: "nova" }, revision: first.body.revision },
+      }),
+    );
+    const backups = await readJson(await backupRequest(user));
+
+    expect(backups.status).toBe(200);
+    expect(backups.body.backups).toHaveLength(1);
+    expect(backups.body.backups[0]).toMatchObject({
+      revision: 1,
+      createdAt: expect.any(String),
+      size: expect.any(Number),
+    });
+
+    const restored = await readJson(
+      await backupRequest(user, {
+        method: "POST",
+        body: {
+          snapshotId: backups.body.backups[0].id,
+          revision: second.body.revision,
+        },
+      }),
+    );
+    expect(restored).toMatchObject({
+      status: 200,
+      body: { ok: true, revision: 3 },
+    });
+    const loaded = await readJson(await workspaceRequest(user));
+    expect(loaded.body.data).toEqual({ value: "original" });
+
+    const afterRestore = await readJson(await backupRequest(user));
+    expect(afterRestore.body.backups.map((item) => item.revision)).toEqual([
+      2, 1,
+    ]);
+  });
+
+  it("protege restauração contra revisão desatualizada", async () => {
+    const user = await createUser("backup-conflict");
+    await workspaceRequest(user, {
+      method: "PUT",
+      body: { data: { value: 1 }, revision: 0 },
+    });
+    await workspaceRequest(user, {
+      method: "PUT",
+      body: { data: { value: 2 }, revision: 1 },
+    });
+    const backups = await readJson(await backupRequest(user));
+    const restored = await readJson(
+      await backupRequest(user, {
+        method: "POST",
+        body: { snapshotId: backups.body.backups[0].id, revision: 1 },
+      }),
+    );
+
+    expect(restored.status).toBe(409);
     const loaded = await readJson(await workspaceRequest(user));
     expect(loaded.body.data).toEqual({ value: 2 });
   });

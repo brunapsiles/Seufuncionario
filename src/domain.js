@@ -1011,3 +1011,158 @@ export const runAutomations = (rules, ymd = today()) => {
   });
   return { rules: updated, intents };
 };
+
+// ===== Compras / RFQ de fornecedores =====
+// Valores chegam de planilhas e propostas brasileiras em formatos diferentes.
+// Esta normalização aceita número, "1.234,56", "R$ 1.234,56" e "1234.56".
+export const procurementNumber = (value) => {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  let raw = String(value ?? "").trim().replace(/[^\d,.-]/g, "");
+  if (!raw) return 0;
+  const comma = raw.lastIndexOf(",");
+  const dot = raw.lastIndexOf(".");
+  if (comma > dot) raw = raw.replace(/\./g, "").replace(",", ".");
+  else if (dot > comma && comma >= 0) raw = raw.replace(/,/g, "");
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+export const supplierBidTotals = (rfq, bid) => {
+  const offers = bid?.offers || {};
+  let subtotal = 0;
+  let quotedItems = 0;
+  for (const item of rfq?.items || []) {
+    const offer = offers[item.id] || {};
+    const unitPrice = procurementNumber(offer.unitPrice);
+    if (unitPrice > 0) quotedItems += 1;
+    subtotal += procurementNumber(item.quantity) * unitPrice;
+  }
+  const freight = procurementNumber(bid?.freight);
+  const taxes = procurementNumber(bid?.taxes);
+  const discount = procurementNumber(bid?.discount);
+  return {
+    subtotal,
+    freight,
+    taxes,
+    discount,
+    total: Math.max(0, subtotal + freight + taxes - discount),
+    quotedItems,
+    coverage: (rfq?.items || []).length
+      ? Math.round((quotedItems / rfq.items.length) * 100)
+      : 0,
+  };
+};
+
+// Ranqueia sem esconder lacunas: proposta incompleta nunca ganha de uma completa.
+// Em empate, respeita a prioridade declarada na RFQ.
+export const compareSupplierBids = (rfq) => {
+  const complete = (rfq?.bids || []).map((bid) => ({
+    ...bid,
+    metrics: supplierBidTotals(rfq, bid),
+    deliveryDays: Math.max(0, procurementNumber(bid.deliveryDays)),
+  }));
+  const priority = rfq?.priority || "equilibrio";
+  complete.sort((a, b) => {
+    if (a.metrics.coverage !== b.metrics.coverage)
+      return b.metrics.coverage - a.metrics.coverage;
+    if (priority === "prazo" && a.deliveryDays !== b.deliveryDays)
+      return a.deliveryDays - b.deliveryDays;
+    if (a.metrics.total !== b.metrics.total)
+      return a.metrics.total - b.metrics.total;
+    return a.deliveryDays - b.deliveryDays;
+  });
+  return complete.map((bid, index) => ({ ...bid, rank: index + 1 }));
+};
+
+export const bestOffersByItem = (rfq) =>
+  (rfq?.items || []).map((item) => {
+    const offers = (rfq?.bids || [])
+      .map((bid) => ({
+        bidId: bid.id,
+        supplierName: bid.supplierName,
+        unitPrice: procurementNumber(bid.offers?.[item.id]?.unitPrice),
+      }))
+      .filter((offer) => offer.unitPrice > 0)
+      .sort((a, b) => a.unitPrice - b.unitPrice);
+    return { itemId: item.id, best: offers[0] || null, offers };
+  });
+
+export const buildProcurementCsv = (rfq) => {
+  const esc = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+  const bids = compareSupplierBids(rfq);
+  const head = [
+    "Fornecedor",
+    ...(rfq?.items || []).map(
+      (item) => `${item.name} (${item.quantity} ${item.unit || "un"})`,
+    ),
+    "Frete",
+    "Impostos",
+    "Desconto",
+    "Total",
+    "Prazo (dias)",
+    "Pagamento",
+    "Cobertura",
+    "Ranking",
+  ];
+  const rows = bids.map((bid) => [
+    bid.supplierName,
+    ...(rfq?.items || []).map((item) =>
+      procurementNumber(bid.offers?.[item.id]?.unitPrice),
+    ),
+    bid.metrics.freight,
+    bid.metrics.taxes,
+    bid.metrics.discount,
+    bid.metrics.total,
+    bid.deliveryDays,
+    bid.paymentTerms || "",
+    `${bid.metrics.coverage}%`,
+    bid.rank,
+  ]);
+  return [head, ...rows].map((row) => row.map(esc).join(";")).join("\r\n");
+};
+
+// Normaliza JSON extraído pela IA de PDFs, DOCX, CSV ou texto de fornecedores.
+export const parseSupplierProposal = (raw, rfq) => {
+  const source = String(raw || "").replace(/```(?:json)?/gi, "").replace(/```/g, "");
+  const start = source.indexOf("{");
+  const end = source.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(source.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+  const proposedItems = parsed.items || parsed.itens || [];
+  const offers = {};
+  for (const item of rfq?.items || []) {
+    const normalized = String(item.name || "").trim().toLowerCase();
+    const match = proposedItems.find((entry) => {
+      const name = String(entry.name || entry.nome || entry.item || "")
+        .trim()
+        .toLowerCase();
+      return name === normalized || name.includes(normalized) || normalized.includes(name);
+    });
+    offers[item.id] = {
+      unitPrice: procurementNumber(
+        match?.unitPrice ?? match?.precoUnitario ?? match?.preco ?? 0,
+      ),
+      notes: String(match?.notes || match?.observacoes || ""),
+    };
+  }
+  return {
+    supplierName: String(
+      parsed.supplierName || parsed.fornecedor || parsed.empresa || "",
+    ).trim(),
+    supplierContact: String(parsed.contact || parsed.contato || "").trim(),
+    freight: procurementNumber(parsed.freight ?? parsed.frete),
+    taxes: procurementNumber(parsed.taxes ?? parsed.impostos),
+    discount: procurementNumber(parsed.discount ?? parsed.desconto),
+    deliveryDays: procurementNumber(parsed.deliveryDays ?? parsed.prazoDias),
+    paymentTerms: String(
+      parsed.paymentTerms || parsed.condicaoPagamento || "",
+    ).trim(),
+    notes: String(parsed.notes || parsed.observacoes || "").trim(),
+    offers,
+  };
+};
