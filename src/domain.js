@@ -953,3 +953,61 @@ export const searchPages = (pages = [], query = "") => {
     `${p.title || ""} ${p.content || ""}`.toLowerCase().includes(q),
   );
 };
+
+// ===== Automações (regras que rodam sozinhas) =====
+export const AUTOMATION_WEEKDAYS = [
+  [1, "Segunda-feira"],
+  [2, "Terça-feira"],
+  [3, "Quarta-feira"],
+  [4, "Quinta-feira"],
+  [5, "Sexta-feira"],
+  [6, "Sábado"],
+  [0, "Domingo"],
+];
+export const AUTOMATION_ACTIONS = [
+  { id: "task", label: "Criar uma tarefa" },
+  { id: "reminder", label: "Me lembrar (notificação)" },
+];
+
+// Uma regra está "no ponto de disparar" hoje? Retorna a chave do período
+// (para deduplicar) ou null. Semanal: dispara no dia da semana escolhido,
+// dedup pela data. Mensal: dispara a partir do dia escolhido, dedup por mês.
+export const automationDue = (rule, ymd = today()) => {
+  if (!rule || rule.enabled === false) return null;
+  const [y, m, d] = String(ymd).split("-").map(Number);
+  const date = new Date(Date.UTC(y || 1970, (m || 1) - 1, d || 1, 12));
+  let key;
+  if (rule.frequency === "monthly") {
+    if ((d || 1) < (Number(rule.day) || 1)) return null;
+    key = ymd.slice(0, 7);
+  } else {
+    // semanal (padrão)
+    if (date.getUTCDay() !== (Number(rule.day) || 1)) return null;
+    key = ymd;
+  }
+  if (rule.history && rule.history[key]) return null;
+  return key;
+};
+
+// Roda as automações: devolve as regras atualizadas (com o período marcado no
+// history, idempotente) e a lista de "intenções" a aplicar (o App transforma
+// em tarefas/notificações reais). Não executa nada sozinho aqui.
+export const runAutomations = (rules, ymd = today()) => {
+  const intents = [];
+  const now = new Date().toISOString();
+  const updated = (rules || []).map((rule) => {
+    const key = automationDue(rule, ymd);
+    if (!key) return rule;
+    intents.push({
+      ruleId: rule.id,
+      actionType: rule.actionType || "task",
+      text: rule.actionText || rule.name || "Tarefa automática",
+    });
+    return {
+      ...rule,
+      lastRun: now,
+      history: { ...(rule.history || {}), [key]: now },
+    };
+  });
+  return { rules: updated, intents };
+};

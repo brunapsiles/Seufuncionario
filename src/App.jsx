@@ -34,6 +34,10 @@ import {
   buildPageTree,
   pageDescendantIds,
   searchPages,
+  AUTOMATION_WEEKDAYS,
+  AUTOMATION_ACTIONS,
+  automationDue,
+  runAutomations,
 } from "./domain.js";
 // Reexporta a camada de lógica pura para os testes que importam de "./App".
 export {
@@ -69,6 +73,10 @@ export {
   buildPageTree,
   pageDescendantIds,
   searchPages,
+  AUTOMATION_WEEKDAYS,
+  AUTOMATION_ACTIONS,
+  automationDue,
+  runAutomations,
 } from "./domain.js";
 import {
   Sparkles,
@@ -159,6 +167,7 @@ import {
   QrCode,
   Database,
   BookOpen,
+  Zap,
   RefreshCw,
   Settings,
   Star,
@@ -220,6 +229,7 @@ const emptyDb = {
   pixCharges: [],
   databases: [],
   wikiPages: [],
+  automations: [],
   sites: [],
   history: [],
   certificates: [],
@@ -270,6 +280,7 @@ const nav = [
   ["frota", "Frota e Fretes", Truck],
   ["horas", "Horas e Faturamento", Clock3],
   ["bases", "Meus dados", Database],
+  ["automacoes", "Automações", Zap],
   ["financeiro", "Financeiro", WalletCards],
   ["cobranca", "Cobrança Pix", QrCode],
   ["resultados", "Resultados", BarChart3],
@@ -311,7 +322,15 @@ const navGroups = [
   },
   {
     label: "OPERAÇÃO",
-    items: ["produtos", "frota", "horas", "operacao", "desenvolvimento", "bases"],
+    items: [
+      "produtos",
+      "frota",
+      "horas",
+      "operacao",
+      "desenvolvimento",
+      "bases",
+      "automacoes",
+    ],
   },
   { label: "FINANCEIRO", items: ["financeiro", "cobranca", "resultados"] },
   {
@@ -13932,6 +13951,315 @@ function AttachmentList({ attachments, onRemove }) {
   );
 }
 
+const AUTOMATION_TEMPLATES = [
+  {
+    name: "Planejar a semana",
+    frequency: "weekly",
+    day: 1,
+    actionType: "task",
+    actionText: "Planejar as prioridades da semana",
+  },
+  {
+    name: "Fechar o caixa do mês",
+    frequency: "monthly",
+    day: 1,
+    actionType: "task",
+    actionText: "Conferir entradas e saídas do mês passado",
+  },
+  {
+    name: "Lembrete de cobrança",
+    frequency: "monthly",
+    day: 5,
+    actionType: "reminder",
+    actionText: "Enviar as cobranças pendentes aos clientes",
+  },
+];
+
+const automationScheduleLabel = (rule) => {
+  if (rule.frequency === "monthly") return `Todo dia ${rule.day || 1} do mês`;
+  const wd = AUTOMATION_WEEKDAYS.find(([v]) => v === Number(rule.day));
+  return `Toda ${wd ? wd[1].toLowerCase() : "semana"}`;
+};
+
+function Automations({ db, update, business, setToast }) {
+  const rules = (db.automations || []).filter(
+    (r) => !r.businessId || !business || r.businessId === business.id,
+  );
+  const blank = {
+    id: null,
+    name: "",
+    enabled: true,
+    frequency: "weekly",
+    day: 1,
+    actionType: "task",
+    actionText: "",
+  };
+  const [editing, setEditing] = useState(null);
+
+  const persist = (list) => update((prev) => ({ ...prev, automations: list }));
+  const createFromTemplate = (t) => {
+    const rule = {
+      ...blank,
+      ...t,
+      id: uid(),
+      history: {},
+      businessId: business?.id || null,
+      ownerId: db.user.id,
+      createdAt: new Date().toISOString(),
+    };
+    persist([rule, ...(db.automations || [])]);
+    setToast("Automação criada");
+  };
+  const saveRule = () => {
+    if (!editing.name.trim() || !editing.actionText.trim()) return;
+    const id = editing.id || uid();
+    const rule = {
+      ...editing,
+      id,
+      day: Number(editing.day) || 1,
+      businessId: editing.businessId || business?.id || null,
+      ownerId: editing.ownerId || db.user.id,
+      history: editing.history || {},
+      createdAt: editing.createdAt || new Date().toISOString(),
+    };
+    persist(
+      (db.automations || []).some((r) => r.id === id)
+        ? (db.automations || []).map((r) => (r.id === id ? rule : r))
+        : [rule, ...(db.automations || [])],
+    );
+    setEditing(null);
+    setToast("Automação salva");
+  };
+  const toggle = (id) =>
+    persist(
+      (db.automations || []).map((r) =>
+        r.id === id ? { ...r, enabled: !r.enabled } : r,
+      ),
+    );
+  const remove = (id) => {
+    if (!window.confirm("Excluir esta automação?")) return;
+    persist((db.automations || []).filter((r) => r.id !== id));
+    setToast("Automação excluída");
+  };
+  const runNow = () => {
+    const { rules: updatedRules, intents } = runAutomations(db.automations || []);
+    if (intents.length === 0) {
+      setToast("Nada para executar agora — nenhuma automação vencida");
+      return;
+    }
+    update((d) => {
+      const tasks = intents
+        .filter((i) => i.actionType === "task")
+        .map((i) => taskFromIdea(i.text, { businessId: business?.id, ownerId: d.user.id }));
+      const notifs = intents
+        .filter((i) => i.actionType === "reminder")
+        .map((i) => ({
+          id: uid(),
+          assigneeId: d.user.id,
+          ownerId: d.user.id,
+          message: i.text,
+          link: "automacoes",
+          read: false,
+          createdAt: new Date().toISOString(),
+        }));
+      return {
+        ...d,
+        automations: updatedRules,
+        tasks: [...tasks, ...(d.tasks || [])],
+        notifications: [...notifs, ...(d.notifications || [])],
+      };
+    });
+    setToast(`${intents.length} automação(ões) executada(s)`);
+  };
+
+  return (
+    <div className="page automations-page">
+      <header className="page-head">
+        <div>
+          <h1>Automações</h1>
+          <p className="page-sub">
+            Crie regras que rodam sozinhas: toda semana ou todo mês, elas criam
+            uma tarefa ou um lembrete para você. Rodam quando você abre o app.
+          </p>
+        </div>
+      </header>
+
+      <div className="card automation-templates">
+        <div className="notice">
+          <Zap />
+          <span>
+            Comece por um modelo ou crie a sua. As automações nunca gastam
+            dinheiro nem enviam nada sozinhas — só criam tarefas e lembretes
+            para você decidir.
+          </span>
+        </div>
+        <div className="automation-template-row">
+          {AUTOMATION_TEMPLATES.map((t) => (
+            <button
+              key={t.name}
+              className="chip-btn"
+              onClick={() => createFromTemplate(t)}
+            >
+              <Plus size={13} /> {t.name}
+            </button>
+          ))}
+          <button
+            className="btn ghost sm"
+            onClick={() => setEditing({ ...blank })}
+          >
+            <Plus size={15} /> Nova automação
+          </button>
+          {rules.length > 0 && (
+            <button className="btn primary sm" onClick={runNow}>
+              Rodar agora
+            </button>
+          )}
+        </div>
+      </div>
+
+      {rules.length === 0 ? (
+        <div className="empty-state">
+          <Zap />
+          <h3>Nenhuma automação ainda</h3>
+          <p>Crie uma regra acima para o app trabalhar por você.</p>
+        </div>
+      ) : (
+        <div className="automation-list">
+          {rules.map((r) => (
+            <article
+              key={r.id}
+              className={`card automation-item ${r.enabled === false ? "off" : ""}`}
+            >
+              <div className="automation-info">
+                <h4>{r.name}</h4>
+                <p className="automation-when">
+                  {automationScheduleLabel(r)} ·{" "}
+                  {r.actionType === "reminder" ? "Lembrete" : "Tarefa"}: “{r.actionText}”
+                </p>
+                {r.lastRun && (
+                  <p className="automation-last">
+                    Última execução:{" "}
+                    {new Date(r.lastRun).toLocaleDateString("pt-BR")}
+                  </p>
+                )}
+              </div>
+              <div className="automation-actions">
+                <label className="automation-switch">
+                  <input
+                    type="checkbox"
+                    checked={r.enabled !== false}
+                    onChange={() => toggle(r.id)}
+                  />
+                  <span>{r.enabled === false ? "Pausada" : "Ativa"}</span>
+                </label>
+                <button className="btn ghost sm" onClick={() => setEditing({ ...r })}>
+                  <Pencil size={15} /> Editar
+                </button>
+                <button className="btn ghost sm danger" onClick={() => remove(r.id)}>
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {editing && (
+        <Modal
+          title={editing.id ? "Editar automação" : "Nova automação"}
+          onClose={() => setEditing(null)}
+        >
+          <div className="modal-body">
+            <Field label="Nome da automação">
+              <input
+                value={editing.name}
+                onChange={(e) => setEditing((m) => ({ ...m, name: e.target.value }))}
+                placeholder="Ex.: Planejar a semana"
+                autoFocus
+              />
+            </Field>
+            <div className="form-grid">
+              <Field label="Frequência">
+                <select
+                  value={editing.frequency}
+                  onChange={(e) =>
+                    setEditing((m) => ({ ...m, frequency: e.target.value }))
+                  }
+                >
+                  <option value="weekly">Toda semana</option>
+                  <option value="monthly">Todo mês</option>
+                </select>
+              </Field>
+              {editing.frequency === "weekly" ? (
+                <Field label="Dia da semana">
+                  <select
+                    value={editing.day}
+                    onChange={(e) =>
+                      setEditing((m) => ({ ...m, day: Number(e.target.value) }))
+                    }
+                  >
+                    {AUTOMATION_WEEKDAYS.map(([v, label]) => (
+                      <option key={v} value={v}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              ) : (
+                <Field label="Dia do mês">
+                  <input
+                    type="number"
+                    min="1"
+                    max="28"
+                    value={editing.day}
+                    onChange={(e) =>
+                      setEditing((m) => ({ ...m, day: Number(e.target.value) }))
+                    }
+                  />
+                </Field>
+              )}
+            </div>
+            <Field label="O que fazer">
+              <select
+                value={editing.actionType}
+                onChange={(e) =>
+                  setEditing((m) => ({ ...m, actionType: e.target.value }))
+                }
+              >
+                {AUTOMATION_ACTIONS.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field
+              label={
+                editing.actionType === "reminder"
+                  ? "Texto do lembrete"
+                  : "Título da tarefa"
+              }
+            >
+              <input
+                value={editing.actionText}
+                onChange={(e) =>
+                  setEditing((m) => ({ ...m, actionText: e.target.value }))
+                }
+                placeholder="Ex.: Conferir o caixa do mês"
+              />
+            </Field>
+            <div className="form-actions">
+              <button className="btn primary" onClick={saveRule}>
+                Salvar automação
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 function WikiTreeNodes({ nodes, selectedId, onSelect, depth }) {
   return nodes.map((node) => (
     <div key={node.id}>
@@ -23590,6 +23918,37 @@ export default function App() {
       return next;
     });
   }, [db.recurring, db.user?.id]);
+  // Automações: regras agendadas que criam tarefas ou lembretes sozinhas.
+  // Só no espaço do próprio dono, idempotente por período (history na regra).
+  useEffect(() => {
+    if (activeSpaceId() || !db.user?.id) return;
+    const { rules, intents } = runAutomations(db.automations || []);
+    if (intents.length === 0) return;
+    update((d) => {
+      const tasks = intents
+        .filter((i) => i.actionType === "task")
+        .map((i) =>
+          taskFromIdea(i.text, { businessId: business?.id, ownerId: d.user.id }),
+        );
+      const notifs = intents
+        .filter((i) => i.actionType === "reminder")
+        .map((i) => ({
+          id: uid(),
+          assigneeId: d.user.id,
+          ownerId: d.user.id,
+          message: i.text,
+          link: "automacoes",
+          read: false,
+          createdAt: new Date().toISOString(),
+        }));
+      return {
+        ...d,
+        automations: rules,
+        tasks: [...tasks, ...(d.tasks || [])],
+        notifications: [...notifs, ...(d.notifications || [])],
+      };
+    });
+  }, [db.automations, db.user?.id]);
   const startResize = (e) => {
     e.preventDefault();
     document.body.style.userSelect = "none";
@@ -24017,6 +24376,15 @@ export default function App() {
       case "wiki":
         return (
           <Wiki
+            db={db}
+            update={update}
+            business={business}
+            setToast={setToast}
+          />
+        );
+      case "automacoes":
+        return (
+          <Automations
             db={db}
             update={update}
             business={business}
