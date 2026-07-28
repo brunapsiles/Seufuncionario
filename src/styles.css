@@ -9581,3 +9581,66 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
 :root[data-theme="dark"] .db-formula-cell {
   color: #7dd3fc;
 }
+
+/* ===== Gráficos nas planilhas ===== */
+.sheet-chart {
+  margin-top: 14px;
+  padding: 14px;
+}
+.sheet-chart-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.sheet-chart-controls select {
+  font-size: 13px;
+  padding: 3px 6px;
+}
+.sheet-chart-types {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-left: auto;
+}
+.sheet-chart-svg {
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+}
+.sheet-chart-svg.wide {
+  max-width: 560px;
+}
+.sheet-chart-label {
+  font-size: 9px;
+  fill: var(--muted);
+}
+.sheet-chart-wrap {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.sheet-chart-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+.sheet-chart-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sheet-chart-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  display: inline-block;
+}

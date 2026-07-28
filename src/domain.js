@@ -1297,3 +1297,32 @@ export const evalFormula = (expr, values = {}) => {
   const result = expr2();
   return Number.isFinite(result) ? Math.round(result * 100) / 100 : "";
 };
+
+// ===== Gráficos nas planilhas =====
+// Converte um texto para número aceitando formato BR ("R$ 1.200,50" => 1200.5).
+export const parseBrNumber = (raw) => {
+  let s = String(raw == null ? "" : raw).replace(/[^\d.,-]/g, "");
+  if (!s) return 0;
+  if (s.includes(",")) {
+    // vírgula = decimal; pontos = milhar
+    s = s.replace(/\./g, "").replace(",", ".");
+  } else if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) {
+    // sem vírgula, mas pontos em grupos de 3 = milhar (ex.: 2.000, 1.234.567)
+    s = s.replace(/\./g, "");
+  }
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+};
+
+// Série {label, value} a partir de uma coluna de rótulo e uma de valor.
+// Ignora linhas totalmente vazias. Valores não numéricos viram 0.
+export const sheetChartSeries = (columns, rows, labelIdx, valueIdx) => {
+  const li = Number(labelIdx);
+  const vi = Number(valueIdx);
+  return (rows || [])
+    .filter((r) => (r || []).some((c) => String(c ?? "").trim() !== ""))
+    .map((r, i) => ({
+      label: String(r[li] ?? "").trim() || `Linha ${i + 1}`,
+      value: parseBrNumber(r[vi]),
+    }));
+};

@@ -41,6 +41,7 @@ import {
   extractMergeFields,
   applyMergeFields,
   evalFormula,
+  sheetChartSeries,
 } from "./domain.js";
 // Reexporta a camada de lógica pura para os testes que importam de "./App".
 export {
@@ -86,6 +87,8 @@ export {
   extractMergeFields,
   applyMergeFields,
   evalFormula,
+  sheetChartSeries,
+  parseBrNumber,
   procurementNumber,
   supplierBidTotals,
   compareSupplierBids,
@@ -16383,11 +16386,141 @@ const SHEET_EXAMPLES = [
   "Planejamento de metas do trimestre",
 ];
 
+const CHART_COLORS = [
+  "#0369a1",
+  "#16a34a",
+  "#f59e0b",
+  "#dc2626",
+  "#7c3aed",
+  "#0891b2",
+  "#db2777",
+  "#65a30d",
+];
+
+function SheetChart({ series, type }) {
+  const data = (series || []).slice(0, 12);
+  if (data.length === 0)
+    return <p className="db-empty-hint">Sem dados para o gráfico.</p>;
+  const values = data.map((d) => d.value);
+  const max = Math.max(1, ...values.map((v) => Math.abs(v)));
+
+  if (type === "pizza") {
+    const total = values.reduce((s, v) => s + Math.max(0, v), 0);
+    if (total <= 0)
+      return <p className="db-empty-hint">A coluna de valores precisa ter números positivos.</p>;
+    const cx = 100;
+    const cy = 100;
+    const r = 82;
+    let angle = -Math.PI / 2;
+    const polar = (a) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+    return (
+      <div className="sheet-chart-wrap">
+        <svg viewBox="0 0 200 200" className="sheet-chart-svg" role="img">
+          {data.map((d, i) => {
+            const frac = Math.max(0, d.value) / total;
+            if (frac <= 0) return null;
+            const start = angle;
+            const end = angle + frac * Math.PI * 2;
+            angle = end;
+            const [x1, y1] = polar(start);
+            const [x2, y2] = polar(end);
+            const large = end - start > Math.PI ? 1 : 0;
+            return (
+              <path
+                key={i}
+                d={`M ${cx} ${cy} L ${x1.toFixed(1)} ${y1.toFixed(1)} A ${r} ${r} 0 ${large} 1 ${x2.toFixed(1)} ${y2.toFixed(1)} Z`}
+                fill={CHART_COLORS[i % CHART_COLORS.length]}
+              />
+            );
+          })}
+        </svg>
+        <ul className="sheet-chart-legend">
+          {data.map((d, i) => (
+            <li key={i}>
+              <span
+                className="sheet-chart-swatch"
+                style={{ background: CHART_COLORS[i % CHART_COLORS.length] }}
+              />
+              {d.label} · {String(d.value).replace(".", ",")}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
+  // barras e linha compartilham eixo
+  const W = 320;
+  const H = 180;
+  const pad = 24;
+  const plotW = W - pad * 2;
+  const plotH = H - pad * 2;
+  const step = plotW / data.length;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="sheet-chart-svg wide" role="img">
+      <line x1={pad} y1={H - pad} x2={W - pad} y2={H - pad} stroke="#cbd5e1" />
+      {type === "linha" ? (
+        <>
+          <polyline
+            fill="none"
+            stroke="#0369a1"
+            strokeWidth="2"
+            points={data
+              .map((d, i) => {
+                const x = pad + step * i + step / 2;
+                const y = H - pad - (Math.max(0, d.value) / max) * plotH;
+                return `${x.toFixed(1)},${y.toFixed(1)}`;
+              })
+              .join(" ")}
+          />
+          {data.map((d, i) => {
+            const x = pad + step * i + step / 2;
+            const y = H - pad - (Math.max(0, d.value) / max) * plotH;
+            return <circle key={i} cx={x} cy={y} r="3" fill="#0369a1" />;
+          })}
+        </>
+      ) : (
+        data.map((d, i) => {
+          const bh = (Math.max(0, d.value) / max) * plotH;
+          const x = pad + step * i + step * 0.15;
+          const bw = step * 0.7;
+          return (
+            <rect
+              key={i}
+              x={x}
+              y={H - pad - bh}
+              width={bw}
+              height={bh}
+              fill={CHART_COLORS[i % CHART_COLORS.length]}
+              rx="2"
+            />
+          );
+        })
+      )}
+      {data.map((d, i) => (
+        <text
+          key={i}
+          x={pad + step * i + step / 2}
+          y={H - pad + 12}
+          textAnchor="middle"
+          className="sheet-chart-label"
+        >
+          {d.label.length > 8 ? `${d.label.slice(0, 7)}…` : d.label}
+        </text>
+      ))}
+    </svg>
+  );
+}
+
 function SheetBuilder({ db, update, business, setToast }) {
   const [desc, setDesc] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [active, setActive] = useState(null);
+  const [chartOpen, setChartOpen] = useState(false);
+  const [chartType, setChartType] = useState("barras");
+  const [labelCol, setLabelCol] = useState(0);
+  const [valueCol, setValueCol] = useState(1);
 
   const saved = db.sheets
     .filter((s) => !business || s.businessId === business.id)
@@ -16613,6 +16746,12 @@ Regras:
               <button className="btn ghost sm" onClick={downloadCsv}>
                 <Download size={15} /> CSV
               </button>
+              <button
+                className={`btn ghost sm ${chartOpen ? "active" : ""}`}
+                onClick={() => setChartOpen((v) => !v)}
+              >
+                <BarChart3 size={15} /> Gráfico
+              </button>
               <button className="btn primary sm" onClick={saveSheet}>
                 Salvar
               </button>
@@ -16677,6 +16816,57 @@ Regras:
             <p className="sheet-empty-hint">
               Sem linhas ainda. Use “+ Linha” para começar.
             </p>
+          )}
+          {chartOpen && (
+            <div className="sheet-chart card">
+              <div className="sheet-chart-controls">
+                <label>
+                  Categorias:{" "}
+                  <select
+                    value={labelCol}
+                    onChange={(e) => setLabelCol(Number(e.target.value))}
+                  >
+                    {active.columns.map((c, i) => (
+                      <option key={i} value={i}>
+                        {c || `Coluna ${i + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Valores:{" "}
+                  <select
+                    value={valueCol}
+                    onChange={(e) => setValueCol(Number(e.target.value))}
+                  >
+                    {active.columns.map((c, i) => (
+                      <option key={i} value={i}>
+                        {c || `Coluna ${i + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="sheet-chart-types">
+                  {[
+                    ["barras", "Barras"],
+                    ["linha", "Linha"],
+                    ["pizza", "Pizza"],
+                  ].map(([t, label]) => (
+                    <button
+                      key={t}
+                      className={`db-view-btn ${chartType === t ? "active" : ""}`}
+                      onClick={() => setChartType(t)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <SheetChart
+                series={sheetChartSeries(active.columns, active.rows, labelCol, valueCol)}
+                type={chartType}
+              />
+            </div>
           )}
         </div>
       )}
