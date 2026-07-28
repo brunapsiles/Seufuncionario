@@ -794,3 +794,66 @@ export const buildEmailSignature = (data = {}) => {
 
   return { html, text };
 };
+
+// CRC16-CCITT-FALSE (init 0xFFFF, polinômio 0x1021) usado no BR Code do Pix.
+// Retorna 4 dígitos hexadecimais em maiúsculas. Vetor de teste conhecido:
+// "123456789" => "29B1".
+export const pixCrc16 = (str) => {
+  let crc = 0xffff;
+  const s = String(str);
+  for (let i = 0; i < s.length; i += 1) {
+    crc ^= s.charCodeAt(i) << 8;
+    for (let j = 0; j < 8; j += 1) {
+      crc = crc & 0x8000 ? (crc << 1) ^ 0x1021 : crc << 1;
+      crc &= 0xffff;
+    }
+  }
+  return crc.toString(16).toUpperCase().padStart(4, "0");
+};
+
+// Remove acentos e caracteres fora do padrão para campos do BR Code.
+const pixSanitize = (raw, max) =>
+  String(raw || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^A-Za-z0-9 .,-]/g, "")
+    .trim()
+    .slice(0, max);
+
+// Monta o "Pix copia e cola" (BR Code estático) a partir da chave, nome do
+// recebedor, cidade, valor (opcional) e descrição (opcional). Retorna "" sem
+// chave. Formato EMV: cada campo é ID(2) + tamanho(2) + valor.
+export const buildPixCode = ({ key, name, city, amount, txid, description } = {}) => {
+  const cleanKey = String(key || "").trim();
+  if (!cleanKey) return "";
+  const emv = (id, value) => {
+    const v = String(value);
+    return `${id}${v.length.toString().padStart(2, "0")}${v}`;
+  };
+  const merchantName = pixSanitize(name, 25) || "RECEBEDOR";
+  const merchantCity = pixSanitize(city, 15) || "BRASIL";
+  const gui = emv("00", "br.gov.bcb.pix");
+  const keyField = emv("01", cleanKey);
+  const descText = pixSanitize(description, 40);
+  const descField = descText ? emv("02", descText) : "";
+  const mai = emv("26", gui + keyField + descField);
+  const amountNum = Number(amount);
+  const amountField =
+    amount && Number.isFinite(amountNum) && amountNum > 0
+      ? emv("54", amountNum.toFixed(2))
+      : "";
+  const ref = pixSanitize(txid, 25) || "***";
+  const adf = emv("62", emv("05", ref));
+  const payload =
+    emv("00", "01") +
+    mai +
+    emv("52", "0000") +
+    emv("53", "986") +
+    amountField +
+    emv("58", "BR") +
+    emv("59", merchantName) +
+    emv("60", merchantCity) +
+    adf +
+    "6304";
+  return payload + pixCrc16(payload);
+};

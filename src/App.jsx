@@ -24,6 +24,8 @@ import {
   DOCUMENT_TEMPLATES,
   fillDocTemplate,
   buildEmailSignature,
+  buildPixCode,
+  pixCrc16,
 } from "./domain.js";
 // Reexporta a camada de lógica pura para os testes que importam de "./App".
 export {
@@ -49,6 +51,8 @@ export {
   DOCUMENT_TEMPLATES,
   fillDocTemplate,
   buildEmailSignature,
+  buildPixCode,
+  pixCrc16,
 } from "./domain.js";
 import {
   Sparkles,
@@ -136,6 +140,7 @@ import {
   Square,
   Table,
   FileSearch,
+  QrCode,
   RefreshCw,
   Settings,
   Star,
@@ -194,6 +199,7 @@ const emptyDb = {
   analyses: [],
   brainstorms: [],
   signatures: [],
+  pixCharges: [],
   sites: [],
   history: [],
   certificates: [],
@@ -244,6 +250,7 @@ const nav = [
   ["frota", "Frota e Fretes", Truck],
   ["horas", "Horas e Faturamento", Clock3],
   ["financeiro", "Financeiro", WalletCards],
+  ["cobranca", "Cobrança Pix", QrCode],
   ["resultados", "Resultados", BarChart3],
   ["operacao", "Operação", Workflow],
   ["desenvolvimento", "Desenvolvimento", TrendingUp],
@@ -284,7 +291,7 @@ const navGroups = [
     label: "OPERAÇÃO",
     items: ["produtos", "frota", "horas", "operacao", "desenvolvimento"],
   },
-  { label: "FINANCEIRO", items: ["financeiro", "resultados"] },
+  { label: "FINANCEIRO", items: ["financeiro", "cobranca", "resultados"] },
   {
     label: "CONTEÚDO",
     items: [
@@ -13902,6 +13909,203 @@ function AttachmentList({ attachments, onRemove }) {
   );
 }
 
+function PixCharge({ db, update, business, setToast }) {
+  const charges = (db.pixCharges || []).filter(
+    (c) => !business || c.businessId === business.id,
+  );
+  const last = charges[0];
+  const [form, setForm] = useState({
+    id: null,
+    key: last?.key || "",
+    name: last?.name || business?.name || db.user?.name || "",
+    city: last?.city || "",
+    amount: "",
+    description: "",
+  });
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const hasKey = form.key.trim().length > 0;
+  const code = hasKey ? buildPixCode(form) : "";
+
+  const copyCode = async () => {
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      setToast("Código Pix copiado");
+      trackProductEvent("pix_code_copied", { module: "cobranca" });
+    } catch {
+      setToast("Não foi possível copiar agora");
+    }
+  };
+  const shareWhatsapp = () => {
+    if (!code) return;
+    const valor = Number(form.amount) > 0 ? ` de R$ ${Number(form.amount).toFixed(2).replace(".", ",")}` : "";
+    const msg = `Olá! Segue o Pix${valor}${form.description ? ` referente a ${form.description}` : ""}. É só copiar o código e colar no app do seu banco (Pix > Copia e cola):\n\n${code}`;
+    window.open(whatsappLink("", msg), "_blank", "noopener");
+  };
+  const saveCharge = () => {
+    if (!hasKey) return;
+    const now = new Date().toISOString();
+    const id = form.id || uid();
+    const record = {
+      id,
+      key: form.key.trim(),
+      name: form.name.trim(),
+      city: form.city.trim(),
+      amount: form.amount,
+      description: form.description.trim(),
+      businessId: business?.id || null,
+      ownerId: db.user.id,
+      createdAt: now,
+    };
+    update((prev) => ({
+      ...prev,
+      pixCharges: [record, ...(prev.pixCharges || []).filter((c) => c.id !== id)],
+    }));
+    setForm((f) => ({ ...f, id }));
+    setToast("Cobrança salva");
+  };
+  const openCharge = (c) =>
+    setForm({
+      id: c.id,
+      key: c.key || "",
+      name: c.name || "",
+      city: c.city || "",
+      amount: c.amount || "",
+      description: c.description || "",
+    });
+  const removeCharge = (id) => {
+    if (!window.confirm("Excluir esta cobrança?")) return;
+    update((prev) => ({
+      ...prev,
+      pixCharges: (prev.pixCharges || []).filter((c) => c.id !== id),
+    }));
+    if (form.id === id) setForm((f) => ({ ...f, id: null }));
+    setToast("Cobrança excluída");
+  };
+
+  return (
+    <div className="page pix-page">
+      <header className="page-head">
+        <div>
+          <h1>Cobrança Pix</h1>
+          <p className="page-sub">
+            Gere um Pix "copia e cola" com o valor e a descrição, e envie ao
+            cliente. Gratuito — o dinheiro cai direto na conta da sua chave.
+          </p>
+        </div>
+      </header>
+
+      <div className="card pix-form">
+        <div className="notice">
+          <QrCode />
+          <span>
+            O app apenas monta o código Pix a partir da sua chave — não
+            processa pagamentos nem toca no seu dinheiro. Confira sua chave
+            antes de enviar.
+          </span>
+        </div>
+        <div className="form-grid">
+          <Field label="Sua chave Pix">
+            <input
+              value={form.key}
+              onChange={(e) => set("key", e.target.value)}
+              placeholder="CPF/CNPJ, e-mail, telefone ou chave aleatória"
+            />
+          </Field>
+          <Field label="Nome do recebedor">
+            <input value={form.name} onChange={(e) => set("name", e.target.value)} />
+          </Field>
+          <Field label="Cidade">
+            <input
+              value={form.city}
+              onChange={(e) => set("city", e.target.value)}
+              placeholder="Ex.: Recife"
+            />
+          </Field>
+          <Field label="Valor (opcional)">
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.amount}
+              onChange={(e) => set("amount", e.target.value)}
+              placeholder="Deixe em branco para o cliente digitar"
+            />
+          </Field>
+          <Field label="Descrição (opcional)">
+            <input
+              value={form.description}
+              onChange={(e) => set("description", e.target.value)}
+              placeholder="Ex.: Bolo de aniversário"
+            />
+          </Field>
+        </div>
+      </div>
+
+      {code ? (
+        <div className="card pix-result">
+          <span className="pix-result-label">Pix copia e cola</span>
+          <textarea className="pix-code" readOnly rows={4} value={code} />
+          <div className="form-actions">
+            <button className="btn primary" onClick={copyCode}>
+              <Copy size={16} /> Copiar código
+            </button>
+            <button className="btn ghost" onClick={shareWhatsapp}>
+              <Send size={16} /> Enviar por WhatsApp
+            </button>
+            <button className="btn ghost" onClick={saveCharge}>
+              Salvar
+            </button>
+          </div>
+          <p className="pix-hint">
+            O cliente paga em <strong>Pix → Copia e cola</strong> no app do
+            banco. Se você preencheu o valor, ele já vem preenchido.
+          </p>
+        </div>
+      ) : (
+        <div className="empty-state">
+          <QrCode />
+          <h3>Informe sua chave Pix</h3>
+          <p>Preencha a chave acima para gerar o código de cobrança.</p>
+        </div>
+      )}
+
+      {charges.length > 0 && (
+        <div className="pix-saved">
+          <h3>Cobranças salvas</h3>
+          <div className="pix-saved-list">
+            {charges.map((c) => (
+              <article key={c.id} className="card pix-saved-item">
+                <div>
+                  <h4>
+                    {Number(c.amount) > 0
+                      ? `R$ ${Number(c.amount).toFixed(2).replace(".", ",")}`
+                      : "Valor livre"}
+                  </h4>
+                  <p className="pix-saved-meta">
+                    {c.description || c.key}
+                  </p>
+                </div>
+                <div className="pix-saved-actions">
+                  <button className="btn ghost sm" onClick={() => openCharge(c)}>
+                    <Pencil size={15} /> Abrir
+                  </button>
+                  <button
+                    className="btn ghost sm danger"
+                    onClick={() => removeCharge(c.id)}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EmailSignature({ db, update, business, setToast }) {
   const blank = {
     id: null,
@@ -23008,6 +23212,15 @@ export default function App() {
       case "assinatura":
         return (
           <EmailSignature
+            db={db}
+            update={update}
+            business={business}
+            setToast={setToast}
+          />
+        );
+      case "cobranca":
+        return (
+          <PixCharge
             db={db}
             update={update}
             business={business}

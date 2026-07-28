@@ -8733,3 +8733,71 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   gap: 6px;
   flex-shrink: 0;
 }
+
+/* ===== Cobrança Pix ===== */
+.pix-form {
+  margin-bottom: 18px;
+}
+.pix-result {
+  padding: 16px;
+}
+.pix-result-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  display: block;
+  margin-bottom: 8px;
+}
+.pix-code {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  word-break: break-all;
+  resize: vertical;
+  background: var(--surface-2, rgba(148, 163, 184, 0.08));
+}
+.pix-result .form-actions {
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.pix-hint {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 12px;
+}
+.pix-saved {
+  margin-top: 24px;
+}
+.pix-saved > h3 {
+  font-size: 15px;
+  margin: 0 0 10px;
+}
+.pix-saved-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.pix-saved-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+}
+.pix-saved-item h4 {
+  margin: 0;
+  font-size: 15px;
+}
+.pix-saved-meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 4px 0 0;
+  word-break: break-word;
+}
+.pix-saved-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
