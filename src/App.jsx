@@ -38,6 +38,8 @@ import {
   AUTOMATION_WEEKDAYS,
   AUTOMATION_ACTIONS,
   runAutomations,
+  extractMergeFields,
+  applyMergeFields,
 } from "./domain.js";
 // Reexporta a camada de lógica pura para os testes que importam de "./App".
 export {
@@ -80,6 +82,8 @@ export {
   AUTOMATION_ACTIONS,
   automationDue,
   runAutomations,
+  extractMergeFields,
+  applyMergeFields,
   procurementNumber,
   supplierBidTotals,
   compareSupplierBids,
@@ -17552,6 +17556,137 @@ function PresentationEditor({ deck, onChange, onSave, onClose }) {
   );
 }
 
+const mergeValuesFromBase = (base, row, bases) => {
+  const values = {};
+  for (const f of base.fields || []) {
+    const raw = row.cells?.[f.id];
+    values[f.name] =
+      f.type === "relation"
+        ? recordLabel((bases || []).find((b) => b.id === f.targetBaseId), raw) || ""
+        : formatCellValue(f.type, raw) || "";
+  }
+  return values;
+};
+
+const mergeValuesFromContact = (contact) => ({
+  nome: contact.name || "",
+  contato: contact.phone || contact.email || contact.contact || "",
+  empresa: contact.company || contact.business || "",
+  observacao: contact.notes || contact.note || "",
+});
+
+function MailMergeModal({ db, business, onClose, onGenerate, setToast }) {
+  const bases = (db.databases || []).filter(
+    (b) => !business || b.businessId === business.id,
+  );
+  const sources = [
+    { id: "contatos", name: "Contatos", fields: ["nome", "contato", "empresa", "observacao"] },
+    ...bases.map((b) => ({
+      id: b.id,
+      name: b.name,
+      fields: (b.fields || []).map((f) => f.name),
+      base: b,
+    })),
+  ];
+  const [sourceId, setSourceId] = useState(sources[0]?.id || "contatos");
+  const [titlePattern, setTitlePattern] = useState("Carta — {{nome}}");
+  const [template, setTemplate] = useState(
+    "Olá {{nome}},\n\nEscreva aqui sua mensagem personalizada.\n\nAtenciosamente,",
+  );
+
+  const source = sources.find((s) => s.id === sourceId) || sources[0];
+  const records = source?.base
+    ? (source.base.rows || []).map((r) =>
+        mergeValuesFromBase(source.base, r, bases),
+      )
+    : (db.contacts || [])
+        .filter((c) => !business || !c.businessId || c.businessId === business.id)
+        .map(mergeValuesFromContact);
+
+  const insertField = (name) => setTemplate((t) => `${t}{{${name}}}`);
+  const preview = records[0]
+    ? applyMergeFields(template, records[0])
+    : "(sem registros nesta fonte)";
+
+  const generate = () => {
+    if (records.length === 0) {
+      setToast("Essa fonte não tem registros.");
+      return;
+    }
+    const docs = records.map((values) => ({
+      title: applyMergeFields(titlePattern, values).trim() || "Documento",
+      content: applyMergeFields(template, values),
+    }));
+    onGenerate(docs);
+  };
+
+  return (
+    <Modal title="Mala direta" wide onClose={onClose}>
+      <div className="modal-body">
+        <div className="notice">
+          <FileText />
+          <span>
+            Escreva um modelo com campos entre chaves e gere um documento
+            personalizado para cada registro da fonte escolhida.
+          </span>
+        </div>
+        <div className="form-grid">
+          <Field label="Fonte dos dados">
+            <select value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
+              {sources.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Título de cada documento">
+            <input
+              value={titlePattern}
+              onChange={(e) => setTitlePattern(e.target.value)}
+            />
+          </Field>
+        </div>
+        <div className="merge-fields">
+          <span>Inserir campo:</span>
+          {(source?.fields || []).map((name) => (
+            <button
+              key={name}
+              type="button"
+              className="chip-btn"
+              onClick={() => insertField(name)}
+            >
+              {`{{${name}}}`}
+            </button>
+          ))}
+        </div>
+        <Field label="Modelo do documento">
+          <textarea
+            rows={7}
+            value={template}
+            onChange={(e) => setTemplate(e.target.value)}
+          />
+        </Field>
+        <div className="merge-preview">
+          <span className="merge-preview-label">
+            Prévia (1º de {records.length} registro{records.length === 1 ? "" : "s"})
+          </span>
+          <pre>{preview}</pre>
+        </div>
+        <div className="form-actions">
+          <button
+            className="btn primary"
+            onClick={generate}
+            disabled={records.length === 0}
+          >
+            Gerar {records.length} documento{records.length === 1 ? "" : "s"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function Documents({ db, update, business, setToast, go, searchSeed, clearSearchSeed }) {
   const [modal, setModal] = useState(false),
     [editing, setEditing] = useState(null),
@@ -17561,6 +17696,7 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
     [uploading, setUploading] = useState(false),
     [uploadErrors, setUploadErrors] = useState([]),
     [templatePicker, setTemplatePicker] = useState(false),
+    [mergeOpen, setMergeOpen] = useState(false),
     [dragging, setDragging] = useState(false);
   useEffect(() => {
     if (searchSeed) {
@@ -17613,6 +17749,26 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
       module: "documentos",
       template: template.id,
     });
+  };
+  const generateMerge = (docs) => {
+    const now = new Date().toISOString();
+    const created = docs.map((d) => ({
+      ...blankDocument,
+      id: uid(),
+      title: d.title,
+      type: "Mala direta",
+      content: d.content,
+      businessId: business?.id || null,
+      ownerId: db.user.id,
+      updatedAt: now,
+    }));
+    update((prev) => ({ ...prev, documents: [...created, ...prev.documents] }));
+    trackProductEvent("mail_merge_generated", {
+      module: "documentos",
+      count: created.length,
+    });
+    setMergeOpen(false);
+    setToast(`${created.length} documentos gerados`);
   };
   const importFiles = async (fileList) => {
     const files = [...(fileList || [])].slice(0, 10);
@@ -17828,12 +17984,28 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
           >
             Modelos prontos
           </Button>
+          <Button
+            variant="secondary"
+            icon={Users}
+            onClick={() => setMergeOpen(true)}
+          >
+            Mala direta
+          </Button>
           <Button icon={Plus} onClick={() => open(null)}>
             Novo documento
           </Button>
         </div>
       }
     >
+      {mergeOpen && (
+        <MailMergeModal
+          db={db}
+          business={business}
+          setToast={setToast}
+          onClose={() => setMergeOpen(false)}
+          onGenerate={generateMerge}
+        />
+      )}
       {templatePicker && (
         <Modal
           title="Comece de um modelo pronto"

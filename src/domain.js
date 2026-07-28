@@ -1210,3 +1210,23 @@ export const parseSupplierProposal = (raw, rfq) => {
     offers,
   };
 };
+
+// ===== Mala direta (mail merge) =====
+// Extrai os campos {{nome}} de um texto (únicos, na ordem de aparição).
+export const extractMergeFields = (text) => {
+  const seen = [];
+  const re = /\{\{\s*([^}]+?)\s*\}\}/g;
+  let m;
+  while ((m = re.exec(String(text || "")))) {
+    const key = m[1].trim();
+    if (key && !seen.includes(key)) seen.push(key);
+  }
+  return seen;
+};
+
+// Substitui {{campo}} pelos valores fornecidos. Campo sem valor vira vazio.
+export const applyMergeFields = (text, values = {}) =>
+  String(text || "").replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, k) => {
+    const v = values[k.trim()];
+    return v == null ? "" : String(v);
+  });

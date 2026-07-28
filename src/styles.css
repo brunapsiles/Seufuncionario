@@ -9533,3 +9533,38 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
 :root[data-theme="dark"] .db-cal-event {
   color: #7dd3fc;
 }
+
+/* ===== Mala direta ===== */
+.merge-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 10px;
+  font-size: 13px;
+}
+.merge-fields > span {
+  color: var(--muted);
+}
+.merge-preview {
+  margin-top: 12px;
+}
+.merge-preview-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+.merge-preview pre {
+  white-space: pre-wrap;
+  background: var(--surface-2, rgba(148, 163, 184, 0.08));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  margin: 6px 0 0;
+  max-height: 180px;
+  overflow-y: auto;
+}
