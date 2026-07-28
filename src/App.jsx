@@ -19,6 +19,7 @@ import {
   scheduleContentDates,
   parseSheet,
   buildCsv,
+  parseAnalysis,
 } from "./domain.js";
 // Reexporta a camada de lógica pura para os testes que importam de "./App".
 export {
@@ -39,6 +40,7 @@ export {
   scheduleContentDates,
   parseSheet,
   buildCsv,
+  parseAnalysis,
 } from "./domain.js";
 import {
   Sparkles,
@@ -125,6 +127,7 @@ import {
   Bot,
   Square,
   Table,
+  FileSearch,
   RefreshCw,
   Settings,
   Star,
@@ -180,6 +183,7 @@ const emptyDb = {
   presentations: [],
   contentPlan: [],
   sheets: [],
+  analyses: [],
   sites: [],
   history: [],
   certificates: [],
@@ -235,6 +239,7 @@ const nav = [
   ["desenvolvimento", "Desenvolvimento", TrendingUp],
   ["sites", "Sites e Materiais", PanelsTopLeft],
   ["documentos", "Documentos", FileText],
+  ["analise", "Análise de textos", FileSearch],
   ["apresentacoes", "Apresentações", Layers],
   ["conteudo", "Calendário de conteúdo", CalendarDays],
   ["planilhas", "Planilhas", Table],
@@ -273,6 +278,7 @@ const navGroups = [
     items: [
       "sites",
       "documentos",
+      "analise",
       "apresentacoes",
       "conteudo",
       "planilhas",
@@ -13882,6 +13888,304 @@ function AttachmentList({ attachments, onRemove }) {
   );
 }
 
+function AnalysisResultView({ r, q }) {
+  return (
+    <div className="analysis-result">
+      {r.answer && (
+        <div className="analysis-block analysis-answer">
+          <h4>Resposta{q ? " à sua pergunta" : ""}</h4>
+          <p>{r.answer}</p>
+        </div>
+      )}
+      {r.summary && (
+        <div className="analysis-block">
+          <h4>Resumo</h4>
+          <p>{r.summary}</p>
+        </div>
+      )}
+      {r.keyPoints?.length > 0 && (
+        <div className="analysis-block">
+          <h4>Pontos-chave</h4>
+          <ul>
+            {r.keyPoints.map((p, i) => (
+              <li key={i}>{p}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {r.risks?.length > 0 && (
+        <div className="analysis-block analysis-risks">
+          <h4>Pontos de atenção</h4>
+          <ul>
+            {r.risks.map((p, i) => (
+              <li key={i}>{p}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {r.actions?.length > 0 && (
+        <div className="analysis-block">
+          <h4>Próximas ações</h4>
+          <ul>
+            {r.actions.map((p, i) => (
+              <li key={i}>{p}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Analyzer({ db, update, business, setToast }) {
+  const [text, setText] = useState("");
+  const [question, setQuestion] = useState("");
+  const [sourceName, setSourceName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState("");
+  const [result, setResult] = useState(null);
+  const uploadRef = useRef(null);
+
+  const saved = db.analyses
+    .filter((a) => !business || a.businessId === business.id)
+    .slice()
+    .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+
+  const importFile = async (file) => {
+    if (!file || uploading) return;
+    setUploading(true);
+    setErr("");
+    try {
+      const extracted = await extractDocumentText(file);
+      setText(extracted.content || "");
+      setSourceName(file.name);
+      if (extracted.truncated)
+        setToast("Arquivo grande: analisei o começo do conteúdo");
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setUploading(false);
+      if (uploadRef.current) uploadRef.current.value = "";
+    }
+  };
+
+  const analyze = async () => {
+    const source = text.trim();
+    if (source.length < 20 || busy) {
+      if (source.length < 20)
+        setErr("Cole ou envie um texto com pelo menos 20 letras.");
+      return;
+    }
+    setBusy(true);
+    setErr("");
+    const q = question.trim();
+    const prompt = `Você é um analista que trabalha APENAS com o texto fornecido abaixo. Não use conhecimento externo e não invente nada: se a informação não estiver no texto, diga que não consta.
+
+${q ? `Pergunta do usuário: ${q}\n\n` : ""}Texto para analisar (entre as marcas):
+<<<
+${source.slice(0, 18000)}
+>>>
+
+Responda SOMENTE com um objeto JSON válido, sem comentários e sem cercas de código, no formato:
+{"summary": "resumo em 2 a 4 frases", "keyPoints": ["ponto", ...], "risks": ["ponto de atenção ou risco", ...], "actions": ["próxima ação sugerida", ...], "answer": "${q ? "resposta objetiva à pergunta, baseada só no texto" : ""}"}
+
+Use português do Brasil. Se algum campo não se aplicar, use lista vazia ou string vazia. Máximo de 6 itens por lista.`;
+    try {
+      const response = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ prompt, specialist: "Estrategista" }),
+      });
+      const data = await response.json();
+      if (!response.ok)
+        throw new Error(data.error || "Não foi possível analisar agora.");
+      const parsed = parseAnalysis(data.content || "");
+      if (!parsed)
+        throw new Error(
+          "A IA respondeu, mas não consegui estruturar a análise. Tente de novo.",
+        );
+      const title =
+        sourceName ||
+        (q ? q.slice(0, 60) : source.split(/\s+/).slice(0, 7).join(" "));
+      const record = {
+        id: uid(),
+        title,
+        question: q,
+        excerpt: source.slice(0, 280),
+        result: parsed,
+        businessId: business?.id || null,
+        ownerId: db.user.id,
+        createdAt: new Date().toISOString(),
+      };
+      update((prev) => ({ ...prev, analyses: [record, ...prev.analyses] }));
+      trackProductEvent("analysis_done", {
+        module: "analise",
+        hasQuestion: !!q,
+      });
+      setResult(parsed);
+      setToast("Análise pronta");
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const clearAll = () => {
+    setText("");
+    setQuestion("");
+    setSourceName("");
+    setResult(null);
+    setErr("");
+  };
+  const removeSaved = (id) => {
+    if (!window.confirm("Excluir esta análise?")) return;
+    update((prev) => ({ ...prev, analyses: prev.analyses.filter((a) => a.id !== id) }));
+    setToast("Análise excluída");
+  };
+  const copyResult = async (r, q) => {
+    const block = (label, items) =>
+      items?.length ? `${label}:\n${items.map((i) => `- ${i}`).join("\n")}` : "";
+    const parts = [
+      r.summary ? `Resumo:\n${r.summary}` : "",
+      block("Pontos-chave", r.keyPoints),
+      block("Pontos de atenção", r.risks),
+      block("Próximas ações", r.actions),
+      r.answer ? `${q ? `Pergunta: ${q}\n` : ""}Resposta:\n${r.answer}` : "",
+    ].filter(Boolean);
+    try {
+      await navigator.clipboard.writeText(parts.join("\n\n"));
+      setToast("Análise copiada");
+    } catch {
+      setToast("Não foi possível copiar agora");
+    }
+  };
+
+  return (
+    <div className="page analyzer-page">
+      <header className="page-head">
+        <div>
+          <h1>Análise de textos</h1>
+          <p className="page-sub">
+            Cole um texto ou envie um PDF/DOCX e a IA resume, destaca os pontos
+            importantes e responde suas perguntas — só com o que está no texto.
+          </p>
+        </div>
+      </header>
+
+      <div className="card analyzer-input">
+        <div className="notice">
+          <FileSearch />
+          <span>
+            A IA trabalha apenas com o conteúdo que você fornecer. Ideal para
+            contratos, e-mails longos, editais e propostas. Não inventa o que
+            não estiver escrito.
+          </span>
+        </div>
+        <Field
+          label={
+            sourceName ? `Texto (de: ${sourceName})` : "Cole o texto para analisar"
+          }
+        >
+          <textarea
+            rows={7}
+            value={text}
+            onChange={(e) => {
+              setText(e.target.value);
+              if (sourceName) setSourceName("");
+            }}
+            placeholder="Cole aqui um contrato, e-mail, edital, proposta..."
+          />
+        </Field>
+        <Field label="Alguma pergunta específica? (opcional)">
+          <input
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder="Ex.: Quais são os prazos e as multas deste contrato?"
+          />
+        </Field>
+        <input
+          ref={uploadRef}
+          type="file"
+          accept=".pdf,.docx,.txt,.md,.markdown,.csv"
+          hidden
+          onChange={(e) => importFile(e.target.files?.[0])}
+        />
+        {err && <p className="form-error">{err}</p>}
+        <div className="form-actions">
+          <button
+            className="btn ghost"
+            onClick={() => uploadRef.current?.click()}
+            disabled={uploading}
+          >
+            <FileText size={16} />
+            {uploading ? "Lendo arquivo..." : "Enviar arquivo"}
+          </button>
+          <button className="btn primary" onClick={analyze} disabled={busy}>
+            <Sparkles size={16} />
+            {busy ? "Analisando..." : "Analisar"}
+          </button>
+          {(text || result) && (
+            <button className="btn ghost" onClick={clearAll}>
+              Limpar
+            </button>
+          )}
+        </div>
+      </div>
+
+      {result && (
+        <div className="card analysis-current">
+          <div className="analysis-current-head">
+            <h3>Resultado</h3>
+            <button
+              className="btn ghost sm"
+              onClick={() => copyResult(result, question.trim())}
+            >
+              <Copy size={15} /> Copiar
+            </button>
+          </div>
+          <AnalysisResultView r={result} q={question.trim()} />
+        </div>
+      )}
+
+      {saved.length > 0 && (
+        <div className="analysis-saved">
+          <h3>Análises anteriores</h3>
+          {saved.map((a) => (
+            <details key={a.id} className="card analysis-saved-item">
+              <summary>
+                <span className="analysis-saved-title">{a.title}</span>
+                <span className="analysis-saved-date">
+                  {new Date(a.createdAt).toLocaleDateString("pt-BR")}
+                </span>
+              </summary>
+              <div className="analysis-saved-body">
+                {a.excerpt && <p className="analysis-excerpt">“{a.excerpt}…”</p>}
+                <AnalysisResultView r={a.result} q={a.question} />
+                <div className="form-actions">
+                  <button
+                    className="btn ghost sm"
+                    onClick={() => copyResult(a.result, a.question)}
+                  >
+                    <Copy size={15} /> Copiar
+                  </button>
+                  <button
+                    className="btn ghost sm danger"
+                    onClick={() => removeSaved(a.id)}
+                  >
+                    <Trash2 size={15} /> Excluir
+                  </button>
+                </div>
+              </div>
+            </details>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const SHEET_EXAMPLES = [
   "Controle de estoque de uma loja de roupas",
   "Fluxo de caixa mensal de um MEI",
@@ -21983,6 +22287,15 @@ export default function App() {
       case "planilhas":
         return (
           <SheetBuilder
+            db={db}
+            update={update}
+            business={business}
+            setToast={setToast}
+          />
+        );
+      case "analise":
+        return (
+          <Analyzer
             db={db}
             update={update}
             business={business}

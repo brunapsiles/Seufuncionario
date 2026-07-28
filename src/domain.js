@@ -438,3 +438,43 @@ export const buildCsv = (columns = [], rows = [], sep = ";") => {
   }
   return lines.join("\r\n");
 };
+
+// Normaliza a resposta da IA de análise num objeto
+// { summary, keyPoints[], risks[], actions[], answer }. Tolera cercas ```json,
+// texto ao redor e chaves em português. Retorna null quando não há conteúdo útil.
+export const parseAnalysis = (raw) => {
+  const text = String(raw || "").trim();
+  if (!text) return null;
+  const oneLine = (s) => String(s == null ? "" : s).replace(/\s+/g, " ").trim();
+  const toList = (v) => {
+    const arr = Array.isArray(v) ? v : v == null ? [] : [v];
+    return arr
+      .map((x) =>
+        oneLine(typeof x === "object" ? x.text || x.item || JSON.stringify(x) : x).replace(
+          /^[-*•\d.)\s]+/,
+          "",
+        ),
+      )
+      .filter(Boolean)
+      .slice(0, 12);
+  };
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const body = fenced ? fenced[1].trim() : text;
+  const start = body.indexOf("{");
+  const end = body.lastIndexOf("}");
+  if (start === -1 || end <= start) return null;
+  let obj;
+  try {
+    obj = JSON.parse(body.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+  const summary = oneLine(obj.summary || obj.resumo || "");
+  const keyPoints = toList(obj.keyPoints || obj.pontos || obj.pontosChave || obj.destaques);
+  const risks = toList(obj.risks || obj.riscos || obj.atencao || obj.alertas);
+  const actions = toList(obj.actions || obj.acoes || obj.proximosPassos || obj.proximas);
+  const answer = oneLine(obj.answer || obj.resposta || "");
+  if (!summary && !keyPoints.length && !risks.length && !actions.length && !answer)
+    return null;
+  return { summary, keyPoints, risks, actions, answer };
+};
