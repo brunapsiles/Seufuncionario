@@ -113,6 +113,7 @@ import {
   CalendarDays,
   Play,
   Bot,
+  Square,
   RefreshCw,
   Settings,
   Star,
@@ -3968,11 +3969,27 @@ function UniversalRequest({ db, update, business, setToast }) {
   const [attachmentBusy, setAttachmentBusy] = useState(false);
   const endRef = useRef(null);
   const chatUploadRef = useRef(null);
+  const composerRef = useRef(null);
+  const abortRef = useRef(null);
+  const stoppedRef = useRef(false);
+  const stopGenerating = () => {
+    stoppedRef.current = true;
+    abortRef.current?.abort();
+  };
+  const applyStarter = (starter) => {
+    setText(starter);
+    composerRef.current?.focus();
+  };
   const specialist = db.preferences.specialist;
   const conversations = db.conversations || [];
   const active =
     conversations.find((x) => x.id === db.selectedConversationId) || null;
   const messages = active?.messages || [];
+  // Comprimento da última mensagem: muda a cada token durante o streaming,
+  // fazendo o auto-scroll acompanhar a resposta enquanto ela é gerada.
+  const streamingLen = messages.length
+    ? messages[messages.length - 1].content?.length || 0
+    : 0;
   useEffect(() => {
     localStorage.setItem("sf-draft", text);
   }, [text]);
@@ -3980,7 +3997,7 @@ function UniversalRequest({ db, update, business, setToast }) {
     const el = endRef.current?.parentElement;
     if (typeof el?.scrollTo === "function")
       el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [messages.length, busy, revealing?.count]);
+  }, [messages.length, busy, revealing?.count, streamingLen]);
   useEffect(() => {
     if (!revealing?.id) return;
     const message = messages.find((item) => item.id === revealing.id);
@@ -4202,6 +4219,8 @@ function UniversalRequest({ db, update, business, setToast }) {
     };
     const controller = new AbortController(),
       timer = setTimeout(() => controller.abort(), 70000);
+    abortRef.current = controller;
+    stoppedRef.current = false;
     let streamed = false;
     try {
       try {
@@ -4318,7 +4337,14 @@ function UniversalRequest({ db, update, business, setToast }) {
           }
         }
       } catch (streamErr) {
-        if (streamErr.name === "AbortError") throw streamErr;
+        if (streamErr.name === "AbortError") {
+          // Parada pelo usuário: mantém o texto parcial já recebido e não trata
+          // como erro. Timeout real (não-stoppedRef) segue para o catch externo.
+          if (stoppedRef.current) {
+            streamed = true;
+            setToast("Geração interrompida");
+          } else throw streamErr;
+        }
       }
       if (!streamed) {
       const response = await fetch("/api/ai", {
@@ -4370,6 +4396,8 @@ function UniversalRequest({ db, update, business, setToast }) {
     } finally {
       clearTimeout(timer);
       setBusy(false);
+      abortRef.current = null;
+      stoppedRef.current = false;
     }
   };
   const renderToolLink = (id) => {
@@ -4456,6 +4484,22 @@ function UniversalRequest({ db, update, business, setToast }) {
               Peça uma análise, material, plano ou orientação. Quando uma
               ferramenta externa for melhor, eu mostro o caminho certo.
             </p>
+            <div className="prompt-starters">
+              {[
+                "Monte um plano de ações para esta semana no meu negócio",
+                "Escreva uma mensagem educada de cobrança para um cliente",
+                "Analise meus números e diga onde posso melhorar",
+                "Crie uma descrição de vaga para um ajudante",
+              ].map((starter) => (
+                <button
+                  type="button"
+                  key={starter}
+                  onClick={() => applyStarter(starter)}
+                >
+                  {starter}
+                </button>
+              ))}
+            </div>
           </div>
         ) : (
           messages.map((message) => (
@@ -4542,6 +4586,14 @@ function UniversalRequest({ db, update, business, setToast }) {
               <i />
               <i />
               <span>Organizando sua resposta...</span>
+              <button
+                type="button"
+                className="stop-generating"
+                onClick={stopGenerating}
+              >
+                <Square />
+                Parar
+              </button>
             </div>
           </div>
         )}
@@ -4578,6 +4630,7 @@ function UniversalRequest({ db, update, business, setToast }) {
           </div>
         )}
         <textarea
+          ref={composerRef}
           aria-label="Mensagem para a IA"
           value={text}
           onChange={(e) => setText(e.target.value.slice(0, 8000))}

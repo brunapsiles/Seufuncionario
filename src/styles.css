@@ -7861,3 +7861,50 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   align-items: center;
   gap: 6px;
 }
+
+/* ── Melhorias da interação com a IA ─────────────────────────────────── */
+.prompt-starters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 16px;
+}
+.prompt-starters button {
+  padding: 9px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+  transition: 0.15s ease;
+}
+.prompt-starters button:hover {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--line));
+  background: color-mix(in srgb, var(--primary) 5%, var(--surface));
+  transform: translateY(-1px);
+}
+.typing .stop-generating {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 10px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+.typing .stop-generating:hover {
+  border-color: var(--red, #dc2626);
+  color: var(--red, #dc2626);
+}
+.typing .stop-generating svg {
+  width: 13px;
+  fill: currentColor;
+}
