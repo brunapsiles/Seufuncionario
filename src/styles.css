@@ -9568,3 +9568,16 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   max-height: 180px;
   overflow-y: auto;
 }
+
+/* ===== Bases: célula de fórmula ===== */
+.db-formula-cell {
+  display: block;
+  padding: 8px 10px;
+  font-size: 13px;
+  min-width: 110px;
+  color: #0369a1;
+  font-variant-numeric: tabular-nums;
+}
+:root[data-theme="dark"] .db-formula-cell {
+  color: #7dd3fc;
+}

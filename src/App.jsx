@@ -40,6 +40,7 @@ import {
   runAutomations,
   extractMergeFields,
   applyMergeFields,
+  evalFormula,
 } from "./domain.js";
 // Reexporta a camada de lógica pura para os testes que importam de "./App".
 export {
@@ -84,6 +85,7 @@ export {
   runAutomations,
   extractMergeFields,
   applyMergeFields,
+  evalFormula,
   procurementNumber,
   supplierBidTotals,
   compareSupplierBids,
@@ -14653,10 +14655,26 @@ function DataBases({ db, update, business, setToast }) {
     calFieldId && dateFields.some((f) => f.id === calFieldId)
       ? calFieldId
       : dateFields[0]?.id || null;
-  const displayCell = (f, value) =>
-    f.type === "relation"
-      ? recordLabel(bases.find((b) => b.id === f.targetBaseId), value) || ""
-      : formatCellValue(f.type, value);
+  const rowNumericValues = (row) => {
+    const map = {};
+    for (const f of selected?.fields || []) {
+      if (f.type === "formula") continue;
+      map[f.name] =
+        Number(String(row?.cells?.[f.id] ?? "").replace(",", ".")) || 0;
+    }
+    return map;
+  };
+  const formulaResult = (f, row) => {
+    const r = evalFormula(f.formula, rowNumericValues(row));
+    return r === "" ? "" : formatCellValue("number", r);
+  };
+  const displayCell = (f, row) => {
+    if (f.type === "formula") return formulaResult(f, row);
+    const value = row?.cells?.[f.id];
+    if (f.type === "relation")
+      return recordLabel(bases.find((b) => b.id === f.targetBaseId), value) || "";
+    return formatCellValue(f.type, value);
+  };
 
   const patchBase = (id, updater) =>
     update((prev) => ({
@@ -14711,12 +14729,14 @@ function DataBases({ db, update, business, setToast }) {
         : undefined;
     const targetBaseId =
       fieldModal.type === "relation" ? fieldModal.targetBaseId || "" : undefined;
+    const formula =
+      fieldModal.type === "formula" ? fieldModal.formula || "" : undefined;
     if (fieldModal.mode === "edit") {
       patchBase(selected.id, (b) => ({
         ...b,
         fields: b.fields.map((f) =>
           f.id === fieldModal.id
-            ? { ...f, name, type: fieldModal.type, options, targetBaseId }
+            ? { ...f, name, type: fieldModal.type, options, targetBaseId, formula }
             : f,
         ),
       }));
@@ -14725,7 +14745,7 @@ function DataBases({ db, update, business, setToast }) {
         ...b,
         fields: [
           ...b.fields,
-          { ...dbNewField(name, fieldModal.type, options), targetBaseId },
+          { ...dbNewField(name, fieldModal.type, options), targetBaseId, formula },
         ],
       }));
     }
@@ -14883,6 +14903,7 @@ function DataBases({ db, update, business, setToast }) {
                                 type: f.type,
                                 options: (f.options || []).join(", "),
                                 targetBaseId: f.targetBaseId || "",
+                                formula: f.formula || "",
                               })
                             }
                             title="Editar campo"
@@ -14899,12 +14920,18 @@ function DataBases({ db, update, business, setToast }) {
                       <tr key={row.id}>
                         {selected.fields.map((f) => (
                           <td key={f.id}>
-                            <DbCell
-                              field={f}
-                              value={row.cells?.[f.id]}
-                              onChange={(v) => updateCell(row.id, f, v)}
-                              bases={bases}
-                            />
+                            {f.type === "formula" ? (
+                              <span className="db-formula-cell">
+                                {formulaResult(f, row) || "—"}
+                              </span>
+                            ) : (
+                              <DbCell
+                                field={f}
+                                value={row.cells?.[f.id]}
+                                onChange={(v) => updateCell(row.id, f, v)}
+                                bases={bases}
+                              />
+                            )}
                           </td>
                         ))}
                         <td className="db-rowactions">
@@ -14936,7 +14963,7 @@ function DataBases({ db, update, business, setToast }) {
                       <div key={f.id} className="db-card-row">
                         <span className="db-card-label">{f.name}</span>
                         <span className="db-card-value">
-                          {displayCell(f, row.cells?.[f.id]) || "—"}
+                          {displayCell(f, row) || "—"}
                         </span>
                       </div>
                     ))}
@@ -15093,10 +15120,7 @@ function DataBases({ db, update, business, setToast }) {
                               </span>
                               {(groups[cell.date] || []).map((row) => (
                                 <div key={row.id} className="db-cal-event">
-                                  {displayCell(
-                                    titleField,
-                                    row.cells?.[titleField?.id],
-                                  ) || "Registro"}
+                                  {displayCell(titleField, row) || "Registro"}
                                 </div>
                               ))}
                             </div>
@@ -15172,6 +15196,39 @@ function DataBases({ db, update, business, setToast }) {
                   ))}
                 </select>
               </Field>
+            )}
+            {fieldModal.type === "formula" && (
+              <>
+                <Field label="Fórmula (use + − * / e nomes de campos)">
+                  <input
+                    value={fieldModal.formula || ""}
+                    onChange={(e) =>
+                      setFieldModal((m) => ({ ...m, formula: e.target.value }))
+                    }
+                    placeholder="Ex.: Preço * Quantidade"
+                  />
+                </Field>
+                <div className="merge-fields">
+                  <span>Inserir campo:</span>
+                  {(selected?.fields || [])
+                    .filter((f) => f.type !== "formula" && f.id !== fieldModal.id)
+                    .map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        className="chip-btn"
+                        onClick={() =>
+                          setFieldModal((m) => ({
+                            ...m,
+                            formula: `${m.formula || ""}${f.name}`,
+                          }))
+                        }
+                      >
+                        {f.name}
+                      </button>
+                    ))}
+                </div>
+              </>
             )}
             <div className="form-actions">
               {fieldModal.mode === "edit" && (
