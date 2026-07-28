@@ -388,3 +388,53 @@ export const scheduleContentDates = (count, startYmd = today(), everyDays = 2) =
   }
   return dates;
 };
+
+// Normaliza a resposta da IA num objeto de planilha { title, columns[], rows[][] }.
+// Tolera cercas ```json e texto ao redor; cada linha é ajustada ao número de
+// colunas (preenche vazios / descarta excedente). Sem colunas → planilha vazia.
+export const parseSheet = (raw) => {
+  const text = String(raw || "").trim();
+  if (!text) return { title: "", columns: [], rows: [] };
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const body = fenced ? fenced[1].trim() : text;
+  const start = body.indexOf("{");
+  const end = body.lastIndexOf("}");
+  if (start === -1 || end <= start) return { title: "", columns: [], rows: [] };
+  let obj;
+  try {
+    obj = JSON.parse(body.slice(start, end + 1));
+  } catch {
+    return { title: "", columns: [], rows: [] };
+  }
+  const cell = (v) =>
+    v == null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v).trim();
+  const columns = (Array.isArray(obj.columns || obj.colunas) ? obj.columns || obj.colunas : [])
+    .map(cell)
+    .filter(Boolean)
+    .slice(0, 30);
+  if (!columns.length) return { title: cell(obj.title || obj.titulo), columns: [], rows: [] };
+  const rawRows = Array.isArray(obj.rows || obj.linhas) ? obj.rows || obj.linhas : [];
+  const rows = rawRows
+    .map((r) => {
+      const arr = Array.isArray(r)
+        ? r
+        : r && typeof r === "object"
+          ? columns.map((c) => r[c])
+          : [r];
+      return columns.map((_, i) => cell(arr[i]));
+    })
+    .slice(0, 200);
+  return { title: cell(obj.title || obj.titulo), columns, rows };
+};
+
+// Serializa colunas + linhas em CSV. Separador ";" por padrão (Excel pt-BR),
+// campos entre aspas com escape de aspas internas. Sem BOM (adicionado no
+// download). Uma linha por registro, terminada em \r\n.
+export const buildCsv = (columns = [], rows = [], sep = ";") => {
+  const esc = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
+  const lines = [columns.map(esc).join(sep)];
+  for (const row of rows) {
+    lines.push(columns.map((_, i) => esc(row[i])).join(sep));
+  }
+  return lines.join("\r\n");
+};

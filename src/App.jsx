@@ -17,6 +17,8 @@ import {
   parseDeckSlides,
   parseContentPlan,
   scheduleContentDates,
+  parseSheet,
+  buildCsv,
 } from "./domain.js";
 // Reexporta a camada de lógica pura para os testes que importam de "./App".
 export {
@@ -35,6 +37,8 @@ export {
   parseDeckSlides,
   parseContentPlan,
   scheduleContentDates,
+  parseSheet,
+  buildCsv,
 } from "./domain.js";
 import {
   Sparkles,
@@ -120,6 +124,7 @@ import {
   Play,
   Bot,
   Square,
+  Table,
   RefreshCw,
   Settings,
   Star,
@@ -174,6 +179,7 @@ const emptyDb = {
   documents: [],
   presentations: [],
   contentPlan: [],
+  sheets: [],
   sites: [],
   history: [],
   certificates: [],
@@ -231,6 +237,7 @@ const nav = [
   ["documentos", "Documentos", FileText],
   ["apresentacoes", "Apresentações", Layers],
   ["conteudo", "Calendário de conteúdo", CalendarDays],
+  ["planilhas", "Planilhas", Table],
   ["ferramentas", "Ferramentas", Wrench],
   ["estudio", "Estúdio de IA", WandSparkles],
   ["historico", "Histórico", History],
@@ -263,7 +270,15 @@ const navGroups = [
   { label: "FINANCEIRO", items: ["financeiro", "resultados"] },
   {
     label: "CONTEÚDO",
-    items: ["sites", "documentos", "apresentacoes", "conteudo", "ferramentas", "estudio"],
+    items: [
+      "sites",
+      "documentos",
+      "apresentacoes",
+      "conteudo",
+      "planilhas",
+      "ferramentas",
+      "estudio",
+    ],
   },
   { label: "REGISTROS", items: ["historico", "certificacoes"] },
 ];
@@ -13867,6 +13882,345 @@ function AttachmentList({ attachments, onRemove }) {
   );
 }
 
+const SHEET_EXAMPLES = [
+  "Controle de estoque de uma loja de roupas",
+  "Fluxo de caixa mensal de um MEI",
+  "Lista de clientes com contato e histórico de compras",
+  "Cardápio com preço de venda e custo de cada item",
+  "Controle de horas trabalhadas por projeto",
+  "Planejamento de metas do trimestre",
+];
+
+function SheetBuilder({ db, update, business, setToast }) {
+  const [desc, setDesc] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [active, setActive] = useState(null);
+
+  const saved = db.sheets
+    .filter((s) => !business || s.businessId === business.id)
+    .slice()
+    .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+
+  const generate = async () => {
+    const d = desc.trim();
+    if (d.length < 4 || busy) {
+      if (d.length < 4) setErr("Descreva a planilha em pelo menos 4 letras.");
+      return;
+    }
+    setBusy(true);
+    setErr("");
+    const prompt = `Você monta planilhas para pequenos negócios no Brasil. Crie a estrutura de uma planilha para o pedido abaixo.
+
+Pedido: ${d}
+
+Responda SOMENTE com um objeto JSON válido, sem comentários e sem cercas de código, no formato:
+{"title": "Nome da planilha", "columns": ["Coluna 1", "Coluna 2", ...], "rows": [["valor", "valor", ...], ...]}
+
+Regras:
+- Use de 3 a 8 colunas úteis e bem nomeadas, na ordem em que fazem sentido.
+- Inclua de 3 a 6 linhas de EXEMPLO plausíveis para a pessoa entender e depois substituir pelos dados reais.
+- Valores monetários no formato brasileiro (ex.: "R$ 1.200,00"). Datas como AAAA-MM-DD.
+- Não invente dados reais de clientes, preços de mercado ou resultados; os exemplos são apenas ilustrativos.`;
+    try {
+      const response = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ prompt, specialist: "Estrategista" }),
+      });
+      const data = await response.json();
+      if (!response.ok)
+        throw new Error(data.error || "Não foi possível gerar agora.");
+      const sheet = parseSheet(data.content || "");
+      if (!sheet.columns.length)
+        throw new Error(
+          "A IA respondeu, mas não consegui montar a planilha. Tente de novo.",
+        );
+      setActive({
+        id: null,
+        title: sheet.title || d.slice(0, 60),
+        columns: sheet.columns,
+        rows: sheet.rows,
+      });
+      trackProductEvent("sheet_generated", {
+        module: "planilhas",
+        columns: sheet.columns.length,
+        rows: sheet.rows.length,
+      });
+      setDesc("");
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const editCell = (r, c, value) =>
+    setActive((s) => ({
+      ...s,
+      rows: s.rows.map((row, ri) =>
+        ri === r ? row.map((cell, ci) => (ci === c ? value : cell)) : row,
+      ),
+    }));
+  const editHeader = (c, value) =>
+    setActive((s) => ({
+      ...s,
+      columns: s.columns.map((col, ci) => (ci === c ? value : col)),
+    }));
+  const addRow = () =>
+    setActive((s) => ({ ...s, rows: [...s.rows, s.columns.map(() => "")] }));
+  const removeRow = (r) =>
+    setActive((s) => ({ ...s, rows: s.rows.filter((_, ri) => ri !== r) }));
+  const addColumn = () =>
+    setActive((s) => ({
+      ...s,
+      columns: [...s.columns, `Coluna ${s.columns.length + 1}`],
+      rows: s.rows.map((row) => [...row, ""]),
+    }));
+  const removeColumn = (c) =>
+    setActive((s) => ({
+      ...s,
+      columns: s.columns.filter((_, ci) => ci !== c),
+      rows: s.rows.map((row) => row.filter((_, ci) => ci !== c)),
+    }));
+
+  const downloadCsv = () => {
+    if (!active) return;
+    const csv = buildCsv(active.columns, active.rows);
+    const blob = new Blob(["﻿" + csv], {
+      type: "text/csv;charset=utf-8",
+    });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${slugify(active.title || "planilha")}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    trackProductEvent("sheet_exported", { module: "planilhas", format: "csv" });
+  };
+  const copyTable = async () => {
+    if (!active) return;
+    const clean = (v) => String(v == null ? "" : v).replace(/[\t\r\n]+/g, " ");
+    const tsv = [
+      active.columns.map(clean).join("\t"),
+      ...active.rows.map((row) => active.columns.map((_, i) => clean(row[i])).join("\t")),
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(tsv);
+      setToast("Copiado — cole no Excel ou Google Planilhas");
+    } catch {
+      setToast("Não foi possível copiar agora");
+    }
+  };
+  const saveSheet = () => {
+    if (!active) return;
+    const now = new Date().toISOString();
+    const id = active.id || uid();
+    const record = {
+      id,
+      title: active.title || "Planilha",
+      columns: active.columns,
+      rows: active.rows,
+      businessId: business?.id || null,
+      ownerId: active.ownerId || db.user.id,
+      createdAt: active.createdAt || now,
+      updatedAt: now,
+    };
+    update((prev) => ({
+      ...prev,
+      sheets: prev.sheets.some((s) => s.id === id)
+        ? prev.sheets.map((s) => (s.id === id ? record : s))
+        : [record, ...prev.sheets],
+    }));
+    setActive((s) => ({ ...s, id, createdAt: record.createdAt, ownerId: record.ownerId }));
+    setToast("Planilha salva");
+  };
+  const openSheet = (s) =>
+    setActive({
+      id: s.id,
+      title: s.title,
+      columns: s.columns || [],
+      rows: s.rows || [],
+      createdAt: s.createdAt,
+      ownerId: s.ownerId,
+    });
+  const removeSheet = (id) => {
+    if (!window.confirm("Excluir esta planilha?")) return;
+    update((prev) => ({ ...prev, sheets: prev.sheets.filter((s) => s.id !== id) }));
+    if (active?.id === id) setActive(null);
+    setToast("Planilha excluída");
+  };
+
+  return (
+    <div className="page sheet-builder-page">
+      <header className="page-head">
+        <div>
+          <h1>Planilhas</h1>
+          <p className="page-sub">
+            Descreva o que precisa e a IA monta a planilha pronta. Edite e baixe
+            em CSV (abre no Excel e no Google Planilhas). Tudo gratuito.
+          </p>
+        </div>
+      </header>
+
+      <div className="card sheet-generator">
+        <div className="notice">
+          <Table />
+          <span>
+            Os valores gerados são exemplos para você entender a estrutura e
+            depois substituir pelos seus dados reais.
+          </span>
+        </div>
+        <Field label="Que planilha você precisa?">
+          <textarea
+            rows={2}
+            value={desc}
+            onChange={(e) => setDesc(e.target.value)}
+            placeholder="Ex.: Controle de estoque com produto, quantidade, custo e preço de venda"
+          />
+        </Field>
+        <div className="sheet-examples">
+          {SHEET_EXAMPLES.map((ex) => (
+            <button
+              key={ex}
+              type="button"
+              className="chip-btn"
+              onClick={() => setDesc(ex)}
+            >
+              {ex}
+            </button>
+          ))}
+        </div>
+        {err && <p className="form-error">{err}</p>}
+        <div className="form-actions">
+          <button className="btn primary" onClick={generate} disabled={busy}>
+            <Sparkles size={16} />
+            {busy ? "Montando planilha..." : "Gerar planilha"}
+          </button>
+        </div>
+      </div>
+
+      {active && (
+        <div className="card sheet-workspace">
+          <div className="sheet-workspace-head">
+            <input
+              className="sheet-title-input"
+              value={active.title}
+              onChange={(e) => setActive((s) => ({ ...s, title: e.target.value }))}
+              placeholder="Nome da planilha"
+            />
+            <div className="sheet-toolbar">
+              <button className="btn ghost sm" onClick={addRow}>
+                <Plus size={15} /> Linha
+              </button>
+              <button className="btn ghost sm" onClick={addColumn}>
+                <Plus size={15} /> Coluna
+              </button>
+              <button className="btn ghost sm" onClick={copyTable}>
+                <Copy size={15} /> Copiar
+              </button>
+              <button className="btn ghost sm" onClick={downloadCsv}>
+                <Download size={15} /> CSV
+              </button>
+              <button className="btn primary sm" onClick={saveSheet}>
+                Salvar
+              </button>
+              <button className="btn ghost sm" onClick={() => setActive(null)}>
+                <X size={15} />
+              </button>
+            </div>
+          </div>
+          <div className="sheet-scroll">
+            <table className="sheet-table">
+              <thead>
+                <tr>
+                  <th className="sheet-rownum" aria-hidden="true"></th>
+                  {active.columns.map((col, c) => (
+                    <th key={c}>
+                      <div className="sheet-header-cell">
+                        <input
+                          value={col}
+                          onChange={(e) => editHeader(c, e.target.value)}
+                          aria-label={`Nome da coluna ${c + 1}`}
+                        />
+                        <button
+                          className="sheet-col-del"
+                          onClick={() => removeColumn(c)}
+                          title="Excluir coluna"
+                          disabled={active.columns.length <= 1}
+                        >
+                          <X size={13} />
+                        </button>
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {active.rows.map((row, r) => (
+                  <tr key={r}>
+                    <td className="sheet-rownum">
+                      <button
+                        className="sheet-row-del"
+                        onClick={() => removeRow(r)}
+                        title="Excluir linha"
+                      >
+                        <X size={13} />
+                      </button>
+                    </td>
+                    {active.columns.map((_, c) => (
+                      <td key={c}>
+                        <input
+                          value={row[c] ?? ""}
+                          onChange={(e) => editCell(r, c, e.target.value)}
+                          aria-label={`Linha ${r + 1}, ${active.columns[c]}`}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {active.rows.length === 0 && (
+            <p className="sheet-empty-hint">
+              Sem linhas ainda. Use “+ Linha” para começar.
+            </p>
+          )}
+        </div>
+      )}
+
+      {saved.length > 0 && (
+        <div className="sheet-saved">
+          <h3>Planilhas salvas</h3>
+          <div className="sheet-saved-list">
+            {saved.map((s) => (
+              <article key={s.id} className="card sheet-saved-item">
+                <div>
+                  <h4>{s.title}</h4>
+                  <p className="sheet-saved-meta">
+                    {(s.columns || []).length} colunas · {(s.rows || []).length} linhas
+                  </p>
+                </div>
+                <div className="sheet-saved-actions">
+                  <button className="btn ghost sm" onClick={() => openSheet(s)}>
+                    <Pencil size={15} /> Abrir
+                  </button>
+                  <button
+                    className="btn ghost sm danger"
+                    onClick={() => removeSheet(s.id)}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const CONTENT_CHANNELS = [
   "Instagram",
   "Facebook",
@@ -21620,6 +21974,15 @@ export default function App() {
       case "conteudo":
         return (
           <ContentPlanner
+            db={db}
+            update={update}
+            business={business}
+            setToast={setToast}
+          />
+        );
+      case "planilhas":
+        return (
+          <SheetBuilder
             db={db}
             update={update}
             business={business}

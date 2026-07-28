@@ -8191,3 +8191,145 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
 :root[data-theme="dark"] .content-tags {
   color: #7dd3fc;
 }
+
+/* ===== Gerador de planilhas ===== */
+.sheet-generator .sheet-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 12px;
+}
+.sheet-generator .form-actions {
+  margin-top: 4px;
+}
+.sheet-workspace {
+  margin-top: 20px;
+  padding: 14px;
+}
+.sheet-workspace-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.sheet-title-input {
+  font-weight: 700;
+  font-size: 16px;
+  flex: 1;
+  min-width: 160px;
+}
+.sheet-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.sheet-toolbar .btn.sm {
+  padding: 5px 9px;
+  font-size: 12px;
+}
+.sheet-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.sheet-table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: max-content;
+}
+.sheet-table th,
+.sheet-table td {
+  border: 1px solid var(--border);
+  padding: 0;
+  vertical-align: middle;
+}
+.sheet-table thead th {
+  background: var(--surface-2, rgba(148, 163, 184, 0.1));
+}
+.sheet-table input {
+  border: none;
+  background: transparent;
+  padding: 8px 10px;
+  width: 100%;
+  min-width: 120px;
+  font-size: 13px;
+  color: inherit;
+}
+.sheet-table input:focus {
+  outline: 2px solid #38bdf8;
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+.sheet-header-cell {
+  display: flex;
+  align-items: center;
+}
+.sheet-header-cell input {
+  font-weight: 700;
+}
+.sheet-col-del,
+.sheet-row-del {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+}
+.sheet-col-del:hover,
+.sheet-row-del:hover {
+  color: #dc2626;
+}
+.sheet-col-del:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.sheet-rownum {
+  width: 34px;
+  text-align: center;
+  background: var(--surface-2, rgba(148, 163, 184, 0.1));
+}
+.sheet-empty-hint {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 10px 2px 0;
+}
+.sheet-saved {
+  margin-top: 24px;
+}
+.sheet-saved h3 {
+  font-size: 15px;
+  margin: 0 0 10px;
+}
+.sheet-saved-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+.sheet-saved-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+}
+.sheet-saved-item h4 {
+  margin: 0;
+  font-size: 14px;
+}
+.sheet-saved-meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 4px 0 0;
+}
+.sheet-saved-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.sheet-saved-actions .btn.sm {
+  padding: 5px 8px;
+  font-size: 12px;
+}
