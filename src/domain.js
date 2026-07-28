@@ -261,3 +261,63 @@ export const buildRecurringReminder = (
     ...(notifications || []),
   ];
 };
+
+// Converte a resposta da IA (JSON ou texto) numa lista de slides normalizada.
+// Cada slide: { title, bullets: string[], notes }. Tolerante a cercas ```json,
+// texto antes/depois do array e a formatos de fallback em Markdown.
+export const parseDeckSlides = (raw) => {
+  const text = String(raw || "").trim();
+  if (!text) return [];
+  const clean = (s) =>
+    String(s == null ? "" : s)
+      .replace(/\s+/g, " ")
+      .replace(/^[-*•#\d.)\s]+/, "")
+      .trim();
+  const normalizeSlide = (s) => {
+    if (!s || typeof s !== "object") return null;
+    const title = clean(s.title || s.titulo || s.heading || "");
+    const rawBullets = s.bullets || s.pontos || s.items || s.topicos || [];
+    const bullets = (Array.isArray(rawBullets) ? rawBullets : [rawBullets])
+      .map(clean)
+      .filter(Boolean)
+      .slice(0, 8);
+    const notes = clean(s.notes || s.notas || s.observacoes || "");
+    if (!title && bullets.length === 0) return null;
+    return { title: title || "Slide", bullets, notes };
+  };
+  // 1) Tenta JSON (com ou sem cercas de código)
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const body = fenced ? fenced[1].trim() : text;
+  const start = body.indexOf("[");
+  const end = body.lastIndexOf("]");
+  if (start !== -1 && end > start) {
+    try {
+      const arr = JSON.parse(body.slice(start, end + 1));
+      if (Array.isArray(arr)) {
+        const slides = arr.map(normalizeSlide).filter(Boolean);
+        if (slides.length) return slides;
+      }
+    } catch {
+      // segue para o fallback em texto
+    }
+  }
+  // 2) Fallback: divide por títulos de Markdown ("## " ou "Slide N:")
+  const blocks = body
+    .split(/\n(?=#{1,3}\s|slide\s*\d+\s*[:-]|título\s*[:-])/i)
+    .map((b) => b.trim())
+    .filter(Boolean);
+  const slides = [];
+  for (const block of blocks) {
+    const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (!lines.length) continue;
+    const title = clean(lines[0].replace(/^slide\s*\d+\s*[:-]/i, ""));
+    const bullets = lines
+      .slice(1)
+      .filter((l) => /^[-*•]/.test(l) || /^\d+[.)]/.test(l))
+      .map(clean)
+      .filter(Boolean)
+      .slice(0, 8);
+    if (title || bullets.length) slides.push({ title: title || "Slide", bullets, notes: "" });
+  }
+  return slides;
+};

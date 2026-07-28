@@ -14,6 +14,7 @@ import {
   buildRecurringTransaction,
   buildRecurringPostings,
   buildRecurringReminder,
+  parseDeckSlides,
 } from "./domain.js";
 // Reexporta a camada de lógica pura para os testes que importam de "./App".
 export {
@@ -29,6 +30,7 @@ export {
   buildRecurringTransaction,
   buildRecurringPostings,
   buildRecurringReminder,
+  parseDeckSlides,
 } from "./domain.js";
 import {
   Sparkles,
@@ -166,6 +168,7 @@ const emptyDb = {
   financeSettings: {},
   taxProfile: { isMEI: false, dueDay: 20, cnpj: "", dasHistory: {} },
   documents: [],
+  presentations: [],
   sites: [],
   history: [],
   certificates: [],
@@ -221,6 +224,7 @@ const nav = [
   ["desenvolvimento", "Desenvolvimento", TrendingUp],
   ["sites", "Sites e Materiais", PanelsTopLeft],
   ["documentos", "Documentos", FileText],
+  ["apresentacoes", "Apresentações", Layers],
   ["ferramentas", "Ferramentas", Wrench],
   ["estudio", "Estúdio de IA", WandSparkles],
   ["historico", "Histórico", History],
@@ -253,7 +257,7 @@ const navGroups = [
   { label: "FINANCEIRO", items: ["financeiro", "resultados"] },
   {
     label: "CONTEÚDO",
-    items: ["sites", "documentos", "ferramentas", "estudio"],
+    items: ["sites", "documentos", "apresentacoes", "ferramentas", "estudio"],
   },
   { label: "REGISTROS", items: ["historico", "certificacoes"] },
 ];
@@ -13857,6 +13861,497 @@ function AttachmentList({ attachments, onRemove }) {
   );
 }
 
+const PRESENTATION_GOALS = [
+  "Apresentar uma proposta comercial",
+  "Fechar uma venda",
+  "Explicar um serviço ou produto",
+  "Treinar a equipe",
+  "Dar uma aula ou palestra",
+  "Prestar contas / relatório de resultados",
+];
+
+function Presentations({ db, update, business, setToast }) {
+  const [tema, setTema] = useState("");
+  const [publico, setPublico] = useState("");
+  const [objetivo, setObjetivo] = useState(PRESENTATION_GOALS[0]);
+  const [numSlides, setNumSlides] = useState(6);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [viewing, setViewing] = useState(null);
+  const [slideIndex, setSlideIndex] = useState(0);
+  const [editing, setEditing] = useState(null);
+  const [exportBusy, setExportBusy] = useState("");
+
+  const decks = db.presentations.filter(
+    (p) => !business || p.businessId === business.id,
+  );
+  const viewingDeck = viewing
+    ? decks.find((d) => d.id === viewing) || null
+    : null;
+
+  const generate = async () => {
+    const theme = tema.trim();
+    if (theme.length < 3 || busy) {
+      if (theme.length < 3) setErr("Descreva o tema em pelo menos 3 letras.");
+      return;
+    }
+    setBusy(true);
+    setErr("");
+    const n = Math.max(3, Math.min(12, Number(numSlides) || 6));
+    const prompt = `Você é um especialista em apresentações profissionais. Monte o roteiro de uma apresentação de slides em português do Brasil.
+
+Tema: ${theme}
+Objetivo: ${objetivo}
+Público: ${publico.trim() || "clientes e parceiros do negócio"}
+Quantidade de slides: exatamente ${n} (inclua um slide de capa no início e um slide de próximos passos/contato no fim).
+
+Responda SOMENTE com um array JSON válido, sem comentários e sem cercas de código. Cada item deve ter:
+- "title": título curto e forte do slide (máx. 8 palavras)
+- "bullets": lista de 2 a 5 frases curtas e objetivas (o slide de capa pode ter 1 bullet com o subtítulo)
+- "notes": uma frase de apoio para quem vai apresentar (o que falar)
+
+Não invente números, preços, depoimentos ou resultados que não foram informados. Seja concreto e ético.`;
+    try {
+      const response = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ prompt, specialist: "Redator" }),
+      });
+      const d = await response.json();
+      if (!response.ok)
+        throw new Error(d.error || "Não foi possível gerar agora.");
+      const slides = parseDeckSlides(d.content || "");
+      if (!slides.length)
+        throw new Error(
+          "A IA respondeu, mas não consegui montar os slides. Tente de novo.",
+        );
+      const deck = {
+        id: uid(),
+        title: theme.length > 60 ? `${theme.slice(0, 57)}...` : theme,
+        objetivo,
+        publico: publico.trim(),
+        slides,
+        businessId: business?.id || null,
+        ownerId: db.user.id,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      update((prev) => ({
+        ...prev,
+        presentations: [deck, ...prev.presentations],
+      }));
+      trackProductEvent("presentation_generated", {
+        module: "apresentacoes",
+        slides: slides.length,
+      });
+      setTema("");
+      setPublico("");
+      setToast(`Apresentação criada com ${slides.length} slides`);
+      setViewing(deck.id);
+      setSlideIndex(0);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeDeck = (id) => {
+    if (!window.confirm("Excluir esta apresentação?")) return;
+    update((prev) => ({
+      ...prev,
+      presentations: prev.presentations.filter((p) => p.id !== id),
+    }));
+    if (viewing === id) setViewing(null);
+    setToast("Apresentação excluída");
+  };
+
+  const duplicateDeck = (deck) => {
+    const copy = {
+      ...deck,
+      id: uid(),
+      title: `${deck.title} (cópia)`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    update((prev) => ({
+      ...prev,
+      presentations: [copy, ...prev.presentations],
+    }));
+    setToast("Cópia criada");
+  };
+
+  const saveEdit = (deck) => {
+    update((prev) => ({
+      ...prev,
+      presentations: prev.presentations.map((p) =>
+        p.id === deck.id ? { ...deck, updatedAt: new Date().toISOString() } : p,
+      ),
+    }));
+    setEditing(null);
+    setToast("Apresentação salva");
+  };
+
+  const exportPdf = async (deck) => {
+    setExportBusy(deck.id);
+    try {
+      const { jsPDF } = await import("jspdf");
+      const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
+      const W = 297;
+      const H = 210;
+      (deck.slides || []).forEach((slide, i) => {
+        if (i > 0) pdf.addPage();
+        pdf.setFillColor(15, 23, 42);
+        pdf.rect(0, 0, W, H, "F");
+        pdf.setTextColor(255, 255, 255);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(i === 0 ? 30 : 24);
+        const title = pdf.splitTextToSize(slide.title || "Slide", W - 40);
+        pdf.text(title, 22, i === 0 ? 90 : 34);
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(15);
+        pdf.setTextColor(226, 232, 240);
+        let y = i === 0 ? 90 + title.length * 12 + 8 : 34 + title.length * 12 + 6;
+        (slide.bullets || []).forEach((b) => {
+          const lines = pdf.splitTextToSize(`•  ${b}`, W - 50);
+          lines.forEach((line) => {
+            if (y > H - 22) return;
+            pdf.text(line, 26, y);
+            y += 9;
+          });
+          y += 2;
+        });
+        pdf.setTextColor(148, 163, 184);
+        pdf.setFontSize(9);
+        pdf.text(`${i + 1} / ${deck.slides.length}`, W - 26, H - 12);
+      });
+      const a = document.createElement("a");
+      a.href = pdf.output("bloburl");
+      a.download = `${slugify(deck.title || "apresentacao")}.pdf`;
+      a.click();
+      trackProductEvent("presentation_exported", {
+        module: "apresentacoes",
+        format: "pdf",
+      });
+    } catch {
+      setToast("Não foi possível gerar o PDF agora");
+    } finally {
+      setExportBusy("");
+    }
+  };
+
+  useEffect(() => {
+    if (!viewingDeck) return;
+    const onKey = (e) => {
+      if (e.key === "ArrowRight" || e.key === " ")
+        setSlideIndex((i) => Math.min((viewingDeck.slides.length || 1) - 1, i + 1));
+      else if (e.key === "ArrowLeft") setSlideIndex((i) => Math.max(0, i - 1));
+      else if (e.key === "Escape") setViewing(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [viewingDeck]);
+
+  const current = viewingDeck?.slides?.[slideIndex];
+
+  return (
+    <div className="page presentations-page">
+      <header className="page-head">
+        <div>
+          <h1>Apresentações</h1>
+          <p className="page-sub">
+            Descreva o tema e a IA monta os slides. Edite, apresente em tela
+            cheia e baixe em PDF — tudo gratuito.
+          </p>
+        </div>
+      </header>
+
+      <div className="card presentation-generator">
+        <div className="notice">
+          <Layers />
+          <span>
+            Ideal para propostas, pitch de vendas, treinamentos e aulas. A IA
+            não inventa preços nem resultados que você não informar.
+          </span>
+        </div>
+        <div className="form-grid">
+          <Field label="Sobre o que é a apresentação?">
+            <textarea
+              rows={2}
+              value={tema}
+              onChange={(e) => setTema(e.target.value)}
+              placeholder="Ex.: Serviço de organização residencial para famílias ocupadas"
+            />
+          </Field>
+          <Field label="Objetivo">
+            <select value={objetivo} onChange={(e) => setObjetivo(e.target.value)}>
+              {PRESENTATION_GOALS.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Para quem (público)">
+            <input
+              value={publico}
+              onChange={(e) => setPublico(e.target.value)}
+              placeholder="Ex.: donas de casa, síndicos, pequenas empresas"
+            />
+          </Field>
+          <Field label="Quantidade de slides">
+            <select
+              value={numSlides}
+              onChange={(e) => setNumSlides(Number(e.target.value))}
+            >
+              {[4, 5, 6, 7, 8, 10, 12].map((n) => (
+                <option key={n} value={n}>
+                  {n} slides
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        {err && <p className="form-error">{err}</p>}
+        <div className="form-actions">
+          <button className="btn primary" onClick={generate} disabled={busy}>
+            <Sparkles size={16} />
+            {busy ? "Montando slides..." : "Gerar apresentação"}
+          </button>
+        </div>
+      </div>
+
+      {decks.length === 0 ? (
+        <div className="empty-state">
+          <Layers />
+          <h3>Nenhuma apresentação ainda</h3>
+          <p>Descreva um tema acima e crie a primeira em segundos.</p>
+        </div>
+      ) : (
+        <div className="presentation-grid">
+          {decks.map((deck) => (
+            <article key={deck.id} className="card presentation-card">
+              <div className="presentation-thumb" aria-hidden="true">
+                <span className="presentation-thumb-title">
+                  {deck.slides?.[0]?.title || deck.title}
+                </span>
+                <span className="presentation-thumb-count">
+                  {deck.slides?.length || 0} slides
+                </span>
+              </div>
+              <div className="presentation-card-body">
+                <h3>{deck.title}</h3>
+                <p className="presentation-meta">{deck.objetivo}</p>
+              </div>
+              <div className="presentation-card-actions">
+                <button
+                  className="btn primary sm"
+                  onClick={() => {
+                    setViewing(deck.id);
+                    setSlideIndex(0);
+                  }}
+                >
+                  <Play size={15} /> Apresentar
+                </button>
+                <button
+                  className="btn ghost sm"
+                  onClick={() => setEditing(structuredClone(deck))}
+                >
+                  <Pencil size={15} /> Editar
+                </button>
+                <button
+                  className="btn ghost sm"
+                  onClick={() => exportPdf(deck)}
+                  disabled={exportBusy === deck.id}
+                >
+                  <Download size={15} />
+                  {exportBusy === deck.id ? "Gerando..." : "PDF"}
+                </button>
+                <button
+                  className="btn ghost sm"
+                  onClick={() => duplicateDeck(deck)}
+                  title="Duplicar"
+                >
+                  <Copy size={15} />
+                </button>
+                <button
+                  className="btn ghost sm danger"
+                  onClick={() => removeDeck(deck.id)}
+                  title="Excluir"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {viewingDeck && current && (
+        <div
+          className="presenter-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Apresentação: ${viewingDeck.title}`}
+        >
+          <div className="presenter-slide">
+            <h2>{current.title}</h2>
+            {current.bullets?.length > 0 && (
+              <ul>
+                {current.bullets.map((b, i) => (
+                  <li key={i}>{b}</li>
+                ))}
+              </ul>
+            )}
+            {current.notes && (
+              <p className="presenter-notes">
+                <strong>Fale:</strong> {current.notes}
+              </p>
+            )}
+          </div>
+          <div className="presenter-bar">
+            <button
+              className="btn ghost"
+              onClick={() => setSlideIndex((i) => Math.max(0, i - 1))}
+              disabled={slideIndex === 0}
+            >
+              <ChevronLeft size={18} /> Anterior
+            </button>
+            <span className="presenter-count">
+              {slideIndex + 1} / {viewingDeck.slides.length}
+            </span>
+            <button
+              className="btn ghost"
+              onClick={() =>
+                setSlideIndex((i) =>
+                  Math.min(viewingDeck.slides.length - 1, i + 1),
+                )
+              }
+              disabled={slideIndex === viewingDeck.slides.length - 1}
+            >
+              Próximo <ChevronRight size={18} />
+            </button>
+            <button className="btn" onClick={() => setViewing(null)}>
+              <X size={18} /> Fechar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {editing && (
+        <PresentationEditor
+          deck={editing}
+          onChange={setEditing}
+          onSave={saveEdit}
+          onClose={() => setEditing(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function PresentationEditor({ deck, onChange, onSave, onClose }) {
+  const setSlide = (idx, patch) =>
+    onChange({
+      ...deck,
+      slides: deck.slides.map((s, i) => (i === idx ? { ...s, ...patch } : s)),
+    });
+  const addSlide = () =>
+    onChange({
+      ...deck,
+      slides: [...deck.slides, { title: "Novo slide", bullets: [], notes: "" }],
+    });
+  const removeSlide = (idx) =>
+    onChange({ ...deck, slides: deck.slides.filter((_, i) => i !== idx) });
+  const moveSlide = (idx, dir) => {
+    const j = idx + dir;
+    if (j < 0 || j >= deck.slides.length) return;
+    const slides = [...deck.slides];
+    [slides[idx], slides[j]] = [slides[j], slides[idx]];
+    onChange({ ...deck, slides });
+  };
+  return (
+    <Modal title="Editar apresentação" wide onClose={onClose}>
+      <div className="modal-body">
+        <Field label="Título da apresentação">
+          <input
+            value={deck.title}
+            onChange={(e) => onChange({ ...deck, title: e.target.value })}
+          />
+        </Field>
+        <div className="editor-slides">
+          {deck.slides.map((slide, idx) => (
+            <div key={idx} className="editor-slide">
+              <div className="editor-slide-head">
+                <span className="editor-slide-num">Slide {idx + 1}</span>
+                <div className="editor-slide-tools">
+                  <button
+                    className="btn ghost sm"
+                    onClick={() => moveSlide(idx, -1)}
+                    disabled={idx === 0}
+                    title="Subir"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    className="btn ghost sm"
+                    onClick={() => moveSlide(idx, 1)}
+                    disabled={idx === deck.slides.length - 1}
+                    title="Descer"
+                  >
+                    ↓
+                  </button>
+                  <button
+                    className="btn ghost sm danger"
+                    onClick={() => removeSlide(idx)}
+                    disabled={deck.slides.length <= 1}
+                    title="Excluir slide"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+              <input
+                className="editor-slide-title"
+                value={slide.title}
+                onChange={(e) => setSlide(idx, { title: e.target.value })}
+                placeholder="Título do slide"
+              />
+              <textarea
+                rows={4}
+                value={(slide.bullets || []).join("\n")}
+                onChange={(e) =>
+                  setSlide(idx, {
+                    bullets: e.target.value
+                      .split("\n")
+                      .map((l) => l.trim())
+                      .filter(Boolean),
+                  })
+                }
+                placeholder="Um tópico por linha"
+              />
+              <input
+                className="editor-slide-notes"
+                value={slide.notes || ""}
+                onChange={(e) => setSlide(idx, { notes: e.target.value })}
+                placeholder="Nota do apresentador (o que falar)"
+              />
+            </div>
+          ))}
+        </div>
+        <div className="form-actions">
+          <button className="btn ghost" onClick={addSlide}>
+            <Plus size={16} /> Adicionar slide
+          </button>
+          <button className="btn primary" onClick={() => onSave(deck)}>
+            Salvar apresentação
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function Documents({ db, update, business, setToast, go, searchSeed, clearSearchSeed }) {
   const [modal, setModal] = useState(false),
     [editing, setEditing] = useState(null),
@@ -20696,6 +21191,15 @@ export default function App() {
             go={go}
             searchSeed={searchSeed}
             clearSearchSeed={clearSearchSeed}
+          />
+        );
+      case "apresentacoes":
+        return (
+          <Presentations
+            db={db}
+            update={update}
+            business={business}
+            setToast={setToast}
           />
         );
       case "ferramentas":
