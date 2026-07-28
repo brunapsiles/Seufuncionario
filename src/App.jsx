@@ -26,6 +26,11 @@ import {
   buildEmailSignature,
   buildPixCode,
   pixCrc16,
+  DB_FIELD_TYPES,
+  coerceCellValue,
+  formatCellValue,
+  groupRowsByField,
+  kanbanColumns,
 } from "./domain.js";
 // Reexporta a camada de lógica pura para os testes que importam de "./App".
 export {
@@ -53,6 +58,11 @@ export {
   buildEmailSignature,
   buildPixCode,
   pixCrc16,
+  DB_FIELD_TYPES,
+  coerceCellValue,
+  formatCellValue,
+  groupRowsByField,
+  kanbanColumns,
 } from "./domain.js";
 import {
   Sparkles,
@@ -141,6 +151,7 @@ import {
   Table,
   FileSearch,
   QrCode,
+  Database,
   RefreshCw,
   Settings,
   Star,
@@ -200,6 +211,7 @@ const emptyDb = {
   brainstorms: [],
   signatures: [],
   pixCharges: [],
+  databases: [],
   sites: [],
   history: [],
   certificates: [],
@@ -249,6 +261,7 @@ const nav = [
   ["produtos", "Produtos e Pedidos", ShoppingBag],
   ["frota", "Frota e Fretes", Truck],
   ["horas", "Horas e Faturamento", Clock3],
+  ["bases", "Meus dados", Database],
   ["financeiro", "Financeiro", WalletCards],
   ["cobranca", "Cobrança Pix", QrCode],
   ["resultados", "Resultados", BarChart3],
@@ -289,7 +302,7 @@ const navGroups = [
   },
   {
     label: "OPERAÇÃO",
-    items: ["produtos", "frota", "horas", "operacao", "desenvolvimento"],
+    items: ["produtos", "frota", "horas", "operacao", "desenvolvimento", "bases"],
   },
   { label: "FINANCEIRO", items: ["financeiro", "cobranca", "resultados"] },
   {
@@ -13909,6 +13922,538 @@ function AttachmentList({ attachments, onRemove }) {
   );
 }
 
+const DB_TEMPLATES = [
+  {
+    name: "Clientes",
+    fields: [
+      { name: "Nome", type: "text" },
+      { name: "Telefone", type: "text" },
+      { name: "Cidade", type: "text" },
+      { name: "Status", type: "select", options: ["Novo", "Ativo", "Inativo"] },
+    ],
+  },
+  {
+    name: "Estoque",
+    fields: [
+      { name: "Produto", type: "text" },
+      { name: "Quantidade", type: "number" },
+      { name: "Preço", type: "number" },
+      { name: "Repor?", type: "checkbox" },
+    ],
+  },
+  {
+    name: "Projetos",
+    fields: [
+      { name: "Projeto", type: "text" },
+      { name: "Responsável", type: "text" },
+      { name: "Prazo", type: "date" },
+      { name: "Etapa", type: "select", options: ["A fazer", "Fazendo", "Feito"] },
+    ],
+  },
+];
+
+const dbNewField = (name, type, options) => ({
+  id: uid(),
+  name: name || "Campo",
+  type: type || "text",
+  options: type === "select" ? options || [] : undefined,
+});
+const dbMakeBase = (name, template, ctx = {}) => ({
+  id: uid(),
+  name: name || template?.name || "Nova base",
+  fields: (template?.fields || [{ name: "Nome", type: "text" }]).map((f) =>
+    dbNewField(f.name, f.type, f.options),
+  ),
+  rows: [],
+  businessId: ctx.businessId || null,
+  ownerId: ctx.ownerId || null,
+  createdAt: new Date().toISOString(),
+});
+
+function DbCell({ field, value, onChange }) {
+  if (field.type === "checkbox")
+    return (
+      <input
+        type="checkbox"
+        checked={!!value}
+        onChange={(e) => onChange(e.target.checked)}
+        aria-label={field.name}
+      />
+    );
+  if (field.type === "select")
+    return (
+      <select
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={field.name}
+      >
+        <option value="">—</option>
+        {(field.options || []).map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+    );
+  if (field.type === "longtext")
+    return (
+      <textarea
+        rows={1}
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={field.name}
+      />
+    );
+  return (
+    <input
+      type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
+      value={value ?? ""}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label={field.name}
+    />
+  );
+}
+
+function DataBases({ db, update, business, setToast }) {
+  const bases = (db.databases || []).filter(
+    (b) => !business || b.businessId === business.id,
+  );
+  const [selectedId, setSelectedId] = useState(bases[0]?.id || null);
+  const [view, setView] = useState("table");
+  const [kanbanFieldId, setKanbanFieldId] = useState(null);
+  const [fieldModal, setFieldModal] = useState(null); // {mode, id?, name, type, options}
+  const [newBaseName, setNewBaseName] = useState("");
+
+  const selected = bases.find((b) => b.id === selectedId) || bases[0] || null;
+  const selectFields = (selected?.fields || []).filter((f) => f.type === "select");
+  const activeKanbanField =
+    kanbanFieldId && selectFields.some((f) => f.id === kanbanFieldId)
+      ? kanbanFieldId
+      : selectFields[0]?.id || null;
+
+  const patchBase = (id, updater) =>
+    update((prev) => ({
+      ...prev,
+      databases: (prev.databases || []).map((b) => (b.id === id ? updater(b) : b)),
+    }));
+
+  const createBase = (template) => {
+    const base = dbMakeBase(newBaseName.trim() || template?.name, template, {
+      businessId: business?.id,
+      ownerId: db.user.id,
+    });
+    update((prev) => ({ ...prev, databases: [base, ...(prev.databases || [])] }));
+    setSelectedId(base.id);
+    setView("table");
+    setNewBaseName("");
+    setToast("Base criada");
+  };
+  const renameBase = (id, name) => patchBase(id, (b) => ({ ...b, name }));
+  const deleteBase = (id) => {
+    if (!window.confirm("Excluir esta base e todos os seus dados?")) return;
+    update((prev) => ({
+      ...prev,
+      databases: (prev.databases || []).filter((b) => b.id !== id),
+    }));
+    setSelectedId(bases.find((b) => b.id !== id)?.id || null);
+    setToast("Base excluída");
+  };
+  const addRow = () =>
+    patchBase(selected.id, (b) => ({ ...b, rows: [...b.rows, { id: uid(), cells: {} }] }));
+  const updateCell = (rowId, field, raw) =>
+    patchBase(selected.id, (b) => ({
+      ...b,
+      rows: b.rows.map((r) =>
+        r.id === rowId
+          ? { ...r, cells: { ...r.cells, [field.id]: coerceCellValue(field.type, raw) } }
+          : r,
+      ),
+    }));
+  const deleteRow = (rowId) =>
+    patchBase(selected.id, (b) => ({ ...b, rows: b.rows.filter((r) => r.id !== rowId) }));
+
+  const saveField = () => {
+    const name = fieldModal.name.trim();
+    if (!name) return;
+    const options =
+      fieldModal.type === "select"
+        ? (fieldModal.options || "")
+            .split(/[\n,]/)
+            .map((o) => o.trim())
+            .filter(Boolean)
+        : undefined;
+    if (fieldModal.mode === "edit") {
+      patchBase(selected.id, (b) => ({
+        ...b,
+        fields: b.fields.map((f) =>
+          f.id === fieldModal.id ? { ...f, name, type: fieldModal.type, options } : f,
+        ),
+      }));
+    } else {
+      patchBase(selected.id, (b) => ({
+        ...b,
+        fields: [...b.fields, dbNewField(name, fieldModal.type, options)],
+      }));
+    }
+    setFieldModal(null);
+  };
+  const deleteField = (fieldId) => {
+    if (!window.confirm("Excluir esta coluna?")) return;
+    patchBase(selected.id, (b) => ({
+      ...b,
+      fields: b.fields.filter((f) => f.id !== fieldId),
+      rows: b.rows.map((r) => {
+        const cells = { ...r.cells };
+        delete cells[fieldId];
+        return { ...r, cells };
+      }),
+    }));
+  };
+
+  if (bases.length === 0) {
+    return (
+      <div className="page databases-page">
+        <header className="page-head">
+          <div>
+            <h1>Meus dados</h1>
+            <p className="page-sub">
+              Crie suas próprias bases: tabelas com os campos que você quiser e
+              visões em tabela, galeria ou quadro. Como um mini-Notion, grátis.
+            </p>
+          </div>
+        </header>
+        <div className="card db-starter">
+          <h3>Comece com um modelo</h3>
+          <div className="db-template-grid">
+            {DB_TEMPLATES.map((t) => (
+              <button key={t.name} className="template-card" onClick={() => createBase(t)}>
+                <span className="template-card-type">Modelo</span>
+                <strong>{t.name}</strong>
+                <span className="template-card-seg">
+                  {t.fields.map((f) => f.name).join(", ")}
+                </span>
+              </button>
+            ))}
+            <button className="template-card" onClick={() => createBase(null)}>
+              <span className="template-card-type">Vazia</span>
+              <strong>Base em branco</strong>
+              <span className="template-card-seg">Comece do zero</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="page databases-page">
+      <header className="page-head">
+        <div>
+          <h1>Meus dados</h1>
+          <p className="page-sub">
+            Suas bases de dados: tabelas, campos personalizados e visões.
+          </p>
+        </div>
+      </header>
+
+      <div className="db-layout">
+        <aside className="db-sidebar">
+          <div className="db-sidebar-head">
+            <span>Bases</span>
+          </div>
+          <ul className="db-base-list">
+            {bases.map((b) => (
+              <li key={b.id}>
+                <button
+                  className={`db-base-item ${b.id === selected?.id ? "active" : ""}`}
+                  onClick={() => setSelectedId(b.id)}
+                >
+                  <Database size={15} /> {b.name}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="db-new-base">
+            <input
+              value={newBaseName}
+              onChange={(e) => setNewBaseName(e.target.value)}
+              placeholder="Nome da nova base"
+            />
+            <button className="btn ghost sm" onClick={() => createBase(null)}>
+              <Plus size={15} /> Criar
+            </button>
+          </div>
+        </aside>
+
+        {selected && (
+          <section className="db-main">
+            <div className="db-toolbar">
+              <input
+                className="db-base-name"
+                value={selected.name}
+                onChange={(e) => renameBase(selected.id, e.target.value)}
+                aria-label="Nome da base"
+              />
+              <div className="db-views">
+                {[
+                  ["table", "Tabela"],
+                  ["gallery", "Galeria"],
+                  ["kanban", "Quadro"],
+                ].map(([v, label]) => (
+                  <button
+                    key={v}
+                    className={`db-view-btn ${view === v ? "active" : ""}`}
+                    onClick={() => setView(v)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="db-toolbar-actions">
+                <button className="btn ghost sm" onClick={addRow}>
+                  <Plus size={15} /> Registro
+                </button>
+                <button
+                  className="btn ghost sm"
+                  onClick={() =>
+                    setFieldModal({ mode: "add", name: "", type: "text", options: "" })
+                  }
+                >
+                  <Plus size={15} /> Campo
+                </button>
+                <button
+                  className="btn ghost sm danger"
+                  onClick={() => deleteBase(selected.id)}
+                  title="Excluir base"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </div>
+
+            {view === "table" && (
+              <div className="db-scroll">
+                <table className="db-table">
+                  <thead>
+                    <tr>
+                      {selected.fields.map((f) => (
+                        <th key={f.id}>
+                          <button
+                            className="db-field-head"
+                            onClick={() =>
+                              setFieldModal({
+                                mode: "edit",
+                                id: f.id,
+                                name: f.name,
+                                type: f.type,
+                                options: (f.options || []).join(", "),
+                              })
+                            }
+                            title="Editar campo"
+                          >
+                            {f.name}
+                          </button>
+                        </th>
+                      ))}
+                      <th className="db-rowactions" aria-hidden="true"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selected.rows.map((row) => (
+                      <tr key={row.id}>
+                        {selected.fields.map((f) => (
+                          <td key={f.id}>
+                            <DbCell
+                              field={f}
+                              value={row.cells?.[f.id]}
+                              onChange={(v) => updateCell(row.id, f, v)}
+                            />
+                          </td>
+                        ))}
+                        <td className="db-rowactions">
+                          <button
+                            className="sheet-row-del"
+                            onClick={() => deleteRow(row.id)}
+                            title="Excluir registro"
+                          >
+                            <X size={13} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {selected.rows.length === 0 && (
+                  <p className="db-empty-hint">
+                    Sem registros. Use “+ Registro” para começar.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {view === "gallery" && (
+              <div className="db-gallery">
+                {selected.rows.map((row) => (
+                  <article key={row.id} className="card db-card">
+                    {selected.fields.map((f) => (
+                      <div key={f.id} className="db-card-row">
+                        <span className="db-card-label">{f.name}</span>
+                        <span className="db-card-value">
+                          {formatCellValue(f.type, row.cells?.[f.id]) || "—"}
+                        </span>
+                      </div>
+                    ))}
+                    <button
+                      className="btn ghost sm danger db-card-del"
+                      onClick={() => deleteRow(row.id)}
+                    >
+                      <Trash2 size={14} /> Excluir
+                    </button>
+                  </article>
+                ))}
+                {selected.rows.length === 0 && (
+                  <p className="db-empty-hint">Sem registros ainda.</p>
+                )}
+              </div>
+            )}
+
+            {view === "kanban" &&
+              (activeKanbanField ? (
+                <>
+                  <div className="db-kanban-pick">
+                    <span>Agrupar por: </span>
+                    <select
+                      value={activeKanbanField}
+                      onChange={(e) => setKanbanFieldId(e.target.value)}
+                      aria-label="Agrupar por"
+                    >
+                      {selectFields.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="db-kanban">
+                    {kanbanColumns(selected, activeKanbanField).map((col) => {
+                      const titleField =
+                        selected.fields.find((f) => f.type !== "select") ||
+                        selected.fields[0];
+                      return (
+                        <div key={col.key} className="db-kanban-col">
+                          <h4>
+                            {col.key} <span>{col.rows.length}</span>
+                          </h4>
+                          {col.rows.map((row) => (
+                            <div key={row.id} className="db-kanban-card">
+                              <span>
+                                {formatCellValue(
+                                  titleField?.type,
+                                  row.cells?.[titleField?.id],
+                                ) || "Registro"}
+                              </span>
+                              <select
+                                value={row.cells?.[activeKanbanField] ?? ""}
+                                onChange={(e) =>
+                                  updateCell(
+                                    row.id,
+                                    selected.fields.find((f) => f.id === activeKanbanField),
+                                    e.target.value,
+                                  )
+                                }
+                                aria-label="Mover"
+                              >
+                                <option value="">—</option>
+                                {(
+                                  selected.fields.find((f) => f.id === activeKanbanField)
+                                    ?.options || []
+                                ).map((o) => (
+                                  <option key={o} value={o}>
+                                    {o}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <div className="empty-state">
+                  <Database />
+                  <h3>Crie um campo de seleção</h3>
+                  <p>
+                    O quadro agrupa por um campo do tipo “Seleção” (ex.: Status,
+                    Etapa). Adicione um em “+ Campo”.
+                  </p>
+                </div>
+              ))}
+          </section>
+        )}
+      </div>
+
+      {fieldModal && (
+        <Modal
+          title={fieldModal.mode === "edit" ? "Editar campo" : "Novo campo"}
+          onClose={() => setFieldModal(null)}
+        >
+          <div className="modal-body">
+            <Field label="Nome do campo">
+              <input
+                value={fieldModal.name}
+                onChange={(e) => setFieldModal((m) => ({ ...m, name: e.target.value }))}
+                autoFocus
+              />
+            </Field>
+            <Field label="Tipo">
+              <select
+                value={fieldModal.type}
+                onChange={(e) => setFieldModal((m) => ({ ...m, type: e.target.value }))}
+              >
+                {DB_FIELD_TYPES.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {fieldModal.type === "select" && (
+              <Field label="Opções (uma por linha ou separadas por vírgula)">
+                <textarea
+                  rows={3}
+                  value={fieldModal.options}
+                  onChange={(e) =>
+                    setFieldModal((m) => ({ ...m, options: e.target.value }))
+                  }
+                  placeholder={"Novo\nAtivo\nInativo"}
+                />
+              </Field>
+            )}
+            <div className="form-actions">
+              {fieldModal.mode === "edit" && (
+                <button
+                  className="btn ghost danger"
+                  onClick={() => {
+                    deleteField(fieldModal.id);
+                    setFieldModal(null);
+                  }}
+                >
+                  <Trash2 size={16} /> Excluir campo
+                </button>
+              )}
+              <button className="btn primary" onClick={saveField}>
+                Salvar campo
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 function PixCharge({ db, update, business, setToast }) {
   const charges = (db.pixCharges || []).filter(
     (c) => !business || c.businessId === business.id,
@@ -23221,6 +23766,15 @@ export default function App() {
       case "cobranca":
         return (
           <PixCharge
+            db={db}
+            update={update}
+            business={business}
+            setToast={setToast}
+          />
+        );
+      case "bases":
+        return (
+          <DataBases
             db={db}
             update={update}
             business={business}

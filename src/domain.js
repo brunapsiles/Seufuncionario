@@ -857,3 +857,55 @@ export const buildPixCode = ({ key, name, city, amount, txid, description } = {}
     "6304";
   return payload + pixCrc16(payload);
 };
+
+// ===== Banco de dados personalizável (bases tipo Notion/Airtable) =====
+export const DB_FIELD_TYPES = [
+  { id: "text", label: "Texto" },
+  { id: "longtext", label: "Texto longo" },
+  { id: "number", label: "Número" },
+  { id: "date", label: "Data" },
+  { id: "select", label: "Seleção" },
+  { id: "checkbox", label: "Sim / Não" },
+];
+
+// Converte o valor bruto de uma célula para o tipo do campo.
+export const coerceCellValue = (type, raw) => {
+  if (type === "number") {
+    if (raw === "" || raw == null) return "";
+    const n = Number(String(raw).replace(/\./g, "").replace(",", "."));
+    return Number.isFinite(n) ? n : Number(raw);
+  }
+  if (type === "checkbox")
+    return raw === true || raw === "true" || raw === "on" || raw === 1;
+  return raw == null ? "" : String(raw);
+};
+
+// Mostra o valor de uma célula de forma amigável (para leitura/kanban/galeria).
+export const formatCellValue = (type, value) => {
+  if (type === "checkbox") return value ? "Sim" : "Não";
+  if (value == null || value === "") return "";
+  if (type === "number") return String(value).replace(".", ",");
+  return String(value);
+};
+
+// Agrupa as linhas por um campo (usado no kanban). Valores vazios caem em "—".
+export const groupRowsByField = (rows, fieldId) => {
+  const groups = {};
+  for (const row of rows || []) {
+    const raw = row?.cells?.[fieldId];
+    const key = raw === undefined || raw === null || raw === "" ? "—" : String(raw);
+    (groups[key] ||= []).push(row);
+  }
+  return groups;
+};
+
+// As colunas do kanban a partir de um campo de seleção: as opções do campo,
+// mais "—" (sem valor) quando houver linhas sem valor.
+export const kanbanColumns = (base, fieldId) => {
+  const field = (base?.fields || []).find((f) => f.id === fieldId);
+  const options = field?.options ? [...field.options] : [];
+  const groups = groupRowsByField(base?.rows || [], fieldId);
+  const cols = options.map((opt) => ({ key: opt, rows: groups[opt] || [] }));
+  if (groups["—"]?.length) cols.push({ key: "—", rows: groups["—"] });
+  return cols;
+};
