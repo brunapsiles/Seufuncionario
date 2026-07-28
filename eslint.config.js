@@ -83,4 +83,11 @@ export default [
       globals: { ...globals.serviceworker, ...globals.browser },
     },
   },
+  // Extensão de navegador (WebExtension: usa a API `chrome`)
+  {
+    files: ["extension/**/*.js"],
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.webextensions },
+    },
+  },
 ];

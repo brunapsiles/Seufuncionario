@@ -1,4 +1,4 @@
-const CACHE = "seu-funcionario-v107";
+const CACHE = "seu-funcionario-v108";
 
 self.addEventListener("install", () => self.skipWaiting());
 

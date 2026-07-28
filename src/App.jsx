@@ -22948,6 +22948,58 @@ function Team({ db, update, setToast }) {
   );
 }
 
+function ExtensionCard({ setToast }) {
+  const [shown, setShown] = useState(false);
+  const token =
+    typeof localStorage !== "undefined"
+      ? localStorage.getItem(AUTH_TOKEN_KEY) || ""
+      : "";
+  const masked = token ? `${token.slice(0, 6)}${"•".repeat(12)}` : "";
+  const copy = async () => {
+    if (!token) return;
+    try {
+      await navigator.clipboard.writeText(token);
+      setToast("Token copiado — cole na extensão");
+    } catch {
+      setToast("Não foi possível copiar agora");
+    }
+  };
+  return (
+    <section className="settings-card" id="settings-extension">
+      <div className="settings-card-head">
+        <span className="settings-icon">
+          <Plug />
+        </span>
+        <div>
+          <h2>Extensão do navegador</h2>
+          <p>Use a IA do app em qualquer página da internet.</p>
+        </div>
+      </div>
+      <p className="settings-note">
+        Instale a extensão (pasta <code>extension/</code> do projeto) e conecte
+        com o token abaixo. Ele fica só no seu navegador e serve para a extensão
+        falar com a mesma IA — sem custo extra.
+      </p>
+      <Field label="Seu token de acesso">
+        <input
+          value={shown ? token : masked}
+          readOnly
+          className="readonly"
+          aria-label="Token de acesso"
+        />
+      </Field>
+      <div className="settings-actions">
+        <Button variant="secondary" onClick={() => setShown((s) => !s)}>
+          {shown ? "Ocultar" : "Mostrar"}
+        </Button>
+        <Button icon={Copy} onClick={copy} disabled={!token}>
+          Copiar token
+        </Button>
+      </div>
+    </section>
+  );
+}
+
 function AccountSettings({ db, update, setToast, go }) {
   const [name, setName] = useState(db.user.name);
   const [busy, setBusy] = useState(false),
@@ -23303,6 +23355,7 @@ function AccountSettings({ db, update, setToast, go }) {
         </nav>
 
       <div className="settings-grid">
+        <ExtensionCard setToast={setToast} />
         <section className="settings-card" id="settings-account">
           <div className="settings-card-head">
             <span className="settings-icon">
