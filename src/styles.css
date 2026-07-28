@@ -9469,3 +9469,67 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
     width: 100%;
   }
 }
+
+/* ===== Bases: visão calendário ===== */
+.db-cal-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.db-cal-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.db-cal-nav strong {
+  text-transform: capitalize;
+  min-width: 130px;
+  text-align: center;
+}
+.db-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.db-cal-dow {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  padding: 4px 0;
+}
+.db-cal-cell {
+  min-height: 84px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+}
+.db-cal-cell.out {
+  opacity: 0.45;
+}
+.db-cal-daynum {
+  font-size: 11px;
+  color: var(--muted);
+  align-self: flex-end;
+}
+.db-cal-event {
+  font-size: 11px;
+  background: rgba(56, 189, 248, 0.16);
+  color: #0369a1;
+  border-radius: 5px;
+  padding: 2px 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+:root[data-theme="dark"] .db-cal-event {
+  color: #7dd3fc;
+}

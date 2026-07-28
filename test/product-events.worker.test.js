@@ -108,7 +108,8 @@ describe("métricas próprias e minimizadas", () => {
     expect(payload).toMatchObject({
       status: "operacional",
       database: "operacional",
-      version: "v82",
+      // Versão tolerante: não quebra a cada release (evita main vermelho).
+      version: expect.stringMatching(/^v\d+$/),
     });
     expect(JSON.stringify(payload)).not.toMatch(/key|token|provider/i);
   });

@@ -866,6 +866,7 @@ export const DB_FIELD_TYPES = [
   { id: "date", label: "Data" },
   { id: "select", label: "Seleção" },
   { id: "checkbox", label: "Sim / Não" },
+  { id: "relation", label: "Relação (outra base)" },
 ];
 
 // Converte o valor bruto de uma célula para o tipo do campo.
@@ -908,6 +909,49 @@ export const kanbanColumns = (base, fieldId) => {
   const cols = options.map((opt) => ({ key: opt, rows: groups[opt] || [] }));
   if (groups["—"]?.length) cols.push({ key: "—", rows: groups["—"] });
   return cols;
+};
+
+// Rótulo de um registro de uma base (o valor do primeiro campo) — para campos
+// de relação, galeria e kanban mostrarem algo legível em vez do id.
+export const recordLabel = (base, recordId) => {
+  const row = (base?.rows || []).find((r) => r.id === recordId);
+  if (!row) return "";
+  const first = (base?.fields || [])[0];
+  const raw = first ? row.cells?.[first.id] : "";
+  return raw == null ? "" : String(raw);
+};
+
+// Agrupa as linhas por dia (AAAA-MM-DD) a partir de um campo de data. Usado na
+// visão de calendário. Ignora valores que não sejam datas.
+export const groupRowsByDate = (rows, fieldId) => {
+  const map = {};
+  for (const row of rows || []) {
+    const v = String(row?.cells?.[fieldId] ?? "").slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) (map[v] ||= []).push(row);
+  }
+  return map;
+};
+
+// Matriz de 6 semanas (começando no domingo) para o mês "AAAA-MM". Cada célula
+// tem a data (AAAA-MM-DD) e se pertence ao mês. Pura, para a visão calendário.
+export const monthMatrix = (ym) => {
+  const [y, m] = String(ym).split("-").map(Number);
+  const first = new Date(Date.UTC(y || 1970, (m || 1) - 1, 1));
+  const cursor = new Date(first);
+  cursor.setUTCDate(1 - first.getUTCDay());
+  const weeks = [];
+  for (let w = 0; w < 6; w += 1) {
+    const week = [];
+    for (let d = 0; d < 7; d += 1) {
+      week.push({
+        date: cursor.toISOString().slice(0, 10),
+        inMonth: cursor.getUTCMonth() === (m || 1) - 1,
+      });
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+    weeks.push(week);
+  }
+  return weeks;
 };
 
 // ===== Wiki / páginas aninhadas =====

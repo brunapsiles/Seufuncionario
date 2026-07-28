@@ -29,6 +29,9 @@ import {
   coerceCellValue,
   formatCellValue,
   kanbanColumns,
+  recordLabel,
+  groupRowsByDate,
+  monthMatrix,
   buildPageTree,
   pageDescendantIds,
   searchPages,
@@ -67,6 +70,9 @@ export {
   formatCellValue,
   groupRowsByField,
   kanbanColumns,
+  recordLabel,
+  groupRowsByDate,
+  monthMatrix,
   buildPageTree,
   pageDescendantIds,
   searchPages,
@@ -14559,7 +14565,7 @@ const dbMakeBase = (name, template, ctx = {}) => ({
   createdAt: new Date().toISOString(),
 });
 
-function DbCell({ field, value, onChange }) {
+function DbCell({ field, value, onChange, bases }) {
   if (field.type === "checkbox")
     return (
       <input
@@ -14569,6 +14575,23 @@ function DbCell({ field, value, onChange }) {
         aria-label={field.name}
       />
     );
+  if (field.type === "relation") {
+    const target = (bases || []).find((b) => b.id === field.targetBaseId);
+    return (
+      <select
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={field.name}
+      >
+        <option value="">—</option>
+        {(target?.rows || []).map((r) => (
+          <option key={r.id} value={r.id}>
+            {recordLabel(target, r.id) || "(sem título)"}
+          </option>
+        ))}
+      </select>
+    );
+  }
   if (field.type === "select")
     return (
       <select
@@ -14610,15 +14633,26 @@ function DataBases({ db, update, business, setToast }) {
   const [selectedId, setSelectedId] = useState(bases[0]?.id || null);
   const [view, setView] = useState("table");
   const [kanbanFieldId, setKanbanFieldId] = useState(null);
-  const [fieldModal, setFieldModal] = useState(null); // {mode, id?, name, type, options}
+  const [calFieldId, setCalFieldId] = useState(null);
+  const [calMonth, setCalMonth] = useState(today().slice(0, 7));
+  const [fieldModal, setFieldModal] = useState(null); // {mode, id?, name, type, options, targetBaseId}
   const [newBaseName, setNewBaseName] = useState("");
 
   const selected = bases.find((b) => b.id === selectedId) || bases[0] || null;
   const selectFields = (selected?.fields || []).filter((f) => f.type === "select");
+  const dateFields = (selected?.fields || []).filter((f) => f.type === "date");
   const activeKanbanField =
     kanbanFieldId && selectFields.some((f) => f.id === kanbanFieldId)
       ? kanbanFieldId
       : selectFields[0]?.id || null;
+  const activeCalField =
+    calFieldId && dateFields.some((f) => f.id === calFieldId)
+      ? calFieldId
+      : dateFields[0]?.id || null;
+  const displayCell = (f, value) =>
+    f.type === "relation"
+      ? recordLabel(bases.find((b) => b.id === f.targetBaseId), value) || ""
+      : formatCellValue(f.type, value);
 
   const patchBase = (id, updater) =>
     update((prev) => ({
@@ -14671,17 +14705,24 @@ function DataBases({ db, update, business, setToast }) {
             .map((o) => o.trim())
             .filter(Boolean)
         : undefined;
+    const targetBaseId =
+      fieldModal.type === "relation" ? fieldModal.targetBaseId || "" : undefined;
     if (fieldModal.mode === "edit") {
       patchBase(selected.id, (b) => ({
         ...b,
         fields: b.fields.map((f) =>
-          f.id === fieldModal.id ? { ...f, name, type: fieldModal.type, options } : f,
+          f.id === fieldModal.id
+            ? { ...f, name, type: fieldModal.type, options, targetBaseId }
+            : f,
         ),
       }));
     } else {
       patchBase(selected.id, (b) => ({
         ...b,
-        fields: [...b.fields, dbNewField(name, fieldModal.type, options)],
+        fields: [
+          ...b.fields,
+          { ...dbNewField(name, fieldModal.type, options), targetBaseId },
+        ],
       }));
     }
     setFieldModal(null);
@@ -14788,6 +14829,7 @@ function DataBases({ db, update, business, setToast }) {
                   ["table", "Tabela"],
                   ["gallery", "Galeria"],
                   ["kanban", "Quadro"],
+                  ["calendar", "Calendário"],
                 ].map(([v, label]) => (
                   <button
                     key={v}
@@ -14836,6 +14878,7 @@ function DataBases({ db, update, business, setToast }) {
                                 name: f.name,
                                 type: f.type,
                                 options: (f.options || []).join(", "),
+                                targetBaseId: f.targetBaseId || "",
                               })
                             }
                             title="Editar campo"
@@ -14856,6 +14899,7 @@ function DataBases({ db, update, business, setToast }) {
                               field={f}
                               value={row.cells?.[f.id]}
                               onChange={(v) => updateCell(row.id, f, v)}
+                              bases={bases}
                             />
                           </td>
                         ))}
@@ -14888,7 +14932,7 @@ function DataBases({ db, update, business, setToast }) {
                       <div key={f.id} className="db-card-row">
                         <span className="db-card-label">{f.name}</span>
                         <span className="db-card-value">
-                          {formatCellValue(f.type, row.cells?.[f.id]) || "—"}
+                          {displayCell(f, row.cells?.[f.id]) || "—"}
                         </span>
                       </div>
                     ))}
@@ -14979,6 +15023,94 @@ function DataBases({ db, update, business, setToast }) {
                   </p>
                 </div>
               ))}
+
+            {view === "calendar" &&
+              (activeCalField ? (
+                (() => {
+                  const groups = groupRowsByDate(selected.rows, activeCalField);
+                  const titleField =
+                    selected.fields.find((f) => f.type !== "date") ||
+                    selected.fields[0];
+                  const [cy, cm] = calMonth.split("-").map(Number);
+                  const shift = (delta) =>
+                    setCalMonth(
+                      new Date(Date.UTC(cy, cm - 1 + delta, 1))
+                        .toISOString()
+                        .slice(0, 7),
+                    );
+                  const monthLabel = new Date(
+                    `${calMonth}-01T12:00:00`,
+                  ).toLocaleDateString("pt-BR", {
+                    month: "long",
+                    year: "numeric",
+                  });
+                  return (
+                    <>
+                      <div className="db-cal-head">
+                        <span>Datas por: </span>
+                        <select
+                          value={activeCalField}
+                          onChange={(e) => setCalFieldId(e.target.value)}
+                          aria-label="Campo de data"
+                        >
+                          {dateFields.map((f) => (
+                            <option key={f.id} value={f.id}>
+                              {f.name}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="db-cal-nav">
+                          <button className="btn ghost sm" onClick={() => shift(-1)}>
+                            ‹
+                          </button>
+                          <strong>{monthLabel}</strong>
+                          <button className="btn ghost sm" onClick={() => shift(1)}>
+                            ›
+                          </button>
+                        </div>
+                      </div>
+                      <div className="db-cal-grid">
+                        {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map(
+                          (d) => (
+                            <div key={d} className="db-cal-dow">
+                              {d}
+                            </div>
+                          ),
+                        )}
+                        {monthMatrix(calMonth)
+                          .flat()
+                          .map((cell) => (
+                            <div
+                              key={cell.date}
+                              className={`db-cal-cell ${cell.inMonth ? "" : "out"}`}
+                            >
+                              <span className="db-cal-daynum">
+                                {Number(cell.date.slice(8, 10))}
+                              </span>
+                              {(groups[cell.date] || []).map((row) => (
+                                <div key={row.id} className="db-cal-event">
+                                  {displayCell(
+                                    titleField,
+                                    row.cells?.[titleField?.id],
+                                  ) || "Registro"}
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                      </div>
+                    </>
+                  );
+                })()
+              ) : (
+                <div className="empty-state">
+                  <CalendarDays />
+                  <h3>Crie um campo de data</h3>
+                  <p>
+                    O calendário posiciona os registros por um campo do tipo
+                    “Data”. Adicione um em “+ Campo”.
+                  </p>
+                </div>
+              ))}
           </section>
         )}
       </div>
@@ -15018,6 +15150,23 @@ function DataBases({ db, update, business, setToast }) {
                   }
                   placeholder={"Novo\nAtivo\nInativo"}
                 />
+              </Field>
+            )}
+            {fieldModal.type === "relation" && (
+              <Field label="Base relacionada">
+                <select
+                  value={fieldModal.targetBaseId || ""}
+                  onChange={(e) =>
+                    setFieldModal((m) => ({ ...m, targetBaseId: e.target.value }))
+                  }
+                >
+                  <option value="">Escolha uma base...</option>
+                  {bases.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
               </Field>
             )}
             <div className="form-actions">

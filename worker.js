@@ -4513,7 +4513,7 @@ export default {
       return json({
         status: database === "operacional" ? "operacional" : "degradado",
         database,
-        version: "v110",
+        version: "v111",
         checkedAt: new Date().toISOString(),
       });
     }
