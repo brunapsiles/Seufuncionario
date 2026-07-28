@@ -48,6 +48,9 @@ não sejam a `main` também estão habilitados como versões de prévia.
 6. Alterou schema? Criar NOVA migração numerada em `migrations/` (nunca editar as antigas) e aplicar com wrangler.
 7. Dados de usuários são isolados por conta; qualquer rota nova de dados exige sessão (ver `sessionUser`).
 8. Ao subir mudança visual, incrementar a versão do cache em `public/sw.js` (`seu-funcionario-vN`).
+9. Mudanças concluídas e validadas devem ser publicadas automaticamente, sem pedir
+   uma autorização adicional à titular. Só interromper quando houver bloqueio externo
+   inevitável de credencial, permissão ou serviço, informando exatamente o acesso faltante.
 
 ## Arquitetura do frontend (quebra do monólito, em andamento)
 
