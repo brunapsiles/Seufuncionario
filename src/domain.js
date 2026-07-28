@@ -321,3 +321,70 @@ export const parseDeckSlides = (raw) => {
   }
   return slides;
 };
+
+// Extrai um array JSON tolerante a cercas ```json e a texto ao redor.
+// Retorna [] quando não encontra um array válido.
+const extractJsonArray = (raw) => {
+  const text = String(raw || "").trim();
+  if (!text) return [];
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const body = fenced ? fenced[1].trim() : text;
+  const start = body.indexOf("[");
+  const end = body.lastIndexOf("]");
+  if (start === -1 || end <= start) return [];
+  try {
+    const arr = JSON.parse(body.slice(start, end + 1));
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+};
+
+// Normaliza a resposta da IA num calendário editorial: lista de posts
+// { channel, format, hook, caption, cta, hashtags[] }. Aceita chaves em
+// português (canal/formato/gancho/legenda/chamada/hashtags).
+export const parseContentPlan = (raw) => {
+  const oneLine = (s) =>
+    String(s == null ? "" : s).replace(/\s+/g, " ").trim();
+  const asText = (v) => (Array.isArray(v) ? v.join(" ") : oneLine(v));
+  const normalizeTag = (t) =>
+    oneLine(t)
+      .replace(/^#+/, "")
+      .replace(/\s+/g, "")
+      .replace(/[^\p{L}\p{N}_]/gu, "");
+  return extractJsonArray(raw)
+    .map((p) => {
+      if (!p || typeof p !== "object") return null;
+      const channel = oneLine(p.channel || p.canal || p.rede || "Instagram");
+      const format = oneLine(p.format || p.formato || p.tipo || "Post");
+      const hook = oneLine(p.hook || p.gancho || p.titulo || p.title || p.tema || "");
+      const caption = asText(p.caption || p.legenda || p.texto || p.body || "");
+      const cta = oneLine(p.cta || p.chamada || p.callToAction || "");
+      const rawTags = p.hashtags || p.tags || p.hashtag || [];
+      const hashtags = (Array.isArray(rawTags) ? rawTags : asText(rawTags).split(/[\s,]+/))
+        .map(normalizeTag)
+        .filter(Boolean)
+        .slice(0, 12);
+      if (!hook && !caption) return null;
+      return { channel, format, hook: hook || caption.slice(0, 60), caption, cta, hashtags };
+    })
+    .filter(Boolean);
+};
+
+// Distribui N posts a partir de uma data inicial (AAAA-MM-DD), a cada
+// `everyDays` dias, pulando domingos. Retorna as datas no formato AAAA-MM-DD.
+export const scheduleContentDates = (count, startYmd = today(), everyDays = 2) => {
+  const dates = [];
+  const step = Math.max(1, Number(everyDays) || 1);
+  const [y, m, d] = String(startYmd).split("-").map(Number);
+  const cursor = new Date(Date.UTC(y || 1970, (m || 1) - 1, d || 1));
+  while (dates.length < count) {
+    if (cursor.getUTCDay() !== 0) {
+      dates.push(cursor.toISOString().slice(0, 10));
+      cursor.setUTCDate(cursor.getUTCDate() + step);
+    } else {
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+  }
+  return dates;
+};

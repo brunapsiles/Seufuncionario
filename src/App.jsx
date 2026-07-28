@@ -15,6 +15,8 @@ import {
   buildRecurringPostings,
   buildRecurringReminder,
   parseDeckSlides,
+  parseContentPlan,
+  scheduleContentDates,
 } from "./domain.js";
 // Reexporta a camada de lógica pura para os testes que importam de "./App".
 export {
@@ -31,6 +33,8 @@ export {
   buildRecurringPostings,
   buildRecurringReminder,
   parseDeckSlides,
+  parseContentPlan,
+  scheduleContentDates,
 } from "./domain.js";
 import {
   Sparkles,
@@ -169,6 +173,7 @@ const emptyDb = {
   taxProfile: { isMEI: false, dueDay: 20, cnpj: "", dasHistory: {} },
   documents: [],
   presentations: [],
+  contentPlan: [],
   sites: [],
   history: [],
   certificates: [],
@@ -225,6 +230,7 @@ const nav = [
   ["sites", "Sites e Materiais", PanelsTopLeft],
   ["documentos", "Documentos", FileText],
   ["apresentacoes", "Apresentações", Layers],
+  ["conteudo", "Calendário de conteúdo", CalendarDays],
   ["ferramentas", "Ferramentas", Wrench],
   ["estudio", "Estúdio de IA", WandSparkles],
   ["historico", "Histórico", History],
@@ -257,7 +263,7 @@ const navGroups = [
   { label: "FINANCEIRO", items: ["financeiro", "resultados"] },
   {
     label: "CONTEÚDO",
-    items: ["sites", "documentos", "apresentacoes", "ferramentas", "estudio"],
+    items: ["sites", "documentos", "apresentacoes", "conteudo", "ferramentas", "estudio"],
   },
   { label: "REGISTROS", items: ["historico", "certificacoes"] },
 ];
@@ -13861,6 +13867,415 @@ function AttachmentList({ attachments, onRemove }) {
   );
 }
 
+const CONTENT_CHANNELS = [
+  "Instagram",
+  "Facebook",
+  "WhatsApp Status",
+  "TikTok",
+  "LinkedIn",
+  "Google Meu Negócio",
+];
+const CONTENT_GOALS = [
+  "Atrair novos clientes",
+  "Engajar seguidores",
+  "Divulgar uma promoção",
+  "Mostrar os bastidores",
+  "Educar sobre o serviço",
+  "Depoimentos e prova social",
+];
+const CONTENT_STATUS = {
+  ideia: { label: "Ideia", next: "pronto" },
+  pronto: { label: "Pronto", next: "publicado" },
+  publicado: { label: "Publicado", next: "ideia" },
+};
+const contentDateLabel = (ymd) =>
+  ymd
+    ? new Date(`${ymd}T12:00:00`).toLocaleDateString("pt-BR", {
+        weekday: "short",
+        day: "2-digit",
+        month: "short",
+      })
+    : "Sem data";
+
+function ContentPlanner({ db, update, business, setToast }) {
+  const [tema, setTema] = useState("");
+  const [canal, setCanal] = useState(CONTENT_CHANNELS[0]);
+  const [objetivo, setObjetivo] = useState(CONTENT_GOALS[0]);
+  const [qtd, setQtd] = useState(6);
+  const [inicio, setInicio] = useState(today());
+  const [cadencia, setCadencia] = useState(2);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [editing, setEditing] = useState(null);
+
+  const posts = db.contentPlan
+    .filter((p) => !business || p.businessId === business.id)
+    .slice()
+    .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+
+  const generate = async () => {
+    const theme = tema.trim();
+    if (theme.length < 3 || busy) {
+      if (theme.length < 3) setErr("Descreva o tema em pelo menos 3 letras.");
+      return;
+    }
+    setBusy(true);
+    setErr("");
+    const n = Math.max(3, Math.min(15, Number(qtd) || 6));
+    const prompt = `Você é um estrategista de conteúdo para redes sociais de pequenos negócios no Brasil. Crie um calendário editorial com ${n} posts em português do Brasil.
+
+Negócio/tema: ${theme}
+Canal principal: ${canal}
+Objetivo: ${objetivo}
+
+Responda SOMENTE com um array JSON válido, sem comentários e sem cercas de código. Cada item deve ter:
+- "channel": a rede social sugerida para esse post
+- "format": o formato (ex.: Post, Reels, Carrossel, Story, Vídeo curto)
+- "hook": uma chamada/ideia curta e atrativa (máx. 10 palavras)
+- "caption": uma legenda pronta para publicar, com 2 a 4 frases e tom próximo do público
+- "cta": uma chamada para ação clara (ex.: "Chame no WhatsApp", "Agende agora")
+- "hashtags": lista de 3 a 6 hashtags relevantes, sem o símbolo #
+
+Varie os formatos e os ângulos. Não invente preços, promoções, depoimentos ou resultados que não foram informados.`;
+    try {
+      const response = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ prompt, specialist: "Redator" }),
+      });
+      const d = await response.json();
+      if (!response.ok)
+        throw new Error(d.error || "Não foi possível gerar agora.");
+      const parsed = parseContentPlan(d.content || "");
+      if (!parsed.length)
+        throw new Error(
+          "A IA respondeu, mas não consegui montar o calendário. Tente de novo.",
+        );
+      const dates = scheduleContentDates(parsed.length, inicio, cadencia);
+      const now = new Date().toISOString();
+      const created = parsed.map((p, i) => ({
+        ...p,
+        id: uid(),
+        status: "ideia",
+        date: dates[i],
+        theme,
+        businessId: business?.id || null,
+        ownerId: db.user.id,
+        createdAt: now,
+      }));
+      update((prev) => ({
+        ...prev,
+        contentPlan: [...created, ...prev.contentPlan],
+      }));
+      trackProductEvent("content_plan_generated", {
+        module: "conteudo",
+        posts: created.length,
+      });
+      setTema("");
+      setToast(`${created.length} posts adicionados ao calendário`);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const patchPost = (id, patch) =>
+    update((prev) => ({
+      ...prev,
+      contentPlan: prev.contentPlan.map((p) =>
+        p.id === id ? { ...p, ...patch } : p,
+      ),
+    }));
+  const cycleStatus = (post) =>
+    patchPost(post.id, {
+      status: CONTENT_STATUS[post.status]?.next || "ideia",
+    });
+  const removePost = (id) => {
+    if (!window.confirm("Remover este post do calendário?")) return;
+    update((prev) => ({
+      ...prev,
+      contentPlan: prev.contentPlan.filter((p) => p.id !== id),
+    }));
+    setToast("Post removido");
+  };
+  const postText = (post) => {
+    const tags = (post.hashtags || []).map((t) => `#${t}`).join(" ");
+    return [post.caption, post.cta, tags].filter(Boolean).join("\n\n");
+  };
+  const copyPost = async (post) => {
+    try {
+      await navigator.clipboard.writeText(postText(post));
+      setToast("Legenda copiada");
+    } catch {
+      setToast("Não foi possível copiar agora");
+    }
+  };
+  const shareWhatsapp = (post) => {
+    window.open(whatsappLink("", postText(post)), "_blank", "noopener");
+  };
+
+  const saveEdit = (post) => {
+    update((prev) => ({
+      ...prev,
+      contentPlan: prev.contentPlan.map((p) => (p.id === post.id ? post : p)),
+    }));
+    setEditing(null);
+    setToast("Post salvo");
+  };
+
+  const grouped = [];
+  for (const post of posts) {
+    const key = post.date || "";
+    let bucket = grouped.find((g) => g.key === key);
+    if (!bucket) {
+      bucket = { key, items: [] };
+      grouped.push(bucket);
+    }
+    bucket.items.push(post);
+  }
+
+  return (
+    <div className="page content-planner-page">
+      <header className="page-head">
+        <div>
+          <h1>Calendário de conteúdo</h1>
+          <p className="page-sub">
+            A IA planeja seus posts das redes sociais: ideia, legenda pronta,
+            chamada e hashtags. Edite, agende e publique. Tudo gratuito.
+          </p>
+        </div>
+      </header>
+
+      <div className="card content-generator">
+        <div className="notice">
+          <Megaphone />
+          <span>
+            Descreva seu negócio e o objetivo. A IA sugere uma sequência de
+            posts — sem inventar preços ou promoções que você não informou.
+          </span>
+        </div>
+        <div className="form-grid">
+          <Field label="Sobre o que postar?">
+            <textarea
+              rows={2}
+              value={tema}
+              onChange={(e) => setTema(e.target.value)}
+              placeholder="Ex.: Confeitaria artesanal de bolos e doces para festas"
+            />
+          </Field>
+          <Field label="Canal principal">
+            <select value={canal} onChange={(e) => setCanal(e.target.value)}>
+              {CONTENT_CHANNELS.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Objetivo">
+            <select value={objetivo} onChange={(e) => setObjetivo(e.target.value)}>
+              {CONTENT_GOALS.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Quantos posts">
+            <select value={qtd} onChange={(e) => setQtd(Number(e.target.value))}>
+              {[3, 4, 5, 6, 8, 10, 12].map((n) => (
+                <option key={n} value={n}>
+                  {n} posts
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Começar em">
+            <input
+              type="date"
+              value={inicio}
+              onChange={(e) => setInicio(e.target.value)}
+            />
+          </Field>
+          <Field label="Frequência">
+            <select
+              value={cadencia}
+              onChange={(e) => setCadencia(Number(e.target.value))}
+            >
+              <option value={1}>Todo dia</option>
+              <option value={2}>A cada 2 dias</option>
+              <option value={3}>A cada 3 dias</option>
+              <option value={7}>1 por semana</option>
+            </select>
+          </Field>
+        </div>
+        {err && <p className="form-error">{err}</p>}
+        <div className="form-actions">
+          <button className="btn primary" onClick={generate} disabled={busy}>
+            <Sparkles size={16} />
+            {busy ? "Planejando..." : "Gerar calendário"}
+          </button>
+        </div>
+      </div>
+
+      {posts.length === 0 ? (
+        <div className="empty-state">
+          <Megaphone />
+          <h3>Seu calendário está vazio</h3>
+          <p>Descreva seu negócio acima e crie a primeira sequência de posts.</p>
+        </div>
+      ) : (
+        <div className="content-plan-list">
+          {grouped.map((group) => (
+            <section key={group.key} className="content-day">
+              <h3 className="content-day-label">{contentDateLabel(group.key)}</h3>
+              {group.items.map((post) => (
+                <article
+                  key={post.id}
+                  className={`card content-post status-${post.status}`}
+                >
+                  <div className="content-post-top">
+                    <span className="content-chip">{post.channel}</span>
+                    <span className="content-chip ghost">{post.format}</span>
+                    <button
+                      className={`content-status-btn s-${post.status}`}
+                      onClick={() => cycleStatus(post)}
+                      title="Mudar situação"
+                    >
+                      {CONTENT_STATUS[post.status]?.label || "Ideia"}
+                    </button>
+                  </div>
+                  <h4>{post.hook}</h4>
+                  <p className="content-caption">{post.caption}</p>
+                  {post.cta && <p className="content-cta">➡ {post.cta}</p>}
+                  {post.hashtags?.length > 0 && (
+                    <p className="content-tags">
+                      {post.hashtags.map((t) => `#${t}`).join(" ")}
+                    </p>
+                  )}
+                  <div className="content-post-actions">
+                    <button className="btn ghost sm" onClick={() => copyPost(post)}>
+                      <Copy size={15} /> Copiar
+                    </button>
+                    <button
+                      className="btn ghost sm"
+                      onClick={() => shareWhatsapp(post)}
+                    >
+                      <Send size={15} /> WhatsApp
+                    </button>
+                    <button
+                      className="btn ghost sm"
+                      onClick={() => setEditing(structuredClone(post))}
+                    >
+                      <Pencil size={15} /> Editar
+                    </button>
+                    <button
+                      className="btn ghost sm danger"
+                      onClick={() => removePost(post.id)}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </section>
+          ))}
+        </div>
+      )}
+
+      {editing && (
+        <ContentPostEditor
+          post={editing}
+          onChange={setEditing}
+          onSave={saveEdit}
+          onClose={() => setEditing(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ContentPostEditor({ post, onChange, onSave, onClose }) {
+  const set = (patch) => onChange({ ...post, ...patch });
+  return (
+    <Modal title="Editar post" wide onClose={onClose}>
+      <div className="modal-body">
+        <div className="form-grid">
+          <Field label="Data">
+            <input
+              type="date"
+              value={post.date || ""}
+              onChange={(e) => set({ date: e.target.value })}
+            />
+          </Field>
+          <Field label="Canal">
+            <select
+              value={post.channel}
+              onChange={(e) => set({ channel: e.target.value })}
+            >
+              {CONTENT_CHANNELS.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Formato">
+            <input
+              value={post.format}
+              onChange={(e) => set({ format: e.target.value })}
+            />
+          </Field>
+          <Field label="Situação">
+            <select
+              value={post.status}
+              onChange={(e) => set({ status: e.target.value })}
+            >
+              {Object.entries(CONTENT_STATUS).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <Field label="Chamada / ideia">
+          <input value={post.hook} onChange={(e) => set({ hook: e.target.value })} />
+        </Field>
+        <Field label="Legenda">
+          <textarea
+            rows={5}
+            value={post.caption}
+            onChange={(e) => set({ caption: e.target.value })}
+          />
+        </Field>
+        <Field label="Chamada para ação (CTA)">
+          <input value={post.cta || ""} onChange={(e) => set({ cta: e.target.value })} />
+        </Field>
+        <Field label="Hashtags (separadas por espaço, sem #)">
+          <input
+            value={(post.hashtags || []).join(" ")}
+            onChange={(e) =>
+              set({
+                hashtags: e.target.value
+                  .split(/[\s,]+/)
+                  .map((t) => t.replace(/^#+/, "").trim())
+                  .filter(Boolean),
+              })
+            }
+          />
+        </Field>
+        <div className="form-actions">
+          <button className="btn primary" onClick={() => onSave(post)}>
+            Salvar post
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 const PRESENTATION_GOALS = [
   "Apresentar uma proposta comercial",
   "Fechar uma venda",
@@ -21196,6 +21611,15 @@ export default function App() {
       case "apresentacoes":
         return (
           <Presentations
+            db={db}
+            update={update}
+            business={business}
+            setToast={setToast}
+          />
+        );
+      case "conteudo":
+        return (
+          <ContentPlanner
             db={db}
             update={update}
             business={business}
