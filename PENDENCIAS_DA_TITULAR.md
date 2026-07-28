@@ -64,3 +64,5 @@ Depois de cadastrar, teste: Configurações → "Notificações do navegador" �
   restauração protegida por revisão e preservação da versão substituída
 - Cabeçalhos defensivos nas respostas da API contra incorporação, interpretação
   indevida de conteúdo, vazamento de referência e acesso desnecessário a sensores
+- Automações executadas de hora em hora no servidor, mesmo com o app fechado,
+  com prevenção de duplicidade, snapshots e registro relacional das execuções

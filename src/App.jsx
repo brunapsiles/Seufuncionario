@@ -14093,7 +14093,7 @@ function Automations({ db, update, business, setToast }) {
           <h1>Automações</h1>
           <p className="page-sub">
             Crie regras que rodam sozinhas: toda semana ou todo mês, elas criam
-            uma tarefa ou um lembrete para você. Rodam quando você abre o app.
+            uma tarefa ou um lembrete para você, mesmo com o aplicativo fechado.
           </p>
         </div>
       </header>
@@ -14104,7 +14104,7 @@ function Automations({ db, update, business, setToast }) {
           <span>
             Comece por um modelo ou crie a sua. As automações nunca gastam
             dinheiro nem enviam nada sozinhas — só criam tarefas e lembretes
-            para você decidir.
+            para você decidir. A execução é verificada de hora em hora.
           </span>
         </div>
         <div className="automation-template-row">
