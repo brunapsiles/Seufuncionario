@@ -1232,71 +1232,12 @@ export const applyMergeFields = (text, values = {}) =>
     return v == null ? "" : String(v);
   });
 
-// ===== Fórmulas nas bases (avaliador aritmético seguro, sem eval) =====
-// Suporta + - * / e parênteses; nomes de campo viram seus valores numéricos
-// (não numérico = 0). Retorna número arredondado a 2 casas, ou "" se vazio.
-export const evalFormula = (expr, values = {}) => {
-  const s = String(expr || "");
-  let i = 0;
-  const skip = () => {
-    while (i < s.length && /\s/.test(s[i])) i += 1;
-  };
-  const factor = () => {
-    skip();
-    if (s[i] === "(") {
-      i += 1;
-      const v = expr2();
-      skip();
-      if (s[i] === ")") i += 1;
-      return v;
-    }
-    if (s[i] === "-") {
-      i += 1;
-      return -factor();
-    }
-    const num = /^\d+(\.\d+)?/.exec(s.slice(i));
-    if (num) {
-      i += num[0].length;
-      return Number(num[0]);
-    }
-    const ident = /^[^+\-*/()]+/.exec(s.slice(i));
-    if (ident) {
-      i += ident[0].length;
-      const val = Number(values[ident[0].trim()]);
-      return Number.isFinite(val) ? val : 0;
-    }
-    i += 1;
-    return 0;
-  };
-  const term = () => {
-    let v = factor();
-    skip();
-    while (s[i] === "*" || s[i] === "/") {
-      const op = s[i];
-      i += 1;
-      const r = factor();
-      v = op === "*" ? v * r : r === 0 ? 0 : v / r;
-      skip();
-    }
-    return v;
-  };
-  function expr2() {
-    let v = term();
-    skip();
-    while (s[i] === "+" || s[i] === "-") {
-      const op = s[i];
-      i += 1;
-      const r = term();
-      v = op === "+" ? v + r : v - r;
-      skip();
-    }
-    return v;
-  }
-  skip();
-  if (i >= s.length) return "";
-  const result = expr2();
-  return Number.isFinite(result) ? Math.round(result * 100) / 100 : "";
-};
+// Mantém a API histórica enquanto o avaliador enterprise vive no módulo da feature.
+export {
+  evalFormula,
+  evaluateFormula,
+  validateFormula,
+} from "./features/databases/formulas.js";
 
 // ===== Gráficos nas planilhas =====
 // Converte um texto para número aceitando formato BR ("R$ 1.200,50" => 1200.5).
