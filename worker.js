@@ -1223,6 +1223,7 @@ const RESTRICTED_FIELDS = [
   "pricingScenarios",
   "impactFactors",
   "impactEntries",
+  "workNodes",
 ];
 
 const OWNER_ONLY_TOP_LEVEL_FIELDS = [
