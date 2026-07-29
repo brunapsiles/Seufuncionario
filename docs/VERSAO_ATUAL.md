@@ -1,6 +1,6 @@
 # Versão publicada
 
-## v120
+## v121
 
 - Arquitetura de fórmulas e configuração de gráficos extraída para módulos de domínio.
 - Fórmulas avançadas com funções, condições, comparações, validação e diagnóstico.
@@ -27,6 +27,19 @@
 - Novos tipos de campo: moeda, percentual, data e hora, e-mail, telefone, URL
   e múltipla seleção.
 - Tabela, galeria, quadro e calendário continuam usando a mesma fonte de dados.
+- Domínio de processos extraído para `src/features/processes/processDomain.js`.
+- Processos configuráveis com etapas ordenadas, formulários e códigos de protocolo.
+- Casos operacionais com responsável, prioridade, histórico e etapa atual.
+- SLA por etapa com estados no prazo, em risco e atrasado.
+- Aprovação obrigatória antes de etapas configuradas.
+- Regras de sequência impedem saltos indevidos entre fases.
+- Campos obrigatórios gerais e específicos por etapa.
+- Campos condicionais e validação de e-mail no motor de formulários.
+- Indicadores de volume, conclusão, atraso, tempo médio e distribuição por etapa.
+- Respostas persistidas como registros de formulário e casos do processo.
+- Conexão opcional com bases relacionais por correspondência de campos.
+- Criação opcional de tarefa operacional para cada solicitação.
+- Novo módulo carregado sob demanda para reduzir o crescimento do monólito.
 
 A fonte técnica da versão é o histórico de commits da branch `main`.
 O código é validado integralmente antes da atualização da branch `main`.
