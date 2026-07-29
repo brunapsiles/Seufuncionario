@@ -1,6 +1,21 @@
 # Versão publicada
 
-## v134
+## v135
+
+- Resultado do mês: quanto entrou, quanto saiu, quanto sobrou e a margem.
+- Comparação com o mês anterior em valor e em percentual, com aviso honesto
+  quando não existe base anterior de comparação.
+- Para onde foi o dinheiro: saídas agrupadas por categoria, com a fatia de cada
+  uma, e de onde veio a receita quando há mais de uma origem.
+- Gráfico dos últimos seis meses e média dos meses com movimento.
+- Maiores saídas do mês, para atacar o que realmente pesa.
+- Caixa contra competência: o que efetivamente moveu no mês contra o que venceu
+  no mês, usando as contas a receber e a pagar. A diferença é o que ficou para
+  receber.
+- Margem aparece como travessão, não 0%, quando não houve receita no mês.
+- Módulo isolado em `src/features/finance/`, carregado sob demanda.
+
+## Base preservada da v134
 
 - Funil de vendas com oportunidades, etapas com probabilidade e previsão.
 - Previsão ponderada: valor × probabilidade da etapa, em vez da soma otimista.

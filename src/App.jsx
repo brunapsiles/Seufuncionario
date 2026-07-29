@@ -271,6 +271,9 @@ const Bills = lazy(() => import("./features/finance/Bills.jsx"));
 const SalesPipeline = lazy(
   () => import("./features/crm/SalesPipeline.jsx"),
 );
+const MonthlyStatement = lazy(
+  () => import("./features/finance/MonthlyStatement.jsx"),
+);
 const PersonalInbox = lazy(
   () => import("./features/inbox/PersonalInbox.jsx"),
 );
@@ -424,6 +427,7 @@ const nav = [
   ["financeiro", "Financeiro", WalletCards],
   ["contas", "Contas a receber e pagar", ReceiptText],
   ["funil", "Funil de vendas", TrendingUp],
+  ["resultado-mes", "Resultado do mês", BarChart3],
   ["cobranca", "Cobrança Pix", QrCode],
   ["resultados", "Dashboards", BarChart3],
   ["operacao", "Operação", Workflow],
@@ -493,7 +497,7 @@ const navGroups = [
   },
   {
     label: "FINANCEIRO",
-    items: ["financeiro", "contas", "cobranca"],
+    items: ["financeiro", "contas", "resultado-mes", "cobranca"],
   },
   {
     label: "CONTEÚDO",
@@ -26673,6 +26677,14 @@ export default function App() {
               business={business}
               setToast={setToast}
             />
+          </Suspense>
+        );
+      case "resultado-mes":
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando resultado...</div>}
+          >
+            <MonthlyStatement db={db} business={business} />
           </Suspense>
         );
       case "funil":
