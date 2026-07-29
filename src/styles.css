@@ -2412,6 +2412,476 @@ aside nav button.active {
     grid-template-columns: 1fr;
   }
 }
+
+/* ===== Processos e solicitações ===== */
+.process-page {
+  display: grid;
+  gap: 20px;
+}
+
+.process-head {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+}
+
+.process-create {
+  display: grid;
+  gap: 18px;
+  margin: 0 auto;
+  max-width: 900px;
+  width: 100%;
+}
+
+.process-template-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.process-template-grid > button {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  gap: 7px;
+  padding: 18px;
+  text-align: left;
+}
+
+.process-template-grid > button.active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+
+.process-template-grid svg {
+  color: var(--primary);
+}
+
+.process-template-grid span,
+.process-titlebar p {
+  color: var(--muted);
+  margin: 0;
+}
+
+.process-create > label,
+.process-settings .panel > label,
+.process-form > label {
+  display: grid;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 6px;
+}
+
+.process-create-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.process-shell {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 220px minmax(0, 1fr);
+}
+
+.process-sidebar {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  position: sticky;
+  top: 90px;
+}
+
+.process-sidebar > strong {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  padding: 6px 8px;
+  text-transform: uppercase;
+}
+
+.process-sidebar > button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  gap: 9px;
+  padding: 10px;
+  text-align: left;
+}
+
+.process-sidebar > button.active {
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+  color: var(--primary);
+}
+
+.process-sidebar > button span {
+  display: grid;
+}
+
+.process-sidebar small {
+  color: var(--muted);
+}
+
+.process-workspace {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.process-titlebar {
+  align-items: flex-end;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+}
+
+.process-titlebar h2 {
+  margin: 0 0 4px;
+}
+
+.process-tabs {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  overflow: hidden;
+}
+
+.process-tabs button {
+  background: var(--surface);
+  border: 0;
+  border-right: 1px solid var(--border);
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 700;
+  padding: 9px 12px;
+}
+
+.process-tabs button:last-child {
+  border-right: 0;
+}
+
+.process-tabs button.active {
+  background: var(--primary);
+  color: white;
+}
+
+.process-metrics {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.process-metrics article {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+}
+
+.process-metrics span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.process-metrics strong {
+  font-size: 24px;
+}
+
+.process-metrics article.danger {
+  border-color: color-mix(in srgb, #dc2626 45%, var(--border));
+}
+
+.process-board {
+  display: grid;
+  gap: 12px;
+  grid-auto-columns: minmax(230px, 1fr);
+  grid-auto-flow: column;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.process-column {
+  background: color-mix(in srgb, var(--muted) 5%, var(--surface));
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  display: grid;
+  gap: 10px;
+  min-height: 220px;
+  padding: 10px;
+}
+
+.process-column > header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.process-column > header span {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11px;
+  padding: 2px 7px;
+}
+
+.process-case {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  display: grid;
+  gap: 9px;
+  padding: 11px;
+}
+
+.process-case.atrasado {
+  border-color: #dc2626;
+}
+
+.process-case.em_risco {
+  border-color: #f59e0b;
+}
+
+.process-case-open {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  gap: 3px;
+  padding: 0;
+  text-align: left;
+}
+
+.process-case-open small {
+  color: var(--muted);
+}
+
+.process-case-sla {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 11px;
+  gap: 5px;
+}
+
+.process-case-sla svg {
+  height: 13px;
+  width: 13px;
+}
+
+.process-case-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.process-case-actions button {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: inherit;
+  cursor: pointer;
+  padding: 4px 7px;
+}
+
+.process-case-actions svg {
+  height: 15px;
+  width: 15px;
+}
+
+.process-case-detail {
+  display: grid;
+  gap: 16px;
+}
+
+.process-case-detail h3 {
+  margin: 2px 0 0;
+}
+
+.process-detail-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.process-detail-grid > div {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+}
+
+.process-detail-grid span,
+.process-history span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.process-history p {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 8px 0;
+}
+
+.process-form {
+  display: grid;
+  gap: 15px;
+  max-width: 760px;
+}
+
+.process-form h3 {
+  margin: 4px 0;
+}
+
+.process-form p {
+  color: var(--muted);
+  margin: 0;
+}
+
+.field-error {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.process-settings {
+  display: grid;
+  gap: 14px;
+}
+
+.process-settings .panel {
+  display: grid;
+  gap: 13px;
+}
+
+.process-stage-editor,
+.process-field-editor {
+  display: grid;
+  gap: 8px;
+}
+
+.process-stage-editor article,
+.process-field-editor article {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(160px, 1fr) auto auto auto;
+  padding: 9px;
+}
+
+.process-stage-editor article > span {
+  background: var(--primary);
+  border-radius: 999px;
+  color: white;
+  display: grid;
+  font-size: 11px;
+  height: 24px;
+  place-items: center;
+  width: 24px;
+}
+
+.process-stage-editor article > label {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 11px;
+  gap: 4px;
+}
+
+.process-stage-editor input[type="number"] {
+  width: 70px;
+}
+
+.process-check {
+  align-items: center !important;
+  display: flex !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  gap: 7px !important;
+}
+
+.process-inline-add,
+.process-new-field {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.process-inline-add > input,
+.process-new-field > input {
+  flex: 1;
+  min-width: 180px;
+}
+
+.process-alert {
+  align-items: center;
+  background: color-mix(in srgb, #dc2626 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, #dc2626 35%, var(--border));
+  border-radius: 10px;
+  color: #b91c1c;
+  display: flex;
+  gap: 8px;
+  padding: 12px 14px;
+}
+
+@media (max-width: 900px) {
+  .process-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .process-sidebar {
+    display: flex;
+    overflow-x: auto;
+    position: static;
+  }
+
+  .process-sidebar > strong {
+    display: none;
+  }
+
+  .process-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .process-head,
+  .process-titlebar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .process-template-grid,
+  .process-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .process-tabs {
+    overflow-x: auto;
+  }
+
+  .process-stage-editor article,
+  .process-field-editor article {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+}
 .toast {
   position: fixed;
   bottom: 24px;
