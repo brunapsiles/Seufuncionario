@@ -9651,3 +9651,21 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
 .project-summary-row>span:nth-child(2){min-width:0;flex:1}
 .project-progress{display:block;width:100%;max-width:260px;height:6px;margin:6px 0;background:var(--line);border-radius:999px;overflow:hidden}
 .project-progress i{display:block;height:100%;background:var(--primary);border-radius:inherit}
+.gantt-panel{display:grid;gap:16px;min-width:0}
+.gantt-summary{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:16px;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+.gantt-summary>span:first-child{display:grid;gap:3px}
+.gantt-table{overflow:auto;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+.gantt-head,.gantt-row{display:grid;grid-template-columns:minmax(210px,.8fr) minmax(520px,2fr);align-items:center;min-width:760px}
+.gantt-head{padding:10px 14px;background:color-mix(in srgb,var(--primary) 7%,var(--surface));font-weight:800}
+.gantt-row{border-top:1px solid var(--line);min-height:66px}
+.gantt-row>button{display:grid;gap:3px;padding:12px 14px;text-align:left;background:none;border:0;color:inherit;cursor:pointer}
+.gantt-row>button small{color:var(--muted)}
+.gantt-track{position:relative;height:42px;margin:0 16px;background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--line) 55%,transparent) 0 1px,transparent 1px 10%);border-radius:8px}
+.gantt-bar,.gantt-baseline{position:absolute;display:block;border-radius:999px}
+.gantt-bar{top:10px;height:16px;min-width:6px;background:var(--primary);box-shadow:0 3px 8px color-mix(in srgb,var(--primary) 30%,transparent)}
+.gantt-bar.critical{background:#dc2626}
+.gantt-bar.cyclic{background:repeating-linear-gradient(135deg,#dc2626 0 6px,#fca5a5 6px 12px)}
+.gantt-baseline{top:30px;height:4px;background:#64748b;opacity:.7}
+.gantt-milestones{display:grid;gap:8px;padding:16px;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+.gantt-milestones span{position:relative;padding-left:20px;color:var(--muted)}
+.gantt-milestones span i{position:absolute;left:4px;top:5px;width:10px;height:10px;transform:rotate(45deg);background:#f59e0b}
