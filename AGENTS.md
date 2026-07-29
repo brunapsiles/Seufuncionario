@@ -129,6 +129,13 @@ não sejam a `main` também estão habilitados como versões de prévia.
   variações e próximos marcos sem persistir valores derivados. Riscos,
   problemas, decisões e mudanças ficam dentro do projeto neste estágio. Não
   duplicar esses cálculos no JSX.
+- **Cronograma enterprise (v119)**: a lógica pura está em
+  `src/features/projects/scheduleDomain.js`. `buildProjectSchedule` usa o grafo
+  de `dependsOn`, duração em dias úteis, calendário e feriados do projeto para
+  calcular início/fim, ciclos, folga e caminho crítico. A ação "Aplicar
+  reprogramação" atualiza `startDate`/`due`, preservando
+  `baselineStart`/`baselineDue`. Não substituir por barras baseadas apenas em
+  datas digitadas; o Gantt precisa continuar derivado do grafo.
 
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
