@@ -1,6 +1,24 @@
 # Versão publicada
 
-## v123
+## v124
+
+- Hierarquia universal de trabalho com organização, workspace, espaço, pasta e
+  lista.
+- A organização deriva da empresa já existente, sem duplicar cadastros.
+- Projetos e tarefas existentes são vinculados por referência e preservam todos
+  os dados, responsáveis, dependências e históricos originais.
+- Árvore navegável, breadcrumbs, favoritos, movimentação validada, duplicação
+  de ramificações completas, arquivamento e restauração.
+- Estruturas compartilhadas com toda a empresa por padrão, com opção privada e
+  controle separado de visualização e edição.
+- Regras de domínio impedem níveis inválidos, nomes duplicados no mesmo local e
+  ciclos ao mover estruturas.
+- Métricas consolidadas de estruturas, projetos, tarefas concluídas e atrasadas.
+- Interface responsiva carregada sob demanda.
+- Modal acessível extraído do arquivo central para componente compartilhado.
+- Coleção `workNodes` protegida pelo mesmo escopo de visibilidade do workspace.
+
+## Base preservada da v123
 
 - Motor universal de precificação e impacto extraído para
   `src/features/pricing/pricingImpactDomain.js`.
