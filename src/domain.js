@@ -863,22 +863,38 @@ export const DB_FIELD_TYPES = [
   { id: "text", label: "Texto" },
   { id: "longtext", label: "Texto longo" },
   { id: "number", label: "Número" },
+  { id: "currency", label: "Moeda" },
+  { id: "percent", label: "Percentual" },
   { id: "date", label: "Data" },
+  { id: "datetime", label: "Data e hora" },
+  { id: "email", label: "E-mail" },
+  { id: "phone", label: "Telefone" },
+  { id: "url", label: "URL" },
   { id: "select", label: "Seleção" },
+  { id: "multiselect", label: "Múltipla seleção" },
   { id: "checkbox", label: "Sim / Não" },
   { id: "relation", label: "Relação (outra base)" },
+  { id: "lookup", label: "Busca em relação (lookup)" },
+  { id: "rollup", label: "Agregação de relação (rollup)" },
   { id: "formula", label: "Fórmula (cálculo)" },
 ];
 
 // Converte o valor bruto de uma célula para o tipo do campo.
 export const coerceCellValue = (type, raw) => {
-  if (type === "number") {
+  if (["number", "currency", "percent"].includes(type)) {
     if (raw === "" || raw == null) return "";
     const n = Number(String(raw).replace(/\./g, "").replace(",", "."));
     return Number.isFinite(n) ? n : Number(raw);
   }
   if (type === "checkbox")
     return raw === true || raw === "true" || raw === "on" || raw === 1;
+  if (type === "multiselect")
+    return Array.isArray(raw)
+      ? [...new Set(raw.map(String).filter(Boolean))]
+      : String(raw || "")
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean);
   return raw == null ? "" : String(raw);
 };
 
@@ -886,7 +902,9 @@ export const coerceCellValue = (type, raw) => {
 export const formatCellValue = (type, value) => {
   if (type === "checkbox") return value ? "Sim" : "Não";
   if (value == null || value === "") return "";
-  if (type === "number") return String(value).replace(".", ",");
+  if (["number", "currency", "percent"].includes(type))
+    return String(value).replace(".", ",");
+  if (type === "multiselect" && Array.isArray(value)) return value.join(", ");
   return String(value);
 };
 
