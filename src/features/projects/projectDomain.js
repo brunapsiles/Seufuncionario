@@ -71,6 +71,18 @@ export const createProjectRecord = (input = {}, context = {}, existing = {}) => 
     costActual: Math.max(0, asNumber(input.costActual)),
     hoursPlanned: Math.max(0, asNumber(input.hoursPlanned)),
     hoursActual: Math.max(0, asNumber(input.hoursActual)),
+    workdays:
+      Array.isArray(input.workdays) && input.workdays.length
+        ? [...new Set(input.workdays.map(Number))].filter(
+            (day) => day >= 0 && day <= 6,
+          )
+        : [1, 2, 3, 4, 5],
+    holidays: (Array.isArray(input.holidays)
+      ? input.holidays
+      : String(input.holidays || "").split(/[\n,;]/)
+    )
+      .map((date) => ymd(String(date).trim()))
+      .filter(validDate => /^\d{4}-\d{2}-\d{2}$/.test(validDate)),
     milestones: (input.milestones || []).map(normalizeMilestone).filter((m) => m.title),
     risks: Array.isArray(input.risks) ? input.risks : existing.risks || [],
     issues: Array.isArray(input.issues) ? input.issues : existing.issues || [],
