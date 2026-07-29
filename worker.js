@@ -1213,6 +1213,9 @@ const RESTRICTED_FIELDS = [
   "history",
   "certificates",
   "media",
+  "processes",
+  "processCases",
+  "formResponses",
 ];
 
 const OWNER_ONLY_TOP_LEVEL_FIELDS = [
