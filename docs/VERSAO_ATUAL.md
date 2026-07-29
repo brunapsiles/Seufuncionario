@@ -1,6 +1,22 @@
 # Versão publicada
 
-## v131
+## v132
+
+- Portal externo individual por cliente, com link seguro, revogável e validade
+  opcional.
+- Seleção explícita dos projetos, tarefas, documentos, relatórios, orçamentos,
+  pedidos e entregas visíveis em cada acesso.
+- Acompanhamento de progresso, prazos, entregas e dados logísticos sem expor
+  outros registros do workspace.
+- Aprovação de entregas, abertura de chamados e envio de documentos pelo
+  cliente, sempre com protocolo e proteção contra duplicidade.
+- Trilha autenticada para a equipe, incluindo download protegido dos arquivos
+  recebidos e status de aplicação de cada interação.
+- Tokens armazenados somente como hash, política de conteúdo restritiva,
+  bloqueio de indexação e isolamento por empresa e workspace.
+- Módulo isolado em `src/features/portal/`, carregado sob demanda.
+
+## Base preservada da v131
 
 - Formulários públicos avançados com link próprio e código de incorporação,
   sem exigir conta de quem responde.

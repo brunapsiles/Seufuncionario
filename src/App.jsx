@@ -274,6 +274,9 @@ const CorporateChat = lazy(
 const PublicFormsStudio = lazy(
   () => import("./features/forms/PublicFormsStudio.jsx"),
 );
+const ClientPortalStudio = lazy(
+  () => import("./features/portal/ClientPortalStudio.jsx"),
+);
 
 const LEGACY_STORAGE_KEY = "seu-funcionario-v1";
 const ACTIVE_USER_KEY = "seu-funcionario-active-user";
@@ -327,6 +330,7 @@ const emptyDb = {
   processCases: [],
   formResponses: [],
   publicForms: [],
+  clientPortals: [],
   resourceProfiles: [],
   resourceAbsences: [],
   resourceAllocations: [],
@@ -370,6 +374,7 @@ export const hasAnyWorkspaceData = (db) =>
   (db?.processes || []).length > 0 ||
   (db?.processCases || []).length > 0 ||
   (db?.publicForms || []).length > 0 ||
+  (db?.clientPortals || []).length > 0 ||
   (db?.resourceProfiles || []).length > 0 ||
   (db?.resourceAllocations || []).length > 0 ||
   (db?.pricingModels || []).length > 0 ||
@@ -409,6 +414,7 @@ const nav = [
   ["metas", "Metas e OKRs", Target],
   ["processos", "Processos e Solicitações", PanelsTopLeft],
   ["formularios-publicos", "Formulários públicos", PanelsTopLeft],
+  ["portal-cliente", "Portal do cliente", Users],
   ["capacidade", "Capacidade e Recursos", Users],
   ["desenvolvimento", "Desenvolvimento", TrendingUp],
   ["sites", "Sites e Materiais", PanelsTopLeft],
@@ -460,6 +466,7 @@ const navGroups = [
       "resultados",
       "processos",
       "formularios-publicos",
+      "portal-cliente",
       "capacidade",
       "desenvolvimento",
       "bases",
@@ -1244,6 +1251,13 @@ export const buildTaskCalendar = (yearMonth, tasks) => {
 };
 
 export const CHANGELOG_ENTRIES = [
+  {
+    id: "2026-07-29-portal-cliente",
+    date: "2026-07-29",
+    title: "Portal individual e restrito para cada cliente",
+    description:
+      "Escolha exatamente quais projetos, tarefas, documentos, relatórios, orçamentos, pedidos e entregas cada cliente poderá acessar. O portal recebe aprovações de entregas, chamados e documentos com protocolo, link revogável, validade opcional e trilha autenticada para a equipe.",
+  },
   {
     id: "2026-07-29-formularios-publicos",
     date: "2026-07-29",
@@ -26569,6 +26583,25 @@ export default function App() {
             }
           >
             <PublicFormsStudio
+              db={db}
+              update={update}
+              business={business}
+              setToast={setToast}
+              authHeaders={authHeaders}
+              ownerId={activeSpaceId()}
+            />
+          </Suspense>
+        );
+      case "portal-cliente":
+        return (
+          <Suspense
+            fallback={
+              <div className="inbox-loading">
+                Carregando portal do cliente...
+              </div>
+            }
+          >
+            <ClientPortalStudio
               db={db}
               update={update}
               business={business}
