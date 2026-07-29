@@ -1,6 +1,19 @@
 # Versão publicada
 
-## v133
+## v134
+
+- Funil de vendas com oportunidades, etapas com probabilidade e previsão.
+- Previsão ponderada: valor × probabilidade da etapa, em vez da soma otimista.
+- Probabilidade própria por oportunidade quando ela difere da etapa.
+- Taxa de conversão de cada etapa para a seguinte.
+- Taxa de fechamento, ticket médio e ciclo médio de venda em dias.
+- Previsão por mês a partir da data prevista de fechamento.
+- Aviso de oportunidades paradas há mais de 14 dias na mesma etapa.
+- Motivos de perda agrupados, para saber por que se perde e não só quanto.
+- Quadro por etapa com movimentação e histórico de cada mudança.
+- Módulo isolado em `src/features/crm/`, carregado sob demanda.
+
+## Base preservada da v133
 
 - Editor universal com blocos de texto, títulos, listas, checklists, tabelas,
   colunas, imagens, vídeos, arquivos, código, destaques, toggles e gráficos.

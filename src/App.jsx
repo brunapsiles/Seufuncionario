@@ -268,6 +268,9 @@ const WorkStructure = lazy(
 );
 const Goals = lazy(() => import("./features/goals/Goals.jsx"));
 const Bills = lazy(() => import("./features/finance/Bills.jsx"));
+const SalesPipeline = lazy(
+  () => import("./features/crm/SalesPipeline.jsx"),
+);
 const PersonalInbox = lazy(
   () => import("./features/inbox/PersonalInbox.jsx"),
 );
@@ -323,6 +326,8 @@ const emptyDb = {
   chatMessages: [],
   chatReadStates: [],
   bills: [],
+  opportunities: [],
+  salesPipeline: null,
   transactions: [],
   financeSettings: {},
   taxProfile: { isMEI: false, dueDay: 20, cnpj: "", dasHistory: {} },
@@ -418,6 +423,7 @@ const nav = [
   ["automacoes", "Automações", Zap],
   ["financeiro", "Financeiro", WalletCards],
   ["contas", "Contas a receber e pagar", ReceiptText],
+  ["funil", "Funil de vendas", TrendingUp],
   ["cobranca", "Cobrança Pix", QrCode],
   ["resultados", "Dashboards", BarChart3],
   ["operacao", "Operação", Workflow],
@@ -456,6 +462,7 @@ const navGroups = [
       "estrategia",
       "marketing",
       "vendas",
+      "funil",
       "orcamentos",
       "precificacao",
       "caixa",
@@ -26661,6 +26668,19 @@ export default function App() {
             fallback={<div className="inbox-loading">Carregando estrutura...</div>}
           >
             <WorkStructure
+              db={db}
+              update={update}
+              business={business}
+              setToast={setToast}
+            />
+          </Suspense>
+        );
+      case "funil":
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando funil...</div>}
+          >
+            <SalesPipeline
               db={db}
               update={update}
               business={business}
