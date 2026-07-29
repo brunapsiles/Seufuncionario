@@ -121,6 +121,15 @@ não sejam a `main` também estão habilitados como versões de prévia.
   - **Contexto seguro da IA**: o cliente envia apenas `workspaceOwnerId`/`businessId`; `resolveAiWorkspaceContext` carrega e filtra no backend os dados realmente autorizados. Nunca confiar em `body.business`, `customSpecialist` ou outro contexto sensível enviado pelo navegador.
   - **Operação e parceria**: `/api/status` expõe somente saúde básica e versão; Configurações oferece diagnóstico sem conteúdo e canal de suporte. Planos de piloto, operação e incidentes/LGPD ficam em `docs/`. A definição de público-alvo permanece deliberadamente em aberto; não fixá-la sem decisão da titular.
 
+- **Motor de projetos enterprise (v118)**: a lógica pura vive em
+  `src/features/projects/projectDomain.js`. Projetos mantêm compatibilidade com
+  o campo histórico `task.project`, mas tarefas novas também gravam
+  `task.projectId`. `createProjectRecord` normaliza governança, orçamento,
+  horas, datas e marcos; `projectMetrics` calcula progresso, saúde, atrasos,
+  variações e próximos marcos sem persistir valores derivados. Riscos,
+  problemas, decisões e mudanças ficam dentro do projeto neste estágio. Não
+  duplicar esses cálculos no JSX.
+
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
 - "Esqueci minha senha": ✅ implementado (/api/auth/forgot e /api/auth/reset, códigos via Brevo)
