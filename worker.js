@@ -1216,6 +1216,13 @@ const RESTRICTED_FIELDS = [
   "processes",
   "processCases",
   "formResponses",
+  "resourceProfiles",
+  "resourceAbsences",
+  "resourceAllocations",
+  "pricingModels",
+  "pricingScenarios",
+  "impactFactors",
+  "impactEntries",
 ];
 
 const OWNER_ONLY_TOP_LEVEL_FIELDS = [
