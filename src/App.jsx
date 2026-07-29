@@ -55,6 +55,12 @@ import {
   PROJECT_STATUSES,
   projectMetrics,
 } from "./features/projects/projectDomain.js";
+import {
+  buildProjectSchedule,
+  ganttPosition,
+  ganttWidth,
+  scheduleRiskSummary,
+} from "./features/projects/scheduleDomain.js";
 // Reexporta a camada de lógica pura para os testes que importam de "./App".
 export {
   contactLinks,
@@ -6259,6 +6265,8 @@ function Tasks({
     costActual: "",
     hoursPlanned: "",
     hoursActual: "",
+    workdays: [1, 2, 3, 4, 5],
+    holidays: "",
     milestones: [],
     risks: [],
     issues: [],
@@ -6396,7 +6404,11 @@ function Tasks({
     description: "",
     priority: "Média",
     status: "A fazer",
+    startDate: "",
     due: "",
+    estimatedDays: "1",
+    baselineStart: "",
+    baselineDue: "",
     area: "Operação",
     assigneeType: "real",
     assignee: "",
@@ -6457,6 +6469,45 @@ function Tasks({
       ...scoped.map((task) => task.project).filter(Boolean),
     ]),
   ];
+  const ganttProject =
+    projectFilter !== "Todos"
+      ? (db.projects || []).find((project) => project.name === projectFilter)
+      : null;
+  const ganttSchedule = ganttProject
+    ? buildProjectSchedule(db.tasks, ganttProject, {
+        holidays: ganttProject.holidays || [],
+        workdays: ganttProject.workdays || [1, 2, 3, 4, 5],
+      })
+    : null;
+  const ganttRisks = ganttSchedule
+    ? scheduleRiskSummary(ganttSchedule)
+    : null;
+  const applyCalculatedSchedule = () => {
+    if (!ganttSchedule?.valid) {
+      setToast("Corrija as dependências circulares antes de reprogramar.");
+      return;
+    }
+    const calculated = new Map(
+      ganttSchedule.rows.map((row) => [row.id, row]),
+    );
+    update((current) => ({
+      ...current,
+      tasks: current.tasks.map((task) => {
+        const row = calculated.get(task.id);
+        if (!row) return task;
+        return {
+          ...task,
+          startDate: row.start,
+          due: row.end,
+          estimatedDays: row.duration,
+          baselineStart: task.baselineStart || task.startDate || row.start,
+          baselineDue: task.baselineDue || task.due || row.end,
+          updatedAt: new Date().toISOString(),
+        };
+      }),
+    }));
+    setToast("Cronograma aplicado sem alterar a baseline.");
+  };
   const items = db.tasks.filter(
     (t) =>
       (!business || t.businessId === business.id) &&
@@ -6524,6 +6575,9 @@ function Tasks({
         archived: !!form.archived,
         ownerId: form.ownerId || db.user.id,
         projectId: selectedProject?.id || form.projectId || null,
+        baselineStart:
+          form.baselineStart || (!editing ? form.startDate || "" : ""),
+        baselineDue: form.baselineDue || (!editing ? form.due || "" : ""),
         visibility:
           isMission && form.distribution === "disponivel"
             ? "espaco_todo"
@@ -6959,6 +7013,13 @@ function Tasks({
             <CalendarDays />
             Calendário
           </button>
+          <button
+            className={view === "gantt" ? "active" : ""}
+            onClick={() => setView("gantt")}
+          >
+            <BarChart3 />
+            Gantt
+          </button>
         </div>
       </div>
       <div className="collab-card">
@@ -7140,6 +7201,53 @@ function Tasks({
                     }
                   />
                 </Field>
+                <Field label="Feriados do projeto">
+                  <textarea
+                    rows={2}
+                    value={
+                      Array.isArray(projectForm.holidays)
+                        ? projectForm.holidays.join("\n")
+                        : projectForm.holidays || ""
+                    }
+                    onChange={(e) =>
+                      setProjectForm({
+                        ...projectForm,
+                        holidays: e.target.value,
+                      })
+                    }
+                    placeholder={"2026-09-07\n2026-10-12"}
+                  />
+                </Field>
+              </div>
+              <div className="field">
+                <span>Dias de trabalho</span>
+                <div className="checkbox-list compact">
+                  {[
+                    [1, "Seg"],
+                    [2, "Ter"],
+                    [3, "Qua"],
+                    [4, "Qui"],
+                    [5, "Sex"],
+                    [6, "Sáb"],
+                    [0, "Dom"],
+                  ].map(([day, label]) => (
+                    <label className="cost-check" key={day}>
+                      <input
+                        type="checkbox"
+                        checked={(projectForm.workdays || []).includes(day)}
+                        onChange={() =>
+                          setProjectForm((current) => ({
+                            ...current,
+                            workdays: (current.workdays || []).includes(day)
+                              ? current.workdays.filter((item) => item !== day)
+                              : [...(current.workdays || []), day],
+                          }))
+                        }
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
               </div>
               <div className="project-milestone-editor">
                 <h4>Linha de marcos</h4>
@@ -7692,6 +7800,129 @@ function Tasks({
             </section>
           ))}
         </div>
+      ) : view === "gantt" ? (
+        !ganttProject ? (
+          <div className="empty-state">
+            <BarChart3 />
+            <h3>Escolha um projeto</h3>
+            <p>
+              Use o filtro de projeto para calcular dependências, folgas e
+              caminho crítico.
+            </p>
+          </div>
+        ) : ganttSchedule.rows.length === 0 ? (
+          <div className="empty-state">
+            <BarChart3 />
+            <h3>Projeto sem tarefas</h3>
+            <p>Vincule tarefas a {ganttProject.name} para gerar o cronograma.</p>
+          </div>
+        ) : (
+          <div className="gantt-panel">
+            <div className="gantt-summary">
+              <span>
+                <strong>{ganttProject.name}</strong>
+                <small>
+                  {ganttSchedule.start} a {ganttSchedule.end} ·{" "}
+                  {ganttSchedule.duration} dias úteis
+                </small>
+              </span>
+              <span
+                className={
+                  ganttSchedule.valid
+                    ? "publish-state live"
+                    : "publish-state error"
+                }
+              >
+                {ganttSchedule.valid
+                  ? `${ganttRisks.criticalTasks} tarefa(s) crítica(s)`
+                  : `${ganttRisks.cyclicTasks} dependência(s) circular(es)`}
+              </span>
+              {ganttRisks.delayedAgainstBaseline > 0 && (
+                <span className="blocked-badge">
+                  {ganttRisks.delayedAgainstBaseline} atraso(s) contra baseline
+                </span>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                icon={RefreshCw}
+                onClick={applyCalculatedSchedule}
+                disabled={!ganttSchedule.valid}
+              >
+                Aplicar reprogramação
+              </Button>
+            </div>
+            <div className="gantt-table">
+              <div className="gantt-head">
+                <span>Tarefa</span>
+                <span>Cronograma calculado</span>
+              </div>
+              {ganttSchedule.rows.map((row) => (
+                <div className="gantt-row" key={row.id}>
+                  <button type="button" onClick={() => openTask(row.task)}>
+                    <strong>{row.task.title}</strong>
+                    <small>
+                      {row.start} a {row.end} · {row.duration}d · folga{" "}
+                      {row.slack}d
+                    </small>
+                  </button>
+                  <div className="gantt-track">
+                    {row.task.baselineStart && row.task.baselineDue && (
+                      <i
+                        className="gantt-baseline"
+                        style={{
+                          left: `${ganttPosition(
+                            row.task.baselineStart,
+                            ganttSchedule,
+                          )}%`,
+                          width: `${Math.max(
+                            2,
+                            ganttPosition(
+                              row.task.baselineDue,
+                              ganttSchedule,
+                            ) -
+                              ganttPosition(
+                                row.task.baselineStart,
+                                ganttSchedule,
+                              ),
+                          )}%`,
+                        }}
+                      />
+                    )}
+                    <i
+                      className={`gantt-bar ${row.critical ? "critical" : ""} ${
+                        row.cyclic ? "cyclic" : ""
+                      }`}
+                      style={{
+                        left: `${ganttPosition(row.start, ganttSchedule)}%`,
+                        width: `${ganttWidth(row.duration, ganttSchedule)}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+            {(ganttProject.milestones || []).length > 0 && (
+              <div className="gantt-milestones">
+                <strong>Marcos</strong>
+                {(ganttProject.milestones || []).map((milestone) => (
+                  <span key={milestone.id}>
+                    <i
+                      style={{
+                        left: `${ganttPosition(
+                          milestone.actualDate || milestone.plannedDate,
+                          ganttSchedule,
+                        )}%`,
+                      }}
+                    />
+                    {milestone.title} ·{" "}
+                    {milestone.actualDate || milestone.plannedDate}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )
       ) : view === "calendario" ? (
         <div className="task-calendar">
           <div className="task-calendar-header">
@@ -8041,6 +8272,25 @@ function Tasks({
                   type="date"
                   value={form.due}
                   onChange={(e) => setForm({ ...form, due: e.target.value })}
+                />
+              </Field>
+              <Field label="Início planejado">
+                <input
+                  type="date"
+                  value={form.startDate || ""}
+                  onChange={(e) =>
+                    setForm({ ...form, startDate: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Duração estimada (dias úteis)">
+                <input
+                  type="number"
+                  min="1"
+                  value={form.estimatedDays || "1"}
+                  onChange={(e) =>
+                    setForm({ ...form, estimatedDays: e.target.value })
+                  }
                 />
               </Field>
               <Field label="Repetir">
