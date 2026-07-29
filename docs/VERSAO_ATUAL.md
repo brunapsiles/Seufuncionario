@@ -1,6 +1,6 @@
 # Versão publicada
 
-## v119
+## v120
 
 - Arquitetura de fórmulas e configuração de gráficos extraída para módulos de domínio.
 - Fórmulas avançadas com funções, condições, comparações, validação e diagnóstico.
@@ -16,6 +16,17 @@
 - Detecção de dependências circulares, caminho crítico e folga por tarefa.
 - Baseline preservada para comparação do planejado com o cronograma recalculado.
 - Marcos exibidos no mesmo cronograma do projeto.
+- Motor relacional extraído para `src/features/databases/relational.js`.
+- Relações com um ou vários registros e compatibilidade com valores únicos antigos.
+- Relações bidirecionais configuráveis, com sincronização do campo inverso.
+- Lookup de campos relacionados e rollup com contagem, únicos, soma, média,
+  mínimo, máximo e combinação de textos.
+- Exclusão de registro remove referências órfãs nas demais bases.
+- Cada registro funciona como página completa com propriedades, conteúdo,
+  anexos, comentários e datas de criação e atualização.
+- Novos tipos de campo: moeda, percentual, data e hora, e-mail, telefone, URL
+  e múltipla seleção.
+- Tabela, galeria, quadro e calendário continuam usando a mesma fonte de dados.
 
 A fonte técnica da versão é o histórico de commits da branch `main`.
 O código é validado integralmente antes da atualização da branch `main`.
