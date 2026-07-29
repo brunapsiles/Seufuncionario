@@ -153,6 +153,13 @@ não sejam a `main` também estão habilitados como versões de prévia.
   Movimentações usam `transitionProcessCase`, que preserva sequência,
   obrigatoriedade, aprovação, SLA e histórico. Não movimentar casos alterando
   apenas `stageId` no JSX.
+- **Capacidade e recursos (v122)**: cálculos puros ficam em
+  `src/features/resources/capacityDomain.js` e a interface lazy em
+  `src/features/resources/CapacityPlanner.jsx`. Perfis (`resourceProfiles`),
+  ausências (`resourceAbsences`) e alocações (`resourceAllocations`) funcionam
+  independentemente. Vínculos a `projects` e `timeEntries` são opcionais.
+  Disponibilidade, carga, utilização, sobrecarga, custo, receita e margem são
+  valores derivados e não devem ser persistidos nem recalculados no JSX.
 
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
