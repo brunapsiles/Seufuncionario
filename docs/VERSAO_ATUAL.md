@@ -1,6 +1,22 @@
 # Versão publicada
 
-## v128
+## v129
+
+- Dashboards configuráveis e pessoais, com criação, duplicação, renomeação e
+  exclusão de visões.
+- Escolha dos indicadores exibidos, tamanhos compacto ou largo e ordem por
+  arrastar ou por controles acessíveis de teclado.
+- Filtros persistentes por período e projeto.
+- Indicadores de receita, despesas, margem, metas e OKRs, tarefas atrasadas,
+  projetos em risco, capacidade, SLA, emissões e operação logística.
+- Gráfico de evolução financeira, distribuição por status e Escopos 1, 2 e 3,
+  além de uma tabela unificada de itens que pedem atenção.
+- Valores derivados dos módulos existentes, sem duplicar totais nem criar
+  números artificiais.
+- Múltiplos painéis isolados por usuário, empresa e workspace.
+- Módulo isolado em `src/features/dashboard/`, carregado sob demanda.
+
+## Base preservada da v128
 
 - Caixa de entrada pessoal com menções, tarefas atribuídas, comentários,
   aprovações pendentes, alterações importantes e notificações gerais.

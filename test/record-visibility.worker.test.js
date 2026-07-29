@@ -281,4 +281,64 @@ describe("visibilidade de leads, documentos e sites com D1 local", () => {
     expect(asOwner.body.data.vehicles).toHaveLength(2);
     expect(asOwner.body.data.trips).toHaveLength(2);
   });
+
+  it("mantém a configuração de cada dashboard privada ao usuário", async () => {
+    const owner = await createUser("rec-owner-dashboard");
+    const member = await createUser("rec-member-dashboard");
+    await addMember(owner.id, member.id, "colaborador");
+    await workspaceRequest(owner, {
+      method: "PUT",
+      body: {
+        data: {
+          dashboardConfigs: [
+            {
+              id: "dashboard-owner",
+              name: "Painel do dono",
+              ownerId: owner.id,
+              visibility: "privado",
+            },
+            {
+              id: "dashboard-member",
+              name: "Painel do membro",
+              ownerId: member.id,
+              visibility: "privado",
+            },
+          ],
+        },
+        revision: 0,
+      },
+    });
+
+    const asMember = await readJson(
+      await workspaceRequest(member, { owner: owner.id }),
+    );
+    expect(asMember.body.data.dashboardConfigs.map((item) => item.id)).toEqual([
+      "dashboard-member",
+    ]);
+
+    const changed = {
+      ...asMember.body.data.dashboardConfigs[0],
+      name: "Minha visão operacional",
+    };
+    await workspaceRequest(member, {
+      method: "PUT",
+      owner: owner.id,
+      body: {
+        data: { dashboardConfigs: [changed] },
+        revision: asMember.body.revision,
+      },
+    });
+
+    const asOwner = await readJson(await workspaceRequest(owner));
+    expect(
+      asOwner.body.data.dashboardConfigs.find(
+        (item) => item.id === "dashboard-owner",
+      ).name,
+    ).toBe("Painel do dono");
+    expect(
+      asOwner.body.data.dashboardConfigs.find(
+        (item) => item.id === "dashboard-member",
+      ).name,
+    ).toBe("Minha visão operacional");
+  });
 });

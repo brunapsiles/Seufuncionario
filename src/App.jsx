@@ -9,7 +9,6 @@ import {
   levelProgress,
   computeAchievements,
   computeMyWork,
-  computeBusinessInsights,
   recurringStatus,
   buildRecurringTransaction,
   buildRecurringPostings,
@@ -211,7 +210,6 @@ import {
   NotebookPen,
   Pencil,
   BarChart3,
-  TrendingDown,
   Image as ImageIcon,
   Video,
   Link2,
@@ -267,6 +265,9 @@ const Bills = lazy(() => import("./features/finance/Bills.jsx"));
 const PersonalInbox = lazy(
   () => import("./features/inbox/PersonalInbox.jsx"),
 );
+const ConfigurableDashboard = lazy(
+  () => import("./features/dashboard/ConfigurableDashboard.jsx"),
+);
 
 const LEGACY_STORAGE_KEY = "seu-funcionario-v1";
 const ACTIVE_USER_KEY = "seu-funcionario-active-user";
@@ -299,6 +300,7 @@ const emptyDb = {
   projects: [],
   workNodes: [],
   objectives: [],
+  dashboardConfigs: [],
   bills: [],
   transactions: [],
   financeSettings: {},
@@ -387,7 +389,7 @@ const nav = [
   ["financeiro", "Financeiro", WalletCards],
   ["contas", "Contas a receber e pagar", ReceiptText],
   ["cobranca", "Cobrança Pix", QrCode],
-  ["resultados", "Resultados", BarChart3],
+  ["resultados", "Dashboards", BarChart3],
   ["operacao", "Operação", Workflow],
   ["estrutura", "Estrutura de trabalho", FolderTree],
   ["metas", "Metas e OKRs", Target],
@@ -439,6 +441,7 @@ const navGroups = [
       "operacao",
       "estrutura",
       "metas",
+      "resultados",
       "processos",
       "capacidade",
       "desenvolvimento",
@@ -448,7 +451,7 @@ const navGroups = [
   },
   {
     label: "FINANCEIRO",
-    items: ["financeiro", "contas", "cobranca", "resultados"],
+    items: ["financeiro", "contas", "cobranca"],
   },
   {
     label: "CONTEÚDO",
@@ -1224,6 +1227,13 @@ export const buildTaskCalendar = (yearMonth, tasks) => {
 };
 
 export const CHANGELOG_ENTRIES = [
+  {
+    id: "2026-07-29-dashboards-configuraveis",
+    date: "2026-07-29",
+    title: "Dashboards que cada pessoa pode montar",
+    description:
+      "Crie e duplique painéis, escolha os indicadores, altere o tamanho e a ordem dos cards e filtre por período ou projeto. Receita, margem, metas, atrasos, risco, capacidade, SLA, emissões e logística usam os dados reais já registrados na empresa.",
+  },
   {
     id: "2026-07-29-caixa-pessoal",
     date: "2026-07-29",
@@ -10018,115 +10028,6 @@ function InboxThread({ thread, onMarkRead }) {
         </div>
       )}
     </div>
-  );
-}
-
-function Insights({ db, business, go }) {
-  const ins = computeBusinessInsights(db, business);
-  const trendUp = ins.revenueTrend >= 0;
-  const maxClient = Math.max(1, ...ins.topClients.map((c) => c.total));
-  const cards = [
-    {
-      label: "Receita (30 dias)",
-      value: money(ins.revenue30),
-      sub: `${trendUp ? "+" : ""}${ins.revenueTrend}% vs. 30 dias anteriores`,
-      icon: WalletCards,
-      trend: trendUp,
-    },
-    {
-      label: "Pedidos (30 dias)",
-      value: String(ins.ordersCount),
-      sub: "registrados no período",
-      icon: ShoppingBag,
-    },
-    {
-      label: "Ticket médio",
-      value: money(ins.avgTicket),
-      sub: "por pedido no período",
-      icon: BarChart3,
-    },
-    {
-      label: "Conversão de orçamentos",
-      value: `${ins.conversion}%`,
-      sub: `${ins.approved} de ${ins.decided} decididos`,
-      icon: ReceiptText,
-    },
-  ];
-  return (
-    <PageTitle
-      eyebrow="RESULTADOS"
-      title="Como o negócio está indo"
-      text="Os números que os seus dados conectados já revelam — receita, pedidos, ticket médio e conversão de orçamentos."
-    >
-      {!ins.hasData ? (
-        <Empty
-          icon={BarChart3}
-          title="Ainda sem números para mostrar"
-          text="Registre vendas, pedidos e orçamentos que este painel passa a mostrar receita, ticket médio e conversão automaticamente."
-          action="Registrar um pedido"
-          onAction={() => go("produtos")}
-        />
-      ) : (
-        <>
-          <div className="insight-cards">
-            {cards.map((c) => {
-              const Icon = c.icon;
-              return (
-                <div key={c.label} className="insight-card">
-                  <span className="insight-icon">
-                    <Icon />
-                  </span>
-                  <strong>{c.value}</strong>
-                  <span className="insight-label">{c.label}</span>
-                  <small
-                    className={
-                      c.trend === undefined ? "" : c.trend ? "up" : "down"
-                    }
-                  >
-                    {c.trend === true && <TrendingUp />}
-                    {c.trend === false && <TrendingDown />}
-                    {c.sub}
-                  </small>
-                </div>
-              );
-            })}
-          </div>
-          <section className="section">
-            <div className="section-head">
-              <div>
-                <span className="eyebrow">TOP CLIENTES</span>
-                <h2>Quem mais comprou</h2>
-              </div>
-            </div>
-            {ins.topClients.length === 0 ? (
-              <p className="inbox-loading">
-                Registre pedidos com o nome do cliente para ver o ranking.
-              </p>
-            ) : (
-              <div className="insight-clients">
-                {ins.topClients.map((c) => (
-                  <div key={c.name} className="insight-client">
-                    <div className="insight-client-head">
-                      <span>{c.name}</span>
-                      <small>
-                        {money(c.total)} · {c.orders} pedido(s)
-                      </small>
-                    </div>
-                    <div className="space-bar">
-                      <span
-                        style={{
-                          width: `${Math.round((c.total / maxClient) * 100)}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        </>
-      )}
-    </PageTitle>
   );
 }
 
@@ -26426,7 +26327,19 @@ export default function App() {
           <MyWork db={db} business={business} setToast={setToast} go={go} />
         );
       case "resultados":
-        return <Insights db={db} business={business} go={go} />;
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando dashboards...</div>}
+          >
+            <ConfigurableDashboard
+              db={db}
+              update={update}
+              business={business}
+              go={go}
+              setToast={setToast}
+            />
+          </Suspense>
+        );
       case "orcamentos":
         return (
           <Quotes

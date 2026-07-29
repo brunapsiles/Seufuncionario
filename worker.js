@@ -1229,6 +1229,7 @@ const RESTRICTED_FIELDS = [
   "impactFactors",
   "impactEntries",
   "workNodes",
+  "dashboardConfigs",
 ];
 
 const OWNER_ONLY_TOP_LEVEL_FIELDS = [
@@ -4674,7 +4675,12 @@ export default {
       return json({
         status: database === "operacional" ? "operacional" : "degradado",
         database,
-        version: "v128",
+        version: "v129",
+        roadmap: {
+          complete: false,
+          completedThrough: 4,
+          nextItem: 5,
+        },
         checkedAt: new Date().toISOString(),
       });
     }
