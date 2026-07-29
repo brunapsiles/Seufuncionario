@@ -136,6 +136,14 @@ não sejam a `main` também estão habilitados como versões de prévia.
   reprogramação" atualiza `startDate`/`due`, preservando
   `baselineStart`/`baselineDue`. Não substituir por barras baseadas apenas em
   datas digitadas; o Gantt precisa continuar derivado do grafo.
+- **Banco de dados relacional (v120)**: relações, lookup, rollup, limpeza de
+  referências e estrutura de registro-página vivem em
+  `src/features/databases/relational.js`. O formato antigo de relação com um
+  único ID continua aceito; relações novas podem persistir arrays e sincronizar
+  um `reciprocalFieldId`. Cada linha pode conter `content`, `attachments`,
+  `comments`, `createdAt` e `updatedAt`, sem deixar de funcionar nas views
+  existentes. Não duplicar os cálculos relacionais no JSX e não transformar
+  dados calculados de lookup/rollup em células persistidas.
 
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
