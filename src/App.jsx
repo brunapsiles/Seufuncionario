@@ -238,6 +238,9 @@ const Procurement = lazy(
 const ProcessStudio = lazy(
   () => import("./features/processes/ProcessStudio.jsx"),
 );
+const CapacityPlanner = lazy(
+  () => import("./features/resources/CapacityPlanner.jsx"),
+);
 
 const LEGACY_STORAGE_KEY = "seu-funcionario-v1";
 const ACTIVE_USER_KEY = "seu-funcionario-active-user";
@@ -283,6 +286,9 @@ const emptyDb = {
   processes: [],
   processCases: [],
   formResponses: [],
+  resourceProfiles: [],
+  resourceAbsences: [],
+  resourceAllocations: [],
   wikiPages: [],
   automations: [],
   sites: [],
@@ -318,6 +324,8 @@ export const hasAnyWorkspaceData = (db) =>
   (db?.documents || []).length > 0 ||
   (db?.processes || []).length > 0 ||
   (db?.processCases || []).length > 0 ||
+  (db?.resourceProfiles || []).length > 0 ||
+  (db?.resourceAllocations || []).length > 0 ||
   (db?.sites || []).length > 0 ||
   (db?.conversations || []).length > 0 ||
   (db?.history || []).length > 0;
@@ -344,6 +352,7 @@ const nav = [
   ["resultados", "Resultados", BarChart3],
   ["operacao", "Operação", Workflow],
   ["processos", "Processos e Solicitações", PanelsTopLeft],
+  ["capacidade", "Capacidade e Recursos", Users],
   ["desenvolvimento", "Desenvolvimento", TrendingUp],
   ["sites", "Sites e Materiais", PanelsTopLeft],
   ["documentos", "Documentos", FileText],
@@ -388,6 +397,7 @@ const navGroups = [
       "horas",
       "operacao",
       "processos",
+      "capacidade",
       "desenvolvimento",
       "bases",
       "automacoes",
@@ -26174,6 +26184,19 @@ export default function App() {
             fallback={<div className="inbox-loading">Carregando processos...</div>}
           >
             <ProcessStudio
+              db={db}
+              update={update}
+              business={business}
+              setToast={setToast}
+            />
+          </Suspense>
+        );
+      case "capacidade":
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando capacidade...</div>}
+          >
+            <CapacityPlanner
               db={db}
               update={update}
               business={business}
