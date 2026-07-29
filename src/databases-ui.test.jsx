@@ -116,4 +116,54 @@ describe("Meus dados (banco de dados)", () => {
     expect(colTitles.some((t) => t.startsWith("Novo"))).toBe(true);
     expect(colTitles.some((t) => t.startsWith("Ativo"))).toBe(true);
   });
+
+  it("abre cada registro como página completa e mantém conteúdo e comentários", async () => {
+    const db = businessDb();
+    db.databases = [
+      {
+        id: "base-clientes",
+        name: "Clientes",
+        businessId: business.id,
+        ownerId: user.id,
+        fields: [{ id: "nome", name: "Nome", type: "text", primary: true }],
+        rows: [
+          {
+            id: "cliente-1",
+            cells: { nome: "Empresa Acme" },
+            content: "",
+            comments: [],
+            attachments: [],
+            createdAt: "2026-07-29T10:00:00.000Z",
+          },
+        ],
+      },
+    ];
+    seedLoggedIn(db);
+    render(<App />);
+    await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
+
+    fireEvent.click(screen.getByRole("button", { name: "Meus dados" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Abrir página do registro" }),
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "Empresa Acme" }),
+    ).toBeInTheDocument();
+    const content = screen.getByPlaceholderText(
+      /Escreva contexto, decisões, instruções/,
+    );
+    fireEvent.change(content, {
+      target: { value: "Cliente estratégico com renovação em dezembro." },
+    });
+    expect(content).toHaveValue("Cliente estratégico com renovação em dezembro.");
+
+    fireEvent.change(screen.getByLabelText("Adicionar comentário"), {
+      target: { value: "Validar proposta com financeiro" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Comentar" }));
+    expect(
+      screen.getByText("Validar proposta com financeiro"),
+    ).toBeInTheDocument();
+  });
 });
