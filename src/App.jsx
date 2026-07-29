@@ -48,6 +48,13 @@ import {
   DEFAULT_CHART_CONFIG,
   normalizeChartConfig,
 } from "./features/spreadsheets/chartConfig.js";
+import {
+  createProjectRecord,
+  MILESTONE_TYPES,
+  normalizeGovernanceItem,
+  PROJECT_STATUSES,
+  projectMetrics,
+} from "./features/projects/projectDomain.js";
 // Reexporta a camada de lógica pura para os testes que importam de "./App".
 export {
   contactLinks,
@@ -6235,17 +6242,55 @@ function Tasks({
   const deliveryAttachRef = useRef(null);
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkAssignee, setBulkAssignee] = useState("");
-  const [projectForm, setProjectForm] = useState({ name: "", description: "" });
+  const blankProject = {
+    name: "",
+    description: "",
+    objective: "",
+    scope: "",
+    deliverables: "",
+    successCriteria: "",
+    sponsor: "",
+    manager: "",
+    startDate: "",
+    dueDate: "",
+    status: "Planejamento",
+    priority: "Média",
+    budgetPlanned: "",
+    costActual: "",
+    hoursPlanned: "",
+    hoursActual: "",
+    milestones: [],
+    risks: [],
+    issues: [],
+    decisions: [],
+    changeRequests: [],
+  };
+  const [projectForm, setProjectForm] = useState(blankProject);
+  const [milestoneDraft, setMilestoneDraft] = useState({
+    title: "",
+    type: "Entrega",
+    plannedDate: "",
+    ownerName: "",
+  });
+  const [governanceDraft, setGovernanceDraft] = useState({
+    kind: "risk",
+    title: "",
+    description: "",
+    ownerName: "",
+    severity: "Média",
+    dueDate: "",
+  });
   const [editingProject, setEditingProject] = useState(null);
   const saveProject = (e) => {
     e.preventDefault();
     if (!projectForm.name.trim()) return;
     update((d) => {
-      const item = {
-        id: editingProject || uid(),
-        name: projectForm.name.trim(),
-        description: projectForm.description || "",
-      };
+      const previous = (d.projects || []).find((p) => p.id === editingProject);
+      const item = createProjectRecord(
+        projectForm,
+        { businessId: business?.id, ownerId: db.user.id },
+        previous,
+      );
       return {
         ...d,
         projects: editingProject
@@ -6254,22 +6299,82 @@ function Tasks({
       };
     });
     setToast(editingProject ? "Projeto atualizado" : "Projeto criado");
-    setProjectForm({ name: "", description: "" });
+    setProjectForm(blankProject);
     setEditingProject(null);
   };
   const editProject = (project) => {
     setEditingProject(project.id);
-    setProjectForm({ name: project.name, description: project.description || "" });
+    setProjectForm({ ...blankProject, ...project });
   };
   const cancelProjectEdit = () => {
     setEditingProject(null);
-    setProjectForm({ name: "", description: "" });
+    setProjectForm(blankProject);
   };
   const removeProject = (id) => {
     if (!confirm("Excluir este projeto? As tarefas já criadas com esse nome não são apagadas.")) return;
     update((d) => ({ ...d, projects: (d.projects || []).filter((p) => p.id !== id) }));
     if (editingProject === id) cancelProjectEdit();
     setToast("Projeto excluído");
+  };
+  const addMilestone = () => {
+    if (!milestoneDraft.title.trim()) return;
+    setProjectForm((current) => ({
+      ...current,
+      milestones: [
+        ...(current.milestones || []),
+        { ...milestoneDraft, id: uid(), status: "Pendente" },
+      ],
+    }));
+    setMilestoneDraft({
+      title: "",
+      type: "Entrega",
+      plannedDate: "",
+      ownerName: "",
+    });
+  };
+  const removeMilestone = (id) =>
+    setProjectForm((current) => ({
+      ...current,
+      milestones: (current.milestones || []).filter((item) => item.id !== id),
+    }));
+  const governanceCollection = {
+    risk: "risks",
+    issue: "issues",
+    decision: "decisions",
+    change: "changeRequests",
+  };
+  const addGovernanceItem = () => {
+    if (!governanceDraft.title.trim()) return;
+    const collection = governanceCollection[governanceDraft.kind];
+    const status =
+      governanceDraft.kind === "decision"
+        ? "Registrada"
+        : governanceDraft.kind === "change"
+          ? "Solicitada"
+          : "Aberto";
+    const item = normalizeGovernanceItem(
+      { ...governanceDraft, status },
+      governanceDraft.kind,
+    );
+    setProjectForm((current) => ({
+      ...current,
+      [collection]: [...(current[collection] || []), item],
+    }));
+    setGovernanceDraft({
+      kind: governanceDraft.kind,
+      title: "",
+      description: "",
+      ownerName: "",
+      severity: "Média",
+      dueDate: "",
+    });
+  };
+  const removeGovernanceItem = (kind, id) => {
+    const collection = governanceCollection[kind];
+    setProjectForm((current) => ({
+      ...current,
+      [collection]: (current[collection] || []).filter((item) => item.id !== id),
+    }));
   };
   const [googleId, setGoogleId] = useState("");
   useEffect(() => {
@@ -6408,6 +6513,9 @@ function Tasks({
         ...rest
       } = form;
       const isMission = !!form.isMission;
+      const selectedProject = (d.projects || []).find(
+        (project) => project.name === form.project,
+      );
       const item = {
         ...rest,
         title: form.title.trim(),
@@ -6415,6 +6523,7 @@ function Tasks({
         businessId: business?.id || form.businessId || null,
         archived: !!form.archived,
         ownerId: form.ownerId || db.user.id,
+        projectId: selectedProject?.id || form.projectId || null,
         visibility:
           isMission && form.distribution === "disponivel"
             ? "espaco_todo"
@@ -6889,6 +6998,357 @@ function Tasks({
                     }
                   />
                 </Field>
+                <Field label="Objetivo">
+                  <input
+                    value={projectForm.objective}
+                    onChange={(e) =>
+                      setProjectForm({ ...projectForm, objective: e.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="Escopo">
+                  <input
+                    value={projectForm.scope}
+                    onChange={(e) =>
+                      setProjectForm({ ...projectForm, scope: e.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="Entregáveis">
+                  <input
+                    value={projectForm.deliverables}
+                    onChange={(e) =>
+                      setProjectForm({
+                        ...projectForm,
+                        deliverables: e.target.value,
+                      })
+                    }
+                  />
+                </Field>
+                <Field label="Critérios de sucesso">
+                  <input
+                    value={projectForm.successCriteria}
+                    onChange={(e) =>
+                      setProjectForm({
+                        ...projectForm,
+                        successCriteria: e.target.value,
+                      })
+                    }
+                  />
+                </Field>
+                <Field label="Patrocinador">
+                  <input
+                    value={projectForm.sponsor}
+                    onChange={(e) =>
+                      setProjectForm({ ...projectForm, sponsor: e.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="Gerente do projeto">
+                  <input
+                    value={projectForm.manager}
+                    onChange={(e) =>
+                      setProjectForm({ ...projectForm, manager: e.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="Início">
+                  <input
+                    type="date"
+                    value={projectForm.startDate}
+                    onChange={(e) =>
+                      setProjectForm({ ...projectForm, startDate: e.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="Conclusão prevista">
+                  <input
+                    type="date"
+                    value={projectForm.dueDate}
+                    onChange={(e) =>
+                      setProjectForm({ ...projectForm, dueDate: e.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="Status">
+                  <select
+                    value={projectForm.status}
+                    onChange={(e) =>
+                      setProjectForm({ ...projectForm, status: e.target.value })
+                    }
+                  >
+                    {PROJECT_STATUSES.map((status) => (
+                      <option key={status}>{status}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Prioridade">
+                  <select
+                    value={projectForm.priority}
+                    onChange={(e) =>
+                      setProjectForm({ ...projectForm, priority: e.target.value })
+                    }
+                  >
+                    {["Baixa", "Média", "Alta", "Crítica"].map((priority) => (
+                      <option key={priority}>{priority}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Orçamento planejado">
+                  <input
+                    type="number"
+                    min="0"
+                    value={projectForm.budgetPlanned}
+                    onChange={(e) =>
+                      setProjectForm({
+                        ...projectForm,
+                        budgetPlanned: e.target.value,
+                      })
+                    }
+                  />
+                </Field>
+                <Field label="Custo realizado">
+                  <input
+                    type="number"
+                    min="0"
+                    value={projectForm.costActual}
+                    onChange={(e) =>
+                      setProjectForm({ ...projectForm, costActual: e.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="Horas previstas">
+                  <input
+                    type="number"
+                    min="0"
+                    value={projectForm.hoursPlanned}
+                    onChange={(e) =>
+                      setProjectForm({
+                        ...projectForm,
+                        hoursPlanned: e.target.value,
+                      })
+                    }
+                  />
+                </Field>
+                <Field label="Horas realizadas">
+                  <input
+                    type="number"
+                    min="0"
+                    value={projectForm.hoursActual}
+                    onChange={(e) =>
+                      setProjectForm({ ...projectForm, hoursActual: e.target.value })
+                    }
+                  />
+                </Field>
+              </div>
+              <div className="project-milestone-editor">
+                <h4>Linha de marcos</h4>
+                <div className="form-grid">
+                  <Field label="Marco">
+                    <input
+                      value={milestoneDraft.title}
+                      onChange={(e) =>
+                        setMilestoneDraft({
+                          ...milestoneDraft,
+                          title: e.target.value,
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field label="Tipo">
+                    <select
+                      value={milestoneDraft.type}
+                      onChange={(e) =>
+                        setMilestoneDraft({
+                          ...milestoneDraft,
+                          type: e.target.value,
+                        })
+                      }
+                    >
+                      {MILESTONE_TYPES.map((type) => (
+                        <option key={type}>{type}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Data planejada">
+                    <input
+                      type="date"
+                      value={milestoneDraft.plannedDate}
+                      onChange={(e) =>
+                        setMilestoneDraft({
+                          ...milestoneDraft,
+                          plannedDate: e.target.value,
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field label="Responsável">
+                    <input
+                      value={milestoneDraft.ownerName}
+                      onChange={(e) =>
+                        setMilestoneDraft({
+                          ...milestoneDraft,
+                          ownerName: e.target.value,
+                        })
+                      }
+                    />
+                  </Field>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  icon={Plus}
+                  onClick={addMilestone}
+                >
+                  Adicionar marco
+                </Button>
+                {(projectForm.milestones || []).map((milestone) => (
+                  <div className="project-milestone-row" key={milestone.id}>
+                    <span>
+                      <strong>{milestone.title}</strong>
+                      <small>
+                        {milestone.type}
+                        {milestone.plannedDate
+                          ? ` · ${new Date(`${milestone.plannedDate}T12:00:00`).toLocaleDateString("pt-BR")}`
+                          : ""}
+                        {milestone.ownerName ? ` · ${milestone.ownerName}` : ""}
+                      </small>
+                    </span>
+                    <button
+                      type="button"
+                      className="icon-button danger"
+                      title="Remover marco"
+                      onClick={() => removeMilestone(milestone.id)}
+                    >
+                      <Trash2 />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="project-milestone-editor">
+                <h4>Governança do projeto</h4>
+                <p className="field-hint">
+                  Registre riscos, problemas, decisões e solicitações de mudança
+                  no mesmo projeto.
+                </p>
+                <div className="form-grid">
+                  <Field label="Tipo">
+                    <select
+                      value={governanceDraft.kind}
+                      onChange={(e) =>
+                        setGovernanceDraft({
+                          ...governanceDraft,
+                          kind: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="risk">Risco</option>
+                      <option value="issue">Problema</option>
+                      <option value="decision">Decisão</option>
+                      <option value="change">Mudança de escopo</option>
+                    </select>
+                  </Field>
+                  <Field label="Título">
+                    <input
+                      value={governanceDraft.title}
+                      onChange={(e) =>
+                        setGovernanceDraft({
+                          ...governanceDraft,
+                          title: e.target.value,
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field label="Responsável">
+                    <input
+                      value={governanceDraft.ownerName}
+                      onChange={(e) =>
+                        setGovernanceDraft({
+                          ...governanceDraft,
+                          ownerName: e.target.value,
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field label="Severidade">
+                    <select
+                      value={governanceDraft.severity}
+                      onChange={(e) =>
+                        setGovernanceDraft({
+                          ...governanceDraft,
+                          severity: e.target.value,
+                        })
+                      }
+                    >
+                      {["Baixa", "Média", "Alta", "Crítica"].map((severity) => (
+                        <option key={severity}>{severity}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Prazo">
+                    <input
+                      type="date"
+                      value={governanceDraft.dueDate}
+                      onChange={(e) =>
+                        setGovernanceDraft({
+                          ...governanceDraft,
+                          dueDate: e.target.value,
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field label="Descrição">
+                    <input
+                      value={governanceDraft.description}
+                      onChange={(e) =>
+                        setGovernanceDraft({
+                          ...governanceDraft,
+                          description: e.target.value,
+                        })
+                      }
+                    />
+                  </Field>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  icon={Plus}
+                  onClick={addGovernanceItem}
+                >
+                  Adicionar registro
+                </Button>
+                {[
+                  ...(projectForm.risks || []),
+                  ...(projectForm.issues || []),
+                  ...(projectForm.decisions || []),
+                  ...(projectForm.changeRequests || []),
+                ].map((item) => (
+                  <div className="project-milestone-row" key={item.id}>
+                    <span>
+                      <strong>{item.title}</strong>
+                      <small>
+                        {{
+                          risk: "Risco",
+                          issue: "Problema",
+                          decision: "Decisão",
+                          change: "Mudança",
+                        }[item.kind] || item.kind}
+                        {" · "}
+                        {item.severity}
+                        {item.ownerName ? ` · ${item.ownerName}` : ""}
+                        {item.status ? ` · ${item.status}` : ""}
+                      </small>
+                    </span>
+                    <button
+                      type="button"
+                      className="icon-button danger"
+                      title="Remover registro"
+                      onClick={() => removeGovernanceItem(item.kind, item.id)}
+                    >
+                      <Trash2 />
+                    </button>
+                  </div>
+                ))}
               </div>
               <div className="task-actions">
                 <Button type="submit" icon={editingProject ? Save : Plus}>
@@ -6903,12 +7363,33 @@ function Tasks({
             </form>
             {(db.projects || []).length > 0 && (
               <div className="member-list">
-                {(db.projects || []).map((p) => (
-                  <div key={p.id}>
+                {(db.projects || []).map((p) => {
+                  const metrics = projectMetrics(p, db.tasks);
+                  return (
+                  <div key={p.id} className="project-summary-row">
                     <span className="avatar">{p.name[0]}</span>
                     <span>
                       <strong>{p.name}</strong>
-                      {p.description && <small>{p.description}</small>}
+                      <small>
+                        {p.status || "Planejamento"} · {metrics.progress}% ·{" "}
+                        {metrics.health}
+                      </small>
+                      {(metrics.openRisks > 0 || metrics.openIssues > 0) && (
+                        <small>
+                          {metrics.openRisks} risco(s) · {metrics.openIssues} problema(s)
+                        </small>
+                      )}
+                      <span className="project-progress" aria-label={`${metrics.progress}% concluído`}>
+                        <i style={{ width: `${metrics.progress}%` }} />
+                      </span>
+                      {metrics.nextMilestones[0] && (
+                        <small>
+                          Próximo marco: {metrics.nextMilestones[0].milestone.title}
+                          {metrics.nextMilestones[0].milestone.plannedDate
+                            ? ` · ${new Date(`${metrics.nextMilestones[0].milestone.plannedDate}T12:00:00`).toLocaleDateString("pt-BR")}`
+                            : ""}
+                        </small>
+                      )}
                     </span>
                     <span className="task-actions">
                       <button
@@ -6927,7 +7408,8 @@ function Tasks({
                       </button>
                     </span>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </>
