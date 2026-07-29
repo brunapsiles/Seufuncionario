@@ -9582,6 +9582,122 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   color: #7dd3fc;
 }
 
+.db-relation-multiple {
+  min-height: 72px;
+  min-width: 160px;
+}
+
+.db-card {
+  position: relative;
+}
+
+.db-card-open {
+  background: transparent;
+  border: 0;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 0 10px;
+}
+
+.db-record-page {
+  display: grid;
+  gap: 20px;
+}
+
+.db-record-properties {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.db-record-property {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(120px, 0.35fr) minmax(180px, 1fr);
+  padding: 10px 12px;
+}
+
+.db-record-property:last-child {
+  border-bottom: 0;
+}
+
+.db-record-property > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.db-record-property input,
+.db-record-property select,
+.db-record-property textarea {
+  width: 100%;
+}
+
+.db-record-comments {
+  display: grid;
+  gap: 10px;
+}
+
+.db-record-attachments {
+  display: grid;
+  gap: 10px;
+}
+
+.db-record-attachments > div:first-child {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.db-record-attachments h4 {
+  margin: 0;
+}
+
+.db-record-comments h4 {
+  margin: 0;
+}
+
+.db-record-comments article {
+  background: color-mix(in srgb, var(--primary) 5%, var(--surface));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.db-record-comments article p {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+}
+
+.db-record-comment-form {
+  display: flex;
+  gap: 8px;
+}
+
+.db-record-comment-form input {
+  flex: 1;
+}
+
+.db-record-meta {
+  color: var(--muted);
+}
+
+@media (max-width: 640px) {
+  .db-record-property {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .db-record-comment-form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 /* ===== Gráficos nas planilhas ===== */
 .sheet-chart {
   margin-top: 14px;
