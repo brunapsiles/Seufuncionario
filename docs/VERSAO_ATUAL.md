@@ -1,6 +1,25 @@
 # Versão publicada
 
-## v135
+## v136
+
+- Reuniões: gravação pelo navegador, envio de áudio, transcrição e ata por IA.
+- Transcrição com Whisper no Workers AI, pela rota `/api/transcribe`; o áudio
+  não é armazenado no servidor.
+- Consentimento de gravação obrigatório antes de gravar, com aviso de que gravar
+  sem avisar os participantes pode ser ilegal.
+- Transcrição estruturada em falas, com participante e marcação de tempo.
+- Quem falou quanto, em turnos e em percentual do que foi dito.
+- Correção do nome de um participante em toda a transcrição de uma vez.
+- Busca dentro da transcrição.
+- Ata gerada pela IA em seções: resumo, decisões, tarefas, riscos, perguntas
+  pendentes e temas, com instrução explícita para não inventar prazos.
+- Automação pós-reunião: as tarefas da ata viram tarefas de verdade no app, com
+  responsável apontado e prazo convertido de DD/MM para data completa.
+- Biblioteca de reuniões com busca por título, participante, transcrição ou
+  resumo, e filtro por etiqueta.
+- Módulo isolado em `src/features/meetings/`, carregado sob demanda.
+
+## Base preservada da v135
 
 - Resultado do mês: quanto entrou, quanto saiu, quanto sobrou e a margem.
 - Comparação com o mês anterior em valor e em percentual, com aviso honesto

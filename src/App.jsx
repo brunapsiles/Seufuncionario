@@ -205,6 +205,7 @@ import {
   WandSparkles,
   Award,
   BadgeCheck,
+  Mic,
   PenLine,
   AlertTriangle,
   GraduationCap,
@@ -274,6 +275,7 @@ const SalesPipeline = lazy(
 const MonthlyStatement = lazy(
   () => import("./features/finance/MonthlyStatement.jsx"),
 );
+const Meetings = lazy(() => import("./features/meetings/Meetings.jsx"));
 const PersonalInbox = lazy(
   () => import("./features/inbox/PersonalInbox.jsx"),
 );
@@ -330,6 +332,7 @@ const emptyDb = {
   chatReadStates: [],
   bills: [],
   opportunities: [],
+  meetings: [],
   salesPipeline: null,
   transactions: [],
   financeSettings: {},
@@ -428,6 +431,7 @@ const nav = [
   ["contas", "Contas a receber e pagar", ReceiptText],
   ["funil", "Funil de vendas", TrendingUp],
   ["resultado-mes", "Resultado do mês", BarChart3],
+  ["reunioes", "Reuniões", Mic],
   ["cobranca", "Cobrança Pix", QrCode],
   ["resultados", "Dashboards", BarChart3],
   ["operacao", "Operação", Workflow],
@@ -472,6 +476,7 @@ const navGroups = [
       "caixa",
       "contatos",
       "agendamentos",
+      "reunioes",
     ],
   },
   {
@@ -26672,6 +26677,19 @@ export default function App() {
             fallback={<div className="inbox-loading">Carregando estrutura...</div>}
           >
             <WorkStructure
+              db={db}
+              update={update}
+              business={business}
+              setToast={setToast}
+            />
+          </Suspense>
+        );
+      case "reunioes":
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando reuniões...</div>}
+          >
+            <Meetings
               db={db}
               update={update}
               business={business}

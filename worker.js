@@ -6647,6 +6647,55 @@ async function handleMedia(request, env, url) {
   });
 }
 
+// Transcreve áudio com Whisper no Workers AI. O áudio é gravado ou escolhido no
+// navegador e chega aqui em base64; nada é armazenado no servidor.
+export async function handleTranscribe(request, env) {
+  if (request.method !== "POST")
+    return json({ error: "Método não permitido." }, 405);
+  if (!env.AI)
+    return json(
+      { error: "Transcrição indisponível: Workers AI não está configurado." },
+      503,
+    );
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Envio inválido." }, 400);
+  }
+  const base64 = String(body?.audio || "");
+  if (!base64) return json({ error: "Nenhum áudio recebido." }, 400);
+  // ~8 MB de base64 (aprox. 6 MB de áudio) é o teto por envio.
+  if (base64.length > 8_000_000)
+    return json(
+      { error: "Áudio muito longo. Divida em partes de até 5 minutos." },
+      413,
+    );
+  let bytes;
+  try {
+    const binary = atob(base64);
+    bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  } catch {
+    return json({ error: "Áudio em formato inválido." }, 400);
+  }
+  try {
+    const result = await env.AI.run("@cf/openai/whisper", {
+      audio: [...bytes],
+    });
+    const text = String(result?.text || "").trim();
+    if (!text)
+      return json({ error: "Não foi possível entender o áudio." }, 422);
+    return json({
+      text,
+      words: result?.word_count ?? null,
+    });
+  } catch (error) {
+    console.error("Transcribe error", error);
+    return json({ error: "Não foi possível transcrever este áudio." }, 502);
+  }
+}
+
 export default {
   async scheduled(controller, env, ctx) {
     const now = new Date(controller?.scheduledTime || Date.now());
@@ -6675,7 +6724,7 @@ export default {
       return json({
         status: database === "operacional" ? "operacional" : "degradado",
         database,
-        version: "v135",
+        version: "v136",
         roadmap: {
           complete: false,
           completedThrough: 8,
@@ -6803,6 +6852,7 @@ export default {
     const needsAuth =
       url.pathname === "/api/ai" ||
       url.pathname === "/api/ai/stream" ||
+      url.pathname === "/api/transcribe" ||
       url.pathname === "/api/media" ||
       url.pathname === "/api/workspace" ||
       url.pathname === "/api/workspace/backups" ||
@@ -6874,6 +6924,9 @@ export default {
           console.error("Task action error", error);
           return json({ error: "Não foi possível atualizar esta tarefa." }, 500);
         }
+      }
+      if (url.pathname === "/api/transcribe") {
+        return await handleTranscribe(request, env);
       }
       if (url.pathname === "/api/events") {
         try {
