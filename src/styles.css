@@ -9644,3 +9644,10 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   border-radius: 3px;
   display: inline-block;
 }
+.project-milestone-editor{margin-top:18px;padding:16px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+.project-milestone-editor h4{margin:0 0 12px}
+.project-milestone-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.project-milestone-row span{display:grid;gap:3px}
+.project-summary-row>span:nth-child(2){min-width:0;flex:1}
+.project-progress{display:block;width:100%;max-width:260px;height:6px;margin:6px 0;background:var(--line);border-radius:999px;overflow:hidden}
+.project-progress i{display:block;height:100%;background:var(--primary);border-radius:inherit}
