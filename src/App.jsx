@@ -206,6 +206,7 @@ import {
   Award,
   BadgeCheck,
   Mic,
+  BrainCog,
   PenLine,
   AlertTriangle,
   GraduationCap,
@@ -286,6 +287,9 @@ const QuickWhiteboard = lazy(
   () => import("./features/whiteboard/QuickWhiteboard.jsx"),
 );
 const DayPlanner = lazy(() => import("./features/planner/DayPlanner.jsx"));
+const KnowledgeCenter = lazy(
+  () => import("./features/knowledge/KnowledgeCenter.jsx"),
+);
 const PersonalInbox = lazy(
   () => import("./features/inbox/PersonalInbox.jsx"),
 );
@@ -347,6 +351,8 @@ const emptyDb = {
   diagrams: [],
   whiteboards: [],
   workHours: null,
+  memories: [],
+  glossary: [],
   salesPipeline: null,
   transactions: [],
   financeSettings: {},
@@ -454,6 +460,7 @@ const nav = [
   ["operacao", "Operação", Workflow],
   ["estrutura", "Estrutura de trabalho", FolderTree],
   ["planejar", "Planejar o dia", CalendarDays],
+  ["memoria-busca", "Memória e busca", BrainCog],
   ["metas", "Metas e OKRs", Target],
   ["processos", "Processos e Solicitações", PanelsTopLeft],
   ["formularios-publicos", "Formulários públicos", PanelsTopLeft],
@@ -508,6 +515,7 @@ const navGroups = [
       "operacao",
       "estrutura",
       "planejar",
+      "memoria-busca",
       "metas",
       "resultados",
       "processos",
@@ -26789,6 +26797,20 @@ export default function App() {
               update={update}
               business={business}
               setToast={setToast}
+            />
+          </Suspense>
+        );
+      case "memoria-busca":
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando memória...</div>}
+          >
+            <KnowledgeCenter
+              db={db}
+              update={update}
+              business={business}
+              setToast={setToast}
+              go={go}
             />
           </Suspense>
         );

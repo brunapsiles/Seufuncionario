@@ -1,6 +1,34 @@
 # Versão publicada
 
-## v140
+## v141
+
+- Busca por significado em todo o workspace, com a fonte de cada resultado:
+  tarefas, documentos, reuniões, CRM, contatos, contas, financeiro, funil,
+  metas, base de conhecimento e a própria memória da IA.
+- Radical de palavra em português: buscar "clientes" acha "cliente", "pagamentos"
+  acha "pagamento".
+- Glossário da empresa: cadastrar "NF = nota fiscal" faz a sigla encontrar o
+  termo escrito por extenso.
+- Título pesa mais que o corpo no ranqueamento, e o trecho vem com a palavra
+  destacada.
+- A busca respeita a visibilidade: item privado de outra pessoa não aparece.
+- Resposta com citações numeradas e clicáveis, usando SOMENTE o que está no
+  workspace. Quando a informação não está lá, a IA diz que não encontrou em vez
+  de completar com conhecimento geral.
+- Memória da IA controlável: painel para ver, editar, fixar e apagar.
+- Escopo por memória: só sua, da empresa, de um projeto, de um cliente ou de um
+  especialista. Memória de projeto não vaza para fora do projeto.
+- Dado sensível (CPF, CNPJ, cartão, senha, conta, saúde) é detectado e a memória
+  fica PENDENTE de aprovação. A IA não usa até a titular aprovar.
+- Detecção de memórias que se batem, separando contradição de repetição.
+- Data de revisão por memória, com aviso quando vence. Nada é apagado sozinho.
+- Exportação das memórias em JSON.
+- Saúde do conteúdo: conteúdo repetido e conteúdo sem mexer há mais de seis
+  meses, só como aviso.
+- `PENDENCIAS_DA_TITULAR.md` ganhou a seção do que não é possível construir e
+  por quê, e a chave de busca ficou com o passo a passo concreto.
+
+## Base preservada da v140
 
 - Captura de tarefa em linguagem natural, em português: "ligar pro fornecedor
   sexta às 15h por 30min !alta #compras @ana" cria a tarefa com data, hora,

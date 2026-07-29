@@ -78,11 +78,99 @@ empresa na Meta, um número dedicado e um token). Passos: criar app em
 `WHATSAPP_TOKEN` e `WHATSAPP_PHONE_ID` no cofre. Eu configuro o webhook e a
 Caixa de entrada quando os segredos existirem.
 
-### C. Pesquisa na internet ao vivo (concorrentes, preços)
+### C. Pesquisa na internet ao vivo (concorrentes, preços, pesquisa profunda)
 
-Precisa de uma chave de API de busca (várias com faixa gratuita, ex.: Brave
-Search API ou Google Programmable Search). Você gera a chave e cadastra
-`SEARCH_API_KEY` no cofre; eu ligo a pesquisa aprofundada com citações.
+**É o item mais barato de destravar da sua lista.** Sem uma chave de busca o app
+não tem como ler a internet — nenhum truque resolve isso, porque os mecanismos
+de busca não permitem leitura automatizada sem credencial.
+
+Duas opções gratuitas, escolha uma:
+
+- **Brave Search API** — 2.000 consultas por mês grátis. Cadastro em
+  `api-dashboard.search.brave.com`. Pede cartão para validar a conta, mas não
+  cobra dentro da faixa gratuita. É a que eu recomendaria: independente e sem
+  limite diário apertado.
+- **Google Programmable Search** — 100 consultas por dia grátis. Criar o
+  mecanismo em `programmablesearchengine.google.com` e a chave no Google Cloud.
+  Precisa de dois valores: a chave e o ID do mecanismo.
+
+Depois de ter a chave:
+
+```bash
+npx wrangler secret put SEARCH_API_KEY
+# se usar o Google, cadastre também:
+npx wrangler secret put SEARCH_ENGINE_ID
+```
+
+Com isso eu ligo: pesquisa em tempo real, leitura de várias fontes, comparação
+entre elas, citação clicável em cada afirmação, biblioteca de pesquisas e alerta
+quando uma informação usada ficou velha.
+
+
+## 🚫 O que não é possível construir, e por quê
+
+Esta seção existe para você não ficar esperando por algo que não vai chegar. Não
+é falta de esforço: cada item aqui depende de dinheiro, de aprovação de uma
+plataforma, ou de um documento que só você pode obter. Onde existe um caminho
+parcial, ele já está construído e está dito abaixo.
+
+### Depende de infraestrutura paga
+
+- **Agente com navegador próprio, sandbox de código e computador virtual**
+  (operar sistemas que não têm API, preencher formulários sozinho, executar
+  Python). Rodar um navegador de verdade no servidor exige a Browser Rendering
+  da Cloudflare, que é **cobrada por uso**. Não há versão gratuita.
+- **Edição simultânea entre pessoas** (cursores, seleção visível, resolução de
+  conflito em tempo real) em documentos, quadros e diagramas. Exige conexão
+  permanente por Durable Objects, que está **fora do plano gratuito**. O que
+  existe hoje: cada pessoa edita e a sincronização acontece ao salvar.
+- **Reconhecimento de escrita à mão** no quadro rápido. Exige serviço de OCR
+  pago. O reconhecimento de **formas** (retângulo, círculo, triângulo, linha)
+  está pronto e é gratuito.
+- **Busca semântica por embeddings em todo o histórico.** Guardar os vetores de
+  milhares de itens exigiria um banco vetorial pago. O que entreguei no lugar:
+  busca com radical de palavra, glossário da empresa e sinônimos, que resolve
+  plural, sigla e variação — sem custo.
+
+### Depende de aprovação de uma plataforma
+
+- **Bot que entra sozinho em Google Meet, Zoom ou Teams** para gravar. Cada
+  plataforma exige um aplicativo aprovado por ela, com revisão. O que existe:
+  gravar o áudio da sala pelo navegador e enviar arquivo de áudio — resolve
+  reunião presencial e chamada no viva-voz.
+- **App na App Store e na Play Store.** Hoje o app instala pela Tela de Início
+  do celular e funciona em tela cheia. Estar na loja exige conta de
+  desenvolvedor Apple (US$ 99/ano) e Google (US$ 25 uma vez). Consequência
+  prática: no iPhone, as notificações só funcionam depois de instalado na Tela
+  de Início — é regra da Apple.
+- **Emissão fiscal (NF-e, CT-e, MDF-e) e assinatura com certificado
+  ICP-Brasil.** Exigem certificado digital A1 ou A3 no seu CNPJ e credenciamento
+  na SEFAZ do seu estado. A assinatura eletrônica **simples** (Lei 14.063/2020)
+  está pronta e vale entre as partes que a aceitam.
+
+### Depende de cadastro ou credencial sua
+
+- **Gmail, Outlook, Google Drive, OneDrive, Slack, Teams bidirecionais.**
+  Exigem consentimento OAuth na sua conta. Os passos do Gmail estão na seção A.
+- **Google Calendar e Outlook Calendar sincronizados.** Mesmo caminho do Gmail:
+  escopo de calendário na tela de consentimento + `GOOGLE_CLIENT_SECRET`.
+- **WhatsApp, Instagram Direct, Messenger, Telegram, SMS, telefonia.** Cada um
+  exige conta de desenvolvedor e verificação. WhatsApp está na seção B.
+- **SSO SAML, SCIM e provisionamento automático de usuários.** Exigem um
+  provedor de identidade corporativo (Microsoft Entra, Okta, Google Workspace)
+  contratado por você. Login com Google já funciona.
+- **Pesquisa na internet.** Seção C acima — o item mais barato de destravar.
+
+### Não faz sentido construir
+
+- **Plataforma de IA para terceiros** (API de embeddings, fine-tuning,
+  hospedagem de modelos, MLOps, marketplace de modelos). Você mesma escreveu
+  isso na sua lista, e concordo: é outra categoria de produto, competindo com
+  OpenAI, Azure e Google. O que faz sentido aqui é uma **API pública do Seu
+  Funcionário** para integrar com o que você já usa — isso sim é viável, e
+  entra na fila quando você quiser.
+- **Reconstruir o Microsoft 365 inteiro.** Integrar vale; recriar Word, Excel e
+  Teams não. O ganho está na camada de IA e operação sobre eles.
 
 ## ✅ Já resolvidas
 
