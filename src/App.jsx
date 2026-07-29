@@ -268,6 +268,9 @@ const PersonalInbox = lazy(
 const ConfigurableDashboard = lazy(
   () => import("./features/dashboard/ConfigurableDashboard.jsx"),
 );
+const CorporateChat = lazy(
+  () => import("./features/chat/CorporateChat.jsx"),
+);
 
 const LEGACY_STORAGE_KEY = "seu-funcionario-v1";
 const ACTIVE_USER_KEY = "seu-funcionario-active-user";
@@ -301,6 +304,9 @@ const emptyDb = {
   workNodes: [],
   objectives: [],
   dashboardConfigs: [],
+  chatChannels: [],
+  chatMessages: [],
+  chatReadStates: [],
   bills: [],
   transactions: [],
   financeSettings: {},
@@ -364,6 +370,8 @@ export const hasAnyWorkspaceData = (db) =>
   (db?.pricingModels || []).length > 0 ||
   (db?.pricingScenarios || []).length > 0 ||
   (db?.workNodes || []).length > 0 ||
+  (db?.chatChannels || []).length > 0 ||
+  (db?.chatMessages || []).length > 0 ||
   (db?.sites || []).length > 0 ||
   (db?.conversations || []).length > 0 ||
   (db?.history || []).length > 0;
@@ -379,6 +387,7 @@ const nav = [
   ["precificacao", "Precificação e Impacto", Calculator],
   ["compras", "Compras e Cotações", Boxes],
   ["caixa", "Caixa de entrada", Inbox],
+  ["chat-corporativo", "Chat corporativo", MessageSquareText],
   ["contatos", "Contatos", Users],
   ["agendamentos", "Agendamentos", CalendarDays],
   ["produtos", "Produtos e Pedidos", ShoppingBag],
@@ -434,6 +443,7 @@ const navGroups = [
   {
     label: "OPERAÇÃO",
     items: [
+      "chat-corporativo",
       "produtos",
       "compras",
       "frota",
@@ -1227,6 +1237,13 @@ export const buildTaskCalendar = (yearMonth, tasks) => {
 };
 
 export const CHANGELOG_ENTRIES = [
+  {
+    id: "2026-07-29-chat-corporativo",
+    date: "2026-07-29",
+    title: "Chat corporativo conectado ao trabalho",
+    description:
+      "Crie canais para toda a empresa, grupos privados e mensagens diretas. Responda em threads, mencione pessoas, reaja, anexe arquivos, fixe decisões, encontre mensagens, transforme qualquer mensagem em tarefa e gere um resumo da conversa com IA.",
+  },
   {
     id: "2026-07-29-dashboards-configuraveis",
     date: "2026-07-29",
@@ -26335,8 +26352,23 @@ export default function App() {
               db={db}
               update={update}
               business={business}
+              setToast={setToast}
+            />
+          </Suspense>
+        );
+      case "chat-corporativo":
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando conversas...</div>}
+          >
+            <CorporateChat
+              db={db}
+              update={update}
+              business={business}
               go={go}
               setToast={setToast}
+              authHeaders={authHeaders}
+              ownerId={activeSpaceId()}
             />
           </Suspense>
         );

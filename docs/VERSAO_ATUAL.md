@@ -1,6 +1,26 @@
 # Versão publicada
 
-## v129
+## v130
+
+- Chat corporativo com canais abertos para toda a empresa, grupos privados e
+  mensagens diretas sem misturar essas conversas com o chat dos especialistas.
+- Threads vinculadas à mensagem original, menções por pessoa e contagem de não
+  lidas individual por usuário.
+- Reações, mensagens fixadas, busca por texto, autor ou arquivo e anexos
+  baixáveis com limite seguro para o armazenamento do workspace.
+- Conversão de qualquer mensagem em tarefa operacional rastreável, preservando
+  a audiência e o vínculo com canal e mensagem de origem.
+- Resumo por IA com decisões, ações, responsáveis, prazos, riscos e pendências;
+  quando o provedor não responde, o app produz um resumo local sem inventar
+  informações.
+- Privacidade aplicada também ao dono do workspace: grupos e mensagens diretas
+  só são entregues aos participantes, e salvamentos do restante do workspace
+  não apagam conversas privadas invisíveis.
+- Participantes podem reagir e fixar mensagens sem alterar texto, autoria ou
+  visibilidade de mensagens alheias.
+- Módulo isolado em `src/features/chat/`, carregado sob demanda.
+
+## Base preservada da v129
 
 - Dashboards configuráveis e pessoais, com criação, duplicação, renomeação e
   exclusão de visões.

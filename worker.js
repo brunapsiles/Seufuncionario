@@ -1230,7 +1230,12 @@ const RESTRICTED_FIELDS = [
   "impactEntries",
   "workNodes",
   "dashboardConfigs",
+  "chatChannels",
+  "chatMessages",
+  "chatReadStates",
 ];
+
+const CHAT_FIELDS = ["chatChannels", "chatMessages", "chatReadStates"];
 
 const OWNER_ONLY_TOP_LEVEL_FIELDS = [
   "businesses",
@@ -1259,7 +1264,12 @@ function resolveViewerContext(data, userId) {
       .filter((t) => t.project && canSeeTask(t, userId, baseCtx))
       .map((t) => t.project),
   );
-  return { teamIds, projects };
+  const chatChannels = new Map(
+    (Array.isArray(data?.chatChannels) ? data.chatChannels : [])
+      .filter((channel) => canSeeTask(channel, userId, { teamIds, projects }))
+      .map((channel) => [channel.id, channel]),
+  );
+  return { teamIds, projects, chatChannels };
 }
 
 function filterRecordsForViewer(records, userId, ctx) {
@@ -1361,6 +1371,99 @@ function sanitizeTaskParticipation(existing, incoming, memberId) {
   return safe;
 }
 
+const CHAT_MESSAGE_LOCKED_FIELDS = new Set([
+  "id",
+  "channelId",
+  "parentMessageId",
+  "authorId",
+  "authorName",
+  "ownerId",
+  "businessId",
+  "visibility",
+  "sharedWith",
+  "sharedTeams",
+  "sharingPermission",
+  "createdAt",
+]);
+
+function sanitizeChatOwnerEdit(existing, incoming) {
+  const safe = { ...incoming };
+  for (const field of CHAT_MESSAGE_LOCKED_FIELDS) safe[field] = existing[field];
+  return safe;
+}
+
+function sanitizeChatParticipation(existing, incoming, memberId) {
+  const safe = { ...existing };
+  const before = existing.reactions || {};
+  const requested = incoming.reactions || {};
+  const keys = [...new Set([...Object.keys(before), ...Object.keys(requested)])]
+    .filter((emoji) => emoji.length <= 12)
+    .slice(0, 16);
+  const reactions = {};
+  for (const emoji of keys) {
+    const people = new Set(
+      (Array.isArray(before[emoji]) ? before[emoji] : []).filter(
+        (userId) => userId !== memberId,
+      ),
+    );
+    if (
+      Array.isArray(requested[emoji]) &&
+      requested[emoji].includes(memberId)
+    )
+      people.add(memberId);
+    if (people.size) reactions[emoji] = [...people];
+  }
+  safe.reactions = reactions;
+  if (
+    incoming.pinnedAt === null &&
+    incoming.pinnedBy === null
+  ) {
+    safe.pinnedAt = null;
+    safe.pinnedBy = null;
+  } else if (incoming.pinnedBy === memberId && incoming.pinnedAt) {
+    safe.pinnedAt = String(incoming.pinnedAt);
+    safe.pinnedBy = memberId;
+  }
+  safe.updatedAt = incoming.updatedAt || existing.updatedAt;
+  return safe;
+}
+
+function messageWithChannelAccess(message, channel, memberId) {
+  const visibility =
+    channel.visibility ||
+    (channel.type === "channel" ? "espaco_todo" : "compartilhado");
+  return {
+    ...message,
+    ownerId: memberId,
+    authorId: memberId,
+    channelId: channel.id,
+    businessId: channel.businessId || message.businessId || null,
+    visibility,
+    sharedWith:
+      visibility === "espaco_todo"
+        ? []
+        : Array.isArray(channel.sharedWith)
+          ? channel.sharedWith
+          : channel.memberIds || [],
+    sharedTeams: Array.isArray(channel.sharedTeams)
+      ? channel.sharedTeams
+      : [],
+    sharingPermission: "visualizar",
+  };
+}
+
+function sanitizeChatReadState(record, memberId) {
+  return {
+    ...record,
+    ownerId: memberId,
+    userId: memberId,
+    visibility: "privado",
+    sharedWith: [],
+    sharedTeams: [],
+    sharingPermission: "visualizar",
+  };
+}
+
 function mergeRecordsFromMember(
   currentRecords,
   incomingRecords,
@@ -1395,7 +1498,16 @@ function mergeRecordsFromMember(
       result.push(existing);
       continue;
     }
-    if (isOwner) result.push(incomingVersion);
+    if (isOwner)
+      result.push(
+        field === "chatMessages"
+          ? sanitizeChatOwnerEdit(existing, incomingVersion)
+          : field === "chatReadStates"
+            ? sanitizeChatReadState(incomingVersion, memberId)
+            : incomingVersion,
+      );
+    else if (field === "chatMessages")
+      result.push(sanitizeChatParticipation(existing, incomingVersion, memberId));
     else if (canEditRecord(existing, memberId, ctx))
       result.push(sanitizeMemberEdit(existing, incomingVersion));
     else if (field === "tasks")
@@ -1404,6 +1516,16 @@ function mergeRecordsFromMember(
   }
   for (const r of incoming) {
     if (!r || !r.id || seen.has(r.id)) continue;
+    if (field === "chatMessages") {
+      const channel = ctx.chatChannels?.get(r.channelId);
+      if (channel && canSeeTask(channel, memberId, ctx))
+        result.push(messageWithChannelAccess(r, channel, memberId));
+      continue;
+    }
+    if (field === "chatReadStates") {
+      result.push(sanitizeChatReadState(r, memberId));
+      continue;
+    }
     if (r.ownerId === memberId) result.push(r);
     else if (r.ownerId == null)
       result.push({
@@ -1483,6 +1605,37 @@ async function handleWorkspace(request, env, user, url) {
     } catch {
       data = null;
     }
+    // Conversas diretas e grupos continuam privados inclusive para o dono do
+    // workspace. Canais abertos permanecem visíveis a todos os participantes.
+    if (
+      data &&
+      CHAT_FIELDS.some((field) =>
+        Object.prototype.hasOwnProperty.call(data, field),
+      )
+    ) {
+      const chatCtx = resolveViewerContext(data, user.id);
+      const visibleChannels = filterRecordsForViewer(
+        data.chatChannels,
+        user.id,
+        chatCtx,
+      );
+      const visibleChannelIds = new Set(
+        visibleChannels.map((channel) => channel.id),
+      );
+      data = {
+        ...data,
+        chatChannels: visibleChannels,
+        chatMessages: filterRecordsForViewer(
+          data.chatMessages,
+          user.id,
+          chatCtx,
+        ).filter((message) => visibleChannelIds.has(message.channelId)),
+        chatReadStates: (Array.isArray(data.chatReadStates)
+          ? data.chatReadStates
+          : []
+        ).filter((state) => state.ownerId === user.id),
+      };
+    }
     if (data && restricted) {
       const ctx = resolveViewerContext(data, user.id);
       const filtered = { ...data };
@@ -1535,9 +1688,9 @@ async function handleWorkspace(request, env, user, url) {
     currentData = null;
   }
   if (restricted) {
-    const ctx = resolveViewerContext(currentData, user.id);
+    let ctx = resolveViewerContext(currentData, user.id);
     const merged = { ...data };
-    for (const field of RESTRICTED_FIELDS)
+    for (const field of RESTRICTED_FIELDS) {
       merged[field] = mergeRecordsFromMember(
         currentData?.[field],
         data[field],
@@ -1545,8 +1698,40 @@ async function handleWorkspace(request, env, user, url) {
         ctx,
         field,
       );
+      if (field === "chatChannels")
+        ctx = resolveViewerContext(
+          { ...currentData, chatChannels: merged.chatChannels },
+          user.id,
+        );
+    }
     for (const field of OWNER_ONLY_TOP_LEVEL_FIELDS)
       merged[field] = currentData?.[field];
+    data = merged;
+  } else if (currentData) {
+    // O dono também recebe apenas os chats dos quais participa. Preserve
+    // conversas privadas de outras pessoas quando ele salvar o restante do
+    // workspace, em vez de apagá-las por omissão.
+    let ctx = resolveViewerContext(currentData, user.id);
+    const merged = { ...data };
+    for (const field of CHAT_FIELDS) {
+      if (
+        !Object.prototype.hasOwnProperty.call(currentData, field) &&
+        !Object.prototype.hasOwnProperty.call(data, field)
+      )
+        continue;
+      merged[field] = mergeRecordsFromMember(
+        currentData?.[field],
+        data[field],
+        user.id,
+        ctx,
+        field,
+      );
+      if (field === "chatChannels")
+        ctx = resolveViewerContext(
+          { ...currentData, chatChannels: merged.chatChannels },
+          user.id,
+        );
+    }
     data = merged;
   }
   const text = JSON.stringify(data);
@@ -2525,11 +2710,17 @@ async function handleCollab(request, env, user, url) {
               : invite.status,
         }));
       }
+      const owner = await env.DB.prepare(
+        "SELECT id, name, email FROM users WHERE id = ?",
+      )
+        .bind(ownerId)
+        .first();
       return json({
         members: members.results || [],
         invites,
         spaces: [],
         canManage,
+        owner: owner || null,
       });
     }
     const members = await env.DB.prepare(
@@ -2566,6 +2757,11 @@ async function handleCollab(request, env, user, url) {
       })),
       spaces: spaces.results || [],
       canManage: true,
+      owner: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+      },
     });
   }
   if (request.method !== "POST")
@@ -4675,11 +4871,11 @@ export default {
       return json({
         status: database === "operacional" ? "operacional" : "degradado",
         database,
-        version: "v129",
+        version: "v130",
         roadmap: {
           complete: false,
-          completedThrough: 4,
-          nextItem: 5,
+          completedThrough: 5,
+          nextItem: 6,
         },
         checkedAt: new Date().toISOString(),
       });

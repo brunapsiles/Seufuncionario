@@ -341,4 +341,176 @@ describe("visibilidade de leads, documentos e sites com D1 local", () => {
       ).name,
     ).toBe("Minha visão operacional");
   });
+
+  it("isola grupos e mensagens diretas, mas permite reação segura em canais visíveis", async () => {
+    const owner = await createUser("rec-chat-owner");
+    const member = await createUser("rec-chat-member");
+    const other = await createUser("rec-chat-other");
+    await addMember(owner.id, member.id, "colaborador");
+    await addMember(owner.id, other.id, "colaborador");
+    const now = "2026-07-29T18:00:00.000Z";
+    await workspaceRequest(owner, {
+      method: "PUT",
+      body: {
+        data: {
+          chatChannels: [
+            {
+              id: "chat-public",
+              type: "channel",
+              name: "geral",
+              ownerId: owner.id,
+              visibility: "espaco_todo",
+            },
+            {
+              id: "chat-shared",
+              type: "group",
+              name: "Projeto compartilhado",
+              ownerId: owner.id,
+              visibility: "compartilhado",
+              sharedWith: [owner.id, member.id],
+              memberIds: [owner.id, member.id],
+            },
+            {
+              id: "chat-private",
+              type: "direct",
+              name: "Conversa privada",
+              ownerId: member.id,
+              visibility: "compartilhado",
+              sharedWith: [member.id, other.id],
+              memberIds: [member.id, other.id],
+            },
+          ],
+          chatMessages: [
+            {
+              id: "message-public",
+              channelId: "chat-public",
+              body: "Mensagem original",
+              authorId: owner.id,
+              authorName: "Dono",
+              ownerId: owner.id,
+              visibility: "espaco_todo",
+              reactions: { "👍": [owner.id] },
+              createdAt: now,
+            },
+            {
+              id: "message-shared",
+              channelId: "chat-shared",
+              body: "Mensagem do grupo",
+              authorId: owner.id,
+              ownerId: owner.id,
+              visibility: "compartilhado",
+              sharedWith: [owner.id, member.id],
+              createdAt: now,
+            },
+            {
+              id: "message-private",
+              channelId: "chat-private",
+              body: "Segredo entre membros",
+              authorId: member.id,
+              ownerId: member.id,
+              visibility: "compartilhado",
+              sharedWith: [member.id, other.id],
+              createdAt: now,
+            },
+          ],
+          chatReadStates: [
+            {
+              id: "read-member",
+              channelId: "chat-public",
+              userId: member.id,
+              ownerId: member.id,
+              visibility: "privado",
+            },
+            {
+              id: "read-other",
+              channelId: "chat-private",
+              userId: other.id,
+              ownerId: other.id,
+              visibility: "privado",
+            },
+          ],
+        },
+        revision: 0,
+      },
+    });
+
+    const asMember = await readJson(
+      await workspaceRequest(member, { owner: owner.id }),
+    );
+    expect(asMember.body.data.chatChannels.map((item) => item.id).sort()).toEqual([
+      "chat-private",
+      "chat-public",
+      "chat-shared",
+    ]);
+    expect(asMember.body.data.chatMessages.map((item) => item.id).sort()).toEqual([
+      "message-private",
+      "message-public",
+      "message-shared",
+    ]);
+    expect(asMember.body.data.chatReadStates.map((item) => item.id)).toEqual([
+      "read-member",
+    ]);
+
+    const changedMessages = asMember.body.data.chatMessages.map((message) =>
+      message.id === "message-public"
+        ? {
+            ...message,
+            body: "Tentativa de alterar texto alheio",
+            visibility: "privado",
+            reactions: { "👍": [member.id] },
+            pinnedAt: "2026-07-29T18:05:00.000Z",
+            pinnedBy: member.id,
+          }
+        : message,
+    );
+    changedMessages.push({
+      id: "message-new",
+      channelId: "chat-public",
+      body: "Nova mensagem do membro",
+      authorId: "forjado",
+      ownerId: member.id,
+      visibility: "privado",
+      sharedWith: [other.id],
+      createdAt: "2026-07-29T18:06:00.000Z",
+    });
+    await workspaceRequest(member, {
+      method: "PUT",
+      owner: owner.id,
+      body: {
+        data: {
+          ...asMember.body.data,
+          chatMessages: changedMessages,
+        },
+        revision: asMember.body.revision,
+      },
+    });
+
+    const asOwner = await readJson(await workspaceRequest(owner));
+    expect(
+      asOwner.body.data.chatChannels.some((item) => item.id === "chat-private"),
+    ).toBe(false);
+    expect(
+      asOwner.body.data.chatMessages.some((item) => item.id === "message-private"),
+    ).toBe(false);
+    const original = asOwner.body.data.chatMessages.find(
+      (item) => item.id === "message-public",
+    );
+    expect(original).toMatchObject({
+      body: "Mensagem original",
+      visibility: "espaco_todo",
+      pinnedBy: member.id,
+    });
+    expect(original.reactions["👍"].sort()).toEqual(
+      [owner.id, member.id].sort(),
+    );
+    const created = asOwner.body.data.chatMessages.find(
+      (item) => item.id === "message-new",
+    );
+    expect(created).toMatchObject({
+      authorId: member.id,
+      ownerId: member.id,
+      visibility: "espaco_todo",
+      sharedWith: [],
+    });
+  });
 });

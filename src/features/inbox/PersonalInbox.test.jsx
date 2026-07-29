@@ -66,7 +66,7 @@ describe("interface da caixa de entrada pessoal", () => {
     expect(
       await screen.findByRole("heading", { name: "Caixa de entrada pessoal" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Preparar proposta")).toBeInTheDocument();
+    expect(await screen.findByText("Preparar proposta")).toBeInTheDocument();
     expect(screen.getByText("Revisar relatório")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: /Aprovações/ }));
