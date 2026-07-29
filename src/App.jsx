@@ -241,6 +241,9 @@ const ProcessStudio = lazy(
 const CapacityPlanner = lazy(
   () => import("./features/resources/CapacityPlanner.jsx"),
 );
+const PricingImpactStudio = lazy(
+  () => import("./features/pricing/PricingImpactStudio.jsx"),
+);
 
 const LEGACY_STORAGE_KEY = "seu-funcionario-v1";
 const ACTIVE_USER_KEY = "seu-funcionario-active-user";
@@ -289,6 +292,10 @@ const emptyDb = {
   resourceProfiles: [],
   resourceAbsences: [],
   resourceAllocations: [],
+  pricingModels: [],
+  pricingScenarios: [],
+  impactFactors: [],
+  impactEntries: [],
   wikiPages: [],
   automations: [],
   sites: [],
@@ -326,6 +333,8 @@ export const hasAnyWorkspaceData = (db) =>
   (db?.processCases || []).length > 0 ||
   (db?.resourceProfiles || []).length > 0 ||
   (db?.resourceAllocations || []).length > 0 ||
+  (db?.pricingModels || []).length > 0 ||
+  (db?.pricingScenarios || []).length > 0 ||
   (db?.sites || []).length > 0 ||
   (db?.conversations || []).length > 0 ||
   (db?.history || []).length > 0;
@@ -338,6 +347,7 @@ const nav = [
   ["marketing", "Marca e Marketing", Megaphone],
   ["vendas", "Vendas e Clientes", Handshake],
   ["orcamentos", "Orçamentos", ReceiptText],
+  ["precificacao", "Precificação e Impacto", Calculator],
   ["compras", "Compras e Cotações", Boxes],
   ["caixa", "Caixa de entrada", Inbox],
   ["contatos", "Contatos", Users],
@@ -383,6 +393,7 @@ const navGroups = [
       "marketing",
       "vendas",
       "orcamentos",
+      "precificacao",
       "caixa",
       "contatos",
       "agendamentos",
@@ -26078,6 +26089,19 @@ export default function App() {
             setToast={setToast}
             go={go}
           />
+        );
+      case "precificacao":
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando precificação...</div>}
+          >
+            <PricingImpactStudio
+              db={db}
+              update={update}
+              business={business}
+              setToast={setToast}
+            />
+          </Suspense>
         );
       case "compras":
         return (
