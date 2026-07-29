@@ -235,6 +235,9 @@ import {
 const Procurement = lazy(
   () => import("./features/procurement/Procurement.jsx"),
 );
+const ProcessStudio = lazy(
+  () => import("./features/processes/ProcessStudio.jsx"),
+);
 
 const LEGACY_STORAGE_KEY = "seu-funcionario-v1";
 const ACTIVE_USER_KEY = "seu-funcionario-active-user";
@@ -277,6 +280,9 @@ const emptyDb = {
   signatures: [],
   pixCharges: [],
   databases: [],
+  processes: [],
+  processCases: [],
+  formResponses: [],
   wikiPages: [],
   automations: [],
   sites: [],
@@ -310,6 +316,8 @@ export const hasAnyWorkspaceData = (db) =>
   (db?.trips || []).length > 0 ||
   (db?.developmentPlans || []).length > 0 ||
   (db?.documents || []).length > 0 ||
+  (db?.processes || []).length > 0 ||
+  (db?.processCases || []).length > 0 ||
   (db?.sites || []).length > 0 ||
   (db?.conversations || []).length > 0 ||
   (db?.history || []).length > 0;
@@ -335,6 +343,7 @@ const nav = [
   ["cobranca", "Cobrança Pix", QrCode],
   ["resultados", "Resultados", BarChart3],
   ["operacao", "Operação", Workflow],
+  ["processos", "Processos e Solicitações", PanelsTopLeft],
   ["desenvolvimento", "Desenvolvimento", TrendingUp],
   ["sites", "Sites e Materiais", PanelsTopLeft],
   ["documentos", "Documentos", FileText],
@@ -378,6 +387,7 @@ const navGroups = [
       "frota",
       "horas",
       "operacao",
+      "processos",
       "desenvolvimento",
       "bases",
       "automacoes",
@@ -1158,6 +1168,13 @@ export const buildTaskCalendar = (yearMonth, tasks) => {
 };
 
 export const CHANGELOG_ENTRIES = [
+  {
+    id: "2026-07-29-processos-formularios",
+    date: "2026-07-29",
+    title: "Processos, formulários, aprovações e SLAs",
+    description:
+      "Crie processos com etapas configuráveis, receba solicitações por formulário, acompanhe protocolos em quadro e controle aprovações e prazos. Cada processo funciona sozinho e pode, opcionalmente, gravar a resposta em uma base e criar uma tarefa.",
+  },
   {
     id: "2026-07-28-automacoes-servidor",
     date: "2026-07-28",
@@ -26150,6 +26167,19 @@ export default function App() {
             clearSearchSeed={clearSearchSeed}
             workspaceAction={workspaceAction}
           />
+        );
+      case "processos":
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando processos...</div>}
+          >
+            <ProcessStudio
+              db={db}
+              update={update}
+              business={business}
+              setToast={setToast}
+            />
+          </Suspense>
         );
       case "desenvolvimento":
         return (
