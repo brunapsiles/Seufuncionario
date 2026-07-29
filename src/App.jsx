@@ -285,6 +285,7 @@ const DiagramStudio = lazy(
 const QuickWhiteboard = lazy(
   () => import("./features/whiteboard/QuickWhiteboard.jsx"),
 );
+const DayPlanner = lazy(() => import("./features/planner/DayPlanner.jsx"));
 const PersonalInbox = lazy(
   () => import("./features/inbox/PersonalInbox.jsx"),
 );
@@ -345,6 +346,7 @@ const emptyDb = {
   boards: [],
   diagrams: [],
   whiteboards: [],
+  workHours: null,
   salesPipeline: null,
   transactions: [],
   financeSettings: {},
@@ -451,6 +453,7 @@ const nav = [
   ["resultados", "Dashboards", BarChart3],
   ["operacao", "Operação", Workflow],
   ["estrutura", "Estrutura de trabalho", FolderTree],
+  ["planejar", "Planejar o dia", CalendarDays],
   ["metas", "Metas e OKRs", Target],
   ["processos", "Processos e Solicitações", PanelsTopLeft],
   ["formularios-publicos", "Formulários públicos", PanelsTopLeft],
@@ -504,6 +507,7 @@ const navGroups = [
       "horas",
       "operacao",
       "estrutura",
+      "planejar",
       "metas",
       "resultados",
       "processos",
@@ -26781,6 +26785,19 @@ export default function App() {
             fallback={<div className="inbox-loading">Carregando contas...</div>}
           >
             <Bills
+              db={db}
+              update={update}
+              business={business}
+              setToast={setToast}
+            />
+          </Suspense>
+        );
+      case "planejar":
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando planejamento...</div>}
+          >
+            <DayPlanner
               db={db}
               update={update}
               business={business}

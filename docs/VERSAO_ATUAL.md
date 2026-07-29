@@ -1,6 +1,29 @@
 # Versão publicada
 
-## v139
+## v140
+
+- Captura de tarefa em linguagem natural, em português: "ligar pro fornecedor
+  sexta às 15h por 30min !alta #compras @ana" cria a tarefa com data, hora,
+  duração, prioridade, projeto e responsável separados, e o título limpo.
+- Entende hoje, amanhã, depois de amanhã, dia da semana, "próxima sexta",
+  "em 3 dias", "em 2 semanas", 15/08, "dia 15 de agosto", e "dia 5" que já
+  passou vira o mês seguinte.
+- Entende recorrência: "toda segunda", "todos os dias", "todo mês".
+- Data impossível (31/02) é recusada em vez de virar data errada.
+- Prévia na tela mostrando o que foi entendido, e aviso quando nada de data ou
+  hora foi reconhecido.
+- Agendamento inteligente: encaixa as tarefas em aberto nos horários livres,
+  respeitando jornada, almoço, dias úteis e os compromissos já marcados.
+- Nunca agenda depois do prazo da tarefa, e quando não cabe diz por quê em vez
+  de sumir com a tarefa.
+- Respeita a hora pedida quando ela está livre, e desvia quando está ocupada.
+- Carga de cada dia com capacidade, ocupado, livre e aviso de sobrecarga.
+- Aviso de compromissos sobrepostos na agenda.
+- Tarefas atrasadas trazidas para o próximo dia útil de uma vez.
+- Jornada de trabalho configurável (começo, fim, almoço).
+- Módulo isolado em `src/features/planner/`, carregado sob demanda.
+
+## Base preservada da v139
 
 - Quadro rápido de reunião: caneta, marca-texto, régua e borracha, com desenho
   por mouse, dedo ou caneta de tablet.
