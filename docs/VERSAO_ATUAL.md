@@ -1,6 +1,23 @@
 # Versão publicada
 
-## v136
+## v137
+
+- Quadro visual: canvas sem fim com zoom, arraste e enquadrar tudo.
+- Sete tipos de elemento: post-it, texto, retângulo, elipse, seta, área e cartão.
+- Seis modelos visuais prontos: SWOT, canvas de modelo de negócio, jornada do
+  cliente, kanban, retrospectiva e persona.
+- Facilitação de reunião: cronômetro de 5 e 10 minutos, votação que abre e
+  fecha, painel dos mais votados e agrupamento de post-its por proximidade.
+- Transformação em trabalho: os post-its escritos viram tarefas de verdade,
+  levando a contagem de votos.
+- IA no quadro: agrupar ideias por tema, resumir o quadro e transformar em plano
+  de ação, sempre com instrução de não inventar ideias.
+- O zoom mantém fixo o ponto sob o cursor, então o quadro não escorrega.
+- Correção de tablet: o manifest travava a orientação em retrato
+  (`portrait-primary`); agora aceita retrato e paisagem.
+- Módulo isolado em `src/features/canvas/`, carregado sob demanda.
+
+## Base preservada da v136
 
 - Reuniões: gravação pelo navegador, envio de áudio, transcrição e ata por IA.
 - Transcrição com Whisper no Workers AI, pela rota `/api/transcribe`; o áudio

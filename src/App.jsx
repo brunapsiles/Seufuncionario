@@ -276,6 +276,9 @@ const MonthlyStatement = lazy(
   () => import("./features/finance/MonthlyStatement.jsx"),
 );
 const Meetings = lazy(() => import("./features/meetings/Meetings.jsx"));
+const CanvasBoard = lazy(
+  () => import("./features/canvas/CanvasBoard.jsx"),
+);
 const PersonalInbox = lazy(
   () => import("./features/inbox/PersonalInbox.jsx"),
 );
@@ -333,6 +336,7 @@ const emptyDb = {
   bills: [],
   opportunities: [],
   meetings: [],
+  boards: [],
   salesPipeline: null,
   transactions: [],
   financeSettings: {},
@@ -432,6 +436,7 @@ const nav = [
   ["funil", "Funil de vendas", TrendingUp],
   ["resultado-mes", "Resultado do mês", BarChart3],
   ["reunioes", "Reuniões", Mic],
+  ["quadro", "Quadro visual", Layers],
   ["cobranca", "Cobrança Pix", QrCode],
   ["resultados", "Dashboards", BarChart3],
   ["operacao", "Operação", Workflow],
@@ -512,6 +517,7 @@ const navGroups = [
       "wiki",
       "analise",
       "ideias",
+      "quadro",
       "apresentacoes",
       "conteudo",
       "planilhas",
@@ -26677,6 +26683,19 @@ export default function App() {
             fallback={<div className="inbox-loading">Carregando estrutura...</div>}
           >
             <WorkStructure
+              db={db}
+              update={update}
+              business={business}
+              setToast={setToast}
+            />
+          </Suspense>
+        );
+      case "quadro":
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando quadro...</div>}
+          >
+            <CanvasBoard
               db={db}
               update={update}
               business={business}
