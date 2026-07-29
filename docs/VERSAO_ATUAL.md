@@ -1,6 +1,28 @@
 # Versão publicada
 
-## v122
+## v123
+
+- Motor universal de precificação e impacto extraído para
+  `src/features/pricing/pricingImpactDomain.js`.
+- Modelos configuráveis para serviços, produtos, projetos e transporte sem
+  restringir o produto a um único setor.
+- Direcionadores de custo fixo, unidade, hora, distância, peso e
+  tonelada-quilômetro.
+- Memória de cálculo com custo direto, impostos, comissão, desconto, preço
+  mínimo, margem desejada, preço final e preço unitário.
+- Validação impede configurações economicamente impossíveis.
+- Cenários preservam entradas, premissas, resultado, cliente e versão do modelo.
+- Conversão opcional de cenário em orçamento comercial, mantendo vínculo com a
+  memória de cálculo.
+- Biblioteca empresarial de fatores de impacto sem impor números genéricos.
+- Fatores registram unidade, kgCO₂e, escopo, categoria, fonte, versão e validade.
+- Atividades podem ser medidas, informadas por fornecedor ou estimadas.
+- Nota de confiabilidade considera qualidade, evidência, fonte, versão e aprovação.
+- Impacto consolidado por cenário e por Escopo 1, 2 e 3.
+- Interface carregada sob demanda e isolada do monólito principal.
+- Coleções de precificação e impacto protegidas pelo escopo do workspace.
+
+## Base preservada da v122
 
 - Planejamento de capacidade extraído para `src/features/resources/capacityDomain.js`.
 - Perfis de recurso com jornada semanal, dias úteis, função, competências e senioridade.
