@@ -1,6 +1,24 @@
 # Versão publicada
 
-## v137
+## v138
+
+- Diagramas técnicos: 26 formas em sete categorias — fluxograma, BPMN, UML,
+  organograma, redes e segurança, nuvem e processo industrial.
+- Conectores que grudam nas formas: escolhem sozinhos o par de lados mais curto
+  e se reposicionam quando a forma se move.
+- Roteamento em cotovelo: nunca desenha diagonal.
+- Encaixe na grade, alinhamento (esquerda, centro, direita, topo, base) e
+  distribuição com espaçamento igual.
+- Validação do diagrama: conector inválido, forma solta, ciclos, partes que não
+  se conectam, e as regras de BPMN (evento inicial sem entrada, evento final sem
+  saída, gateway com pelo menos dois caminhos, tarefa inalcançável).
+- Organograma gerado automaticamente a partir de uma base de dados, com os
+  níveis de hierarquia posicionados.
+- Situação por cor: escrever "atrasado" ou "no prazo" pinta a forma.
+- Exportação em SVG, Mermaid e CSV; importação de Mermaid e CSV.
+- Módulo isolado em `src/features/diagrams/`, carregado sob demanda.
+
+## Base preservada da v137
 
 - Quadro visual: canvas sem fim com zoom, arraste e enquadrar tudo.
 - Sete tipos de elemento: post-it, texto, retângulo, elipse, seta, área e cartão.
