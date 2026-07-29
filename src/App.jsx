@@ -44,6 +44,10 @@ import {
   sheetChartSeries,
   EMAIL_TEMPLATES,
 } from "./domain.js";
+import {
+  DEFAULT_CHART_CONFIG,
+  normalizeChartConfig,
+} from "./features/spreadsheets/chartConfig.js";
 // Reexporta a camada de lógica pura para os testes que importam de "./App".
 export {
   contactLinks,
@@ -16569,6 +16573,15 @@ Regras:
         columns: sheet.columns,
         rows: sheet.rows,
       });
+      setChartOpen(DEFAULT_CHART_CONFIG.enabled);
+      setChartType(DEFAULT_CHART_CONFIG.type);
+      setLabelCol(DEFAULT_CHART_CONFIG.labelCol);
+      setValueCol(
+        Math.min(
+          Math.max(0, sheet.columns.length - 1),
+          DEFAULT_CHART_CONFIG.valueCol,
+        ),
+      );
       trackProductEvent("sheet_generated", {
         module: "planilhas",
         columns: sheet.columns.length,
@@ -16647,6 +16660,15 @@ Regras:
       title: active.title || "Planilha",
       columns: active.columns,
       rows: active.rows,
+      chart: normalizeChartConfig(
+        {
+          enabled: chartOpen,
+          type: chartType,
+          labelCol,
+          valueCol,
+        },
+        active.columns.length,
+      ),
       businessId: business?.id || null,
       ownerId: active.ownerId || db.user.id,
       createdAt: active.createdAt || now,
@@ -16661,7 +16683,12 @@ Regras:
     setActive((s) => ({ ...s, id, createdAt: record.createdAt, ownerId: record.ownerId }));
     setToast("Planilha salva");
   };
-  const openSheet = (s) =>
+  const openSheet = (s) => {
+    const chart = normalizeChartConfig(s.chart, (s.columns || []).length);
+    setChartOpen(chart.enabled);
+    setChartType(chart.type);
+    setLabelCol(chart.labelCol);
+    setValueCol(chart.valueCol);
     setActive({
       id: s.id,
       title: s.title,
@@ -16670,6 +16697,7 @@ Regras:
       createdAt: s.createdAt,
       ownerId: s.ownerId,
     });
+  };
   const removeSheet = (id) => {
     if (!window.confirm("Excluir esta planilha?")) return;
     update((prev) => ({ ...prev, sheets: prev.sheets.filter((s) => s.id !== id) }));
@@ -16883,6 +16911,7 @@ Regras:
                   <h4>{s.title}</h4>
                   <p className="sheet-saved-meta">
                     {(s.columns || []).length} colunas · {(s.rows || []).length} linhas
+                    {s.chart?.enabled ? " · gráfico salvo" : ""}
                   </p>
                 </div>
                 <div className="sheet-saved-actions">
