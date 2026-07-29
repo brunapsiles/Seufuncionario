@@ -264,6 +264,9 @@ const WorkStructure = lazy(
 );
 const Goals = lazy(() => import("./features/goals/Goals.jsx"));
 const Bills = lazy(() => import("./features/finance/Bills.jsx"));
+const PersonalInbox = lazy(
+  () => import("./features/inbox/PersonalInbox.jsx"),
+);
 
 const LEGACY_STORAGE_KEY = "seu-funcionario-v1";
 const ACTIVE_USER_KEY = "seu-funcionario-active-user";
@@ -1221,6 +1224,13 @@ export const buildTaskCalendar = (yearMonth, tasks) => {
 };
 
 export const CHANGELOG_ENTRIES = [
+  {
+    id: "2026-07-29-caixa-pessoal",
+    date: "2026-07-29",
+    title: "Uma caixa pessoal para tudo que pede sua atenção",
+    description:
+      "Menções, tarefas atribuídas, comentários, aprovações e alterações importantes agora aparecem agrupadas na Caixa de entrada. Você pode marcar itens ou grupos como lidos e adiar o que ficará para amanhã ou para a próxima semana.",
+  },
   {
     id: "2026-07-29-processos-formularios",
     date: "2026-07-29",
@@ -10846,6 +10856,75 @@ function InboxPage({ db: _db, business: _business, setToast, go: _go }) {
         />
       )}
     </PageTitle>
+  );
+}
+
+function InboxHub({ db, update, business, setToast, go }) {
+  const [mode, setMode] = useState("personal");
+  const markNativeNotificationsRead = (keys) => {
+    const ids = new Set(
+      (keys || [])
+        .filter((key) => key.startsWith("notification:"))
+        .map((key) => key.slice("notification:".length)),
+    );
+    if (!ids.size) return;
+    const now = new Date().toISOString();
+    update((current) => ({
+      ...current,
+      notifications: (current.notifications || []).map((notification) =>
+        ids.has(notification.id)
+          ? {
+              ...notification,
+              read: true,
+              readAt: notification.readAt || now,
+            }
+          : notification,
+      ),
+    }));
+  };
+  return (
+    <>
+      <div className="inbox-mode-tabs" role="tablist" aria-label="Tipo de caixa de entrada">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "personal"}
+          className={mode === "personal" ? "active" : ""}
+          onClick={() => setMode("personal")}
+        >
+          <Bell /> Pessoal
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "conversations"}
+          className={mode === "conversations" ? "active" : ""}
+          onClick={() => setMode("conversations")}
+        >
+          <MessageSquareText /> Conversas com clientes
+        </button>
+      </div>
+      {mode === "personal" ? (
+        <Suspense
+          fallback={<div className="inbox-loading">Carregando sua caixa...</div>}
+        >
+          <PersonalInbox
+            go={go}
+            setToast={setToast}
+            authHeaders={authHeaders}
+            ownerId={activeSpaceId()}
+            onNativeRead={markNativeNotificationsRead}
+          />
+        </Suspense>
+      ) : (
+        <InboxPage
+          db={db}
+          business={business}
+          setToast={setToast}
+          go={go}
+        />
+      )}
+    </>
   );
 }
 
@@ -26388,8 +26467,9 @@ export default function App() {
         );
       case "caixa":
         return (
-          <InboxPage
+          <InboxHub
             db={db}
+            update={update}
             business={business}
             setToast={setToast}
             go={go}

@@ -185,6 +185,15 @@ não sejam a `main` também estão habilitados como versões de prévia.
   `src/components/Modal.jsx`, que mantém Escape, armadilha de foco, fechamento
   pelo backdrop e devolução de foco. Não recriar esse comportamento em módulos
   de funcionalidade.
+- **Caixa de entrada pessoal (v128)**: lógica pura em
+  `src/features/inbox/personalInboxDomain.js` e interface lazy em
+  `src/features/inbox/PersonalInbox.jsx`. Ela deriva menções, tarefas
+  atribuídas, comentários, aprovações e alterações importantes somente dos
+  registros que o usuário já pode visualizar. Leitura e adiamento ficam em
+  `personal_inbox_state` (migração `0019`), com chave por dono do workspace,
+  usuário e item; nunca gravar esse estado no registro de origem nem
+  compartilhá-lo entre membros. A antiga `InboxPage` continua sendo a caixa
+  compartilhada de conversas com clientes, acessível pela segunda aba.
 
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 

@@ -1,6 +1,20 @@
 # Versão publicada
 
-## v127
+## v128
+
+- Caixa de entrada pessoal com menções, tarefas atribuídas, comentários,
+  aprovações pendentes, alterações importantes e notificações gerais.
+- Itens agrupados por assunto, com filtros por categoria e contadores de
+  pendências.
+- Marcação como lida por item, grupo ou filtro, além de retorno para não lida.
+- Adiamento até amanhã ou por uma semana, com área própria para itens adiados.
+- Estado de leitura e adiamento individual por usuário, persistido em tabela D1
+  e isolado por empresa e workspace.
+- A caixa compartilhada de conversas com clientes foi preservada em uma aba
+  separada, sem misturar atendimento externo com prioridades pessoais.
+- Módulo isolado em `src/features/inbox/`, carregado sob demanda.
+
+## Base preservada da v127
 
 - Contas a receber e a pagar: o dinheiro combinado que ainda não caiu, que era
   o buraco entre o livro-caixa e a realidade do negócio.
