@@ -1,6 +1,22 @@
 # Versão publicada
 
-## v121
+## v122
+
+- Planejamento de capacidade extraído para `src/features/resources/capacityDomain.js`.
+- Perfis de recurso com jornada semanal, dias úteis, função, competências e senioridade.
+- Ausências por período reduzem automaticamente a disponibilidade líquida.
+- Alocações parciais por percentual ou horas semanais, com projeto opcional.
+- Indicadores de capacidade bruta, disponível, planejada, realizada, ociosidade,
+  sobrecarga e utilização por pessoa e por equipe.
+- Custos, receita e margem planejada calculados por recurso.
+- Apontamentos de tempo existentes enriquecem o realizado quando há vínculo de usuário.
+- Detecção de conflitos e severidade de sobrecarga.
+- Simulação de nova demanda e cenários de contratação com recomendação de quadro.
+- Interface responsiva carregada sob demanda, com cadastro de recursos, ausências e alocações.
+- Dados protegidos pelo mesmo escopo de proprietário, empresa e visibilidade do workspace.
+- O módulo funciona sozinho e integra projetos e horas somente quando configurados.
+
+## Base preservada da v121
 
 - Arquitetura de fórmulas e configuração de gráficos extraída para módulos de domínio.
 - Fórmulas avançadas com funções, condições, comparações, validação e diagnóstico.
