@@ -1326,3 +1326,51 @@ export const sheetChartSeries = (columns, rows, labelIdx, valueIdx) => {
       value: parseBrNumber(r[vi]),
     }));
 };
+
+// ===== Modelos de resposta de e-mail =====
+// Catálogo curado; campos entre [COLCHETES] a pessoa completa. Não é
+// aconselhamento — é ponto de partida editável.
+export const EMAIL_TEMPLATES = [
+  {
+    id: "boas-vindas",
+    name: "Boas-vindas a novo cliente",
+    category: "Relacionamento",
+    subject: "Bem-vindo(a) à [SUA EMPRESA]!",
+    body: "Olá, [NOME],\n\nQue alegria ter você com a gente! Sou [SEU NOME], da [SUA EMPRESA], e estou à disposição para o que precisar.\n\nQualquer dúvida, é só responder este e-mail.\n\nAbraço,\n[SEU NOME]",
+  },
+  {
+    id: "follow-up",
+    name: "Follow-up de proposta",
+    category: "Vendas",
+    subject: "Retomando nossa conversa",
+    body: "Olá, [NOME],\n\nPassando para saber se você teve a chance de analisar a proposta que enviei em [DATA]. Fico à disposição para ajustar o que for necessário ou tirar qualquer dúvida.\n\nPodemos conversar esta semana?\n\nAtenciosamente,\n[SEU NOME]",
+  },
+  {
+    id: "agradecimento",
+    name: "Agradecimento pós-venda",
+    category: "Relacionamento",
+    subject: "Obrigado pela confiança!",
+    body: "Olá, [NOME],\n\nMuito obrigado por escolher a [SUA EMPRESA]. Foi um prazer atender você!\n\nSe puder, adoraríamos ouvir sua opinião — e conte com a gente sempre que precisar.\n\nUm abraço,\n[SEU NOME]",
+  },
+  {
+    id: "cobranca",
+    name: "Lembrete de pagamento",
+    category: "Financeiro",
+    subject: "Lembrete: pagamento em aberto",
+    body: "Olá, [NOME], tudo bem?\n\nPassando para lembrar, com todo respeito, do valor de R$ [VALOR] referente a [DESCRIÇÃO], com vencimento em [DATA].\n\nSe já efetuou o pagamento, por favor desconsidere. Caso contrário, o pagamento pode ser feito por [FORMA DE PAGAMENTO].\n\nQualquer dificuldade, podemos combinar juntos. Fico à disposição.\n\nAtenciosamente,\n[SEU NOME]",
+  },
+  {
+    id: "orcamento",
+    name: "Envio de orçamento",
+    category: "Vendas",
+    subject: "Seu orçamento — [SUA EMPRESA]",
+    body: "Olá, [NOME],\n\nConforme conversamos, segue o orçamento para [SERVIÇO/PRODUTO]:\n\n- [ITEM 1] — R$ [VALOR]\n- [ITEM 2] — R$ [VALOR]\n\nValor total: R$ [VALOR]\nValidade: [X] dias.\n\nFico à disposição para dúvidas ou ajustes.\n\nAtenciosamente,\n[SEU NOME]",
+  },
+  {
+    id: "reagendamento",
+    name: "Reagendar compromisso",
+    category: "Atendimento",
+    subject: "Podemos remarcar?",
+    body: "Olá, [NOME],\n\nPreciso remarcar nosso compromisso de [DATA/HORA]. Peço desculpas pelo transtorno.\n\nVocê teria disponibilidade em [OPÇÃO 1] ou [OPÇÃO 2]? Me avise o melhor horário para você.\n\nObrigado pela compreensão,\n[SEU NOME]",
+  },
+];

@@ -42,6 +42,7 @@ import {
   applyMergeFields,
   evalFormula,
   sheetChartSeries,
+  EMAIL_TEMPLATES,
 } from "./domain.js";
 // Reexporta a camada de lógica pura para os testes que importam de "./App".
 export {
@@ -89,6 +90,7 @@ export {
   evalFormula,
   sheetChartSeries,
   parseBrNumber,
+  EMAIL_TEMPLATES,
   procurementNumber,
   supplierBidTotals,
   compareSupplierBids,
@@ -20172,6 +20174,22 @@ function EmailComposer({ onClose, setToast, initial }) {
             />
           </Field>
         </div>
+        <Field label="Usar um modelo pronto (opcional)">
+          <select
+            value=""
+            onChange={(e) => {
+              const tpl = EMAIL_TEMPLATES.find((t) => t.id === e.target.value);
+              if (tpl) setForm({ ...form, subject: tpl.subject, body: tpl.body });
+            }}
+          >
+            <option value="">Escolha um modelo...</option>
+            {EMAIL_TEMPLATES.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.category} — {t.name}
+              </option>
+            ))}
+          </select>
+        </Field>
         <Field label="Mensagem">
           <textarea
             className="email-body"
