@@ -123,4 +123,26 @@ describe("Planilhas — gráfico", () => {
     expect(svg).toBeTruthy();
     expect(svg.querySelectorAll("rect").length).toBe(3);
   });
+
+  it("restaura automaticamente um gráfico salvo", async () => {
+    const db = businessDb();
+    db.sheets[0] = {
+      ...db.sheets[0],
+      chart: { enabled: true, type: "linha", labelCol: 0, valueCol: 1 },
+    };
+    seedLoggedIn(db);
+    render(<App />);
+    await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
+
+    fireEvent.click(screen.getByRole("button", { name: "Planilhas" }));
+    await screen.findByRole("heading", { name: "Planilhas" });
+    expect(screen.getByText(/gráfico salvo/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Abrir/ }));
+    await screen.findByDisplayValue("Vendas");
+
+    const svg = document.querySelector(".sheet-chart-svg");
+    expect(svg).toBeTruthy();
+    expect(svg.querySelector("polyline")).toBeTruthy();
+  });
 });
