@@ -160,6 +160,15 @@ não sejam a `main` também estão habilitados como versões de prévia.
   independentemente. Vínculos a `projects` e `timeEntries` são opcionais.
   Disponibilidade, carga, utilização, sobrecarga, custo, receita e margem são
   valores derivados e não devem ser persistidos nem recalculados no JSX.
+- **Precificação e impacto (v123)**: lógica pura em
+  `src/features/pricing/pricingImpactDomain.js` e interface lazy em
+  `src/features/pricing/PricingImpactStudio.jsx`. Modelos (`pricingModels`) e
+  cenários (`pricingScenarios`) funcionam sem ESG; fatores (`impactFactors`) e
+  atividades (`impactEntries`) são opcionais. Não gravar fatores universais sem
+  fonte: cada empresa controla valor, unidade, escopo, fonte, versão e validade.
+  A conversão de cenário em `quotes` é explícita e mantém
+  `sourcePricingScenarioId`. Templates setoriais são configurações iniciais,
+  nunca regras fixas ou produtos separados.
 
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
