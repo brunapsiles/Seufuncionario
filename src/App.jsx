@@ -262,6 +262,7 @@ const PricingImpactStudio = lazy(
 const WorkStructure = lazy(
   () => import("./features/work/WorkStructure.jsx"),
 );
+const Goals = lazy(() => import("./features/goals/Goals.jsx"));
 
 const LEGACY_STORAGE_KEY = "seu-funcionario-v1";
 const ACTIVE_USER_KEY = "seu-funcionario-active-user";
@@ -293,6 +294,7 @@ const emptyDb = {
   teams: [],
   projects: [],
   workNodes: [],
+  objectives: [],
   transactions: [],
   financeSettings: {},
   taxProfile: { isMEI: false, dueDay: 20, cnpj: "", dasHistory: {} },
@@ -382,6 +384,7 @@ const nav = [
   ["resultados", "Resultados", BarChart3],
   ["operacao", "Operação", Workflow],
   ["estrutura", "Estrutura de trabalho", FolderTree],
+  ["metas", "Metas e OKRs", Target],
   ["processos", "Processos e Solicitações", PanelsTopLeft],
   ["capacidade", "Capacidade e Recursos", Users],
   ["desenvolvimento", "Desenvolvimento", TrendingUp],
@@ -429,6 +432,7 @@ const navGroups = [
       "horas",
       "operacao",
       "estrutura",
+      "metas",
       "processos",
       "capacidade",
       "desenvolvimento",
@@ -26466,6 +26470,19 @@ export default function App() {
             fallback={<div className="inbox-loading">Carregando estrutura...</div>}
           >
             <WorkStructure
+              db={db}
+              update={update}
+              business={business}
+              setToast={setToast}
+            />
+          </Suspense>
+        );
+      case "metas":
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando metas...</div>}
+          >
+            <Goals
               db={db}
               update={update}
               business={business}

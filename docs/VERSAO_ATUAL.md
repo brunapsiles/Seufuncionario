@@ -1,6 +1,22 @@
 # Versão publicada
 
-## v125
+## v126
+
+- Metas e OKRs: objetivos com resultados-chave mensuráveis, categoria que não
+  existia no produto.
+- Quatro tipos de resultado-chave: número (de → até, com unidade), percentual,
+  marco (feito ou não) e tarefas concluídas com progresso automático.
+- Metas decrescentes funcionam (reduzir de 100 para 60 conta como progresso).
+- Peso por resultado-chave para objetivos com prioridades diferentes.
+- Ciclos mensal, trimestral e anual, com o período calculado sozinho.
+- Situação comparando o progresso real com o tempo já decorrido do ciclo:
+  no ritmo, atenção, em risco, concluída ou ciclo encerrado.
+- Marca visual na barra mostrando onde a meta deveria estar hoje.
+- Histórico de evolução com mini gráfico em SVG puro, sem biblioteca.
+- Resumo do painel com total, progresso médio e quantas metas pedem atenção.
+- Módulo isolado em `src/features/goals/`, carregado sob demanda.
+
+## Base preservada da v125
 
 - Assinatura eletrônica simples de documentos, sem serviço externo e sem custo.
 - Cada assinatura registra quem assinou, papel, e-mail opcional, data e hora.
