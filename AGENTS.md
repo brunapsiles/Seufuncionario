@@ -169,6 +169,19 @@ não sejam a `main` também estão habilitados como versões de prévia.
   A conversão de cenário em `quotes` é explícita e mantém
   `sourcePricingScenarioId`. Templates setoriais são configurações iniciais,
   nunca regras fixas ou produtos separados.
+- **Hierarquia universal de trabalho (v124)**: lógica pura em
+  `src/features/work/hierarchyDomain.js` e interface lazy em
+  `src/features/work/WorkStructure.jsx`. A organização raiz é sempre derivada
+  do registro existente em `businesses`; nunca criar uma segunda entidade de
+  organização em `workNodes`. Essa coleção persiste apenas workspace, espaço,
+  pasta e lista. Projetos continuam em `projects`, vinculados por
+  `containerId`, e tarefas continuam em `tasks`, vinculadas por `listId`.
+  Movimentações devem passar por `moveWorkNode` para impedir ciclos e níveis
+  inválidos. Arquivar uma estrutura nunca exclui projetos ou tarefas.
+- **Modal compartilhado (v124)**: diálogos reutilizam
+  `src/components/Modal.jsx`, que mantém Escape, armadilha de foco, fechamento
+  pelo backdrop e devolução de foco. Não recriar esse comportamento em módulos
+  de funcionalidade.
 
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
