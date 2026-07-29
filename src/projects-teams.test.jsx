@@ -203,4 +203,62 @@ describe("projetos, equipes e subtarefas", () => {
       (await screen.findAllByText("Vendas")).length,
     ).toBeGreaterThan(0);
   });
+
+  it("monta Gantt real com caminho crítico e dependências", async () => {
+    stubFetch();
+    seedLoggedIn(
+      businessDb({
+        projects: [
+          {
+            id: "project-gantt",
+            name: "Implantação",
+            startDate: "2026-08-03",
+            milestones: [
+              {
+                id: "m1",
+                title: "Go-live",
+                type: "Lançamento",
+                plannedDate: "2026-08-07",
+              },
+            ],
+          },
+        ],
+        tasks: [
+          {
+            id: "t1",
+            title: "Planejar",
+            project: "Implantação",
+            projectId: "project-gantt",
+            estimatedDays: 2,
+            status: "A fazer",
+            priority: "Alta",
+            businessId: business.id,
+            dependsOn: [],
+          },
+          {
+            id: "t2",
+            title: "Executar",
+            project: "Implantação",
+            projectId: "project-gantt",
+            estimatedDays: 3,
+            status: "A fazer",
+            priority: "Alta",
+            businessId: business.id,
+            dependsOn: ["t1"],
+          },
+        ],
+      }),
+    );
+    render(<App />);
+    await screen.findByRole("heading", { name: /Vamos fazer acontecer/ });
+    fireEvent.click(screen.getByRole("button", { name: "Operação" }));
+    fireEvent.change(screen.getByLabelText("Filtrar por projeto"), {
+      target: { value: "Implantação" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Gantt" }));
+
+    expect(await screen.findByText(/2 tarefa\(s\) crítica\(s\)/)).toBeInTheDocument();
+    expect(screen.getByText("Go-live · 2026-08-07")).toBeInTheDocument();
+    expect(document.querySelectorAll(".gantt-bar.critical")).toHaveLength(2);
+  });
 });
