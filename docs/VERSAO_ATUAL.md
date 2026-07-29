@@ -1,6 +1,23 @@
 # Versão publicada
 
-## v138
+## v139
+
+- Quadro rápido de reunião: caneta, marca-texto, régua e borracha, com desenho
+  por mouse, dedo ou caneta de tablet.
+- Reconhecimento de forma: retângulo, elipse, triângulo e linha desenhados
+  tortos viram formas limpas. Quando o traço não parece nada, o desenho é
+  mantido como está em vez de o app chutar uma forma errada.
+- Régua encaixa em ângulos de 15 graus, saindo horizontal, vertical ou diagonal
+  exata, preservando o comprimento do traço.
+- Borracha apaga por proximidade do traço, não por retângulo.
+- Notas com reações (👍 ❤️ ❓ ⚠️), que somam por pessoa e desfazem no segundo
+  toque.
+- As notas escritas viram tarefas de verdade.
+- Salva sozinho a cada traço, para retomar a reunião depois; exporta em SVG.
+- Declarado na própria tela: reconhecimento de escrita à mão e edição simultânea
+  entre pessoas não estão incluídos, e por quê.
+
+## Base preservada da v138
 
 - Diagramas técnicos: 26 formas em sete categorias — fluxograma, BPMN, UML,
   organograma, redes e segurança, nuvem e processo industrial.

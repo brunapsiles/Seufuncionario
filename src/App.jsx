@@ -282,6 +282,9 @@ const CanvasBoard = lazy(
 const DiagramStudio = lazy(
   () => import("./features/diagrams/DiagramStudio.jsx"),
 );
+const QuickWhiteboard = lazy(
+  () => import("./features/whiteboard/QuickWhiteboard.jsx"),
+);
 const PersonalInbox = lazy(
   () => import("./features/inbox/PersonalInbox.jsx"),
 );
@@ -341,6 +344,7 @@ const emptyDb = {
   meetings: [],
   boards: [],
   diagrams: [],
+  whiteboards: [],
   salesPipeline: null,
   transactions: [],
   financeSettings: {},
@@ -442,6 +446,7 @@ const nav = [
   ["reunioes", "Reuniões", Mic],
   ["quadro", "Quadro visual", Layers],
   ["diagramas", "Diagramas", Workflow],
+  ["quadro-rapido", "Quadro rápido", Lightbulb],
   ["cobranca", "Cobrança Pix", QrCode],
   ["resultados", "Dashboards", BarChart3],
   ["operacao", "Operação", Workflow],
@@ -524,6 +529,7 @@ const navGroups = [
       "ideias",
       "quadro",
       "diagramas",
+      "quadro-rapido",
       "apresentacoes",
       "conteudo",
       "planilhas",
@@ -26689,6 +26695,19 @@ export default function App() {
             fallback={<div className="inbox-loading">Carregando estrutura...</div>}
           >
             <WorkStructure
+              db={db}
+              update={update}
+              business={business}
+              setToast={setToast}
+            />
+          </Suspense>
+        );
+      case "quadro-rapido":
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando quadro...</div>}
+          >
+            <QuickWhiteboard
               db={db}
               update={update}
               business={business}
