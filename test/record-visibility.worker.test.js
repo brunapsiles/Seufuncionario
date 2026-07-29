@@ -513,4 +513,82 @@ describe("visibilidade de leads, documentos e sites com D1 local", () => {
       sharedWith: [],
     });
   });
+
+  it("isola conteúdo sincronizado e respeita a permissão separada de edição", async () => {
+    const owner = await createUser("rec-sync-owner");
+    const member = await createUser("rec-sync-member");
+    const other = await createUser("rec-sync-other");
+    await addMember(owner.id, member.id, "colaborador");
+    await workspaceRequest(owner, {
+      method: "PUT",
+      body: {
+        data: {
+          syncedBlocks: [
+            {
+              id: "sync-own",
+              name: "Componente do membro",
+              content: "Versão inicial",
+              ownerId: member.id,
+              visibility: "privado",
+            },
+            {
+              id: "sync-readonly",
+              name: "Política para consulta",
+              content: "Texto protegido",
+              ownerId: other.id,
+              visibility: "espaco_todo",
+              sharingPermission: "visualizar",
+            },
+            {
+              id: "sync-editable",
+              name: "Texto compartilhado",
+              content: "Texto anterior",
+              ownerId: other.id,
+              visibility: "espaco_todo",
+              sharingPermission: "editar",
+            },
+            {
+              id: "sync-hidden",
+              name: "Componente reservado",
+              content: "Segredo",
+              ownerId: other.id,
+              visibility: "privado",
+            },
+          ],
+        },
+        revision: 0,
+      },
+    });
+
+    const asMember = await readJson(
+      await workspaceRequest(member, { owner: owner.id }),
+    );
+    expect(
+      asMember.body.data.syncedBlocks.map((item) => item.id).sort(),
+    ).toEqual(["sync-editable", "sync-own", "sync-readonly"]);
+
+    const changed = asMember.body.data.syncedBlocks.map((item) => ({
+      ...item,
+      content: `Alterado: ${item.id}`,
+      visibility: "privado",
+    }));
+    await workspaceRequest(member, {
+      method: "PUT",
+      owner: owner.id,
+      body: {
+        data: { ...asMember.body.data, syncedBlocks: changed },
+        revision: asMember.body.revision,
+      },
+    });
+
+    const asOwner = await readJson(await workspaceRequest(owner));
+    const byId = Object.fromEntries(
+      asOwner.body.data.syncedBlocks.map((item) => [item.id, item]),
+    );
+    expect(byId["sync-own"].content).toBe("Alterado: sync-own");
+    expect(byId["sync-readonly"].content).toBe("Texto protegido");
+    expect(byId["sync-editable"].content).toBe("Alterado: sync-editable");
+    expect(byId["sync-editable"].visibility).toBe("espaco_todo");
+    expect(byId["sync-hidden"].content).toBe("Segredo");
+  });
 });

@@ -52,6 +52,12 @@ import {
   normalizeChartConfig,
 } from "./features/spreadsheets/chartConfig.js";
 import {
+  documentBlocksToText,
+  normalizeDocumentBlocks,
+  normalizeSyncedBlock,
+  textToDocumentBlocks,
+} from "./features/documents/blockDocumentDomain.js";
+import {
   createProjectRecord,
   MILESTONE_TYPES,
   normalizeGovernanceItem,
@@ -277,6 +283,9 @@ const PublicFormsStudio = lazy(
 const ClientPortalStudio = lazy(
   () => import("./features/portal/ClientPortalStudio.jsx"),
 );
+const BlockDocumentEditor = lazy(
+  () => import("./features/documents/BlockDocumentEditor.jsx"),
+);
 
 const LEGACY_STORAGE_KEY = "seu-funcionario-v1";
 const ACTIVE_USER_KEY = "seu-funcionario-active-user";
@@ -318,6 +327,7 @@ const emptyDb = {
   financeSettings: {},
   taxProfile: { isMEI: false, dueDay: 20, cnpj: "", dasHistory: {} },
   documents: [],
+  syncedBlocks: [],
   presentations: [],
   contentPlan: [],
   sheets: [],
@@ -371,6 +381,7 @@ export const hasAnyWorkspaceData = (db) =>
   (db?.trips || []).length > 0 ||
   (db?.developmentPlans || []).length > 0 ||
   (db?.documents || []).length > 0 ||
+  (db?.syncedBlocks || []).length > 0 ||
   (db?.processes || []).length > 0 ||
   (db?.processCases || []).length > 0 ||
   (db?.publicForms || []).length > 0 ||
@@ -921,6 +932,7 @@ const WORKSPACE_COLLECTION_LABELS = {
   conversations: "Conversas de IA",
   media: "Mídia gerada",
   documents: "Documentos",
+  syncedBlocks: "Conteúdo sincronizado",
   history: "Histórico de projetos",
   sites: "Sites",
   tasks: "Tarefas",
@@ -1251,6 +1263,13 @@ export const buildTaskCalendar = (yearMonth, tasks) => {
 };
 
 export const CHANGELOG_ENTRIES = [
+  {
+    id: "2026-07-29-editor-universal-blocos",
+    date: "2026-07-29",
+    title: "Documentos agora são montados com blocos universais",
+    description:
+      "Combine texto, títulos, listas, checklists, tabelas, colunas, mídia, código, destaques, gráficos, bases, tarefas e formulários no mesmo documento. Componentes sincronizados podem ser reutilizados e atualizados em todas as páginas, sem perder versões, assinaturas, importação ou exportação.",
+  },
   {
     id: "2026-07-29-portal-cliente",
     date: "2026-07-29",
@@ -19362,10 +19381,23 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
     setVisibleCount(LIST_PAGE_SIZE);
   }, [search]);
   const uploadRef = useRef(null);
+  const blockContext = {
+    syncedBlocks: db.syncedBlocks || [],
+    databases: db.databases || [],
+    forms: db.publicForms || [],
+    documents: db.documents || [],
+    projects: db.projects || [],
+  };
+  const resolvedDocumentContent = (document) =>
+    Array.isArray(document?.blocks) && document.blocks.length
+      ? documentBlocksToText(document.blocks, blockContext)
+      : document?.content || "";
   const docs = db.documents.filter(
-    (x) =>
-      (!business || x.businessId === business.id) &&
-      `${x.title} ${x.type || ""} ${x.originalFileName || ""} ${x.content || ""}`
+    (document) =>
+      (!business || document.businessId === business.id) &&
+      `${document.title} ${document.type || ""} ${
+        document.originalFileName || ""
+      } ${resolvedDocumentContent(document)}`
         .toLowerCase()
         .includes(search.toLowerCase()),
   );
@@ -19373,8 +19405,10 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
     title: "",
     type: "Proposta comercial",
     content: "",
+    blocks: [],
     signatures: [],
     visibility: "privado",
+    sharingPermission: "visualizar",
     sharedWith: [],
     sharedTeams: [],
     project: "",
@@ -19387,11 +19421,17 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
     ]),
   ];
   const open = (d) => {
-    setForm(d ? { ...blankDocument, ...d } : blankDocument);
+    const next = d ? { ...blankDocument, ...d } : { ...blankDocument };
+    next.blocks = normalizeDocumentBlocks(d?.blocks, d?.content);
+    next.content = resolvedDocumentContent(next);
+    setForm(next);
     setEditing(d?.id || null);
     setModal(true);
   };
-  const signingDoc = db.documents.find((d) => d.id === signingId) || null;
+  const signingRecord = db.documents.find((d) => d.id === signingId) || null;
+  const signingDoc = signingRecord
+    ? { ...signingRecord, content: resolvedDocumentContent(signingRecord) }
+    : null;
   const patchDocument = (id, updater) =>
     update((prev) => ({
       ...prev,
@@ -19421,6 +19461,9 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
       title: template.name,
       type: template.type,
       content: fillDocTemplate(template, { business: business?.name }),
+      blocks: textToDocumentBlocks(
+        fillDocTemplate(template, { business: business?.name }),
+      ),
     });
     trackProductEvent("document_template_used", {
       module: "documentos",
@@ -19435,6 +19478,7 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
       title: d.title,
       type: "Mala direta",
       content: d.content,
+      blocks: textToDocumentBlocks(d.content),
       businessId: business?.id || null,
       ownerId: db.user.id,
       updatedAt: now,
@@ -19462,6 +19506,7 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
           title: documentTitleFromFilename(file.name),
           type: extracted.kind.label,
           content: extracted.content,
+          blocks: textToDocumentBlocks(extracted.content),
           originalFileName: file.name,
           originalMimeType: file.type || "application/octet-stream",
           originalSize: file.size,
@@ -19507,13 +19552,21 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
     const previous = editing
       ? db.documents.find((x) => x.id === editing)
       : null;
+    const blocks = normalizeDocumentBlocks(form.blocks, form.content);
+    const content = documentBlocksToText(blocks, blockContext);
+    const previousBlocks = previous
+      ? normalizeDocumentBlocks(previous.blocks, previous.content)
+      : [];
     const changed =
       previous &&
       (previous.title !== form.title ||
         previous.type !== form.type ||
-        previous.content !== form.content);
+        previous.content !== content ||
+        JSON.stringify(previousBlocks) !== JSON.stringify(blocks));
     const item = {
       ...form,
+      blocks,
+      content,
       id: editing || uid(),
       businessId: business?.id || null,
       ownerId: form.ownerId || db.user.id,
@@ -19525,6 +19578,7 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
               title: previous.title,
               type: previous.type,
               content: previous.content,
+              blocks: previousBlocks,
               at: new Date().toISOString(),
             },
           ]
@@ -19550,8 +19604,9 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
     if (!format) return;
     setExportBusy(`${d.id}:${format}`);
     try {
-      const signBlock = signatureBlockText(d.signatures, d.content);
-      const body = signBlock ? `${d.content}\n\n${signBlock}` : d.content;
+      const content = resolvedDocumentContent(d);
+      const signBlock = signatureBlockText(d.signatures, content);
+      const body = signBlock ? `${content}\n\n${signBlock}` : content;
       if (format === "txt") {
         saveBlob(
           new Blob([`${d.title}\n\n${body}`], {
@@ -19616,7 +19671,9 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
     }
   };
   const refine = async () => {
-    if (aiBusy || !form.content.trim()) return;
+    const currentContent =
+      form.content || documentBlocksToText(form.blocks, blockContext);
+    if (aiBusy || !currentContent.trim()) return;
     setAiBusy(true);
     try {
       const response = await fetch("/api/ai", {
@@ -19624,7 +19681,7 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
         headers: { "content-type": "application/json", ...authHeaders() },
         body: JSON.stringify({
           specialist: "Conteúdo",
-          prompt: `Aprimore o documento abaixo. Preserve todos os fatos, números e compromissos informados; corrija clareza, estrutura e linguagem. Não invente dados. Entregue somente a versão final do documento em Markdown.\n\nTítulo: ${form.title}\nTipo: ${form.type}\n\n${form.content}`,
+          prompt: `Aprimore o documento abaixo. Preserve todos os fatos, números e compromissos informados; corrija clareza, estrutura e linguagem. Não invente dados. Entregue somente a versão final do documento em Markdown.\n\nTítulo: ${form.title}\nTipo: ${form.type}\n\n${currentContent}`,
           ...aiWorkspaceContext(business),
         }),
       });
@@ -19633,6 +19690,9 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
       setForm((current) => ({
         ...current,
         content: data.content || current.content,
+        blocks: data.content
+          ? textToDocumentBlocks(data.content)
+          : current.blocks,
       }));
       setToast("Versão aprimorada no editor; salve para registrar a alteração");
     } catch (error) {
@@ -19641,6 +19701,45 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
       setAiBusy(false);
     }
   };
+  const createSyncedBlock = () => {
+    const record = normalizeSyncedBlock(
+      {
+        name: "Novo conteúdo reutilizável",
+        content: "",
+        businessId: business?.id || null,
+        ownerId: db.user.id,
+        visibility: form.visibility,
+        sharingPermission: form.sharingPermission,
+        sharedWith: form.sharedWith,
+        sharedTeams: form.sharedTeams,
+        project: form.project,
+      },
+      {
+        businessId: business?.id || null,
+        ownerId: db.user.id,
+      },
+    );
+    update((current) => ({
+      ...current,
+      syncedBlocks: [record, ...(current.syncedBlocks || [])],
+    }));
+    return record.id;
+  };
+  const updateSyncedBlock = (id, patch) =>
+    update((current) => ({
+      ...current,
+      syncedBlocks: (current.syncedBlocks || []).map((record) =>
+        record.id === id
+          ? normalizeSyncedBlock(
+              { ...record, ...patch, id: record.id },
+              {
+                businessId: record.businessId || business?.id || null,
+                ownerId: record.ownerId || db.user.id,
+              },
+            )
+          : record,
+      ),
+    }));
   return (
     <PageTitle
       eyebrow="DOCUMENTOS"
@@ -19805,7 +19904,9 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
               </span>
               <span className="tag">{d.type}</span>
               <h3>{d.title}</h3>
-              <p>{d.content.slice(0, 100) || "Documento vazio"}</p>
+              <p>
+                {resolvedDocumentContent(d).slice(0, 100) || "Documento vazio"}
+              </p>
               {d.originalFileName && (
                 <small className="document-source">
                   <Upload /> {d.originalFileName} ·{" "}
@@ -19818,7 +19919,10 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
                 Atualizado {new Date(d.updatedAt).toLocaleString("pt-BR")}
               </small>
               {(() => {
-                const status = signatureStatus(d.signatures, d.content);
+                const status = signatureStatus(
+                  d.signatures,
+                  resolvedDocumentContent(d),
+                );
                 if (status.state === "sem-assinatura") return null;
                 return (
                   <small
@@ -19944,12 +20048,29 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
               </div>
             )}
             <Field label="Conteúdo">
-              <textarea
-                className="editor"
-                value={form.content}
-                onChange={(e) => setForm({ ...form, content: e.target.value })}
-                placeholder="Escreva ou cole o conteúdo aqui..."
-              />
+              <Suspense
+                fallback={
+                  <div className="inbox-loading">
+                    Carregando editor universal...
+                  </div>
+                }
+              >
+                <BlockDocumentEditor
+                  blocks={form.blocks}
+                  onChange={(blocks) =>
+                    setForm((current) => ({
+                      ...current,
+                      blocks,
+                      content: documentBlocksToText(blocks, blockContext),
+                    }))
+                  }
+                  db={db}
+                  business={business}
+                  syncedBlocks={db.syncedBlocks || []}
+                  onCreateSyncedBlock={createSyncedBlock}
+                  onUpdateSyncedBlock={updateSyncedBlock}
+                />
+              </Suspense>
             </Field>
             <div className="editor-tools">
               <Button
@@ -19978,11 +20099,21 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
                         type="button"
                         key={`${version.at}-${index}`}
                         onClick={() =>
-                          setForm({
-                            ...form,
-                            title: version.title || form.title,
-                            type: version.type || form.type,
-                            content: version.content || "",
+                          setForm((current) => {
+                            const blocks = normalizeDocumentBlocks(
+                              version.blocks,
+                              version.content,
+                            );
+                            return {
+                              ...current,
+                              title: version.title || current.title,
+                              type: version.type || current.type,
+                              blocks,
+                              content: documentBlocksToText(
+                                blocks,
+                                blockContext,
+                              ),
+                            };
                           })
                         }
                       >
@@ -20002,6 +20133,7 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
             <SharingFields
               value={{
                 visibility: form.visibility,
+                sharingPermission: form.sharingPermission,
                 sharedWith: form.sharedWith,
                 sharedTeams: form.sharedTeams,
                 project: form.project,

@@ -1,6 +1,22 @@
 # Versão publicada
 
-## v132
+## v133
+
+- Editor universal com blocos de texto, títulos, listas, checklists, tabelas,
+  colunas, imagens, vídeos, arquivos, código, destaques, toggles e gráficos.
+- Bases, tarefas e formulários incorporados com visualizações conectadas aos
+  registros reais do workspace.
+- Conteúdo sincronizado reutilizável, com atualização refletida em todos os
+  documentos que usam o mesmo componente.
+- Conversão automática de documentos antigos para blocos, sem perder conteúdo,
+  versões, assinaturas, importação ou exportação em PDF, DOCX e TXT.
+- URLs externas restritas a HTTPS e arquivos referenciados sem gravar dados
+  brutos no documento.
+- Conteúdo sincronizado isolado por usuário, empresa e workspace, com permissões
+  separadas para visualizar e editar.
+- Editor e domínio isolados em `src/features/documents/`, carregados sob demanda.
+
+## Base preservada da v132
 
 - Portal externo individual por cliente, com link seguro, revogável e validade
   opcional.

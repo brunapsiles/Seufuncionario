@@ -104,7 +104,7 @@ describe("Modelos prontos de documentos", () => {
     // preenchido com o nome do negócio.
     const title = await screen.findByDisplayValue("Recibo de pagamento");
     expect(title).toBeInTheDocument();
-    const content = screen.getByDisplayValue(/Doces da Ana/);
+    const content = await screen.findByDisplayValue(/Doces da Ana/);
     expect(content).toBeInTheDocument();
     expect(content.value).not.toContain("{{empresa}}");
   });

@@ -1215,6 +1215,7 @@ const RESTRICTED_FIELDS = [
   "tasks",
   "leads",
   "documents",
+  "syncedBlocks",
   "sites",
   "developmentPlans",
   "notifications",
@@ -6674,11 +6675,11 @@ export default {
       return json({
         status: database === "operacional" ? "operacional" : "degradado",
         database,
-        version: "v132",
+        version: "v133",
         roadmap: {
           complete: false,
-          completedThrough: 7,
-          nextItem: 8,
+          completedThrough: 8,
+          nextItem: 9,
         },
         checkedAt: new Date().toISOString(),
       });
