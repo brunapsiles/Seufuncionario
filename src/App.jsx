@@ -271,6 +271,9 @@ const ConfigurableDashboard = lazy(
 const CorporateChat = lazy(
   () => import("./features/chat/CorporateChat.jsx"),
 );
+const PublicFormsStudio = lazy(
+  () => import("./features/forms/PublicFormsStudio.jsx"),
+);
 
 const LEGACY_STORAGE_KEY = "seu-funcionario-v1";
 const ACTIVE_USER_KEY = "seu-funcionario-active-user";
@@ -323,6 +326,7 @@ const emptyDb = {
   processes: [],
   processCases: [],
   formResponses: [],
+  publicForms: [],
   resourceProfiles: [],
   resourceAbsences: [],
   resourceAllocations: [],
@@ -365,6 +369,7 @@ export const hasAnyWorkspaceData = (db) =>
   (db?.documents || []).length > 0 ||
   (db?.processes || []).length > 0 ||
   (db?.processCases || []).length > 0 ||
+  (db?.publicForms || []).length > 0 ||
   (db?.resourceProfiles || []).length > 0 ||
   (db?.resourceAllocations || []).length > 0 ||
   (db?.pricingModels || []).length > 0 ||
@@ -403,6 +408,7 @@ const nav = [
   ["estrutura", "Estrutura de trabalho", FolderTree],
   ["metas", "Metas e OKRs", Target],
   ["processos", "Processos e Solicitações", PanelsTopLeft],
+  ["formularios-publicos", "Formulários públicos", PanelsTopLeft],
   ["capacidade", "Capacidade e Recursos", Users],
   ["desenvolvimento", "Desenvolvimento", TrendingUp],
   ["sites", "Sites e Materiais", PanelsTopLeft],
@@ -453,6 +459,7 @@ const navGroups = [
       "metas",
       "resultados",
       "processos",
+      "formularios-publicos",
       "capacidade",
       "desenvolvimento",
       "bases",
@@ -1237,6 +1244,13 @@ export const buildTaskCalendar = (yearMonth, tasks) => {
 };
 
 export const CHANGELOG_ENTRIES = [
+  {
+    id: "2026-07-29-formularios-publicos",
+    date: "2026-07-29",
+    title: "Formulários públicos que já entram na operação",
+    description:
+      "Publique por link ou incorpore no site, use campos condicionais, anexos, assinatura e Pix ou link de pagamento. Cada envio recebe protocolo e pode virar tarefa, lead, chamado ou caso de um processo, sem copiar respostas para o espaço de sincronização.",
+  },
   {
     id: "2026-07-29-chat-corporativo",
     date: "2026-07-29",
@@ -26544,6 +26558,23 @@ export default function App() {
               update={update}
               business={business}
               setToast={setToast}
+            />
+          </Suspense>
+        );
+      case "formularios-publicos":
+        return (
+          <Suspense
+            fallback={
+              <div className="inbox-loading">Carregando formulários...</div>
+            }
+          >
+            <PublicFormsStudio
+              db={db}
+              update={update}
+              business={business}
+              setToast={setToast}
+              authHeaders={authHeaders}
+              ownerId={activeSpaceId()}
             />
           </Suspense>
         );

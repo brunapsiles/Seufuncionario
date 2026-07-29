@@ -1,6 +1,23 @@
 # Versão publicada
 
-## v130
+## v131
+
+- Formulários públicos avançados com link próprio e código de incorporação,
+  sem exigir conta de quem responde.
+- Editor de campos com obrigatoriedade, opções, reordenação e condições de
+  exibição.
+- Upload seguro de arquivos, assinatura desenhada, consentimento de
+  privacidade e confirmação de pagamento por Pix ou link HTTPS.
+- Personalização de logotipo, cores, botão e mensagem de confirmação.
+- Protocolo único, proteção contra envio duplicado e painel autenticado de
+  respostas e anexos.
+- Conversão automática e opcional da resposta em tarefa, lead, chamado ou caso
+  de processo, reutilizando as regras dos módulos existentes.
+- Snapshot publicado e respostas persistidos em tabelas D1 próprias, isolados
+  por empresa e workspace.
+- Módulo isolado em `src/features/forms/`, carregado sob demanda.
+
+## Base preservada da v130
 
 - Chat corporativo com canais abertos para toda a empresa, grupos privados e
   mensagens diretas sem misturar essas conversas com o chat dos especialistas.
