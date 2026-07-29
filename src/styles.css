@@ -10756,3 +10756,378 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
     grid-template-columns: 1fr;
   }
 }
+
+/* ===== Contas a receber e a pagar ===== */
+.bills-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.bills-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 4px;
+}
+.bills-head p {
+  margin: 0;
+  color: var(--muted, #64748b);
+  font-size: 0.88rem;
+  max-width: 62ch;
+}
+.bills-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.bills-summary article {
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.bills-summary strong {
+  font-size: 1.25rem;
+}
+.bills-summary small {
+  color: var(--muted, #64748b);
+  font-size: 0.78rem;
+}
+.bills-summary .in strong {
+  color: #15803d;
+}
+.bills-summary .out strong {
+  color: #c2410c;
+}
+.bills-summary .warn strong {
+  color: #c2410c;
+}
+.bills-late {
+  font-size: 0.74rem;
+  color: #c2410c;
+  font-weight: 600;
+}
+.bills-urgent {
+  border: 1px solid rgba(194, 65, 12, 0.4);
+  background: rgba(194, 65, 12, 0.05);
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+.bills-urgent h3 {
+  margin: 0 0 8px;
+  font-size: 0.92rem;
+}
+.bills-urgent ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bills-urgent li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  padding-top: 6px;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+}
+.bills-urgent li:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.bills-urgent-desc {
+  flex: 1 1 180px;
+}
+.bills-urgent-status {
+  font-size: 0.76rem;
+  color: #c2410c;
+  font-weight: 600;
+}
+.bills-panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.bills-panels section {
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 14px;
+  padding: 13px 15px;
+}
+.bills-panels h3 {
+  margin: 0 0 10px;
+  font-size: 0.92rem;
+}
+.bills-aging ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.bills-aging li {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+  font-size: 0.84rem;
+}
+.bills-aging li:first-child {
+  border-top: none;
+}
+.bills-aging li.late strong {
+  color: #c2410c;
+}
+.bills-aging small {
+  color: var(--muted, #64748b);
+  font-size: 0.74rem;
+}
+.bills-forecast-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  min-height: 120px;
+}
+.bills-week {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+.bills-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 78px;
+  width: 100%;
+  justify-content: center;
+}
+.bills-bars span {
+  width: 42%;
+  min-height: 2px;
+  border-radius: 3px 3px 0 0;
+}
+.bills-bars .in {
+  background: #16a34a;
+}
+.bills-bars .out {
+  background: #ea580c;
+}
+.bills-week small {
+  font-size: 0.68rem;
+  color: var(--muted, #64748b);
+  white-space: nowrap;
+}
+.bills-week .saldo {
+  font-weight: 600;
+}
+.bills-week .saldo.ok {
+  color: #15803d;
+}
+.bills-week .saldo.warn {
+  color: #c2410c;
+}
+.bills-hint {
+  font-size: 0.78rem;
+  color: var(--muted, #64748b);
+  margin: 8px 0 0;
+  line-height: 1.45;
+}
+.bills-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.bills-tabs > button {
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: transparent;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.bills-tabs > button.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+  font-weight: 600;
+}
+.bills-show-paid {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--muted, #64748b);
+  margin-left: auto;
+}
+.bills-empty {
+  text-align: center;
+  padding: 36px 20px;
+  border: 1px dashed rgba(148, 163, 184, 0.5);
+  border-radius: 16px;
+  color: var(--muted, #64748b);
+}
+.bills-empty h3 {
+  margin: 10px 0 6px;
+  color: inherit;
+}
+.bills-empty p {
+  max-width: 50ch;
+  margin: 0 auto 14px;
+  font-size: 0.87rem;
+  line-height: 1.5;
+}
+.bills-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.bill-card {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 13px;
+  padding: 11px 14px;
+}
+.bill-card.atrasada {
+  border-color: rgba(194, 65, 12, 0.5);
+  background: rgba(194, 65, 12, 0.04);
+}
+.bill-card.quitada {
+  opacity: 0.62;
+}
+.bill-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.bill-main small,
+.bill-values small {
+  font-size: 0.76rem;
+  color: var(--muted, #64748b);
+}
+.bill-cat {
+  font-size: 0.7rem !important;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.bill-values {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.bill-due {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+}
+.bill-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.bill-status.atrasada,
+.bill-status.vence-hoje {
+  color: #c2410c;
+  background: rgba(194, 65, 12, 0.12);
+}
+.bill-status.quitada {
+  color: #15803d;
+  background: rgba(21, 128, 61, 0.12);
+}
+.bill-status.a-vencer,
+.bill-status.sem-data {
+  color: #64748b;
+  background: rgba(100, 116, 139, 0.12);
+}
+.bill-rec {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.bill-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.bills-direction {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.bills-direction button {
+  flex: 1 1 0;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: transparent;
+  border-radius: 10px;
+  padding: 9px;
+  font-size: 0.87rem;
+  cursor: pointer;
+}
+.bills-direction button.active {
+  border-color: #2563eb;
+  background: rgba(37, 99, 235, 0.09);
+  font-weight: 600;
+}
+.bill-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.bill-field input {
+  font-weight: 400;
+}
+.bill-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.bills-recurring,
+.bill-recurring {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  margin-bottom: 12px;
+}
+.bill-recurring input {
+  margin-top: 3px;
+  flex: 0 0 auto;
+}
+@media (max-width: 720px) {
+  .bill-card {
+    grid-template-columns: 1fr 1fr;
+  }
+  .bill-actions {
+    grid-column: 1 / -1;
+  }
+  .bill-field-row {
+    grid-template-columns: 1fr;
+  }
+}

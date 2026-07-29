@@ -1,6 +1,22 @@
 # Versão publicada
 
-## v126
+## v127
+
+- Contas a receber e a pagar: o dinheiro combinado que ainda não caiu, que era
+  o buraco entre o livro-caixa e a realidade do negócio.
+- Vencimento, pagamento parcial e situação calculada: a vencer, vence hoje,
+  atrasada há X dias ou quitada.
+- Inadimplência por faixa de atraso (a vencer, até 15, 16-30, 31-60, mais de 60).
+- Fluxo de caixa projetado por semana, com entradas, saídas e saldo acumulado.
+- Fila "precisa de atenção agora" com o que vence em sete dias e o que atrasou.
+- Dar baixa lança automaticamente no Financeiro como Receita ou Despesa, para
+  que o livro-caixa e as contas nunca contem histórias diferentes.
+- Conta mensal: ao quitar, a do mês seguinte é criada sozinha, com o dia
+  ajustado quando o mês seguinte é mais curto.
+- Nomes de clientes e leads já cadastrados aparecem como sugestão.
+- Módulo isolado em `src/features/finance/`, carregado sob demanda.
+
+## Base preservada da v126
 
 - Metas e OKRs: objetivos com resultados-chave mensuráveis, categoria que não
   existia no produto.

@@ -4524,7 +4524,7 @@ export default {
       return json({
         status: database === "operacional" ? "operacional" : "degradado",
         database,
-        version: "v126",
+        version: "v127",
         checkedAt: new Date().toISOString(),
       });
     }

@@ -263,6 +263,7 @@ const WorkStructure = lazy(
   () => import("./features/work/WorkStructure.jsx"),
 );
 const Goals = lazy(() => import("./features/goals/Goals.jsx"));
+const Bills = lazy(() => import("./features/finance/Bills.jsx"));
 
 const LEGACY_STORAGE_KEY = "seu-funcionario-v1";
 const ACTIVE_USER_KEY = "seu-funcionario-active-user";
@@ -295,6 +296,7 @@ const emptyDb = {
   projects: [],
   workNodes: [],
   objectives: [],
+  bills: [],
   transactions: [],
   financeSettings: {},
   taxProfile: { isMEI: false, dueDay: 20, cnpj: "", dasHistory: {} },
@@ -380,6 +382,7 @@ const nav = [
   ["bases", "Meus dados", Database],
   ["automacoes", "Automações", Zap],
   ["financeiro", "Financeiro", WalletCards],
+  ["contas", "Contas a receber e pagar", ReceiptText],
   ["cobranca", "Cobrança Pix", QrCode],
   ["resultados", "Resultados", BarChart3],
   ["operacao", "Operação", Workflow],
@@ -440,7 +443,10 @@ const navGroups = [
       "automacoes",
     ],
   },
-  { label: "FINANCEIRO", items: ["financeiro", "cobranca", "resultados"] },
+  {
+    label: "FINANCEIRO",
+    items: ["financeiro", "contas", "cobranca", "resultados"],
+  },
   {
     label: "CONTEÚDO",
     items: [
@@ -26470,6 +26476,19 @@ export default function App() {
             fallback={<div className="inbox-loading">Carregando estrutura...</div>}
           >
             <WorkStructure
+              db={db}
+              update={update}
+              business={business}
+              setToast={setToast}
+            />
+          </Suspense>
+        );
+      case "contas":
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando contas...</div>}
+          >
+            <Bills
               db={db}
               update={update}
               business={business}
