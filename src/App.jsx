@@ -70,6 +70,7 @@ import {
   removeRecordAndReferences,
   updateRelation,
 } from "./features/databases/relational.js";
+import Modal from "./components/Modal.jsx";
 // Reexporta a camada de lógica pura para os testes que importam de "./App".
 export {
   contactLinks,
@@ -230,6 +231,7 @@ import {
   Bug,
   Activity,
   LifeBuoy,
+  FolderTree,
 } from "lucide-react";
 
 const Procurement = lazy(
@@ -243,6 +245,9 @@ const CapacityPlanner = lazy(
 );
 const PricingImpactStudio = lazy(
   () => import("./features/pricing/PricingImpactStudio.jsx"),
+);
+const WorkStructure = lazy(
+  () => import("./features/work/WorkStructure.jsx"),
 );
 
 const LEGACY_STORAGE_KEY = "seu-funcionario-v1";
@@ -274,6 +279,7 @@ const emptyDb = {
   notifications: [],
   teams: [],
   projects: [],
+  workNodes: [],
   transactions: [],
   financeSettings: {},
   taxProfile: { isMEI: false, dueDay: 20, cnpj: "", dasHistory: {} },
@@ -335,6 +341,7 @@ export const hasAnyWorkspaceData = (db) =>
   (db?.resourceAllocations || []).length > 0 ||
   (db?.pricingModels || []).length > 0 ||
   (db?.pricingScenarios || []).length > 0 ||
+  (db?.workNodes || []).length > 0 ||
   (db?.sites || []).length > 0 ||
   (db?.conversations || []).length > 0 ||
   (db?.history || []).length > 0;
@@ -361,6 +368,7 @@ const nav = [
   ["cobranca", "Cobrança Pix", QrCode],
   ["resultados", "Resultados", BarChart3],
   ["operacao", "Operação", Workflow],
+  ["estrutura", "Estrutura de trabalho", FolderTree],
   ["processos", "Processos e Solicitações", PanelsTopLeft],
   ["capacidade", "Capacidade e Recursos", Users],
   ["desenvolvimento", "Desenvolvimento", TrendingUp],
@@ -407,6 +415,7 @@ const navGroups = [
       "frota",
       "horas",
       "operacao",
+      "estrutura",
       "processos",
       "capacidade",
       "desenvolvimento",
@@ -2246,79 +2255,6 @@ function Empty({ icon: Icon = Sparkles, title, text, action, onAction }) {
           {action}
         </Button>
       )}
-    </div>
-  );
-}
-
-const FOCUSABLE_SELECTOR =
-  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-function Modal({ title, children, onClose, wide = false }) {
-  const modalRef = useRef(null);
-  // Captured during the first render (before commit), so it's whatever had
-  // focus right before this modal opened — not a child's own autoFocus,
-  // which only takes effect once the modal's DOM is actually mounted.
-  const triggerRef = useRef(
-    typeof document !== "undefined" ? document.activeElement : null,
-  );
-  useEffect(() => {
-    const h = (e) => {
-      if (e.key === "Escape") {
-        onClose();
-        return;
-      }
-      if (e.key !== "Tab" || !modalRef.current) return;
-      const focusable = Array.from(
-        modalRef.current.querySelectorAll(FOCUSABLE_SELECTOR),
-      );
-      if (!focusable.length) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    addEventListener("keydown", h);
-    return () => removeEventListener("keydown", h);
-  }, [onClose]);
-  useEffect(() => {
-    const node = modalRef.current;
-    // Respect a field's own autoFocus (e.g. a confirmation input) instead of
-    // stealing it to the first focusable element (often the close button).
-    if (node && !node.contains(document.activeElement)) {
-      const focusable = node.querySelector(FOCUSABLE_SELECTOR);
-      (focusable || node).focus();
-    }
-    return () => {
-      if (triggerRef.current?.focus) triggerRef.current.focus();
-    };
-  }, []);
-  return (
-    <div
-      className="modal-backdrop"
-      role="presentation"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <section
-        ref={modalRef}
-        className={`modal ${wide ? "wide" : ""}`}
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        tabIndex={-1}
-      >
-        <div className="modal-head">
-          <h2>{title}</h2>
-          <button className="icon-button" onClick={onClose} aria-label="Fechar">
-            <X />
-          </button>
-        </div>
-        {children}
-      </section>
     </div>
   );
 }
@@ -26201,6 +26137,19 @@ export default function App() {
             clearSearchSeed={clearSearchSeed}
             workspaceAction={workspaceAction}
           />
+        );
+      case "estrutura":
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando estrutura...</div>}
+          >
+            <WorkStructure
+              db={db}
+              update={update}
+              business={business}
+              setToast={setToast}
+            />
+          </Suspense>
         );
       case "processos":
         return (
