@@ -1333,3 +1333,136 @@ export const EMAIL_TEMPLATES = [
     body: "Olá, [NOME],\n\nPreciso remarcar nosso compromisso de [DATA/HORA]. Peço desculpas pelo transtorno.\n\nVocê teria disponibilidade em [OPÇÃO 1] ou [OPÇÃO 2]? Me avise o melhor horário para você.\n\nObrigado pela compreensão,\n[SEU NOME]",
   },
 ];
+
+// ===== Assinatura eletrônica de documentos =====
+// Assinatura eletrônica SIMPLES (Lei 14.063/2020): identifica quem assinou,
+// quando, e detecta se o documento foi alterado depois. Não é certificado
+// digital ICP-Brasil — a interface deixa isso explícito para a titular.
+
+// Normaliza o conteúdo antes de calcular a impressão digital, para que apenas
+// mudanças reais (não fim de linha ou espaço final) invalidem a assinatura.
+export const normalizeForSigning = (content) =>
+  String(content == null ? "" : content)
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+$/, ""))
+    .join("\n")
+    .trim();
+
+// Impressão digital determinística do conteúdo: combina FNV-1a e djb2 em 16
+// caracteres hexadecimais. Pura, síncrona e igual em qualquer navegador.
+export const documentFingerprint = (content) => {
+  const text = normalizeForSigning(content);
+  let fnv = 0x811c9dc5;
+  let djb = 5381;
+  for (let i = 0; i < text.length; i += 1) {
+    const code = text.charCodeAt(i);
+    fnv = Math.imul(fnv ^ code, 0x01000193) >>> 0;
+    djb = (Math.imul(djb, 33) + code) >>> 0;
+  }
+  const size = text.length >>> 0;
+  const head = (fnv ^ size) >>> 0;
+  return `${head.toString(16).padStart(8, "0")}${djb.toString(16).padStart(8, "0")}`;
+};
+
+// Código de verificação legível, para conferir a assinatura sem sistema:
+// "SF-XXXX-XXXX" derivado da impressão digital e do momento da assinatura.
+export const signatureCode = (fingerprint, signedAt) => {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sem 0/O/1/I
+  const seed = `${fingerprint}${signedAt || ""}`;
+  let acc = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i += 1)
+    acc = Math.imul(acc ^ seed.charCodeAt(i), 0x01000193) >>> 0;
+  let out = "";
+  for (let i = 0; i < 8; i += 1) {
+    out += alphabet[acc % alphabet.length];
+    acc = Math.imul(acc, 0x01000193) >>> 0;
+  }
+  return `SF-${out.slice(0, 4)}-${out.slice(4)}`;
+};
+
+// Cria o registro de uma assinatura sobre o conteúdo do documento.
+export const makeSignature = ({
+  id,
+  signerName,
+  signerEmail = "",
+  signerRole = "",
+  content,
+  signedAt,
+  imageDataUrl = "",
+} = {}) => {
+  const at = signedAt || new Date().toISOString();
+  const fingerprint = documentFingerprint(content);
+  return {
+    id: id || `sig-${fingerprint}-${at}`,
+    signerName: String(signerName || "").trim(),
+    signerEmail: String(signerEmail || "").trim(),
+    signerRole: String(signerRole || "").trim(),
+    signedAt: at,
+    fingerprint,
+    code: signatureCode(fingerprint, at),
+    imageDataUrl: imageDataUrl || "",
+  };
+};
+
+// Confere uma assinatura contra o conteúdo atual do documento.
+// valid=false com motivo "alterado" quando o texto mudou depois de assinado.
+export const verifySignature = (signature, content) => {
+  if (!signature?.fingerprint)
+    return { valid: false, reason: "invalida", message: "Assinatura inválida." };
+  const current = documentFingerprint(content);
+  if (current !== signature.fingerprint)
+    return {
+      valid: false,
+      reason: "alterado",
+      message: "O documento foi alterado depois desta assinatura.",
+    };
+  return {
+    valid: true,
+    reason: "ok",
+    message: "Documento íntegro: idêntico ao que foi assinado.",
+  };
+};
+
+// Situação geral do documento a partir da lista de assinaturas.
+export const signatureStatus = (signatures, content) => {
+  const list = Array.isArray(signatures) ? signatures : [];
+  if (list.length === 0) return { state: "sem-assinatura", valid: 0, total: 0 };
+  const valid = list.filter((s) => verifySignature(s, content).valid).length;
+  return {
+    state: valid === list.length ? "assinado" : "alterado",
+    valid,
+    total: list.length,
+  };
+};
+
+// Bloco de texto anexado ao documento na exportação (PDF/DOCX/TXT).
+export const signatureBlockText = (signatures, content) => {
+  const list = Array.isArray(signatures) ? signatures : [];
+  if (list.length === 0) return "";
+  const lines = list.map((s) => {
+    const check = verifySignature(s, content);
+    const when = new Date(s.signedAt);
+    const data = Number.isNaN(when.getTime())
+      ? s.signedAt
+      : when.toLocaleString("pt-BR");
+    const who = [s.signerName, s.signerRole].filter(Boolean).join(" — ");
+    return [
+      `Assinado por: ${who || "—"}`,
+      s.signerEmail ? `E-mail: ${s.signerEmail}` : "",
+      `Data e hora: ${data}`,
+      `Código de verificação: ${s.code}`,
+      `Impressão digital do documento: ${s.fingerprint}`,
+      check.valid ? "" : `ATENÇÃO: ${check.message}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  });
+  return [
+    "--------------------------------------------",
+    "ASSINATURAS ELETRÔNICAS",
+    ...lines,
+    "Assinatura eletrônica simples (Lei 14.063/2020). Não substitui",
+    "certificado digital ICP-Brasil quando este for exigido por lei.",
+  ].join("\n\n");
+};

@@ -23,6 +23,10 @@ import {
   parseMindMap,
   DOCUMENT_TEMPLATES,
   fillDocTemplate,
+  makeSignature,
+  verifySignature,
+  signatureStatus,
+  signatureBlockText,
   buildEmailSignature,
   buildPixCode,
   DB_FIELD_TYPES,
@@ -94,6 +98,13 @@ export {
   parseMindMap,
   DOCUMENT_TEMPLATES,
   fillDocTemplate,
+  normalizeForSigning,
+  documentFingerprint,
+  signatureCode,
+  makeSignature,
+  verifySignature,
+  signatureStatus,
+  signatureBlockText,
   buildEmailSignature,
   buildPixCode,
   pixCrc16,
@@ -189,6 +200,8 @@ import {
   WandSparkles,
   Award,
   BadgeCheck,
+  PenLine,
+  AlertTriangle,
   GraduationCap,
   LockKeyhole,
   Printer,
@@ -19050,6 +19063,247 @@ function MailMergeModal({ db, business, onClose, onGenerate, setToast }) {
   );
 }
 
+
+// Área de desenho da assinatura (mouse ou toque). Degrada com elegância quando
+// o navegador/ambiente não oferece canvas: a assinatura pelo nome continua valendo.
+function SignaturePad({ onInkChange, padRef }) {
+  const canvasRef = useRef(null);
+  const drawing = useRef(false);
+  const last = useRef(null);
+  const [hasInk, setHasInk] = useState(false);
+
+  const context = () => {
+    try {
+      return canvasRef.current?.getContext?.("2d") || null;
+    } catch {
+      return null;
+    }
+  };
+  const pointOf = (event) => {
+    const canvas = canvasRef.current;
+    if (!canvas?.getBoundingClientRect) return null;
+    const rect = canvas.getBoundingClientRect();
+    const touch = event.touches?.[0];
+    const clientX = touch ? touch.clientX : event.clientX;
+    const clientY = touch ? touch.clientY : event.clientY;
+    if (clientX == null || clientY == null) return null;
+    return {
+      x: ((clientX - rect.left) / (rect.width || 1)) * canvas.width,
+      y: ((clientY - rect.top) / (rect.height || 1)) * canvas.height,
+    };
+  };
+  const start = (event) => {
+    drawing.current = true;
+    last.current = pointOf(event);
+  };
+  const move = (event) => {
+    if (!drawing.current) return;
+    const ctx = context();
+    const point = pointOf(event);
+    if (!ctx || !point) return;
+    event.preventDefault?.();
+    ctx.strokeStyle = "#0f172a";
+    ctx.lineWidth = 2.4;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(last.current?.x ?? point.x, last.current?.y ?? point.y);
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+    last.current = point;
+    if (!hasInk) {
+      setHasInk(true);
+      onInkChange?.(true);
+    }
+  };
+  const stop = () => {
+    drawing.current = false;
+    last.current = null;
+  };
+  const clear = () => {
+    const ctx = context();
+    const canvas = canvasRef.current;
+    if (ctx && canvas) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setHasInk(false);
+    onInkChange?.(false);
+  };
+  const readImage = () => {
+    if (!hasInk) return "";
+    try {
+      return canvasRef.current?.toDataURL?.("image/png") || "";
+    } catch {
+      return "";
+    }
+  };
+
+  return (
+    <div className="sign-pad">
+      <canvas
+        ref={(node) => {
+          canvasRef.current = node;
+          if (node) node.readSignature = readImage;
+          if (padRef) padRef.current = node;
+        }}
+        width={560}
+        height={180}
+        aria-label="Área para desenhar a assinatura"
+        onMouseDown={start}
+        onMouseMove={move}
+        onMouseUp={stop}
+        onMouseLeave={stop}
+        onTouchStart={start}
+        onTouchMove={move}
+        onTouchEnd={stop}
+      />
+      <div className="sign-pad-actions">
+        <small>Desenhe sua assinatura com o dedo ou o mouse (opcional).</small>
+        <button type="button" className="btn ghost sm" onClick={clear}>
+          <Trash2 size={14} /> Limpar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Modal de assinatura eletrônica simples de um documento.
+function SignDocumentModal({ doc, user, onClose, onSign }) {
+  const [form, setForm] = useState({
+    signerName: user?.name || "",
+    signerEmail: user?.email || "",
+    signerRole: "",
+  });
+  const [confirmed, setConfirmed] = useState(false);
+  const padRef = useRef(null);
+  const signatures = doc.signatures || [];
+
+  const submit = (event) => {
+    event.preventDefault();
+    if (!form.signerName.trim() || !confirmed) return;
+    const imageDataUrl = padRef.current?.readSignature?.() || "";
+    onSign(
+      makeSignature({
+        id: uid(),
+        signerName: form.signerName,
+        signerEmail: form.signerEmail,
+        signerRole: form.signerRole,
+        content: doc.content,
+        imageDataUrl,
+      }),
+    );
+  };
+
+  return (
+    <Modal title={`Assinar “${doc.title}”`} onClose={onClose}>
+      <form className="modal-body" onSubmit={submit}>
+        <p className="sign-explain">
+          A assinatura registra quem assinou, quando, e guarda uma impressão
+          digital do texto. Se o documento for editado depois, o app avisa que
+          ele mudou. É uma <strong>assinatura eletrônica simples</strong> (Lei
+          14.063/2020) — não substitui certificado digital ICP-Brasil quando a
+          lei exigir um.
+        </p>
+        <div className="form-grid">
+          <Field label="Quem está assinando">
+            <input
+              required
+              autoFocus
+              value={form.signerName}
+              onChange={(e) => setForm({ ...form, signerName: e.target.value })}
+            />
+          </Field>
+          <Field label="E-mail (opcional)">
+            <input
+              type="email"
+              value={form.signerEmail}
+              onChange={(e) => setForm({ ...form, signerEmail: e.target.value })}
+            />
+          </Field>
+          <Field label="Papel no documento (opcional)">
+            <input
+              placeholder="Contratada, cliente, testemunha..."
+              value={form.signerRole}
+              onChange={(e) => setForm({ ...form, signerRole: e.target.value })}
+            />
+          </Field>
+        </div>
+        <SignaturePad padRef={padRef} />
+        <label className="sign-confirm">
+          <input
+            type="checkbox"
+            checked={confirmed}
+            onChange={(e) => setConfirmed(e.target.checked)}
+          />
+          <span>
+            Li o documento e concordo com o seu conteúdo, assinando
+            eletronicamente.
+          </span>
+        </label>
+        {signatures.length > 0 && (
+          <p className="sign-existing">
+            Este documento já tem {signatures.length}{" "}
+            {signatures.length === 1 ? "assinatura" : "assinaturas"}.
+          </p>
+        )}
+        <footer className="modal-foot">
+          <button type="button" className="btn ghost" onClick={onClose}>
+            Cancelar
+          </button>
+          <button className="btn" type="submit" disabled={!confirmed}>
+            <PenLine size={15} /> Assinar documento
+          </button>
+        </footer>
+      </form>
+    </Modal>
+  );
+}
+
+// Lista das assinaturas de um documento, com conferência de integridade.
+function SignatureList({ doc, onRemove }) {
+  const signatures = doc.signatures || [];
+  if (signatures.length === 0) return null;
+  return (
+    <div className="sign-list">
+      <h4>Assinaturas</h4>
+      {signatures.map((sig) => {
+        const check = verifySignature(sig, doc.content);
+        return (
+          <article
+            key={sig.id}
+            className={`sign-item ${check.valid ? "ok" : "warn"}`}
+          >
+            {sig.imageDataUrl ? (
+              <img src={sig.imageDataUrl} alt={`Assinatura de ${sig.signerName}`} />
+            ) : null}
+            <div>
+              <strong>
+                {sig.signerName}
+                {sig.signerRole ? ` — ${sig.signerRole}` : ""}
+              </strong>
+              {sig.signerEmail && <small>{sig.signerEmail}</small>}
+              <small>{new Date(sig.signedAt).toLocaleString("pt-BR")}</small>
+              <small className="sign-code">Código: {sig.code}</small>
+              <small className={check.valid ? "sign-ok" : "sign-warn"}>
+                {check.valid ? <BadgeCheck size={13} /> : <AlertTriangle size={13} />}{" "}
+                {check.message}
+              </small>
+            </div>
+            {onRemove && (
+              <button
+                type="button"
+                className="btn ghost sm danger"
+                onClick={() => onRemove(sig.id)}
+                title="Remover assinatura"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
 function Documents({ db, update, business, setToast, go, searchSeed, clearSearchSeed }) {
   const [modal, setModal] = useState(false),
     [editing, setEditing] = useState(null),
@@ -19060,6 +19314,7 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
     [uploadErrors, setUploadErrors] = useState([]),
     [templatePicker, setTemplatePicker] = useState(false),
     [mergeOpen, setMergeOpen] = useState(false),
+    [signingId, setSigningId] = useState(null),
     [dragging, setDragging] = useState(false);
   useEffect(() => {
     if (searchSeed) {
@@ -19083,6 +19338,7 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
     title: "",
     type: "Proposta comercial",
     content: "",
+    signatures: [],
     visibility: "privado",
     sharedWith: [],
     sharedTeams: [],
@@ -19100,6 +19356,29 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
     setEditing(d?.id || null);
     setModal(true);
   };
+  const signingDoc = db.documents.find((d) => d.id === signingId) || null;
+  const patchDocument = (id, updater) =>
+    update((prev) => ({
+      ...prev,
+      documents: prev.documents.map((d) => (d.id === id ? updater(d) : d)),
+    }));
+  const addSignature = (signature) => {
+    patchDocument(signingId, (d) => ({
+      ...d,
+      signatures: [...(d.signatures || []), signature],
+    }));
+    setSigningId(null);
+    setToast(`Documento assinado — código ${signature.code}`);
+    trackProductEvent("document_signed", { module: "documentos" });
+  };
+  const removeSignature = (docId, signatureId) => {
+    if (!window.confirm("Remover esta assinatura do documento?")) return;
+    patchDocument(docId, (d) => ({
+      ...d,
+      signatures: (d.signatures || []).filter((s) => s.id !== signatureId),
+    }));
+  };
+
   const applyTemplate = (template) => {
     setTemplatePicker(false);
     open({
@@ -19236,9 +19515,11 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
     if (!format) return;
     setExportBusy(`${d.id}:${format}`);
     try {
+      const signBlock = signatureBlockText(d.signatures, d.content);
+      const body = signBlock ? `${d.content}\n\n${signBlock}` : d.content;
       if (format === "txt") {
         saveBlob(
-          new Blob([`${d.title}\n\n${d.content}`], {
+          new Blob([`${d.title}\n\n${body}`], {
             type: "text/plain;charset=utf-8",
           }),
           `${slugify(d.title)}.txt`,
@@ -19255,7 +19536,7 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
                   text: d.type,
                   heading: HeadingLevel.HEADING_2,
                 }),
-                ...String(d.content || "")
+                ...String(body || "")
                   .split("\n")
                   .map((line) => new Paragraph({ text: line || " " })),
               ],
@@ -19275,7 +19556,7 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
         pdf.text(d.type, 18, 31);
         pdf.setTextColor(25);
         pdf.setFontSize(11);
-        const lines = pdf.splitTextToSize(String(d.content || ""), 175);
+        const lines = pdf.splitTextToSize(String(body || ""), 175);
         let y = 42;
         lines.forEach((line) => {
           if (y > 282) {
@@ -19501,10 +19782,37 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
               <small>
                 Atualizado {new Date(d.updatedAt).toLocaleString("pt-BR")}
               </small>
+              {(() => {
+                const status = signatureStatus(d.signatures, d.content);
+                if (status.state === "sem-assinatura") return null;
+                return (
+                  <small
+                    className={`doc-sign-badge ${status.state}`}
+                    title={
+                      status.state === "assinado"
+                        ? "Documento íntegro desde a assinatura"
+                        : "O texto mudou depois de assinado"
+                    }
+                  >
+                    {status.state === "assinado" ? (
+                      <BadgeCheck size={13} />
+                    ) : (
+                      <AlertTriangle size={13} />
+                    )}
+                    {status.state === "assinado"
+                      ? `Assinado (${status.total})`
+                      : "Alterado após assinar"}
+                  </small>
+                );
+              })()}
               <footer>
                 <button onClick={() => open(d)}>
                   <Edit3 />
                   Editar
+                </button>
+                <button onClick={() => setSigningId(d.id)}>
+                  <PenLine />
+                  Assinar
                 </button>
                 <label className="compact-export">
                   <Download />
@@ -19650,6 +19958,12 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
                 </div>
               </section>
             )}
+            {editing && (
+              <SignatureList
+                doc={{ ...form, id: editing }}
+                onRemove={(sigId) => removeSignature(editing, sigId)}
+              />
+            )}
             <SharingFields
               value={{
                 visibility: form.visibility,
@@ -19671,6 +19985,14 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
             </div>
           </form>
         </Modal>
+      )}
+      {signingDoc && (
+        <SignDocumentModal
+          doc={signingDoc}
+          user={db.user}
+          onClose={() => setSigningId(null)}
+          onSign={addSignature}
+        />
       )}
     </PageTitle>
   );

@@ -1,6 +1,19 @@
 # Versão publicada
 
-## v124
+## v125
+
+- Assinatura eletrônica simples de documentos, sem serviço externo e sem custo.
+- Cada assinatura registra quem assinou, papel, e-mail opcional, data e hora.
+- Impressão digital determinística do texto detecta qualquer alteração feita
+  depois da assinatura, e o cartão do documento avisa "Alterado após assinar".
+- Código de verificação legível (SF-XXXX-XXXX) para conferência sem sistema.
+- Desenho da assinatura no dedo ou no mouse, opcional: assinar pelo nome
+  também vale e continua funcionando quando o navegador não oferece canvas.
+- Bloco de assinaturas anexado automaticamente às exportações em PDF, DOCX e TXT,
+  com o aviso legal de que é assinatura eletrônica simples (Lei 14.063/2020) e
+  não substitui certificado ICP-Brasil quando a lei exigir.
+
+## Base preservada da v124
 
 - Hierarquia universal de trabalho com organização, workspace, espaço, pasta e
   lista.
