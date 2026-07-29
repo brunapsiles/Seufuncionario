@@ -61,6 +61,15 @@ import {
   ganttWidth,
   scheduleRiskSummary,
 } from "./features/projects/scheduleDomain.js";
+import {
+  appendRecordComment,
+  computedDatabaseValue,
+  createDatabaseRecord,
+  relationIds,
+  relationLabels,
+  removeRecordAndReferences,
+  updateRelation,
+} from "./features/databases/relational.js";
 // Reexporta a camada de lógica pura para os testes que importam de "./App".
 export {
   contactLinks,
@@ -15324,6 +15333,24 @@ function DbCell({ field, value, onChange, bases }) {
     );
   if (field.type === "relation") {
     const target = (bases || []).find((b) => b.id === field.targetBaseId);
+    if (field.multiple !== false)
+      return (
+        <select
+          multiple
+          value={relationIds(value)}
+          onChange={(e) =>
+            onChange([...e.target.selectedOptions].map((option) => option.value))
+          }
+          aria-label={field.name}
+          className="db-relation-multiple"
+        >
+          {(target?.rows || []).map((r) => (
+            <option key={r.id} value={r.id}>
+              {recordLabel(target, r.id) || "(sem título)"}
+            </option>
+          ))}
+        </select>
+      );
     return (
       <select
         value={value ?? ""}
@@ -15354,6 +15381,15 @@ function DbCell({ field, value, onChange, bases }) {
         ))}
       </select>
     );
+  if (field.type === "multiselect")
+    return (
+      <input
+        value={Array.isArray(value) ? value.join(", ") : value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={field.name}
+        placeholder="Separe por vírgulas"
+      />
+    );
   if (field.type === "longtext")
     return (
       <textarea
@@ -15365,7 +15401,21 @@ function DbCell({ field, value, onChange, bases }) {
     );
   return (
     <input
-      type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
+      type={
+        ["number", "currency", "percent"].includes(field.type)
+          ? "number"
+          : field.type === "date"
+            ? "date"
+            : field.type === "datetime"
+              ? "datetime-local"
+              : field.type === "email"
+                ? "email"
+                : field.type === "url"
+                  ? "url"
+                  : field.type === "phone"
+                    ? "tel"
+                    : "text"
+      }
       value={value ?? ""}
       onChange={(e) => onChange(e.target.value)}
       aria-label={field.name}
@@ -15384,6 +15434,8 @@ function DataBases({ db, update, business, setToast }) {
   const [calMonth, setCalMonth] = useState(today().slice(0, 7));
   const [fieldModal, setFieldModal] = useState(null); // {mode, id?, name, type, options, targetBaseId}
   const [newBaseName, setNewBaseName] = useState("");
+  const [recordPageId, setRecordPageId] = useState(null);
+  const [recordComment, setRecordComment] = useState("");
 
   const selected = bases.find((b) => b.id === selectedId) || bases[0] || null;
   const selectFields = (selected?.fields || []).filter((f) => f.type === "select");
@@ -15411,9 +15463,15 @@ function DataBases({ db, update, business, setToast }) {
   };
   const displayCell = (f, row) => {
     if (f.type === "formula") return formulaResult(f, row);
+    if (["lookup", "rollup"].includes(f.type)) {
+      const computed = computedDatabaseValue(bases, selected, row, f);
+      return Array.isArray(computed)
+        ? computed.map((value) => formatCellValue("text", value)).join(", ")
+        : formatCellValue("number", computed);
+    }
     const value = row?.cells?.[f.id];
     if (f.type === "relation")
-      return recordLabel(bases.find((b) => b.id === f.targetBaseId), value) || "";
+      return relationLabels(bases, f, value).join(", ");
     return formatCellValue(f.type, value);
   };
 
@@ -15444,19 +15502,70 @@ function DataBases({ db, update, business, setToast }) {
     setSelectedId(bases.find((b) => b.id !== id)?.id || null);
     setToast("Base excluída");
   };
-  const addRow = () =>
-    patchBase(selected.id, (b) => ({ ...b, rows: [...b.rows, { id: uid(), cells: {} }] }));
+  const addRow = () => {
+    const row = createDatabaseRecord(uid());
+    patchBase(selected.id, (b) => ({ ...b, rows: [...b.rows, row] }));
+  };
   const updateCell = (rowId, field, raw) =>
-    patchBase(selected.id, (b) => ({
-      ...b,
-      rows: b.rows.map((r) =>
-        r.id === rowId
-          ? { ...r, cells: { ...r.cells, [field.id]: coerceCellValue(field.type, raw) } }
-          : r,
+    field.type === "relation"
+      ? update((prev) => ({
+          ...prev,
+          databases: updateRelation(prev.databases || [], {
+            baseId: selected.id,
+            rowId,
+            fieldId: field.id,
+            value: raw,
+          }),
+        }))
+      : patchBase(selected.id, (b) => ({
+          ...b,
+          rows: b.rows.map((r) =>
+            r.id === rowId
+              ? {
+                  ...r,
+                  cells: {
+                    ...r.cells,
+                    [field.id]: coerceCellValue(field.type, raw),
+                  },
+                  updatedAt: new Date().toISOString(),
+                }
+              : r,
+          ),
+        }));
+  const deleteRow = (rowId) =>
+    update((prev) => ({
+      ...prev,
+      databases: removeRecordAndReferences(prev.databases || [], selected.id, rowId),
+    }));
+
+  const patchRecord = (rowId, patch) =>
+    patchBase(selected.id, (base) => ({
+      ...base,
+      rows: base.rows.map((row) =>
+        row.id === rowId
+          ? { ...row, ...patch, updatedAt: new Date().toISOString() }
+          : row,
       ),
     }));
-  const deleteRow = (rowId) =>
-    patchBase(selected.id, (b) => ({ ...b, rows: b.rows.filter((r) => r.id !== rowId) }));
+
+  const addRecordComment = () => {
+    const text = recordComment.trim();
+    if (!text) return;
+    patchBase(selected.id, (base) => ({
+      ...base,
+      rows: base.rows.map((row) =>
+        row.id === recordPageId
+          ? appendRecordComment(row, {
+              id: uid(),
+              text,
+              authorId: db.user?.id,
+              authorName: db.user?.name,
+            })
+          : row,
+      ),
+    }));
+    setRecordComment("");
+  };
 
   const saveField = () => {
     const name = fieldModal.name.trim();
@@ -15470,6 +15579,20 @@ function DataBases({ db, update, business, setToast }) {
         : undefined;
     const targetBaseId =
       fieldModal.type === "relation" ? fieldModal.targetBaseId || "" : undefined;
+    const multiple =
+      fieldModal.type === "relation" ? fieldModal.multiple !== false : undefined;
+    const reciprocalFieldId =
+      fieldModal.type === "relation"
+        ? fieldModal.reciprocalFieldId || ""
+        : undefined;
+    const relationFieldId = ["lookup", "rollup"].includes(fieldModal.type)
+      ? fieldModal.relationFieldId || ""
+      : undefined;
+    const targetFieldId = ["lookup", "rollup"].includes(fieldModal.type)
+      ? fieldModal.targetFieldId || ""
+      : undefined;
+    const rollupOperation =
+      fieldModal.type === "rollup" ? fieldModal.rollupOperation || "count" : undefined;
     const formula =
       fieldModal.type === "formula" ? fieldModal.formula || "" : undefined;
     if (fieldModal.mode === "edit") {
@@ -15477,7 +15600,19 @@ function DataBases({ db, update, business, setToast }) {
         ...b,
         fields: b.fields.map((f) =>
           f.id === fieldModal.id
-            ? { ...f, name, type: fieldModal.type, options, targetBaseId, formula }
+            ? {
+                ...f,
+                name,
+                type: fieldModal.type,
+                options,
+                targetBaseId,
+                multiple,
+                reciprocalFieldId,
+                relationFieldId,
+                targetFieldId,
+                rollupOperation,
+                formula,
+              }
             : f,
         ),
       }));
@@ -15486,7 +15621,16 @@ function DataBases({ db, update, business, setToast }) {
         ...b,
         fields: [
           ...b.fields,
-          { ...dbNewField(name, fieldModal.type, options), targetBaseId, formula },
+          {
+            ...dbNewField(name, fieldModal.type, options),
+            targetBaseId,
+            multiple,
+            reciprocalFieldId,
+            relationFieldId,
+            targetFieldId,
+            rollupOperation,
+            formula,
+          },
         ],
       }));
     }
@@ -15512,8 +15656,8 @@ function DataBases({ db, update, business, setToast }) {
           <div>
             <h1>Meus dados</h1>
             <p className="page-sub">
-              Crie suas próprias bases: tabelas com os campos que você quiser e
-              visões em tabela, galeria ou quadro. Como um mini-Notion, grátis.
+              Crie bases relacionais com registros completos, campos calculados e
+              visualizações diferentes sobre os mesmos dados.
             </p>
           </div>
         </header>
@@ -15644,6 +15788,11 @@ function DataBases({ db, update, business, setToast }) {
                                 type: f.type,
                                 options: (f.options || []).join(", "),
                                 targetBaseId: f.targetBaseId || "",
+                                multiple: f.multiple !== false,
+                                reciprocalFieldId: f.reciprocalFieldId || "",
+                                relationFieldId: f.relationFieldId || "",
+                                targetFieldId: f.targetFieldId || "",
+                                rollupOperation: f.rollupOperation || "count",
                                 formula: f.formula || "",
                               })
                             }
@@ -15661,9 +15810,9 @@ function DataBases({ db, update, business, setToast }) {
                       <tr key={row.id}>
                         {selected.fields.map((f) => (
                           <td key={f.id}>
-                            {f.type === "formula" ? (
+                            {["formula", "lookup", "rollup"].includes(f.type) ? (
                               <span className="db-formula-cell">
-                                {formulaResult(f, row) || "—"}
+                                {displayCell(f, row) || "—"}
                               </span>
                             ) : (
                               <DbCell
@@ -15676,6 +15825,14 @@ function DataBases({ db, update, business, setToast }) {
                           </td>
                         ))}
                         <td className="db-rowactions">
+                          <button
+                            className="sheet-row-del"
+                            onClick={() => setRecordPageId(row.id)}
+                            title="Abrir página do registro"
+                            aria-label="Abrir página do registro"
+                          >
+                            <ExternalLink size={13} />
+                          </button>
                           <button
                             className="sheet-row-del"
                             onClick={() => deleteRow(row.id)}
@@ -15700,6 +15857,12 @@ function DataBases({ db, update, business, setToast }) {
               <div className="db-gallery">
                 {selected.rows.map((row) => (
                   <article key={row.id} className="card db-card">
+                    <button
+                      className="db-card-open"
+                      onClick={() => setRecordPageId(row.id)}
+                    >
+                      Abrir página
+                    </button>
                     {selected.fields.map((f) => (
                       <div key={f.id} className="db-card-row">
                         <span className="db-card-label">{f.name}</span>
@@ -15922,21 +16085,136 @@ function DataBases({ db, update, business, setToast }) {
               </Field>
             )}
             {fieldModal.type === "relation" && (
-              <Field label="Base relacionada">
-                <select
-                  value={fieldModal.targetBaseId || ""}
-                  onChange={(e) =>
-                    setFieldModal((m) => ({ ...m, targetBaseId: e.target.value }))
-                  }
-                >
-                  <option value="">Escolha uma base...</option>
-                  {bases.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+              <>
+                <Field label="Base relacionada">
+                  <select
+                    value={fieldModal.targetBaseId || ""}
+                    onChange={(e) =>
+                      setFieldModal((m) => ({
+                        ...m,
+                        targetBaseId: e.target.value,
+                        reciprocalFieldId: "",
+                      }))
+                    }
+                  >
+                    <option value="">Escolha uma base...</option>
+                    {bases.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <label className="check-row">
+                  <input
+                    type="checkbox"
+                    checked={fieldModal.multiple !== false}
+                    onChange={(e) =>
+                      setFieldModal((m) => ({ ...m, multiple: e.target.checked }))
+                    }
+                  />
+                  Permitir vários registros
+                </label>
+                <Field label="Campo inverso (relação bidirecional)">
+                  <select
+                    value={fieldModal.reciprocalFieldId || ""}
+                    onChange={(e) =>
+                      setFieldModal((m) => ({
+                        ...m,
+                        reciprocalFieldId: e.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">Sem sincronização inversa</option>
+                    {(
+                      bases.find((base) => base.id === fieldModal.targetBaseId)
+                        ?.fields || []
+                    )
+                      .filter(
+                        (field) =>
+                          field.type === "relation" &&
+                          field.targetBaseId === selected.id,
+                      )
+                      .map((field) => (
+                        <option key={field.id} value={field.id}>
+                          {field.name}
+                        </option>
+                      ))}
+                  </select>
+                </Field>
+              </>
+            )}
+            {["lookup", "rollup"].includes(fieldModal.type) && (
+              <>
+                <Field label="Relação de origem">
+                  <select
+                    value={fieldModal.relationFieldId || ""}
+                    onChange={(e) =>
+                      setFieldModal((m) => ({
+                        ...m,
+                        relationFieldId: e.target.value,
+                        targetFieldId: "",
+                      }))
+                    }
+                  >
+                    <option value="">Escolha uma relação...</option>
+                    {selected.fields
+                      .filter((field) => field.type === "relation")
+                      .map((field) => (
+                        <option key={field.id} value={field.id}>
+                          {field.name}
+                        </option>
+                      ))}
+                  </select>
+                </Field>
+                <Field label="Campo da base relacionada">
+                  <select
+                    value={fieldModal.targetFieldId || ""}
+                    onChange={(e) =>
+                      setFieldModal((m) => ({
+                        ...m,
+                        targetFieldId: e.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">Escolha um campo...</option>
+                    {(
+                      bases.find(
+                        (base) =>
+                          base.id ===
+                          selected.fields.find(
+                            (field) => field.id === fieldModal.relationFieldId,
+                          )?.targetBaseId,
+                      )?.fields || []
+                    ).map((field) => (
+                      <option key={field.id} value={field.id}>
+                        {field.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {fieldModal.type === "rollup" && (
+                  <Field label="Cálculo">
+                    <select
+                      value={fieldModal.rollupOperation || "count"}
+                      onChange={(e) =>
+                        setFieldModal((m) => ({
+                          ...m,
+                          rollupOperation: e.target.value,
+                        }))
+                      }
+                    >
+                      <option value="count">Contar valores</option>
+                      <option value="count_unique">Contar únicos</option>
+                      <option value="sum">Somar</option>
+                      <option value="average">Média</option>
+                      <option value="min">Mínimo</option>
+                      <option value="max">Máximo</option>
+                      <option value="join">Combinar textos</option>
+                    </select>
+                  </Field>
+                )}
+              </>
             )}
             {fieldModal.type === "formula" && (
               <>
@@ -15990,6 +16268,107 @@ function DataBases({ db, update, business, setToast }) {
           </div>
         </Modal>
       )}
+
+      {recordPageId &&
+        (() => {
+          const row = selected?.rows?.find((item) => item.id === recordPageId);
+          if (!row) return null;
+          return (
+            <Modal
+              title={recordLabel(selected, row.id) || "Página do registro"}
+              onClose={() => setRecordPageId(null)}
+            >
+              <div className="modal-body db-record-page">
+                <div className="db-record-properties">
+                  {selected.fields.map((field) => (
+                    <div key={field.id} className="db-record-property">
+                      <span>{field.name}</span>
+                      {["formula", "lookup", "rollup"].includes(field.type) ? (
+                        <strong>{displayCell(field, row) || "—"}</strong>
+                      ) : (
+                        <DbCell
+                          field={field}
+                          value={row.cells?.[field.id]}
+                          onChange={(value) => updateCell(row.id, field, value)}
+                          bases={bases}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <Field label="Conteúdo do registro">
+                  <textarea
+                    rows={9}
+                    value={row.content || ""}
+                    onChange={(e) => patchRecord(row.id, { content: e.target.value })}
+                    placeholder="Escreva contexto, decisões, instruções e informações detalhadas..."
+                  />
+                </Field>
+                <section className="db-record-attachments">
+                  <div>
+                    <h4>Anexos</h4>
+                    <label className="btn ghost sm">
+                      <Upload size={15} /> Adicionar arquivos
+                      <input
+                        type="file"
+                        multiple
+                        hidden
+                        onChange={async (event) => {
+                          const attachments = await addAttachmentsFromFiles(
+                            event.target.files,
+                            row.attachments,
+                            setToast,
+                          );
+                          patchRecord(row.id, { attachments });
+                          event.target.value = "";
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <AttachmentList
+                    attachments={row.attachments}
+                    onRemove={(attachmentId) =>
+                      patchRecord(row.id, {
+                        attachments: (row.attachments || []).filter(
+                          (attachment) => attachment.id !== attachmentId,
+                        ),
+                      })
+                    }
+                  />
+                </section>
+                <section className="db-record-comments">
+                  <h4>Comentários</h4>
+                  {(row.comments || []).map((comment) => (
+                    <article key={comment.id}>
+                      <strong>{comment.authorName || "Usuário"}</strong>
+                      <p>{comment.text}</p>
+                    </article>
+                  ))}
+                  <div className="db-record-comment-form">
+                    <input
+                      value={recordComment}
+                      onChange={(e) => setRecordComment(e.target.value)}
+                      placeholder="Adicionar comentário"
+                      aria-label="Adicionar comentário"
+                    />
+                    <button className="btn primary sm" onClick={addRecordComment}>
+                      Comentar
+                    </button>
+                  </div>
+                </section>
+                <small className="db-record-meta">
+                  Criado em{" "}
+                  {row.createdAt
+                    ? new Date(row.createdAt).toLocaleString("pt-BR")
+                    : "data não registrada"}
+                  {row.updatedAt
+                    ? ` · Atualizado em ${new Date(row.updatedAt).toLocaleString("pt-BR")}`
+                    : ""}
+                </small>
+              </div>
+            </Modal>
+          );
+        })()}
     </div>
   );
 }
