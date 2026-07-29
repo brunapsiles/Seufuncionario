@@ -144,6 +144,15 @@ não sejam a `main` também estão habilitados como versões de prévia.
   `comments`, `createdAt` e `updatedAt`, sem deixar de funcionar nas views
   existentes. Não duplicar os cálculos relacionais no JSX e não transformar
   dados calculados de lookup/rollup em células persistidas.
+- **Processos e formulários (v121)**: a lógica pura fica em
+  `src/features/processes/processDomain.js` e a interface lazy em
+  `src/features/processes/ProcessStudio.jsx`. Definições (`processes`), casos
+  (`processCases`) e respostas (`formResponses`) são coleções distintas e
+  protegidas por visibilidade no worker. O processo deve funcionar sem conexão;
+  `connections.baseId` e `connections.createTask` são integrações opcionais.
+  Movimentações usam `transitionProcessCase`, que preserva sequência,
+  obrigatoriedade, aprovação, SLA e histórico. Não movimentar casos alterando
+  apenas `stageId` no JSX.
 
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
