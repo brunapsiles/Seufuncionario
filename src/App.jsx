@@ -148,6 +148,7 @@ import {
   Target,
   Megaphone,
   Network,
+  GitBranch,
   Handshake,
   WalletCards,
   Workflow,
@@ -296,6 +297,9 @@ const DataLab = lazy(() => import("./features/analytics/DataLab.jsx"));
 const ConnectedNotes = lazy(
   () => import("./features/notes/ConnectedNotes.jsx"),
 );
+const PortfolioBoard = lazy(
+  () => import("./features/portfolio/PortfolioBoard.jsx"),
+);
 const PersonalInbox = lazy(
   () => import("./features/inbox/PersonalInbox.jsx"),
 );
@@ -361,6 +365,9 @@ const emptyDb = {
   glossary: [],
   notes: [],
   flashcards: [],
+  projectLinks: [],
+  portfolioRisks: [],
+  raci: [],
   salesPipeline: null,
   transactions: [],
   financeSettings: {},
@@ -471,6 +478,7 @@ const nav = [
   ["memoria-busca", "Memória e busca", BrainCog],
   ["analise-dados", "Análise de dados", Sigma],
   ["notas-conectadas", "Conhecimento conectado", Network],
+  ["portfolio", "Portfólio de projetos", GitBranch],
   ["metas", "Metas e OKRs", Target],
   ["processos", "Processos e Solicitações", PanelsTopLeft],
   ["formularios-publicos", "Formulários públicos", PanelsTopLeft],
@@ -528,6 +536,7 @@ const navGroups = [
       "memoria-busca",
       "analise-dados",
       "notas-conectadas",
+      "portfolio",
       "metas",
       "resultados",
       "processos",
@@ -26831,6 +26840,19 @@ export default function App() {
               business={business}
               setToast={setToast}
               go={go}
+            />
+          </Suspense>
+        );
+      case "portfolio":
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando portfólio...</div>}
+          >
+            <PortfolioBoard
+              db={db}
+              update={update}
+              business={business}
+              setToast={setToast}
             />
           </Suspense>
         );

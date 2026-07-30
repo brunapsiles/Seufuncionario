@@ -1,6 +1,33 @@
 # Versão publicada
 
-## v143
+## v144
+
+- Portfólio de projetos: um andar acima do cronograma de cada projeto. Mostra
+  o conjunto e responde a pergunta que importa — se um projeto escorregar, o
+  que mais atrasa junto.
+- Dependência entre projetos ("B só começa depois que A terminar", com folga
+  opcional). A data de quem depende é recalculada sozinha.
+- Dependência em círculo é recusada na hora de cadastrar, com o motivo escrito:
+  um projeto passaria a esperar o outro em roda e nenhuma data fecharia.
+- Simulação de atraso: escolha o projeto e os dias, e a tela lista quem
+  escorrega junto e qual passa a ser o novo prazo de cada um.
+- Corrente que define a data final do portfólio fica marcada na tabela.
+- Semáforo de situação por projeto sempre com o motivo escrito ao lado. Sinal
+  vermelho sem explicação não ajuda ninguém a decidir o que fazer.
+- Por que atrasou: aponta espera por outro projeto, tarefa travada e tarefa sem
+  responsável. Quando o dado cadastrado não permite dizer, o app assume que não
+  sabe em vez de chutar um motivo.
+- Trabalho repetido: mesma tarefa aberta em dois projetos diferentes.
+- Riscos com chance × impacto, nível, matriz 5x5 e aviso de risco grave sem
+  dono ou sem plano — risco registrado e esquecido continua sendo risco.
+- RACI por atividade, com as duas regras que fazem valer a pena: duas pessoas
+  respondendo é o mesmo que ninguém respondendo, e atividade sem ninguém
+  fazendo não sai do papel. Mais o resumo de quem está respondendo por mais
+  coisa.
+- Correção: com dois projetos empurrando o mesmo, o empurrão informado saía
+  menor do que o real (media do empurrão anterior em vez da data cadastrada).
+
+## Base preservada da v143
 
 - Conhecimento conectado: a anotação deixa de ser arquivo solto e vira rede.
   Escrever `[[nome da nota]]` liga as duas, e a ligação vale nos dois sentidos.

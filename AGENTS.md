@@ -240,6 +240,25 @@ não sejam a `main` também estão habilitados como versões de prévia.
   de toque e `<g>` não é lido como botão. A navegação fica na lista de botões
   ao lado.
 
+- **Portfólio de projetos (v144)**: lógica pura em
+  `src/features/portfolio/portfolioDomain.js` e interface lazy em
+  `src/features/portfolio/PortfolioBoard.jsx`. Coleções `projectLinks`,
+  `portfolioRisks` e `raci`. Fica ACIMA de `scheduleDomain.js`, que continua
+  cuidando do cronograma de UM projeto — não duplicar CPM aqui.
+  Pontos que já custaram bug ou exigem cuidado:
+  (1) Dependência em círculo trava qualquer cálculo de data.
+  `topologicalOrder` devolve `null` nesse caso e `portfolioSchedule` cai para
+  as datas cadastradas, sem laço infinito. A interface recusa a ligação ANTES
+  de gravar, explicando o motivo.
+  (2) Em losango (A puxa B e C, os dois puxam D), o atraso de D é o MÁXIMO dos
+  caminhos, nunca a soma — somar contaria o mesmo atraso duas vezes.
+  (3) `pushedDays` é medido contra a data que a titular cadastrou, não contra o
+  empurrão anterior. Com dois projetos empurrando o mesmo, medir do anterior
+  mostrava só o último trecho e escondia metade do atraso.
+  (4) `delayCauses` só aponta causa que dá para provar com o dado cadastrado;
+  sem prova, devolve "não dá para dizer" em vez de chutar.
+  `projectHealth` sempre devolve os motivos junto do nível.
+
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
 - "Esqueci minha senha": ✅ implementado (/api/auth/forgot e /api/auth/reset, códigos via Brevo)

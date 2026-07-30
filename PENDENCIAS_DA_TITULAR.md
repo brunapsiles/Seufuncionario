@@ -7,9 +7,9 @@ Ações que somente você pode realizar. **Nenhuma delas impede o uso do app**, 
 ### 0. O site está publicando uma versão antiga (v138)
 
 Verificado em 30/07/2026: o endereço no ar responde **v138**, mas o código no
-GitHub já está na **v143**. Ou seja, as cinco últimas entregas (quadro visual,
+GitHub já está na **v144**. Ou seja, as últimas entregas (quadro visual,
 diagramas, quadro rápido, memória e busca, análise de dados e conhecimento
-conectado) **estão prontas e testadas, mas você ainda não as vê no site**.
+conectado, portfólio de projetos) **estão prontas e testadas, mas você ainda não as vê no site**.
 
 O deploy automático da Cloudflare, ligado ao GitHub, parou de publicar em algum
 ponto depois da v138. O código está salvo e seguro — é só a publicação que
@@ -28,7 +28,7 @@ O que fazer (escolha um):
 
 Para conferir que deu certo, abra
 https://seufuncionario-expo.brunapsiles.workers.dev/api/status — o campo
-`version` precisa mostrar `v143`.
+`version` precisa mostrar `v144`.
 
 Só você pode fazer isso: publicar exige a sua conta Cloudflare, e eu não tenho
 (nem devo ter) acesso a ela.
