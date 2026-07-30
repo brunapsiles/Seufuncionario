@@ -4,35 +4,52 @@ Ações que somente você pode realizar. **Nenhuma delas impede o uso do app**, 
 
 ## 🔴 Recomendadas agora
 
-### 0. O site está publicando uma versão antiga (v138)
+### 0. Destravar a publicação do site (5 minutos, uma vez só)
 
-Verificado em 30/07/2026: o endereço no ar responde **v138**, mas o código no
-GitHub já está na **v145**. Ou seja, as últimas entregas (quadro visual,
-diagramas, quadro rápido, memória e busca, análise de dados e conhecimento
-conectado, portfólio de projetos, agentes) **estão prontas e testadas, mas você ainda não as vê no site**.
+Verificado em 30/07/2026: o site no ar responde **v138**, mas o código no GitHub
+já está na **v145**. As últimas entregas — quadro visual, diagramas, quadro
+rápido, memória e busca, análise de dados, conhecimento conectado, portfólio de
+projetos e agentes — **estão prontas e testadas, mas você ainda não as vê**.
 
-O deploy automático da Cloudflare, ligado ao GitHub, parou de publicar em algum
-ponto depois da v138. O código está salvo e seguro — é só a publicação que
-travou.
+O que aconteceu: a publicação automática vinha da integração da Cloudflare com o
+GitHub, e ela parou de funcionar depois da v138. O código está salvo e seguro; os
+testes passam em todos os commits. Travou só a publicação.
 
-O que fazer (escolha um):
+**A solução já está pronta no repositório.** Criei um fluxo de publicação dentro
+do próprio GitHub (`.github/workflows/deploy.yml`), que não depende mais daquela
+integração. Ele publica sozinho a cada alteração. Falta só você dar a chave a ele
+— e isso só você pode fazer, porque é a sua conta da Cloudflare.
 
-1. **Pelo painel da Cloudflare** (mais fácil): entre em Workers & Pages → o
-   projeto `seufuncionario-expo` → aba de builds/deploys. Procure builds com
-   erro ou a conexão com o GitHub desligada, e mande publicar de novo.
-2. **Pelo terminal do projeto**, se preferir:
-   ```
-   npx wrangler login
-   npm run deploy
-   ```
+**Passo 1 — criar a chave (2 min)**
 
-Para conferir que deu certo, abra
+1. Abra https://dash.cloudflare.com/profile/api-tokens
+2. Clique em **Create Token**
+3. Na lista de modelos, procure **Edit Cloudflare Workers** e clique em **Use template**
+4. Desça até o fim e clique em **Continue to summary**, depois **Create Token**
+5. **Copie o token agora** — ele só aparece uma vez
+
+**Passo 2 — guardar a chave no GitHub (2 min)**
+
+1. Abra https://github.com/brunapsiles/Seufuncionario/settings/secrets/actions
+2. Clique em **New repository secret**
+3. Em *Name*, escreva exatamente: `CLOUDFLARE_API_TOKEN`
+4. Em *Secret*, cole o token que você copiou
+5. Clique em **Add secret**
+
+**Passo 3 — mandar publicar (1 min)**
+
+1. Abra https://github.com/brunapsiles/Seufuncionario/actions/workflows/deploy.yml
+2. Clique em **Run workflow** > **Run workflow**
+3. Espere terminar (uns 3 minutos). O último passo mostra a versão que ficou no ar.
+
+**Como saber que deu certo:** abra
 https://seufuncionario-expo.brunapsiles.workers.dev/api/status — o campo
-`version` precisa mostrar `v145`.
+`version` tem que mostrar `v145`.
 
-Só você pode fazer isso: publicar exige a sua conta Cloudflare, e eu não tenho
-(nem devo ter) acesso a ela.
+Depois disso, toda alteração publica sozinha. Você não precisa repetir nada.
 
+Se algum passo der erro, o próprio GitHub mostra a mensagem em português na tela
+do fluxo, dizendo o que faltou.
 
 ### 1. Cadastrar as chaves VAPID (notificações do navegador)
 
