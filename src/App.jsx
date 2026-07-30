@@ -147,6 +147,7 @@ import {
   Rocket,
   Target,
   Megaphone,
+  Network,
   Handshake,
   WalletCards,
   Workflow,
@@ -292,6 +293,9 @@ const KnowledgeCenter = lazy(
   () => import("./features/knowledge/KnowledgeCenter.jsx"),
 );
 const DataLab = lazy(() => import("./features/analytics/DataLab.jsx"));
+const ConnectedNotes = lazy(
+  () => import("./features/notes/ConnectedNotes.jsx"),
+);
 const PersonalInbox = lazy(
   () => import("./features/inbox/PersonalInbox.jsx"),
 );
@@ -355,6 +359,8 @@ const emptyDb = {
   workHours: null,
   memories: [],
   glossary: [],
+  notes: [],
+  flashcards: [],
   salesPipeline: null,
   transactions: [],
   financeSettings: {},
@@ -464,6 +470,7 @@ const nav = [
   ["planejar", "Planejar o dia", CalendarDays],
   ["memoria-busca", "Memória e busca", BrainCog],
   ["analise-dados", "Análise de dados", Sigma],
+  ["notas-conectadas", "Conhecimento conectado", Network],
   ["metas", "Metas e OKRs", Target],
   ["processos", "Processos e Solicitações", PanelsTopLeft],
   ["formularios-publicos", "Formulários públicos", PanelsTopLeft],
@@ -520,6 +527,7 @@ const navGroups = [
       "planejar",
       "memoria-busca",
       "analise-dados",
+      "notas-conectadas",
       "metas",
       "resultados",
       "processos",
@@ -26823,6 +26831,19 @@ export default function App() {
               business={business}
               setToast={setToast}
               go={go}
+            />
+          </Suspense>
+        );
+      case "notas-conectadas":
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando notas...</div>}
+          >
+            <ConnectedNotes
+              db={db}
+              update={update}
+              business={business}
+              setToast={setToast}
             />
           </Suspense>
         );

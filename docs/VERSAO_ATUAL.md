@@ -1,6 +1,31 @@
 # Versão publicada
 
-## v142
+## v143
+
+- Conhecimento conectado: a anotação deixa de ser arquivo solto e vira rede.
+  Escrever `[[nome da nota]]` liga as duas, e a ligação vale nos dois sentidos.
+- "Citada em": toda nota mostra quem aponta para ela, com o trecho da frase.
+- "Citada sem ligação": quando outra nota escreve o nome em texto corrido sem
+  ligar, o app avisa e transforma em ligação com um clique.
+- "Pode ter a ver": sugestão de ligação por termos raros em comum. Palavra que
+  aparece em quase toda nota não conecta nada, então pesa pelo inverso da
+  frequência. Nota que já está ligada nos dois sentidos não é sugerida de novo.
+- Rede de ideias: desenho da vizinhança da nota, com lista de botões ao lado
+  para navegar. Nota citada que ainda não existe aparece tracejada e pode ser
+  criada dali.
+- Nota do dia com roteiro de journaling (foco, o que aconteceu, o que aprendi,
+  para amanhã). Abrir duas vezes no mesmo dia não duplica.
+- Transclusão: `![[Nota]]` traz o texto dela para dentro, e `![[Nota#^bloco]]`
+  traz só um parágrafo. Quando duas notas se embutem uma na outra, o app para e
+  avisa em vez de travar a tela.
+- Cartões de revisão: linhas no formato `pergunta :: resposta` viram cartões, e
+  a volta deles é espaçada conforme o acerto. Cartão errado volta no mesmo dia.
+- Saúde da rede: notas citadas mas ainda não escritas, notas soltas (que
+  ninguém cita e que não citam ninguém) e títulos repetidos, que deixam a
+  ligação ambígua.
+- Exportação de todas as notas em markdown, com cabeçalho legível.
+
+## Base preservada da v142
 
 - Análise de dados sobre o que já existe no workspace: financeiro, contas,
   funil de oportunidades, horas trabalhadas e planilhas. Nenhuma importação

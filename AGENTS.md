@@ -222,6 +222,24 @@ não sejam a `main` também estão habilitados como versões de prévia.
   centróides semeados por quantil justamente para ser determinístico: a mesma
   entrada precisa gerar sempre os mesmos grupos.
 
+- **Conhecimento conectado (v143)**: lógica pura em
+  `src/features/notes/notesDomain.js` e interface lazy em
+  `src/features/notes/ConnectedNotes.jsx`. Coleções `notes` e `flashcards`.
+  Três armadilhas que já custaram bug e não devem voltar:
+  (1) `\b` do JavaScript NÃO faz fronteira de palavra ao lado de letra
+  acentuada — `/\bprodução\b/` nunca casa direito. Toda fronteira deste módulo
+  usa lookahead/lookbehind Unicode (`(?![\p{L}\p{N}])`), nunca `\b`.
+  (2) Transclusão precisa de pilha de visitados: sem ela, A embute B e B embute
+  A e a tela trava. O ciclo tem de virar aviso visível, não silêncio.
+  (3) Sugestão de ligação conta ligação nos DOIS sentidos. Se a outra nota já
+  aponta para esta, elas já estão conectadas e já aparecem em "citada em";
+  sugerir de novo é mandar ligar o que já está ligado.
+  Ligação para nota inexistente é fluxo normal (escrever primeiro, criar
+  depois), então vira nó "a criar" no grafo, nunca erro.
+  O SVG do grafo é `role="img"` e não recebe clique: círculo de 9px não é alvo
+  de toque e `<g>` não é lido como botão. A navegação fica na lista de botões
+  ao lado.
+
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
 - "Esqueci minha senha": ✅ implementado (/api/auth/forgot e /api/auth/reset, códigos via Brevo)

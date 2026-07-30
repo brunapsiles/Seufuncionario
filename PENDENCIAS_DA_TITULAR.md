@@ -4,6 +4,36 @@ Ações que somente você pode realizar. **Nenhuma delas impede o uso do app**, 
 
 ## 🔴 Recomendadas agora
 
+### 0. O site está publicando uma versão antiga (v138)
+
+Verificado em 30/07/2026: o endereço no ar responde **v138**, mas o código no
+GitHub já está na **v143**. Ou seja, as cinco últimas entregas (quadro visual,
+diagramas, quadro rápido, memória e busca, análise de dados e conhecimento
+conectado) **estão prontas e testadas, mas você ainda não as vê no site**.
+
+O deploy automático da Cloudflare, ligado ao GitHub, parou de publicar em algum
+ponto depois da v138. O código está salvo e seguro — é só a publicação que
+travou.
+
+O que fazer (escolha um):
+
+1. **Pelo painel da Cloudflare** (mais fácil): entre em Workers & Pages → o
+   projeto `seufuncionario-expo` → aba de builds/deploys. Procure builds com
+   erro ou a conexão com o GitHub desligada, e mande publicar de novo.
+2. **Pelo terminal do projeto**, se preferir:
+   ```
+   npx wrangler login
+   npm run deploy
+   ```
+
+Para conferir que deu certo, abra
+https://seufuncionario-expo.brunapsiles.workers.dev/api/status — o campo
+`version` precisa mostrar `v143`.
+
+Só você pode fazer isso: publicar exige a sua conta Cloudflare, e eu não tenho
+(nem devo ter) acesso a ela.
+
+
 ### 1. Cadastrar as chaves VAPID (notificações do navegador)
 
 Tudo de notificação push já está construído e no ar — lembrete do DAS do MEI, avisos de missão/entrega e o resumo semanal de segunda-feira — mas **nada é enviado** até estes dois segredos existirem no cofre do Worker. Sem eles o app funciona normalmente, só sem push.
