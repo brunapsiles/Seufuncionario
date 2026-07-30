@@ -300,6 +300,7 @@ const ConnectedNotes = lazy(
 const PortfolioBoard = lazy(
   () => import("./features/portfolio/PortfolioBoard.jsx"),
 );
+const AgentStudio = lazy(() => import("./features/agents/AgentStudio.jsx"));
 const PersonalInbox = lazy(
   () => import("./features/inbox/PersonalInbox.jsx"),
 );
@@ -368,6 +369,8 @@ const emptyDb = {
   projectLinks: [],
   portfolioRisks: [],
   raci: [],
+  agents: [],
+  agentRuns: [],
   salesPipeline: null,
   transactions: [],
   financeSettings: {},
@@ -479,6 +482,7 @@ const nav = [
   ["analise-dados", "Análise de dados", Sigma],
   ["notas-conectadas", "Conhecimento conectado", Network],
   ["portfolio", "Portfólio de projetos", GitBranch],
+  ["agentes", "Agentes", Bot],
   ["metas", "Metas e OKRs", Target],
   ["processos", "Processos e Solicitações", PanelsTopLeft],
   ["formularios-publicos", "Formulários públicos", PanelsTopLeft],
@@ -537,6 +541,7 @@ const navGroups = [
       "analise-dados",
       "notas-conectadas",
       "portfolio",
+      "agentes",
       "metas",
       "resultados",
       "processos",
@@ -26840,6 +26845,19 @@ export default function App() {
               business={business}
               setToast={setToast}
               go={go}
+            />
+          </Suspense>
+        );
+      case "agentes":
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando agentes...</div>}
+          >
+            <AgentStudio
+              db={db}
+              update={update}
+              business={business}
+              setToast={setToast}
             />
           </Suspense>
         );

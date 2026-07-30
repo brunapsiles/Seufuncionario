@@ -259,6 +259,29 @@ não sejam a `main` também estão habilitados como versões de prévia.
   sem prova, devolve "não dá para dizer" em vez de chutar.
   `projectHealth` sempre devolve os motivos junto do nível.
 
+- **Agentes (v145)**: lógica pura em `src/features/agents/agentDomain.js` e
+  interface lazy em `src/features/agents/AgentStudio.jsx`. Coleções `agents` e
+  `agentRuns`.
+  Decisões que NÃO devem ser desfeitas sem falar com a titular:
+  (1) O catálogo `AGENT_TOOLS` é fechado e cada ferramenta declara risco
+  (`leitura`, `escrita`, `externo`). Ferramenta fora do catálogo, ou id que a
+  IA inventou, sempre cai em aprovação — inclusive no nível "tudo".
+  (2) O nível `tudo` libera envio externo sem aprovação. Foi escolha explícita
+  da titular em 30/07/2026; o nível avisa o que significa, vale por agente e
+  todo envio entra no log marcado como externo.
+  (3) `executarPasso` recebe e devolve o banco, nunca chama `update` sozinho.
+  Gravar dentro do laço fazia cada passo partir de uma cópia velha e a gravação
+  final apagava o que os anteriores criaram: o agente dizia "criei a tarefa" e
+  a tarefa sumia. Uma gravação só, no fim do laço.
+  (4) Envio de verdade ainda não existe (falta credencial). O passo FALHA
+  dizendo o que falta, em vez de devolver sucesso — fingir envio é pior que
+  falhar.
+  (5) `checkAcceptance` nunca devolve `confident: true`. A IA não confere bem o
+  próprio trabalho e a interface é obrigada a apresentar o resultado como
+  indício.
+  Armadilha de JavaScript já corrigida aqui: `Number(x) || 8` transforma um 0
+  legítimo no padrão. Usar `Number.isFinite` antes de aplicar o padrão.
+
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
 - "Esqueci minha senha": ✅ implementado (/api/auth/forgot e /api/auth/reset, códigos via Brevo)

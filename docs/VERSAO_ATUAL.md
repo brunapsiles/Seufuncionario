@@ -1,6 +1,43 @@
 # Versão publicada
 
-## v144
+## v145
+
+- Agentes: você escreve o objetivo, a IA monta o passo a passo e executa. Nada
+  é feito antes de o plano existir e estar na tela.
+- Aviso fixo em toda a tela de que a IA pode errar: ela entende mal um pedido,
+  inventa dado que não existe e às vezes faz algo parecido com o pedido, mas
+  não a coisa certa. O aviso não fecha nem some.
+- Quatro níveis de autonomia, escolhidos por agente: só mostrar o plano; pode
+  olhar meus dados; pode criar coisas para mim; e pode fazer tudo, inclusive
+  enviar. O último avisa antes o que significa, porque mensagem enviada não
+  volta.
+- Catálogo fechado de ferramentas: procurar, ler financeiro/agenda/CRM,
+  resumir, criar tarefa/nota/documento, marcar compromisso, lançar no
+  financeiro, rascunhar e enviar. O agente não tem caminho para nada fora
+  dessa lista.
+- Limite de passos por execução, definido por você. Plano que a IA escreveu
+  errado para em vez de rodar em círculo.
+- Passo recusado derruba quem dependia dele, em vez de executar pela metade
+  justamente o que você vetou.
+- Só o passo da vez pede aprovação: aprovar um passo cuja dependência ainda nem
+  rodou seria decidir no escuro.
+- Retomar execução interrompida sem refazer o que já foi feito — refazer um
+  lançamento no financeiro lançaria duas vezes.
+- Histórico do que a IA decidiu, com hora, e destaque para o que saiu para
+  fora.
+- Conferência dos critérios de aceite que você escreveu, sempre apresentada
+  como indício e nunca como aprovação: a IA não é boa juíza do próprio
+  trabalho.
+- Envio de e-mail e WhatsApp ainda não acontece de verdade porque falta
+  conectar a conta de envio. Em vez de fingir que enviou, o passo falha e diz
+  exatamente o que falta.
+- Correção: `Number(x) || 8` fazia quem digitasse limite 0 receber 8 passos
+  calado, porque zero é falso em JavaScript — o oposto de limitar o agente.
+- Correção: o agente criava a tarefa, dizia que criou, e a gravação seguinte da
+  execução apagava tudo, porque partia de uma cópia velha do banco. Agora o
+  trabalho é acumulado e gravado uma vez só.
+
+## Base preservada da v144
 
 - Portfólio de projetos: um andar acima do cronograma de cada projeto. Mostra
   o conjunto e responde a pergunta que importa — se um projeto escorregar, o
