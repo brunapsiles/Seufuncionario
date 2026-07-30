@@ -204,6 +204,24 @@ não sejam a `main` também estão habilitados como versões de prévia.
   compartilhá-lo entre membros. A antiga `InboxPage` continua sendo a caixa
   compartilhada de conversas com clientes, acessível pela segunda aba.
 
+- **Análise de dados (v142)**: lógica pura em
+  `src/features/analytics/statsDomain.js` e interface lazy em
+  `src/features/analytics/DataLab.jsx`. Não cria coleção nova: lê
+  `transactions`, `bills`, `opportunities`, `timeEntries` e `sheets`.
+  Armadilha grave já corrigida: `parseBrNumber` remove tudo que não é dígito e
+  devolve `0` para texto puro, então `"abacaxi"` virava zero e envenenava média
+  e soma sem nenhum erro visível. `toNumber` agora só chama `parseBrNumber`
+  depois de conferir que o valor parece número, e recusa data em formato ISO
+  (`2026-07-01` não é o número 2026). Ao reaproveitar `parseBrNumber` em
+  qualquer cálculo novo, repetir essa proteção.
+  Convenção do módulo: `mean`, `median`, `stdDev` e `quantile` devolvem `null`
+  quando não há dado suficiente, nunca `0` — zero é um resultado legítimo e não
+  pode se confundir com ausência de dado. `forecast` devolve confiança alta,
+  média ou baixa a partir do tamanho da série e do r², e a interface é obrigada
+  a mostrar o aviso de palpite quando a confiança é baixa. `clusterValues` usa
+  centróides semeados por quantil justamente para ser determinístico: a mesma
+  entrada precisa gerar sempre os mesmos grupos.
+
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
 - "Esqueci minha senha": ✅ implementado (/api/auth/forgot e /api/auth/reset, códigos via Brevo)

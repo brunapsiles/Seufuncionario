@@ -6724,7 +6724,7 @@ export default {
       return json({
         status: database === "operacional" ? "operacional" : "degradado",
         database,
-        version: "v141",
+        version: "v142",
         roadmap: {
           complete: false,
           completedThrough: 8,

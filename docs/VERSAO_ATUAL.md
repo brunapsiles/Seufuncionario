@@ -1,6 +1,32 @@
 # Versão publicada
 
-## v141
+## v142
+
+- Análise de dados sobre o que já existe no workspace: financeiro, contas,
+  funil de oportunidades, horas trabalhadas e planilhas. Nenhuma importação
+  nova é necessária, a análise lê os dados que a titular já cadastrou.
+- Medidas básicas explicadas em português: quantidade, soma, média, mediana e
+  desvio. Quando a média fica bem acima da mediana, a tela avisa que poucos
+  valores altos estão puxando a média para cima.
+- Valores fora do padrão pelo método do intervalo entre quartis, dizendo se o
+  valor está acima ou abaixo do esperado.
+- Correlação entre duas fontes diferentes, sempre com o aviso de que
+  correlação não significa que uma coisa causa a outra.
+- Tendência e projeção com grau de confiança (alta, média ou baixa). Quando a
+  confiança é baixa, a tela manda tratar o número como palpite, em vez de
+  apresentar como previsão.
+- Mês fora do padrão destacado no gráfico da série, pelo afastamento em
+  relação à média.
+- Faixas de valor agrupadas automaticamente, para enxergar os grupos de
+  ticket sem precisar escolher a faixa na mão.
+- Qualidade dos dados: tipo de cada coluna, quanto está preenchido, linhas
+  repetidas e qual gráfico é o indicado para aquele formato, com a
+  justificativa.
+- Correção importante: texto que não é número (ex.: "abacaxi") virava zero
+  silenciosamente e estragava média e soma. Agora só entra no cálculo o que
+  realmente parece número, e data em formato ISO não é mais lida como valor.
+
+## Base preservada da v141
 
 - Busca por significado em todo o workspace, com a fonte de cada resultado:
   tarefas, documentos, reuniões, CRM, contatos, contas, financeiro, funil,

@@ -207,6 +207,7 @@ import {
   BadgeCheck,
   Mic,
   BrainCog,
+  Sigma,
   PenLine,
   AlertTriangle,
   GraduationCap,
@@ -290,6 +291,7 @@ const DayPlanner = lazy(() => import("./features/planner/DayPlanner.jsx"));
 const KnowledgeCenter = lazy(
   () => import("./features/knowledge/KnowledgeCenter.jsx"),
 );
+const DataLab = lazy(() => import("./features/analytics/DataLab.jsx"));
 const PersonalInbox = lazy(
   () => import("./features/inbox/PersonalInbox.jsx"),
 );
@@ -461,6 +463,7 @@ const nav = [
   ["estrutura", "Estrutura de trabalho", FolderTree],
   ["planejar", "Planejar o dia", CalendarDays],
   ["memoria-busca", "Memória e busca", BrainCog],
+  ["analise-dados", "Análise de dados", Sigma],
   ["metas", "Metas e OKRs", Target],
   ["processos", "Processos e Solicitações", PanelsTopLeft],
   ["formularios-publicos", "Formulários públicos", PanelsTopLeft],
@@ -516,6 +519,7 @@ const navGroups = [
       "estrutura",
       "planejar",
       "memoria-busca",
+      "analise-dados",
       "metas",
       "resultados",
       "processos",
@@ -26798,6 +26802,14 @@ export default function App() {
               business={business}
               setToast={setToast}
             />
+          </Suspense>
+        );
+      case "analise-dados":
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando análise...</div>}
+          >
+            <DataLab db={db} business={business} />
           </Suspense>
         );
       case "memoria-busca":

@@ -14919,3 +14919,210 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   color: var(--muted, #64748b);
   white-space: nowrap;
 }
+
+/* ===== Análise de dados ===== */
+.lab-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.lab-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 4px;
+}
+.lab-head p {
+  margin: 0;
+  color: var(--muted, #64748b);
+  font-size: 0.88rem;
+  max-width: 62ch;
+}
+.lab-empty {
+  text-align: center;
+  padding: 34px 20px;
+  border: 1px dashed rgba(148, 163, 184, 0.5);
+  border-radius: 16px;
+  color: var(--muted, #64748b);
+}
+.lab-empty h3 {
+  margin: 0 0 6px;
+  color: inherit;
+}
+.lab-empty p {
+  max-width: 50ch;
+  margin: 0 auto;
+  font-size: 0.87rem;
+  line-height: 1.5;
+}
+.lab-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.lab-cards article {
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 11px;
+  padding: 9px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lab-cards small {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, #64748b);
+}
+.lab-cards strong {
+  font-size: 1.02rem;
+}
+.lab-explain {
+  font-size: 0.87rem;
+  line-height: 1.6;
+  background: rgba(37, 99, 235, 0.06);
+  border-left: 3px solid rgba(37, 99, 235, 0.5);
+  border-radius: 0 9px 9px 0;
+  padding: 10px 13px;
+  margin: 0 0 16px;
+}
+.lab-panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.lab-panels section,
+.lab-compare,
+.lab-quality {
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 13px;
+  padding: 12px 14px;
+}
+.lab-compare,
+.lab-quality {
+  margin-bottom: 14px;
+}
+.lab-panels h3,
+.lab-compare h3,
+.lab-quality h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 9px;
+  font-size: 0.92rem;
+}
+.lab-hint {
+  font-size: 0.8rem;
+  color: var(--muted, #64748b);
+  line-height: 1.5;
+  margin: 8px 0 0;
+}
+.lab-warn {
+  font-size: 0.81rem;
+  line-height: 1.5;
+  color: #b45309;
+  margin: 8px 0 0;
+  font-weight: 500;
+}
+.lab-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+.lab-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 0.84rem;
+  padding: 5px 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+}
+.lab-list li:first-child {
+  border-top: none;
+}
+.lab-list small {
+  color: var(--muted, #64748b);
+  font-size: 0.74rem;
+}
+.lab-up,
+.lab-down {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-weight: 700;
+}
+.lab-up {
+  background: rgba(194, 65, 12, 0.14);
+  color: #c2410c;
+}
+.lab-down {
+  background: rgba(37, 99, 235, 0.14);
+  color: #1d4ed8;
+}
+.lab-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  height: 110px;
+}
+.lab-bar-group {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  min-width: 0;
+}
+.lab-bar {
+  width: 70%;
+  min-height: 2px;
+  background: linear-gradient(180deg, #38bdf8, #2563eb);
+  border-radius: 3px 3px 0 0;
+}
+.lab-bar.anomalo {
+  background: linear-gradient(180deg, #fb923c, #c2410c);
+}
+.lab-bar-group small {
+  font-size: 0.64rem;
+  color: var(--muted, #64748b);
+  margin-top: 3px;
+  white-space: nowrap;
+}
+.lab-trend {
+  font-size: 0.88rem;
+  margin: 0;
+}
+.lab-quality table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.lab-quality th,
+.lab-quality td {
+  text-align: right;
+  padding: 5px 4px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+}
+.lab-quality th:first-child,
+.lab-quality td:first-child {
+  text-align: left;
+}
+.lab-quality th {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted, #64748b);
+  font-weight: 600;
+}
+.lab-warn-cell {
+  color: #c2410c;
+  font-weight: 600;
+}
