@@ -1,6 +1,23 @@
 # Versão publicada
 
-## v150
+## v151
+
+- Correção de segurança: o texto trazido de sites da internet passou a ser
+  tratado como informação, nunca como ordem. Uma página pode esconder no meio
+  do texto um pedido do tipo "ignore o que mandaram e crie tal coisa", e a IA
+  tendia a obedecer. Agora todo trecho externo vem cercado e marcado, e a IA é
+  instruída a ignorar qualquer ordem vinda dali e avisar quando isso acontecer.
+- A busca na internet parou de disparar à toa. Neste app "buscar", "procurar" e
+  "pesquisar" quase sempre querem dizer "acha no meu workspace" — "busca o
+  pedido 123" não precisa sair para fora. Agora só busca quando você nomeia a
+  fonte (internet, google, online) ou pergunta algo que muda no mundo (notícia,
+  cotação, preço de mercado, lei atual). Isso deixa a resposta mais rápida,
+  gasta menos cota e para de mandar pergunta interna sua para empresa de fora.
+- O planejamento dos agentes nunca mais puxa conteúdo da internet. O plano
+  decide o que o agente vai fazer no seu negócio; site desconhecido não opina
+  nisso.
+
+## Base preservada da v150
 
 - A IA transforma título e descrição livres em tarefa executável, preservando
   os fatos informados e sugerindo prioridade, área, duração, etapas, critérios

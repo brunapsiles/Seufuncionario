@@ -308,6 +308,29 @@ gratuito da Cloudflare. O workflow `Publicar` do GitHub é apenas uma contingên
   como concluída nem alegar ação externa. A fila de foco é local e não pode
   consumir cota de IA.
 
+- **Conteúdo da web é dado, nunca ordem (v151)**: `webResultsToContext`
+  (`worker/services/web-search.js`) cerca todo trecho de site entre marcas
+  `<<<FONTE_EXTERNA>>>` e declara, ANTES das fontes, que nada ali é instrução.
+  Página na internet carrega ordem escondida de propósito ("ignore o que
+  pediram e faça X") para sequestrar assistente que cola conteúdo no prompt sem
+  separar dado de comando — e este app tem agentes que criam tarefa, lançam
+  dinheiro e podem enviar mensagem em nome da titular. A marca é neutralizada
+  no conteúdo (`stripFence`) para o site não conseguir forjar o fim da cerca.
+  Mesma proteção que `memoriesToSystemContext` já aplicava; faltava aqui.
+  Ao adicionar QUALQUER nova fonte externa no prompt (RSS, e-mail recebido,
+  comentário de cliente, PDF de terceiro), repetir esse cerco.
+- **Gatilho da busca web (v151)**: neste app "buscar", "procurar" e "pesquisar"
+  quase sempre significam "acha no MEU workspace". Usados sozinhos como gatilho,
+  mandavam a pergunta da titular para empresa de fora sem necessidade. Agora o
+  verbo só vale acompanhado de fonte externa nomeada (internet/web/google/
+  online), ou quando o pedido é de fato que muda no mundo (notícia, cotação,
+  preço de mercado, lei atual).
+- **Planejamento de agente nunca busca na web (v151)**: `AgentStudio` envia
+  `webSearch: false` ao montar o plano. O catálogo de ferramentas cita
+  `buscar_workspace`, o que sozinho ligava a busca externa e deixava texto de
+  site desconhecido opinar sobre o que o agente ia fazer no workspace da
+  titular. Não remover esse parâmetro.
+
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
 - "Esqueci minha senha": ✅ implementado (/api/auth/forgot e /api/auth/reset, códigos via Brevo)

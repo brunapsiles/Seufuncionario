@@ -142,7 +142,16 @@ export default function AgentStudio({ db, update, business, setToast }) {
       const r = await fetch("/api/ai", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ prompt: buildPlanPrompt(agente, contexto()) }),
+        // webSearch: false é proteção, não economia. O plano decide o que o
+        // agente vai FAZER no workspace da titular; deixar texto de site
+        // desconhecido entrar aqui seria deixar um estranho opinar sobre criar
+        // tarefa, lançar dinheiro e enviar mensagem em nome dela. O catálogo de
+        // ferramentas cita "buscar_workspace", o que sozinho já ligava a busca
+        // externa sem ninguém pedir.
+        body: JSON.stringify({
+          prompt: buildPlanPrompt(agente, contexto()),
+          webSearch: false,
+        }),
       });
       const dados = await r.json();
       const texto = dados?.text || dados?.reply || dados?.result || "";
