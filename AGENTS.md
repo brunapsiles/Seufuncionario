@@ -297,6 +297,17 @@ gratuito da Cloudflare. O workflow `Publicar` do GitHub é apenas uma contingên
   completo. Trocar a atividade pode sugerir pacotes, mas nunca deve bloquear a
   ativação de qualquer outro pacote nem apagar dados de módulos ocultos.
 
+- **Inteligência de tarefas (v150)**: regras puras de estruturação, validação,
+  priorização local e prompt de execução ficam em
+  `src/features/tasks/taskAiDomain.js`. A resposta estrutural da IA só entra
+  depois de JSON válido e normalização de domínio; falha de provedor usa o
+  plano local determinístico. Etapas e `acceptanceCriteria` cadastrados e
+  pendentes bloqueiam conclusão/aprovação, mas tarefas legadas sem checklist
+  não são bloqueadas. Execuções digitais abrem conversa com `sourceTaskId`; a
+  ação explícita “Anexar à tarefa” guarda no máximo três `aiOutputs`, sem marcar
+  como concluída nem alegar ação externa. A fila de foco é local e não pode
+  consumir cota de IA.
+
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
 - "Esqueci minha senha": ✅ implementado (/api/auth/forgot e /api/auth/reset, códigos via Brevo)
