@@ -1,15 +1,13 @@
 name: Publicar
 
-# Publica o app na Cloudflare a cada alteração na main, e também sob demanda
-# pelo botão "Run workflow" no GitHub.
+# Contingência manual de publicação. A publicação automática oficial acontece pelo
+# Cloudflare Workers Builds conectado à branch main.
 #
 # Só funciona depois que o segredo CLOUDFLARE_API_TOKEN existir no repositório
 # (Settings > Secrets and variables > Actions). O passo abaixo confere isso
 # primeiro e explica o que fazer, em vez de falhar com erro incompreensível.
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -54,7 +52,10 @@ jobs:
       - name: Instalar dependências
         run: npm ci
 
-      - name: Construir o app (roda lint e testes antes)
+      - name: Validar o app
+        run: npm run verify
+
+      - name: Construir o app
         run: npm run build
 
       # A migração vem antes de publicar: código novo que espera coluna nova

@@ -33,6 +33,7 @@ O núcleo foi desenhado para combinar as cotas gratuitas de Google, Cloudflare, 
 npm install
 npm run dev    # abre a interface em modo desenvolvimento
 npm test       # roda os testes
+npm run verify # roda lint e todos os testes
 ```
 
 ## Lançar na internet (gratuito, via Cloudflare)
@@ -51,8 +52,7 @@ npm test       # roda os testes
    ```
 4. Publique (o comando aplica as migrações antes do Worker):
    ```bash
-   npm run build
-   npm run deploy:cloudflare
+   npm run deploy
    ```
    Ao final o terminal mostra o endereço público do seu app (`https://seufuncionario-expo.<sua-conta>.workers.dev`).
 

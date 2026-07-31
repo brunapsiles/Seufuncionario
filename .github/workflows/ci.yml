@@ -24,5 +24,7 @@ jobs:
         run: npm ci
       - name: Lint (trava em erros; avisos não bloqueiam)
         run: npm run lint
-      - name: Testar e construir
+      - name: Testar
+        run: npm test
+      - name: Construir
         run: npm run build
