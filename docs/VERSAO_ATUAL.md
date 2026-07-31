@@ -1,5 +1,26 @@
 # Versão publicada
 
+## v149
+
+- Nova **Central do negócio** transforma o aplicativo em uma plataforma
+  configurável por atividade, sem criar versões separadas por setor.
+- O catálogo inicial reúne 30 categorias e mais de 300 atividades, cobrindo
+  alimentação, beleza, saúde, pets, serviços, B2B, educação, tecnologia,
+  transporte, varejo, indústria, agronegócio, criadores, organizações e outros.
+- Influenciadores, podcasters, streamers, infoprodutores e gestores de
+  comunidades passam a ter perfil próprio, com conteúdo, presença digital,
+  clientes, financeiro, comércio, conhecimento e automações recomendados.
+- Toda categoria oferece “Outra atividade” e descrição livre. Negócios
+  híbridos, novos ou de nicho não dependem de o nome já existir no catálogo.
+- Doze pacotes de funções podem ser ligados ou desligados por negócio. O menu
+  pode mostrar apenas o foco escolhido ou continuar exibindo todas as áreas.
+- Alterar o tipo sugere uma combinação inicial, mas nunca bloqueia funções: a
+  pessoa pode ativar qualquer pacote ou todos de uma vez.
+- Contas antigas preservam o menu completo. A personalização só entra quando a
+  titular do negócio a escolhe, evitando regressão na experiência atual.
+- Categoria, atividade e áreas selecionadas passam a compor o contexto seguro
+  da IA, para que respostas e entregáveis se adaptem ao trabalho real.
+
 ## v148
 
 - Nova **Central de crescimento** reúne sete frentes gratuitas que fecham

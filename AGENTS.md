@@ -286,6 +286,17 @@ gratuito da Cloudflare. O workflow `Publicar` do GitHub é apenas uma contingên
   Armadilha de JavaScript já corrigida aqui: `Number(x) || 8` transforma um 0
   legítimo no padrão. Usar `Number.isFinite` antes de aplicar o padrão.
 
+- **Perfil universal de negócios (v149)**: catálogo e regras puras ficam em
+  `src/features/business-profile/businessProfileDomain.js`; a interface lazy é
+  `BusinessProfileStudio.jsx`. O modelo é **núcleo único + perfil + pacotes**,
+  nunca um produto separado por setor. `BUSINESS_INDUSTRY_CATALOG` organiza
+  categoria e atividade, sempre com opção aberta; `BUSINESS_TYPES` só escolhe
+  recomendações funcionais internas. `enabledPacks` controla o menu quando
+  `menuMode === "custom"`, mas `perfil-negocio`, Início e Começar do zero ficam
+  sempre acessíveis. Contas antigas sem esses campos continuam vendo o menu
+  completo. Trocar a atividade pode sugerir pacotes, mas nunca deve bloquear a
+  ativação de qualquer outro pacote nem apagar dados de módulos ocultos.
+
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
 - "Esqueci minha senha": ✅ implementado (/api/auth/forgot e /api/auth/reset, códigos via Brevo)

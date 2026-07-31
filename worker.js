@@ -5792,6 +5792,8 @@ function systemPrompt(specialist, business, customInstructions) {
   const context = business
     ? [
         `Nome: ${business.name || "não informado"}`,
+        `Categoria: ${business.industryCategoryLabel || business.businessTypeLabel || "não informada"}`,
+        `Atividade: ${business.industryActivity || "não informada"}`,
         `Segmento: ${business.segment || "não informado"}`,
         `Estágio: ${business.stage || "não informado"}`,
         `Público: ${business.audience || "não informado"}`,
@@ -6058,6 +6060,9 @@ function localContingency(prompt, specialist, business, failures) {
 
 const SAFE_AI_BUSINESS_FIELDS = [
   "name",
+  "industryCategoryLabel",
+  "industryActivity",
+  "businessTypeLabel",
   "segment",
   "stage",
   "audience",
@@ -7507,7 +7512,7 @@ export default {
       return json({
         status: database === "operacional" ? "operacional" : "degradado",
         database,
-        version: "v148",
+        version: "v149",
         roadmap: {
           complete: true,
           completedThrough: 27,

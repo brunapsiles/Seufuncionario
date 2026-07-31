@@ -80,6 +80,15 @@ import {
   updateRelation,
 } from "./features/databases/relational.js";
 import Modal from "./components/Modal.jsx";
+import {
+  BUSINESS_INDUSTRY_CATALOG,
+  businessPackLabels,
+  businessTypeLabel,
+  filterNavigationForBusiness,
+  industryCategoryById,
+  profileTypeForIndustry,
+  recommendedPackIds,
+} from "./features/business-profile/businessProfileDomain.js";
 // Reexporta a camada de lógica pura para os testes que importam de "./App".
 export {
   contactLinks,
@@ -238,6 +247,7 @@ import {
   Zap,
   RefreshCw,
   Settings,
+  SlidersHorizontal,
   Plug,
   KeyRound,
   Sparkle,
@@ -327,6 +337,9 @@ const FreeSuite = lazy(
 );
 const PlatformSuite = lazy(
   () => import("./features/platform-suite/PlatformSuite.jsx"),
+);
+const BusinessProfileStudio = lazy(
+  () => import("./features/business-profile/BusinessProfileStudio.jsx"),
 );
 
 const LEGACY_STORAGE_KEY = "seu-funcionario-v1";
@@ -459,6 +472,7 @@ const nav = [
   ["inicio", "Início", Home],
   ["meu-trabalho", "Meu trabalho", BriefcaseBusiness],
   ["comecar", "Começar do zero", Rocket],
+  ["perfil-negocio", "Central do negócio", SlidersHorizontal],
   ["estrategia", "Estratégia", Target],
   ["marketing", "Marca e Marketing", Megaphone],
   ["vendas", "Vendas e Clientes", Handshake],
@@ -522,7 +536,10 @@ const navSecondary = [
 ];
 
 const navGroups = [
-  { label: null, items: ["inicio", "meu-trabalho", "comecar"] },
+  {
+    label: null,
+    items: ["inicio", "meu-trabalho", "comecar", "perfil-negocio"],
+  },
   {
     label: "VENDAS E CLIENTES",
     items: [
@@ -597,6 +614,8 @@ const navGroups = [
 // O modo employee personaliza sugestões e rótulos, mas nunca restringe
 // acesso: os dois modos navegam pelo mesmo conjunto completo de páginas.
 export const navForMode = () => nav;
+export const navForBusiness = (mode, business) =>
+  filterNavigationForBusiness(navForMode(mode), business);
 
 const toolCatalog = [
   {
@@ -1350,6 +1369,13 @@ export const buildTaskCalendar = (yearMonth, tasks) => {
 };
 
 export const CHANGELOG_ENTRIES = [
+  {
+    id: "2026-07-31-central-negocio-universal",
+    date: "2026-07-31",
+    title: "O app agora se adapta a qualquer tipo de negócio",
+    description:
+      "Escolha entre mais de 300 atividades — incluindo influenciadores, comércios, serviços, indústrias e operações de nicho — e organize o menu com os pacotes de funções mais úteis. Negócios híbridos podem usar descrição livre, ativar qualquer pacote ou mostrar tudo, sem perder acesso a nenhuma ferramenta.",
+  },
   {
     id: "2026-07-29-editor-universal-blocos",
     date: "2026-07-29",
@@ -3840,6 +3866,8 @@ function Onboarding({ db, update }) {
     stage: "Tenho apenas uma ideia",
     hasBusiness: "Sim",
     name: "",
+    industryCategoryId: "outros",
+    industryActivity: "",
     segment: "",
     need: "Organizar os próximos passos",
     weeklyGoal: "",
@@ -3850,6 +3878,12 @@ function Onboarding({ db, update }) {
     let starterTask = null;
     if (!skip) {
       const businessId = uid();
+      const category = industryCategoryById(form.industryCategoryId);
+      const businessTypeId = profileTypeForIndustry(
+        form.industryCategoryId,
+        form.industryActivity,
+      );
+      const enabledPacks = recommendedPackIds(businessTypeId);
       const firstActions = {
         "Organizar os próximos passos": "Definir as 3 prioridades desta semana",
         "Conseguir clientes": "Listar 10 possíveis clientes e preparar o primeiro contato",
@@ -3862,11 +3896,22 @@ function Onboarding({ db, update }) {
         id: businessId,
         name: form.name.trim() || "Meu negócio",
         owner: db.user.name,
-        segment: form.segment.trim(),
+        industryCategoryId: form.industryCategoryId,
+        industryCategoryLabel: category?.label || "Outros",
+        industryActivity: form.industryActivity,
+        businessTypeId,
+        businessTypeLabel: businessTypeLabel({ businessTypeId }),
+        segment:
+          form.segment.trim() ||
+          form.industryActivity ||
+          category?.label ||
+          "",
+        menuMode: "custom",
+        enabledPacks,
         stage: form.stage,
         goal: form.need,
         hasBusiness: form.hasBusiness,
-        focusAreas: form.areas.join(", "),
+        focusAreas: businessPackLabels(enabledPacks).join(", "),
         weeklyGoal: form.weeklyGoal.trim() || form.need,
         city: "",
         audience: "",
@@ -3985,13 +4030,49 @@ function Onboarding({ db, update }) {
                   placeholder="Ex.: Ateliê Aurora"
                 />
               </Field>
-              <Field label="Segmento">
+              <Field label="Categoria do negócio">
+                <select
+                  value={form.industryCategoryId}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      industryCategoryId: e.target.value,
+                      industryActivity: "",
+                    })
+                  }
+                >
+                  {BUSINESS_INDUSTRY_CATALOG.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Atividade específica">
+                <select
+                  value={form.industryActivity}
+                  onChange={(e) =>
+                    setForm({ ...form, industryActivity: e.target.value })
+                  }
+                >
+                  <option value="">Selecione a atividade</option>
+                  {(industryCategoryById(form.industryCategoryId)?.activities || []).map(
+                    (activity) => (
+                      <option key={activity} value={activity}>
+                        {activity}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </Field>
+              <Field
+                label="Como você descreve o segmento"
+                hint="Opcional. Use se o negócio for híbrido ou muito específico."
+              >
                 <input
                   value={form.segment}
-                  onChange={(e) =>
-                    setForm({ ...form, segment: e.target.value })
-                  }
-                  placeholder="Ex.: confeitaria, consultoria..."
+                  onChange={(e) => setForm({ ...form, segment: e.target.value })}
+                  placeholder="Ex.: criadora de conteúdo sobre beleza e carreira"
                 />
               </Field>
             </div>
@@ -4054,9 +4135,14 @@ function Onboarding({ db, update }) {
 
 function BusinessForm({ value, onSave, onClose }) {
   const [f, setF] = useState(
-    value || {
+    {
       name: "",
       owner: "",
+      industryCategoryId: "outros",
+      industryActivity: "",
+      businessTypeId: "outro",
+      menuMode: "custom",
+      enabledPacks: recommendedPackIds("outro"),
       segment: "",
       stage: "Estou estruturando o negócio",
       city: "",
@@ -4073,15 +4159,33 @@ function BusinessForm({ value, onSave, onClose }) {
       challenges: "",
       visualIdentity: "",
       focusAreas: "",
+      ...(value || {}),
     },
   );
   const save = (e) => {
     e.preventDefault();
     if (!f.name.trim()) return;
+    const category = industryCategoryById(f.industryCategoryId);
+    const businessTypeId = profileTypeForIndustry(
+      f.industryCategoryId,
+      f.industryActivity,
+    );
+    const enabledPacks =
+      Array.isArray(f.enabledPacks) && f.enabledPacks.length
+        ? f.enabledPacks
+        : recommendedPackIds(businessTypeId);
     onSave({
       ...f,
       id: f.id || uid(),
       name: f.name.trim(),
+      industryCategoryLabel: category?.label || "Outros",
+      businessTypeId,
+      businessTypeLabel: businessTypeLabel({ businessTypeId }),
+      segment:
+        f.segment.trim() || f.industryActivity || category?.label || "",
+      enabledPacks,
+      focusAreas:
+        f.focusAreas?.trim() || businessPackLabels(enabledPacks).join(", "),
       createdAt: f.createdAt || today(),
     });
   };
@@ -4101,10 +4205,62 @@ function BusinessForm({ value, onSave, onClose }) {
             onChange={(e) => setF({ ...f, owner: e.target.value })}
           />
         </Field>
-        <Field label="Segmento">
+        <Field label="Categoria do negócio">
+          <select
+            value={f.industryCategoryId || "outros"}
+            onChange={(e) => {
+              const categoryId = e.target.value;
+              const businessTypeId = profileTypeForIndustry(categoryId);
+              setF({
+                ...f,
+                industryCategoryId: categoryId,
+                industryActivity: "",
+                businessTypeId,
+                enabledPacks: recommendedPackIds(businessTypeId),
+                menuMode: "custom",
+              });
+            }}
+          >
+            {BUSINESS_INDUSTRY_CATALOG.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Atividade específica">
+          <select
+            value={f.industryActivity || ""}
+            onChange={(e) => {
+              const activity = e.target.value;
+              const businessTypeId = profileTypeForIndustry(
+                f.industryCategoryId,
+                activity,
+              );
+              setF({
+                ...f,
+                industryActivity: activity,
+                businessTypeId,
+                enabledPacks: recommendedPackIds(businessTypeId),
+                menuMode: "custom",
+              });
+            }}
+          >
+            <option value="">Selecione a atividade</option>
+            {(industryCategoryById(f.industryCategoryId)?.activities || []).map(
+              (activity) => (
+                <option key={activity} value={activity}>
+                  {activity}
+                </option>
+              ),
+            )}
+          </select>
+        </Field>
+        <Field label="Descrição livre do segmento">
           <input
             value={f.segment}
             onChange={(e) => setF({ ...f, segment: e.target.value })}
+            placeholder="Use para negócios híbridos ou muito específicos"
           />
         </Field>
         <Field label="Estágio">
@@ -24304,7 +24460,7 @@ function Certifications({ db, update, business, setToast, go }) {
   );
 }
 
-function Businesses({ db, update, setToast }) {
+function Businesses({ db, update, setToast, go }) {
   const [modal, setModal] = useState(false),
     [editing, setEditing] = useState(null);
   const save = (b) => {
@@ -24354,7 +24510,7 @@ function Businesses({ db, update, setToast }) {
               )}
             </div>
             <h3>{b.name}</h3>
-            <p>{b.segment || "Segmento não informado"}</p>
+            <p>{b.industryActivity || b.segment || "Segmento não informado"}</p>
             <small>{b.stage}</small>
             <footer>
               <Button
@@ -24362,6 +24518,15 @@ function Businesses({ db, update, setToast }) {
                 onClick={() => update({ ...db, selectedBusinessId: b.id })}
               >
                 Usar este
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  update((d) => ({ ...d, selectedBusinessId: b.id }));
+                  go("perfil-negocio");
+                }}
+              >
+                Configurar funções
               </Button>
               <button
                 className="icon-button"
@@ -26500,7 +26665,7 @@ export default function App() {
   )
     return <Onboarding db={db} update={update} />;
   const isEmployeeMode = mode === "employee";
-  const visibleNav = navForMode(mode);
+  const visibleNav = navForBusiness(mode, business);
   const myNotifications = (db.notifications || []).filter(
     (n) => n.assigneeId === db.user.id,
   );
@@ -27231,8 +27396,31 @@ export default function App() {
             go={go}
           />
         );
+      case "perfil-negocio":
+        return (
+          <Suspense
+            fallback={
+              <div className="inbox-loading">Preparando seu negócio...</div>
+            }
+          >
+            <BusinessProfileStudio
+              key={business?.id || "sem-negocio"}
+              business={business}
+              update={update}
+              go={go}
+              setToast={setToast}
+            />
+          </Suspense>
+        );
       case "businesses":
-        return <Businesses db={db} update={update} setToast={setToast} />;
+        return (
+          <Businesses
+            db={db}
+            update={update}
+            setToast={setToast}
+            go={go}
+          />
+        );
       default:
         return null;
     }
@@ -27421,7 +27609,9 @@ export default function App() {
                     <span className="business-avatar small">{b.name[0]}</span>
                     <span>
                       <strong>{b.name}</strong>
-                      <small>{b.segment || "Sem segmento"}</small>
+                      <small>
+                        {b.industryActivity || b.segment || "Sem segmento"}
+                      </small>
                     </span>
                     {business?.id === b.id && <Check />}
                   </button>
