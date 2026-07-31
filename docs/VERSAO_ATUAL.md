@@ -1,5 +1,22 @@
 # Versão publicada
 
+## v146
+
+- Nova área **Criação sem custo**, que funciona no próprio navegador e não
+  consome API: cria carrosséis de até dez slides, redimensiona imagens em lote,
+  remove fundos de cor uniforme e gera QR Codes.
+- Carrosséis preservam a marca do negócio, oferecem prévia e baixam todos os
+  slides em PNG dentro de um arquivo ZIP.
+- Imagens podem ser enquadradas nos tamanhos mais usados em redes sociais. O
+  original não é alterado e até vinte versões são baixadas juntas.
+- O removedor de fundo preserva o arquivo original e permite ajustar a
+  tolerância, porque apagar automaticamente parte do produto seria pior do que
+  avisar a limitação.
+- Apresentações agora também baixam em PowerPoint editável (`.pptx`), além do
+  PDF que já existia.
+- A exportação DOCX já fazia parte do aplicativo e foi preservada; não foi
+  duplicada com outro botão que faria a mesma coisa.
+
 ## v145
 
 - Agentes: você escreve o objetivo, a IA monta o passo a passo e executa. Nada
