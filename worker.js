@@ -1,5 +1,11 @@
 import { buildPushPayload } from "@block65/webcrypto-web-push";
 import {
+  ensureQuota,
+  planSnapshot,
+  quotaResponse,
+  recordUsage,
+} from "./worker/services/plan-usage.js";
+import {
   applyPersonalInboxState,
   buildPersonalInboxItems,
   personalInboxSummary,
@@ -6082,13 +6088,13 @@ const SAFE_AI_BUSINESS_FIELDS = [
 
 async function resolveAiWorkspaceContext(env, user, body) {
   if (!env.DB)
-    return { allowed: true, business: null, custom: null, memories: [] };
+    return { allowed: true, business: null, custom: null, memories: [], ownerId: user.id };
   const requestedOwner =
     typeof body.workspaceOwnerId === "string" && body.workspaceOwnerId
       ? body.workspaceOwnerId
       : user.id;
   const role = await membershipRole(env, user.id, requestedOwner);
-  if (!role) return { allowed: false, business: null, custom: null };
+  if (!role) return { allowed: false, business: null, custom: null, ownerId: requestedOwner };
   const row = await env.DB.prepare(
     "SELECT data FROM workspaces WHERE user_id = ?",
   )
@@ -6129,7 +6135,7 @@ async function resolveAiWorkspaceContext(env, user, body) {
     businessId,
     specialist: body.specialist,
   });
-  return { allowed: true, business, custom, memories };
+  return { allowed: true, business, custom, memories, ownerId: requestedOwner };
 }
 
 function buildAiContext(body, serverContext = {}) {
@@ -6214,6 +6220,10 @@ async function handleAiStream(request, env, user) {
   const { prompt, system } = context;
   if (prompt.length < 3) return json({ error: "Explique um pouco mais sobre o que precisa." }, 400);
   if (prompt.length > 50000) return json({ error: "O texto e os anexos ultrapassam o limite." }, 413);
+  // Sem esta checagem o streaming seria um caminho paralelo que ignora a cota,
+  // e o limite do plano não valeria nada.
+  const cota = await ensureQuota(env, serverContext.ownerId, "aiPerMonth", 1);
+  if (!cota.allowed) return json(quotaResponse({ ...cota, metric: "aiPerMonth" }), 402);
   let web;
   try {
     web = await addCurrentWebContext(
@@ -6240,6 +6250,12 @@ async function handleAiStream(request, env, user) {
       502,
     );
   }
+  // Contabiliza aqui: a cota já passou, a busca web (se houve) já deu certo, e
+  // a partir deste ponto o pedido vai de fato consumir provedor de IA. Cobrar
+  // antes penalizaria erro de configuração que não é culpa de quem usa.
+  await recordUsage(env, serverContext.ownerId, "aiPerMonth", 1);
+  if (web.sources?.length)
+    await recordUsage(env, serverContext.ownerId, "webSearchPerMonth", 1);
   const contextualPrompt = web.contextualPrompt;
   const model = env.GEMINI_MODEL || "gemini-flash-lite-latest";
   let upstream;
@@ -6336,6 +6352,10 @@ async function handleAi(request, env, user) {
       },
       413,
     );
+  // A cota é conferida ANTES de gastar o recurso, e contabilizada depois de
+  // gastar. Contar antes cobraria por chamada que falhou.
+  const cota = await ensureQuota(env, serverContext.ownerId, "aiPerMonth", 1);
+  if (!cota.allowed) return json(quotaResponse({ ...cota, metric: "aiPerMonth" }), 402);
   let web;
   try {
     web = await addCurrentWebContext(
@@ -6358,6 +6378,12 @@ async function handleAi(request, env, user) {
       502,
     );
   }
+  // Contabiliza aqui: a cota já passou, a busca web (se houve) já deu certo, e
+  // a partir deste ponto o pedido vai de fato consumir provedor de IA. Cobrar
+  // antes penalizaria erro de configuração que não é culpa de quem usa.
+  await recordUsage(env, serverContext.ownerId, "aiPerMonth", 1);
+  if (web.sources?.length)
+    await recordUsage(env, serverContext.ownerId, "webSearchPerMonth", 1);
   const contextualPrompt = web.contextualPrompt;
   const previous = Array.isArray(body.messages)
     ? body.messages
@@ -7512,7 +7538,7 @@ export default {
       return json({
         status: database === "operacional" ? "operacional" : "degradado",
         database,
-        version: "v151",
+        version: "v152",
         roadmap: {
           complete: true,
           completedThrough: 27,
@@ -7639,6 +7665,7 @@ export default {
     }
     const needsAuth =
       url.pathname === "/api/ai" ||
+      url.pathname === "/api/plan" ||
       url.pathname === "/api/ai/stream" ||
       url.pathname === "/api/transcribe" ||
       url.pathname === "/api/media" ||
@@ -7671,6 +7698,7 @@ export default {
           url.pathname.startsWith("/api/sites/") ||
           url.pathname.startsWith("/api/free-suite/") ||
           url.pathname.startsWith("/api/platform/") ||
+          url.pathname === "/api/plan" ||
           url.pathname.startsWith("/api/push/")) &&
         !env.DB
       )
@@ -7845,6 +7873,17 @@ export default {
           console.error("Push error", error);
           return json(
             { error: "Não foi possível concluir a ação de notificação." },
+            500,
+          );
+        }
+      }
+      if (url.pathname === "/api/plan") {
+        try {
+          return json(await planSnapshot(env, user.id));
+        } catch (error) {
+          console.error("Plan error", error);
+          return json(
+            { error: "Não foi possível ler o seu plano agora." },
             500,
           );
         }

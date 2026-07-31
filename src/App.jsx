@@ -165,6 +165,7 @@ import {
   Target,
   Megaphone,
   Network,
+  Gauge,
   GitBranch,
   Handshake,
   WalletCards,
@@ -319,6 +320,7 @@ const PortfolioBoard = lazy(
   () => import("./features/portfolio/PortfolioBoard.jsx"),
 );
 const AgentStudio = lazy(() => import("./features/agents/AgentStudio.jsx"));
+const PlanPanel = lazy(() => import("./features/plans/PlanPanel.jsx"));
 const PersonalInbox = lazy(
   () => import("./features/inbox/PersonalInbox.jsx"),
 );
@@ -539,6 +541,7 @@ const nav = [
 ];
 
 const navSecondary = [
+  ["meu-plano", "Meu plano", Gauge],
   ["time", "Meu Time", Users],
   ["config", "Configurações", Settings],
 ];
@@ -27435,6 +27438,14 @@ export default function App() {
               setToast={setToast}
               go={go}
             />
+          </Suspense>
+        );
+      case "meu-plano":
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando plano...</div>}
+          >
+            <PlanPanel setToast={setToast} />
           </Suspense>
         );
       case "agentes":

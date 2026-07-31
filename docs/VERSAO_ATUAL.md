@@ -1,6 +1,24 @@
 # Versão publicada
 
-## v151
+## v152
+
+- Planos e limite de uso, que é o que faltava para o app poder ser vendido.
+  Três planos: Gratuito, Profissional e Equipe, cada um com sua cota de
+  conversas com a IA, buscas na internet, execuções de agente, pessoas no time
+  e negócios.
+- Tela "Meu plano" mostrando quanto você já usou no mês, com barra por medida e
+  aviso quando passa de 80%. Nada é apagado ao chegar no limite: você só não
+  consegue gastar mais até virar o mês, e a cota renova sozinha no dia 1º.
+- Quando o limite chega, a recusa vem com explicação em português e diz qual
+  plano resolveria — e só sugere plano que de fato resolve.
+- O limite vale no servidor, não só na tela. Limite que existe só no navegador
+  qualquer um contorna; este é conferido antes de gastar o recurso, e o
+  endpoint de streaming também passa pela mesma checagem, para não virar um
+  caminho paralelo de furar a cota.
+- Proteção contra plano forjado: id desconhecido ou limite escrito à mão nunca
+  vira acesso ilimitado, sempre cai no plano mais restrito.
+
+## Base preservada da v151
 
 - Correção de segurança: o texto trazido de sites da internet passou a ser
   tratado como informação, nunca como ordem. Uma página pode esconder no meio

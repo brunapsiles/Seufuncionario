@@ -331,6 +331,26 @@ gratuito da Cloudflare. O workflow `Publicar` do GitHub é apenas uma contingên
   site desconhecido opinar sobre o que o agente ia fazer no workspace da
   titular. Não remover esse parâmetro.
 
+- **Planos e cota (v152)**: lógica pura em `src/features/plans/planDomain.js`,
+  serviço de servidor em `worker/services/plan-usage.js`, tela em
+  `src/features/plans/PlanPanel.jsx`, tabelas na migração `0022`.
+  Regras que NÃO podem ser afrouxadas:
+  (1) `limitFor` resolve SEMPRE pelo id contra `PLANS`. Objeto de plano com
+  `limits` escrito à mão é ignorado de propósito — se o plano chegasse de uma
+  requisição, bastaria mandar `{limits:{aiPerMonth:999999}}`.
+  (2) Plano desconhecido, banco fora do ar ou erro de leitura caem no gratuito,
+  nunca em ilimitado. `null` é "sem limite" e `0` é "não faz parte do plano";
+  confundir os dois libera o que deveria estar bloqueado.
+  (3) A checagem acontece no worker, antes de gastar o recurso, e `handleAi` E
+  `handleAiStream` precisam das duas. Deixar o streaming de fora transforma ele
+  num caminho paralelo que ignora a cota.
+  (4) O consumo é somado no banco por UPSERT, não em memória: duas abas abertas
+  precisam contar as duas.
+  (5) A cota renova sozinha porque o mês novo simplesmente não tem linha em
+  `workspace_usage`. Não criar rotina de zerar nada.
+  Falha ao contabilizar nunca derruba o pedido — o risco aceito é contar a
+  menos, jamais cobrar a mais ou travar o app.
+
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
 - "Esqueci minha senha": ✅ implementado (/api/auth/forgot e /api/auth/reset, códigos via Brevo)
