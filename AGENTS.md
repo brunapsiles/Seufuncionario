@@ -364,6 +364,24 @@ gratuito da Cloudflare. O workflow `Publicar` do GitHub é apenas uma contingên
   volta sozinho ao gratuito e os testes marcados com `it.skipIf(LAUNCH_MODE)`
   voltam a rodar. Eles estão guardados de propósito, não apagados.
 
+- **Menu escolhido por quem usa (v154)**: lógica pura em
+  `src/features/navigation/menuDomain.js`, tela em
+  `src/features/navigation/MenuSettings.jsx`, guardado em
+  `preferences.mainMenu`.
+  A regra que manda em tudo, decidida pela titular em 31/07/2026: escolher o
+  menu NUNCA tira acesso. `everythingReachable` existe como rede de segurança e
+  é testada varrendo várias combinações de menu — se um item puder sumir da
+  interface, o teste quebra.
+  A lista "Todas as ferramentas" começa ABERTA (`preferences.menuExpanded`).
+  Fechar por padrão tirava da vista itens que a pessoa já sabe onde ficam, e
+  quebrou 30 arquivos de teste de uma vez — foi o sinal de que era mudança
+  brusca demais para impor.
+  As visitas de menu ficam em `localStorage`, NÃO no workspace. Contá-las via
+  `update()` a cada clique de navegação gravava o banco inteiro e atropelava o
+  estado de telas abertas (quebrou `workflows.test.jsx`).
+  Sugestão nunca reordena o menu sozinha: menu que se mexe sozinho faz a pessoa
+  perder o botão que já tinha decorado.
+
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
 - "Esqueci minha senha": ✅ implementado (/api/auth/forgot e /api/auth/reset, códigos via Brevo)

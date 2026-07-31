@@ -1,6 +1,23 @@
 # Versão publicada
 
-## v153
+## v154
+
+- Cada pessoa escolhe o seu menu principal. O que você usa fica no topo, e o
+  resto vai para "Todas as ferramentas", logo abaixo.
+- **Escolher o menu não tira acesso a nada.** Ferramenta fora do menu continua
+  funcionando, continua alcançável na lista completa e continua aparecendo na
+  busca. Isso é organização de atalho, não permissão.
+- A lista completa começa aberta, do jeito que sempre foi. Quem quiser a visão
+  enxuta fecha uma vez e ela continua fechada nas próximas visitas.
+- Tela "Personalizar menu": marque o que entra, reordene com as setas, ou volte
+  ao padrão. O Início é fixo, para ninguém perder o caminho de volta.
+- Sugestão pelo uso real: o app mostra o que você mais abre e ainda não está no
+  menu, e o que está no menu mas você nunca abriu. São só sugestões — o menu
+  nunca se reorganiza sozinho, senão você perderia o botão que já decorou.
+- Menu salvo com uma tela que não existe mais é limpo sozinho, sem virar botão
+  quebrado.
+
+## Base preservada da v153
 
 - O app é 100% gratuito para todo mundo neste primeiro momento. Nada é cobrado
   e nenhum recurso fica atrás de plano pago. Quem entra hoje já cai no plano

@@ -71,6 +71,10 @@ import {
   scheduleRiskSummary,
 } from "./features/projects/scheduleDomain.js";
 import {
+  buildNavigation,
+  writeVisit,
+} from "./features/navigation/menuDomain.js";
+import {
   appendRecordComment,
   computedDatabaseValue,
   createDatabaseRecord,
@@ -166,6 +170,7 @@ import {
   Megaphone,
   Network,
   Gauge,
+  ListChecks,
   GitBranch,
   Handshake,
   WalletCards,
@@ -321,6 +326,9 @@ const PortfolioBoard = lazy(
 );
 const AgentStudio = lazy(() => import("./features/agents/AgentStudio.jsx"));
 const PlanPanel = lazy(() => import("./features/plans/PlanPanel.jsx"));
+const MenuSettings = lazy(
+  () => import("./features/navigation/MenuSettings.jsx"),
+);
 const PersonalInbox = lazy(
   () => import("./features/inbox/PersonalInbox.jsx"),
 );
@@ -541,6 +549,7 @@ const nav = [
 ];
 
 const navSecondary = [
+  ["personalizar-menu", "Personalizar menu", ListChecks],
   ["meu-plano", "Meu plano", Gauge],
   ["time", "Meu Time", Users],
   ["config", "Configurações", Settings],
@@ -26809,6 +26818,15 @@ export default function App() {
     [page, setPage] = useState("inicio"),
     [collapsed, setCollapsed] = useState(!!savedUi.collapsed),
     [mobile, setMobile] = useState(false),
+    // Começa ABERTA de propósito. Fechar por padrão tiraria da vista itens que
+    // a pessoa já sabe onde ficam — o menu escolhido é para destacar o que ela
+    // usa, não para esconder o resto. Quem quiser a visão enxuta fecha uma vez,
+    // e fica fechada. Precisa ficar aqui em cima, junto dos outros estados:
+    // declarado depois dos returns antecipados, o React quebra a ordem dos
+    // hooks entre renders e a tela trava.
+    [showAllTools, setShowAllTools] = useState(
+      db?.preferences?.menuExpanded !== false,
+    ),
     [toast, setToast] = useState(""),
     [businessMenu, setBusinessMenu] = useState(false),
     [notifOpen, setNotifOpen] = useState(false),
@@ -27124,6 +27142,12 @@ export default function App() {
     setPage(p);
     setMobile(false);
     trackProductEvent("navigation", { module: p });
+    // Conta a visita para poder sugerir depois o que a pessoa usa de verdade.
+    // Fica no aparelho, fora do workspace: gravar o banco inteiro a cada clique
+    // de navegação atropelava o estado de telas abertas.
+    // A sugestão é só sugestão: o menu nunca se reorganiza sozinho, senão a
+    // pessoa perde o botão que já tinha decorado.
+    writeVisit(window.localStorage, p);
   };
   const content = () => {
     switch (page) {
@@ -27435,6 +27459,21 @@ export default function App() {
               db={db}
               update={update}
               business={business}
+              setToast={setToast}
+              go={go}
+            />
+          </Suspense>
+        );
+      case "personalizar-menu":
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando menu...</div>}
+          >
+            <MenuSettings
+              db={db}
+              update={update}
+              nav={visibleNav}
+              groups={navGroups}
               setToast={setToast}
               go={go}
             />
@@ -27832,31 +27871,72 @@ export default function App() {
         </div>
         <nav>
           {(() => {
-            const byId = new Map(visibleNav.map((item) => [item[0], item]));
-            return navGroups.map((group, gi) => {
-              const items = group.items
-                .map((id) => byId.get(id))
-                .filter(Boolean);
-              if (!items.length) return null;
-              return (
-                <div className="nav-group" key={group.label || `g${gi}`}>
-                  {group.label && !collapsed && (
-                    <span className="nav-group-label">{group.label}</span>
-                  )}
-                  {items.map(([id, label, I]) => (
-                    <button
-                      key={id}
-                      className={page === id ? "active" : ""}
-                      onClick={() => go(id)}
-                      title={collapsed ? label : undefined}
-                    >
-                      <I />
-                      <span>{label}</span>
-                    </button>
-                  ))}
-                </div>
-              );
-            });
+            // O menu principal é escolhido por quem usa. O que fica de fora NÃO
+            // perde acesso: cai em "Todas as ferramentas", logo abaixo, e
+            // continua achável pela busca. Escolher menu é organizar atalho.
+            const { main, rest } = buildNavigation(
+              visibleNav,
+              db.preferences?.mainMenu,
+              navGroups,
+            );
+            const Botao = ([id, label, I]) => (
+              <button
+                key={id}
+                className={page === id ? "active" : ""}
+                onClick={() => go(id)}
+                title={collapsed ? label : undefined}
+              >
+                <I />
+                <span>{label}</span>
+              </button>
+            );
+            return (
+              <>
+                <div className="nav-group">{main.map(Botao)}</div>
+                {rest.length > 0 && (
+                  <div className="nav-group nav-rest">
+                    {!collapsed && (
+                      <button
+                        type="button"
+                        className="nav-rest-toggle"
+                        aria-expanded={showAllTools}
+                        onClick={() => {
+                          const proximo = !showAllTools;
+                          setShowAllTools(proximo);
+                          update({
+                            ...db,
+                            preferences: {
+                              ...db.preferences,
+                              menuExpanded: proximo,
+                            },
+                          });
+                        }}
+                      >
+                        <ChevronDown
+                          className={showAllTools ? "aberto" : ""}
+                          size={15}
+                        />
+                        <span>Todas as ferramentas</span>
+                      </button>
+                    )}
+                    {(showAllTools || collapsed) &&
+                      rest.map((group, gi) => (
+                        <div
+                          className="nav-group"
+                          key={group.label || `r${gi}`}
+                        >
+                          {group.label && !collapsed && (
+                            <span className="nav-group-label">
+                              {group.label}
+                            </span>
+                          )}
+                          {group.items.map(Botao)}
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </>
+            );
           })()}
           <div className="nav-divider" />
           {navSecondary.map(([id, label, I]) => (
