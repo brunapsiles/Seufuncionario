@@ -62,6 +62,7 @@ npm test       # roda os testes
 | --------------------------------- | -------------------------------------------------- |
 | `GEMINI_API_KEY`                  | Gemini e Gemma                                     |
 | `GROQ_API_KEY`                    | Groq Free                                          |
+| `SAMBANOVA_API_KEY`               | SambaNova Free                                     |
 | `CEREBRAS_API_KEY`                | Cerebras Free                                      |
 | `MISTRAL_API_KEY`                 | Mistral Free                                       |
 | `OPENROUTER_API_KEY`              | Roteador gratuito do OpenRouter                    |
