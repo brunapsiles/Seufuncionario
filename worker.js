@@ -20,6 +20,15 @@ import {
   buildProcessConnections,
   createProcessCase,
 } from "./src/features/processes/processDomain.js";
+import {
+  searchWeb,
+  shouldSearchWeb,
+  webResultsToContext,
+} from "./worker/services/web-search.js";
+import {
+  memoriesToSystemContext,
+  selectApprovedMemories,
+} from "./worker/services/ai-memory.js";
 
 const specialistInstructions = {
   Diretor: "ORQUESTRADOR",
@@ -5944,6 +5953,7 @@ const freeAiCatalog = [
   { id: "google", name: "Google Gemini/Gemma", key: "GEMINI_API_KEY" },
   { id: "cloudflare", name: "Cloudflare Workers AI", binding: "AI" },
   { id: "groq", name: "Groq Free", key: "GROQ_API_KEY" },
+  { id: "sambanova", name: "SambaNova Free", key: "SAMBANOVA_API_KEY" },
   { id: "cerebras", name: "Cerebras Free", key: "CEREBRAS_API_KEY" },
   { id: "mistral", name: "Mistral Free", key: "MISTRAL_API_KEY" },
   { id: "openrouter", name: "OpenRouter Free", key: "OPENROUTER_API_KEY" },
@@ -5961,10 +5971,18 @@ export function configuredAiProviders(env) {
 }
 
 export function publicAiResult(result = {}) {
-  return {
+  const safe = {
     content: typeof result.content === "string" ? result.content : "",
     degraded: !!result.degraded,
   };
+  if (Array.isArray(result.sources) && result.sources.length)
+    safe.sources = result.sources.slice(0, 6).map((source) => ({
+      title: String(source?.title || "").slice(0, 240),
+      url: String(source?.url || "").slice(0, 1200),
+      snippet: String(source?.snippet || "").slice(0, 700),
+      provider: String(source?.provider || "").slice(0, 40),
+    }));
+  return safe;
 }
 
 const cloudflareModels = {
@@ -6050,7 +6068,8 @@ const SAFE_AI_BUSINESS_FIELDS = [
 ];
 
 async function resolveAiWorkspaceContext(env, user, body) {
-  if (!env.DB) return { allowed: true, business: null, custom: null };
+  if (!env.DB)
+    return { allowed: true, business: null, custom: null, memories: [] };
   const requestedOwner =
     typeof body.workspaceOwnerId === "string" && body.workspaceOwnerId
       ? body.workspaceOwnerId
@@ -6093,7 +6112,11 @@ async function resolveAiWorkspaceContext(env, user, body) {
         instructions: String(storedCustom.instructions || "").slice(0, 800),
       }
     : null;
-  return { allowed: true, business, custom };
+  const memories = selectApprovedMemories(data.memories, {
+    businessId,
+    specialist: body.specialist,
+  });
+  return { allowed: true, business, custom, memories };
 }
 
 function buildAiContext(body, serverContext = {}) {
@@ -6111,11 +6134,17 @@ function buildAiContext(body, serverContext = {}) {
       ? customName
       : "Consultor";
   const business = serverContext.business || null;
-  const system = systemPrompt(
+  const memoryContext = memoriesToSystemContext(serverContext.memories);
+  const system = [
+    systemPrompt(
     specialist,
     business,
     specialistInstructions[specialist] ? "" : customInstructions,
-  );
+    ),
+    memoryContext,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
   const previous = Array.isArray(body.messages)
     ? body.messages
         .slice(-9, -1)
@@ -6135,6 +6164,29 @@ function buildAiContext(body, serverContext = {}) {
   return { prompt, specialist, system, contextualPrompt, business };
 }
 
+async function addCurrentWebContext(env, body, prompt, contextualPrompt) {
+  if (!shouldSearchWeb(prompt, body.webSearch))
+    return { contextualPrompt, sources: [] };
+  const search = await searchWeb(env, body.webSearchQuery || prompt);
+  if (!search.configured) {
+    const error = new Error(
+      "A pesquisa na internet ainda não possui uma chave de busca configurada.",
+    );
+    error.code = "WEB_SEARCH_NOT_CONFIGURED";
+    throw error;
+  }
+  const webContext = webResultsToContext(search);
+  if (!webContext)
+    return {
+      contextualPrompt: `${contextualPrompt}\n\nA busca web foi executada agora, mas não encontrou resultados úteis. Diga isso claramente e não complete com fatos atuais não verificados.`,
+      sources: [],
+    };
+  return {
+    contextualPrompt: `${contextualPrompt}\n\n${webContext}`,
+    sources: search.results,
+  };
+}
+
 async function handleAiStream(request, env, user) {
   const ip = request.headers.get("cf-connecting-ip") || "local";
   if (!allowed(ip) || !allowed(`ai-user:${user.id}`, 12))
@@ -6145,9 +6197,37 @@ async function handleAiStream(request, env, user) {
   const serverContext = await resolveAiWorkspaceContext(env, user, body);
   if (!serverContext.allowed)
     return json({ error: "Você não tem acesso aos dados deste espaço." }, 403);
-  const { prompt, system, contextualPrompt } = buildAiContext(body, serverContext);
+  const context = buildAiContext(body, serverContext);
+  const { prompt, system } = context;
   if (prompt.length < 3) return json({ error: "Explique um pouco mais sobre o que precisa." }, 400);
   if (prompt.length > 50000) return json({ error: "O texto e os anexos ultrapassam o limite." }, 413);
+  let web;
+  try {
+    web = await addCurrentWebContext(
+      env,
+      body,
+      prompt,
+      context.contextualPrompt,
+    );
+  } catch (error) {
+    if (error?.code === "WEB_SEARCH_NOT_CONFIGURED")
+      return json(
+        {
+          error:
+            "Busca web não configurada. Cadastre TAVILY_API_KEY, SERPER_API_KEY, EXA_API_KEY, JINA_API_KEY ou BRAVE_SEARCH_API_KEY.",
+          fallback: false,
+        },
+        503,
+      );
+    return json(
+      {
+        error: "A busca web falhou. Tente novamente em instantes.",
+        fallback: false,
+      },
+      502,
+    );
+  }
+  const contextualPrompt = web.contextualPrompt;
   const model = env.GEMINI_MODEL || "gemini-flash-lite-latest";
   let upstream;
   try {
@@ -6199,7 +6279,7 @@ async function handleAiStream(request, env, user) {
       } catch {
         if (!any) { send({ error: "Falha no streaming.", fallback: true }); controller.close(); return; }
       }
-      send({ done: true, provider, model });
+      send({ done: true, provider, model, sources: web.sources });
       controller.close();
     },
     cancel() { try { reader.cancel(); } catch {} },
@@ -6232,8 +6312,8 @@ async function handleAi(request, env, user) {
   const serverContext = await resolveAiWorkspaceContext(env, user, body);
   if (!serverContext.allowed)
     return json({ error: "Você não tem acesso aos dados deste espaço." }, 403);
-  const { prompt, specialist, system, contextualPrompt, business } =
-    buildAiContext(body, serverContext);
+  const context = buildAiContext(body, serverContext);
+  const { prompt, specialist, system, business } = context;
   if (prompt.length < 3)
     return json({ error: "Explique um pouco mais sobre o que precisa." }, 400);
   if (prompt.length > 50000)
@@ -6243,6 +6323,29 @@ async function handleAi(request, env, user) {
       },
       413,
     );
+  let web;
+  try {
+    web = await addCurrentWebContext(
+      env,
+      body,
+      prompt,
+      context.contextualPrompt,
+    );
+  } catch (error) {
+    if (error?.code === "WEB_SEARCH_NOT_CONFIGURED")
+      return json(
+        {
+          error:
+            "Busca web não configurada. Cadastre TAVILY_API_KEY, SERPER_API_KEY, EXA_API_KEY, JINA_API_KEY ou BRAVE_SEARCH_API_KEY.",
+        },
+        503,
+      );
+    return json(
+      { error: "A busca web falhou. Tente novamente em instantes." },
+      502,
+    );
+  }
+  const contextualPrompt = web.contextualPrompt;
   const previous = Array.isArray(body.messages)
     ? body.messages
         .slice(-9, -1)
@@ -6306,6 +6409,16 @@ async function handleAi(request, env, user) {
         token: env.GROQ_API_KEY,
         model: env.GROQ_MODEL || "openai/gpt-oss-120b",
         provider: "Groq Free",
+      }),
+    },
+    sambanova: {
+      enabled: !!env.SAMBANOVA_API_KEY,
+      run: compatible({
+        endpoint: "https://api.sambanova.ai/v1/chat/completions",
+        token: env.SAMBANOVA_API_KEY,
+        model: env.SAMBANOVA_MODEL || "gpt-oss-120b",
+        provider: "SambaNova Free",
+        timeout: 9000,
       }),
     },
     cerebras: {
@@ -6400,6 +6513,7 @@ async function handleAi(request, env, user) {
   const order = deep
     ? [
         "groq",
+        "sambanova",
         "cerebras",
         "gemini-flash",
         "openrouter",
@@ -6417,6 +6531,7 @@ async function handleAi(request, env, user) {
     : [
         "gemini-lite",
         "groq",
+        "sambanova",
         "cerebras",
         "openrouter",
         "mistral",
@@ -6471,7 +6586,7 @@ async function handleAi(request, env, user) {
           `Pedido original:\n${contextualPrompt}\n\nPareceres independentes:\n\n${validOpinions.join("\n\n")}\n\nProduza uma resposta única, sem mencionar conselho, agentes, modelos ou pareceres. Resolva divergências, priorize o que é executável e indique lacunas de dados sem inventar.`,
           `${system}\n\nVocê é o coordenador final: sintetize criticamente as análises e entregue uma decisão coesa.`,
         );
-        return json(publicAiResult(result));
+        return json(publicAiResult({ ...result, sources: web.sources }));
       } catch (error) {
         errors.push(`director-synthesis: ${error.message}`);
       }
@@ -6480,13 +6595,19 @@ async function handleAi(request, env, user) {
   for (const [providerName, run] of providers) {
     try {
       const result = await run();
-      return json(publicAiResult(result));
+      return json(publicAiResult({ ...result, sources: web.sources }));
     } catch (error) {
       errors.push(`${providerName}: ${error.message}`);
     }
   }
   const contingency = localContingency(prompt, specialist, business, errors);
-  return json(publicAiResult({ ...contingency, degraded: true }));
+  return json(
+    publicAiResult({
+      ...contingency,
+      degraded: true,
+      sources: web.sources,
+    }),
+  );
 }
 
 async function handleMedia(request, env, url) {

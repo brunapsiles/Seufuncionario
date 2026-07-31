@@ -30,14 +30,19 @@ describe("rede gratuita de IA", () => {
     const providers = configuredAiProviders({
       AI: { run: vi.fn() },
       GROQ_API_KEY: "segredo-groq",
+      SAMBANOVA_API_KEY: "segredo-samba",
     });
 
-    expect(providers).toHaveLength(8);
+    expect(providers).toHaveLength(9);
     expect(providers.find((item) => item.id === "cloudflare")?.configured).toBe(
       true,
     );
     expect(providers.find((item) => item.id === "groq")?.configured).toBe(true);
+    expect(
+      providers.find((item) => item.id === "sambanova")?.configured,
+    ).toBe(true);
     expect(JSON.stringify(providers)).not.toContain("segredo-groq");
+    expect(JSON.stringify(providers)).not.toContain("segredo-samba");
     expect(providers.every((item) => !("key" in item))).toBe(true);
   });
 
