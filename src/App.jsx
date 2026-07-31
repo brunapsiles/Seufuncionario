@@ -89,6 +89,14 @@ import {
   profileTypeForIndustry,
   recommendedPackIds,
 } from "./features/business-profile/businessProfileDomain.js";
+import {
+  buildDigitalTaskPrompt,
+  buildTaskStructurePrompt,
+  localTaskStructure,
+  parseTaskStructure,
+  prioritizeTaskBacklog,
+  taskCompletionGaps,
+} from "./features/tasks/taskAiDomain.js";
 // Reexporta a camada de lógica pura para os testes que importam de "./App".
 export {
   contactLinks,
@@ -1369,6 +1377,13 @@ export const buildTaskCalendar = (yearMonth, tasks) => {
 };
 
 export const CHANGELOG_ENTRIES = [
+  {
+    id: "2026-07-31-tarefas-inteligentes",
+    date: "2026-07-31",
+    title: "A IA agora transforma pedidos em tarefas executáveis",
+    description:
+      "Estruture rascunhos em etapas e critérios verificáveis, veja a fila de foco calculada sem gastar IA, envie todo o contexto ao colaborador digital e anexe a entrega da conversa de volta à tarefa. Se os provedores estiverem indisponíveis, uma contingência local mantém a organização funcionando.",
+  },
   {
     id: "2026-07-31-central-negocio-universal",
     date: "2026-07-31",
@@ -4632,6 +4647,46 @@ function UniversalRequest({ db, update, business, setToast }) {
     });
     setToast("Tarefa criada com a orientação da conversa");
   };
+  const saveMessageAsTaskOutput = (message) => {
+    const sourceTask = (db.tasks || []).find(
+      (task) => task.id === active?.sourceTaskId,
+    );
+    if (!sourceTask) {
+      setToast("A tarefa de origem não foi encontrada");
+      return;
+    }
+    if (
+      !confirm(
+        `Anexar esta entrega à tarefa "${sourceTask.title}"? A tarefa não será concluída automaticamente.`,
+      )
+    )
+      return;
+    const now = new Date().toISOString();
+    update((current) => ({
+      ...current,
+      tasks: (current.tasks || []).map((task) =>
+        task.id === sourceTask.id
+          ? {
+              ...task,
+              aiOutputs: [
+                {
+                  id: uid(),
+                  content: String(message.content || "").slice(0, 8_000),
+                  specialist: active?.specialist || specialist,
+                  conversationId: active?.id || "",
+                  provider: message.provider || "",
+                  model: message.model || "",
+                  createdAt: now,
+                },
+                ...(task.aiOutputs || []),
+              ].slice(0, 3),
+              updatedAt: now,
+            }
+          : task,
+      ),
+    }));
+    setToast("Entrega anexada à tarefa para conferência");
+  };
   const submit = async () => {
     if ((!text.trim() && !attachments.length) || busy) return;
     const prompt =
@@ -5055,6 +5110,12 @@ function UniversalRequest({ db, update, business, setToast }) {
                         <ListTodo />
                         Criar tarefa
                       </button>
+                      {active?.sourceTaskId && (
+                        <button onClick={() => saveMessageAsTaskOutput(message)}>
+                          <Paperclip />
+                          Anexar à tarefa
+                        </button>
+                      )}
                     </div>
                   )}
               </div>
@@ -6493,6 +6554,8 @@ function Tasks({
 }) {
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [taskAiBusy, setTaskAiBusy] = useState(false);
+  const [taskAiError, setTaskAiError] = useState("");
   const [search, setSearch] = useState("");
   useEffect(() => {
     if (searchSeed) {
@@ -6765,6 +6828,12 @@ function Tasks({
     sharedTeams: [],
     subtasks: [],
     subtaskDraft: "",
+    acceptanceCriteria: [],
+    criterionDraft: "",
+    aiOutputs: [],
+    aiRisks: [],
+    aiQuestions: [],
+    aiSuggestedSpecialist: "",
     dependsOn: [],
     attachments: [],
     recurrence: { frequency: "none" },
@@ -6793,6 +6862,7 @@ function Tasks({
   const scoped = db.tasks.filter(
     (task) => !business || task.businessId === business.id,
   );
+  const focusQueue = prioritizeTaskBacklog(scoped, { now: today() }).slice(0, 3);
   const assignees = [
     ...new Set(scoped.map((task) => task.assignee).filter(Boolean)),
   ];
@@ -6865,9 +6935,107 @@ function Tasks({
   );
   const openTask = (task = null) => {
     setEditing(task?.id || null);
-    setForm(task ? { ...blankTask, ...task } : blankTask);
+    setForm(
+      task
+        ? {
+            ...blankTask,
+            ...task,
+            acceptanceCriteria: (task.acceptanceCriteria || []).map((item) =>
+              typeof item === "string"
+                ? { id: uid(), text: item, done: false }
+                : { ...item, id: item.id || uid() },
+            ),
+          }
+        : blankTask,
+    );
+    setTaskAiError("");
     setDeadlineCalc({ open: false, base: today(), days: "5" });
     setModal(true);
+  };
+  const applyTaskStructure = (structure) => {
+    const suggestedSpecialist = digitalCollaborators.includes(
+      structure.suggestedSpecialist,
+    )
+      ? structure.suggestedSpecialist
+      : "";
+    const mergeChecklist = (current, generated, field) => {
+      const existing = Array.isArray(current) ? current : [];
+      const known = new Set(
+        existing.map((item) =>
+          String(item?.[field] || "").trim().toLocaleLowerCase("pt-BR"),
+        ),
+      );
+      return [
+        ...existing,
+        ...(generated || [])
+          .filter(
+            (text) =>
+              text && !known.has(String(text).trim().toLocaleLowerCase("pt-BR")),
+          )
+          .map((text) => ({ id: uid(), [field]: text, done: false })),
+      ];
+    };
+    setForm((current) => ({
+      ...current,
+      title: structure.title || current.title,
+      description: structure.description || current.description,
+      priority: structure.priority || current.priority,
+      area: structure.area || current.area,
+      estimatedDays: structure.estimatedDays || current.estimatedDays,
+      subtasks: mergeChecklist(current.subtasks, structure.subtasks, "title"),
+      acceptanceCriteria: mergeChecklist(
+        current.acceptanceCriteria,
+        structure.acceptanceCriteria,
+        "text",
+      ),
+      aiRisks: structure.risks || [],
+      aiQuestions: structure.questions || [],
+      aiSuggestedSpecialist: suggestedSpecialist,
+      assigneeType: suggestedSpecialist ? "digital" : current.assigneeType,
+      assignee: suggestedSpecialist || current.assignee,
+    }));
+  };
+  const structureTaskWithAi = async () => {
+    if (!form.title.trim() && !form.description.trim()) {
+      setTaskAiError("Escreva ao menos um título ou uma descrição.");
+      return;
+    }
+    setTaskAiBusy(true);
+    setTaskAiError("");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 50_000);
+    try {
+      const response = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        signal: controller.signal,
+        body: JSON.stringify({
+          prompt: buildTaskStructurePrompt({
+            task: form,
+            business,
+            projects,
+            specialists: digitalCollaborators,
+          }),
+          specialist: "Diretor",
+          ...aiWorkspaceContext(business),
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Provedor indisponível");
+      const structure = parseTaskStructure(data.content, form);
+      if (!structure) throw new Error("A resposta não veio no formato esperado");
+      applyTaskStructure(structure);
+      setToast("Tarefa estruturada com etapas e critérios verificáveis");
+    } catch {
+      applyTaskStructure(localTaskStructure(form));
+      setTaskAiError(
+        "A IA externa não respondeu. A contingência local organizou uma versão segura para você revisar.",
+      );
+      setToast("Tarefa organizada pela contingência local");
+    } finally {
+      clearTimeout(timer);
+      setTaskAiBusy(false);
+    }
   };
   const applyDeadlineCalc = () => {
     const due = addBusinessDays(deadlineCalc.base, Number(deadlineCalc.days) || 0);
@@ -6876,6 +7044,13 @@ function Tasks({
   const save = (e) => {
     e.preventDefault();
     if (!form.title.trim()) return;
+    if (form.status === "Concluído") {
+      const gaps = taskCompletionGaps(form);
+      if (gaps.length) {
+        setToast(`Ainda não pode concluir: ${gaps.join("; ")}`);
+        return;
+      }
+    }
     if (
       form.status === "Concluído" &&
       editingTask &&
@@ -6894,6 +7069,7 @@ function Tasks({
       const {
         deliveryDraft: _deliveryDraft,
         subtaskDraft: _subtaskDraft,
+        criterionDraft: _criterionDraft,
         ...rest
       } = form;
       const isMission = !!form.isMission;
@@ -6932,6 +7108,12 @@ function Tasks({
         sharedWith: Array.isArray(form.sharedWith) ? form.sharedWith : [],
         sharedTeams: Array.isArray(form.sharedTeams) ? form.sharedTeams : [],
         subtasks: Array.isArray(form.subtasks) ? form.subtasks : [],
+        acceptanceCriteria: Array.isArray(form.acceptanceCriteria)
+          ? form.acceptanceCriteria
+          : [],
+        aiOutputs: Array.isArray(form.aiOutputs)
+          ? form.aiOutputs.slice(0, 3)
+          : [],
         dependsOn: Array.isArray(form.dependsOn) ? form.dependsOn : [],
         attachments: Array.isArray(form.attachments) ? form.attachments : [],
         recurrence:
@@ -6996,6 +7178,13 @@ function Tasks({
       .filter((dep) => dep && dep.status !== "Concluído");
   const isBlocked = (task) => blockingTasks(task).length > 0;
   const changeTaskStatus = (task, newStatus) => {
+    if (newStatus === "Concluído") {
+      const gaps = taskCompletionGaps(task);
+      if (gaps.length) {
+        setToast(`Ainda não pode concluir: ${gaps.join("; ")}`);
+        return;
+      }
+    }
     if (newStatus === "Concluído" && isBlocked(task)) {
       setToast(
         `Bloqueada: conclua antes "${blockingTasks(task)
@@ -7023,6 +7212,12 @@ function Tasks({
       deliveries: [],
       interested: [],
       attachments: [],
+      subtasks: (task.subtasks || []).map((item) => ({ ...item, done: false })),
+      acceptanceCriteria: (task.acceptanceCriteria || []).map((item) => ({
+        ...item,
+        done: false,
+      })),
+      aiOutputs: [],
       missionStatus:
         task.isMission && task.distribution === "disponivel"
           ? "disponivel"
@@ -7178,6 +7373,13 @@ function Tasks({
     setToast("Entrega enviada para revisão");
   };
   const reviewDelivery = (task, approved, feedback, managerFeedback = {}) => {
+    if (approved) {
+      const gaps = taskCompletionGaps(task);
+      if (gaps.length) {
+        setToast(`Confirme a entrega antes de aprovar: ${gaps.join("; ")}`);
+        return;
+      }
+    }
     changeTask(task.id, {
       missionStatus: approved ? "aprovada" : "correcao_solicitada",
       status: approved ? "Concluído" : task.status,
@@ -7262,26 +7464,40 @@ function Tasks({
   };
   const startDigitalTask = (task) => {
     const specialist = task.assignee || "Diretor";
-    const prompt = [
-      `Execute esta tarefa como ${specialist}: ${task.title}.`,
-      task.description ? `Contexto: ${task.description}` : "",
-      task.project ? `Projeto: ${task.project}.` : "",
-      task.due ? `Prazo: ${task.due}.` : "",
-      "Comece apresentando a entrega e os próximos passos concretos.",
-    ]
-      .filter(Boolean)
-      .join("\n");
+    const prompt = buildDigitalTaskPrompt(task, {
+      specialist,
+      business,
+      dependencies: (task.dependsOn || [])
+        .map((id) => db.tasks.find((item) => item.id === id))
+        .filter(Boolean),
+    });
+    const conversationId = uid();
+    const now = new Date().toISOString();
     localStorage.setItem("sf-draft", prompt);
     update((d) => ({
       ...d,
+      selectedConversationId: conversationId,
+      conversations: [
+        {
+          id: conversationId,
+          sourceTaskId: task.id,
+          title: task.title,
+          businessId: business?.id || null,
+          specialist,
+          ownerId: db.user.id,
+          createdAt: now,
+          messages: [],
+        },
+        ...(d.conversations || []),
+      ],
       preferences: { ...d.preferences, specialist },
       tasks: d.tasks.map((item) =>
         item.id === task.id
           ? {
               ...item,
               status: item.status === "A fazer" ? "Em andamento" : item.status,
-              startedAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
+              startedAt: item.startedAt || now,
+              updatedAt: now,
             }
           : item,
       ),
@@ -7308,6 +7524,42 @@ function Tasks({
         setToast={setToast}
         go={go}
       />
+      <section className="task-focus-card" aria-label="Foco recomendado">
+        <div className="task-focus-head">
+          <span><Target /></span>
+          <div>
+            <strong>Foco recomendado</strong>
+            <small>
+              Prioridade calculada no aparelho por prazo, urgência e bloqueios — sem gastar cota de IA.
+            </small>
+          </div>
+        </div>
+        {focusQueue.length ? (
+          <div className="task-focus-list">
+            {focusQueue.map(({ task, reasons }, index) => (
+              <button
+                type="button"
+                key={task.id}
+                aria-label={`Abrir tarefa prioritária: ${task.title}`}
+                onClick={() => openTask(task)}
+              >
+                <span>{index + 1}</span>
+                <span>
+                  <strong
+                    className="task-focus-title"
+                    data-title={task.title}
+                    aria-hidden="true"
+                  />
+                  <small>{reasons.slice(0, 2).join(" · ") || "próxima ação disponível"}</small>
+                </span>
+                <ChevronRight />
+              </button>
+            ))}
+          </div>
+        ) : (
+          <small className="task-focus-empty">Nenhuma tarefa ativa esperando atenção.</small>
+        )}
+      </section>
       <div className="toolbar" id="task-board">
         <div className="search">
           <Search />
@@ -8537,6 +8789,43 @@ function Tasks({
                 }
               />
             </Field>
+            <div className="task-ai-actions">
+              <Button
+                type="button"
+                variant="secondary"
+                icon={taskAiBusy ? RefreshCw : WandSparkles}
+                disabled={taskAiBusy}
+                onClick={structureTaskWithAi}
+              >
+                {taskAiBusy ? "Estruturando..." : "Estruturar tarefa com IA"}
+              </Button>
+              <small>
+                Organiza o rascunho em etapas, critérios, prioridade e responsável sugerido. Você revisa tudo antes de salvar.
+              </small>
+            </div>
+            {(taskAiError ||
+              form.aiSuggestedSpecialist ||
+              (form.aiRisks || []).length > 0 ||
+              (form.aiQuestions || []).length > 0) && (
+              <div className="task-ai-insights" role="status">
+                {taskAiError && <p>{taskAiError}</p>}
+                {form.aiSuggestedSpecialist && (
+                  <p><strong>Colaborador sugerido:</strong> {form.aiSuggestedSpecialist}</p>
+                )}
+                {(form.aiRisks || []).length > 0 && (
+                  <div>
+                    <strong>Riscos para revisar</strong>
+                    <ul>{form.aiRisks.map((item) => <li key={item}>{item}</li>)}</ul>
+                  </div>
+                )}
+                {(form.aiQuestions || []).length > 0 && (
+                  <div>
+                    <strong>Informações que podem melhorar a execução</strong>
+                    <ul>{form.aiQuestions.map((item) => <li key={item}>{item}</li>)}</ul>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="field">
               <span>Anexos</span>
               <input
@@ -8973,9 +9262,84 @@ function Tasks({
                 </Field>
               </div>
             )}
-            {form.isMission && (
-              <div className="field">
-                <span>Subtarefas (mini-missões)</span>
+            <div className="field">
+              <span>Critérios de conclusão</span>
+              <small>
+                A tarefa só poderá ser concluída depois que todos os critérios cadastrados forem confirmados.
+              </small>
+              <div className="subtask-editor">
+                <input
+                  value={form.criterionDraft || ""}
+                  onChange={(e) =>
+                    setForm({ ...form, criterionDraft: e.target.value })
+                  }
+                  placeholder="Ex.: Cliente aprovou o PDF final"
+                  aria-label="Novo critério de conclusão"
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  icon={Plus}
+                  disabled={!(form.criterionDraft || "").trim()}
+                  onClick={() =>
+                    setForm({
+                      ...form,
+                      acceptanceCriteria: [
+                        ...(form.acceptanceCriteria || []),
+                        { id: uid(), text: form.criterionDraft.trim(), done: false },
+                      ],
+                      criterionDraft: "",
+                    })
+                  }
+                >
+                  Adicionar critério
+                </Button>
+              </div>
+              {(form.acceptanceCriteria || []).length > 0 && (
+                <div className="member-list">
+                  {form.acceptanceCriteria.map((criterion) => (
+                    <div key={criterion.id}>
+                      <label className="cost-check">
+                        <input
+                          type="checkbox"
+                          checked={!!criterion.done}
+                          onChange={() =>
+                            setForm({
+                              ...form,
+                              acceptanceCriteria: form.acceptanceCriteria.map((item) =>
+                                item.id === criterion.id
+                                  ? { ...item, done: !item.done }
+                                  : item,
+                              ),
+                            })
+                          }
+                        />
+                        <span className={criterion.done ? "subtask-done" : undefined}>
+                          {criterion.text}
+                        </span>
+                      </label>
+                      <button
+                        type="button"
+                        className="icon-button danger"
+                        aria-label={`Remover critério ${criterion.text}`}
+                        onClick={() =>
+                          setForm({
+                            ...form,
+                            acceptanceCriteria: form.acceptanceCriteria.filter(
+                              (item) => item.id !== criterion.id,
+                            ),
+                          })
+                        }
+                      >
+                        <X />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="field">
+                <span>{form.isMission ? "Subtarefas (mini-missões)" : "Etapas da tarefa"}</span>
                 <div className="subtask-editor">
                   <input
                     value={form.subtaskDraft || ""}
@@ -9042,6 +9406,21 @@ function Tasks({
                     ))}
                   </div>
                 )}
+              </div>
+            {editingTask && (form.aiOutputs || []).length > 0 && (
+              <div className="field task-ai-outputs">
+                <span>Entregas produzidas pela IA</span>
+                <small>
+                  Confira a entrega e os critérios antes de marcar a tarefa como concluída.
+                </small>
+                {form.aiOutputs.map((output, index) => (
+                  <details className="task-ai-output" key={output.id}>
+                    <summary>
+                      Entrega {index + 1} · {output.specialist || "Seu Funcionário"}
+                    </summary>
+                    <Markdown text={output.content} />
+                  </details>
+                ))}
               </div>
             )}
             {editingTask?.isMission &&

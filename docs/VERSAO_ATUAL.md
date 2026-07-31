@@ -1,5 +1,31 @@
 # Versão publicada
 
+## v150
+
+- A IA transforma título e descrição livres em tarefa executável, preservando
+  os fatos informados e sugerindo prioridade, área, duração, etapas, critérios
+  observáveis, riscos, lacunas e colaborador digital.
+- A estrutura recebida da IA passa por um parser fechado. Campos inesperados,
+  respostas sem JSON e valores fora do domínio não entram silenciosamente na
+  tarefa.
+- Quando todos os provedores estão indisponíveis, uma contingência local cria
+  um roteiro seguro com etapas e critérios, sem token e sem custo.
+- Etapas e critérios de conclusão agora servem para qualquer tarefa, não apenas
+  para missões. Uma tarefa com itens cadastrados e pendentes não pode ser
+  concluída nem aprovada por engano; tarefas antigas sem checklist continuam
+  funcionando.
+- A fila “Foco recomendado” ordena tarefas ativas por atraso, prazo, prioridade,
+  andamento, bloqueios e ausência de responsável diretamente no navegador,
+  sem consumir IA.
+- O colaborador digital recebe negócio, projeto, prazo, etapas, critérios,
+  dependências e texto extraído dos anexos. O pedido exige entrega utilizável,
+  fontes quando necessário e proíbe fingir ações externas.
+- Cada execução abre uma conversa vinculada à tarefa. A resposta pode ser
+  anexada de volta como entrega para conferência, preservando até três versões
+  recentes sem concluir nada automaticamente.
+- Tarefas recorrentes reiniciam etapas e critérios na próxima ocorrência, sem
+  reaproveitar confirmações nem entregas de IA da ocorrência anterior.
+
 ## v149
 
 - Nova **Central do negócio** transforma o aplicativo em uma plataforma
