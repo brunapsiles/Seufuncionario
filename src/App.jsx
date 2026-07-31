@@ -322,6 +322,12 @@ const BlockDocumentEditor = lazy(
 const CreativeToolkit = lazy(
   () => import("./features/creative/CreativeToolkit.jsx"),
 );
+const FreeSuite = lazy(
+  () => import("./features/free-suite/FreeSuite.jsx"),
+);
+const PlatformSuite = lazy(
+  () => import("./features/platform-suite/PlatformSuite.jsx"),
+);
 
 const LEGACY_STORAGE_KEY = "seu-funcionario-v1";
 const ACTIVE_USER_KEY = "seu-funcionario-active-user";
@@ -486,6 +492,7 @@ const nav = [
   ["notas-conectadas", "Conhecimento conectado", Network],
   ["portfolio", "Portfólio de projetos", GitBranch],
   ["agentes", "Agentes", Bot],
+  ["central-crescimento", "Central de crescimento", PanelsTopLeft],
   ["metas", "Metas e OKRs", Target],
   ["processos", "Processos e Solicitações", PanelsTopLeft],
   ["formularios-publicos", "Formulários públicos", PanelsTopLeft],
@@ -503,6 +510,7 @@ const nav = [
   ["assinatura", "Assinatura de e-mail", Mail],
   ["ferramentas", "Ferramentas", Wrench],
   ["criacao-local", "Criação sem custo", WandSparkles],
+  ["laboratorio-gratuito", "Laboratório gratuito", Bot],
   ["estudio", "Estúdio de IA", WandSparkles],
   ["historico", "Histórico", History],
   ["certificacoes", "Certificações", Award],
@@ -546,6 +554,7 @@ const navGroups = [
       "notas-conectadas",
       "portfolio",
       "agentes",
+      "central-crescimento",
       "metas",
       "resultados",
       "processos",
@@ -578,6 +587,7 @@ const navGroups = [
       "assinatura",
       "ferramentas",
       "criacao-local",
+      "laboratorio-gratuito",
       "estudio",
     ],
   },
@@ -27158,6 +27168,38 @@ export default function App() {
             }
           >
             <CreativeToolkit business={business} setToast={setToast} />
+          </Suspense>
+        );
+      case "laboratorio-gratuito":
+        return (
+          <Suspense
+            fallback={
+              <div className="inbox-loading">Carregando laboratório...</div>
+            }
+          >
+            <FreeSuite
+              business={business}
+              setToast={setToast}
+              authHeaders={authHeaders}
+              ownerId={activeSpaceId()}
+            />
+          </Suspense>
+        );
+      case "central-crescimento":
+        return (
+          <Suspense
+            fallback={
+              <div className="inbox-loading">Carregando central...</div>
+            }
+          >
+            <PlatformSuite
+              db={db}
+              update={update}
+              business={business}
+              setToast={setToast}
+              authHeaders={authHeaders}
+              ownerId={activeSpaceId()}
+            />
           </Suspense>
         );
       case "estudio":

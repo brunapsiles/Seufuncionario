@@ -1,5 +1,62 @@
 # Versão publicada
 
+## v148
+
+- Nova **Central de crescimento** reúne sete frentes gratuitas que fecham
+  lacunas transversais de plataformas especializadas.
+- Agenda pública própria com link compartilhável, disponibilidade, duração,
+  fuso, protocolo, cancelamento seguro e trava relacional contra duas reservas
+  concorrentes no mesmo horário.
+- Central de atendimento pública com protocolo, categoria, prioridade, fila,
+  responsável, estados e SLA calculado por urgência.
+- Planejamento de sprints reaproveita as tarefas existentes: backlog, pontos,
+  andamento, bloqueio, conclusão, velocidade e progresso sem criar cópia dos
+  cartões.
+- Gravação de tela usa `getDisplayMedia` e `MediaRecorder`; o vídeo permanece no
+  dispositivo, tem pausa, prévia e download WebM sem servidor ou API.
+- Analytics próprio recebe page views e eventos com CORS por origem e guarda
+  apenas caminho, domínio referenciador e identificadores aleatórios. O painel
+  mostra visitantes, sessões, visualizações, eventos e rankings.
+- Campanhas preservam rascunho, assunto, conteúdo e segmentação; somente contatos
+  com e-mail e consentimento explícito entram no público exportável.
+- Estoque ganhou visão de ruptura, mínimo, reposição sugerida, ajuste por
+  variante e lista de compras em CSV, conectado ao catálogo e à baixa já
+  realizada pelos pedidos.
+- Agendas, reservas, portais, chamados, sites de analytics, eventos e campanhas
+  ficam em tabelas D1 relacionais próprias. Dados de maior volume não aumentam o
+  JSON do workspace.
+- Cada frente mantém contingência gratuita: link próprio para agendas e suporte,
+  gravação local, analytics first-party, campanhas exportáveis e estoque
+  operacional mesmo sem provedor externo.
+
+## v147
+
+- Novo **Laboratório gratuito** reúne as seis funções restantes: revisão de
+  respostas de IA, assistente local, locução, criação de aplicativos por
+  pedido, marketplace de templates e API pública.
+- O avaliador roda no navegador, mede aderência, completude, clareza,
+  evidências e cautela, sempre como heurística — ele nunca declara que a
+  própria IA está correta.
+- A IA local tenta o modelo nativo do dispositivo. Quando ele não existe, usa
+  um plano determinístico local, sem chave e sem enviar o pedido ao servidor.
+- A locução usa as vozes instaladas no navegador ou sistema, com velocidade,
+  tom, pausa, retomada e roteiro exportável como contingência.
+- O construtor transforma um pedido em blocos declarativos editáveis, mostra a
+  prévia em ambiente isolado, salva o aplicativo no espaço e exporta HTML
+  responsivo. Código JavaScript arbitrário nunca é executado.
+- O marketplace traz templates oficiais gratuitos e permite publicar modelos
+  da comunidade. A moderação bloqueia scripts, eventos HTML, payloads inválidos
+  e licenças fora de CC0, CC-BY ou MIT.
+- A API REST gratuita nasce versionada em `/api/public/v1`, com OpenAPI, CORS,
+  limite de 120 chamadas por minuto e chaves de leitura ou leitura/escrita.
+- As chaves públicas são exibidas uma única vez e persistidas somente como
+  SHA-256. Podem ser revogadas; chaves de leitura não escrevem.
+- Criação de tarefas e contatos exige `Idempotency-Key`, evitando duplicação
+  quando outro sistema repete uma chamada. Atualizações concorrentes não
+  sobrescrevem silenciosamente o workspace.
+- Aplicativos, templates, chaves e idempotência ficam em tabelas D1 próprias,
+  fora do JSON principal do workspace.
+
 ## v146
 
 - Nova área **Criação sem custo**, que funciona no próprio navegador e não
