@@ -319,6 +319,9 @@ const ClientPortalStudio = lazy(
 const BlockDocumentEditor = lazy(
   () => import("./features/documents/BlockDocumentEditor.jsx"),
 );
+const CreativeToolkit = lazy(
+  () => import("./features/creative/CreativeToolkit.jsx"),
+);
 
 const LEGACY_STORAGE_KEY = "seu-funcionario-v1";
 const ACTIVE_USER_KEY = "seu-funcionario-active-user";
@@ -499,6 +502,7 @@ const nav = [
   ["planilhas", "Planilhas", Table],
   ["assinatura", "Assinatura de e-mail", Mail],
   ["ferramentas", "Ferramentas", Wrench],
+  ["criacao-local", "Criação sem custo", WandSparkles],
   ["estudio", "Estúdio de IA", WandSparkles],
   ["historico", "Histórico", History],
   ["certificacoes", "Certificações", Award],
@@ -573,6 +577,7 @@ const navGroups = [
       "planilhas",
       "assinatura",
       "ferramentas",
+      "criacao-local",
       "estudio",
     ],
   },
@@ -18699,7 +18704,7 @@ Não invente números, preços, depoimentos ou resultados que não foram informa
   };
 
   const exportPdf = async (deck) => {
-    setExportBusy(deck.id);
+    setExportBusy(`${deck.id}:pdf`);
     try {
       const { jsPDF } = await import("jspdf");
       const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
@@ -18746,6 +18751,28 @@ Não invente números, preços, depoimentos ou resultados que não foram informa
     }
   };
 
+  const exportPptx = async (deck) => {
+    setExportBusy(`${deck.id}:pptx`);
+    try {
+      const { downloadPresentationPptx } = await import(
+        "./features/presentations/presentationPptx.js"
+      );
+      await downloadPresentationPptx(deck, {
+        author: business?.name || db.user?.name || "Seu Funcionário",
+        company: business?.name || "Seu Funcionário",
+      });
+      setToast("Apresentação exportada em PPTX");
+      trackProductEvent("presentation_exported", {
+        module: "apresentacoes",
+        format: "pptx",
+      });
+    } catch {
+      setToast("Não foi possível gerar o PPTX agora");
+    } finally {
+      setExportBusy("");
+    }
+  };
+
   useEffect(() => {
     if (!viewingDeck) return;
     const onKey = (e) => {
@@ -18767,7 +18794,7 @@ Não invente números, preços, depoimentos ou resultados que não foram informa
           <h1>Apresentações</h1>
           <p className="page-sub">
             Descreva o tema e a IA monta os slides. Edite, apresente em tela
-            cheia e baixe em PDF — tudo gratuito.
+            cheia e baixe em PDF ou PowerPoint — tudo gratuito.
           </p>
         </div>
       </header>
@@ -18868,10 +18895,18 @@ Não invente números, preços, depoimentos ou resultados que não foram informa
                 <button
                   className="btn ghost sm"
                   onClick={() => exportPdf(deck)}
-                  disabled={exportBusy === deck.id}
+                  disabled={!!exportBusy}
                 >
                   <Download size={15} />
-                  {exportBusy === deck.id ? "Gerando..." : "PDF"}
+                  {exportBusy === `${deck.id}:pdf` ? "Gerando..." : "PDF"}
+                </button>
+                <button
+                  className="btn ghost sm"
+                  onClick={() => exportPptx(deck)}
+                  disabled={!!exportBusy}
+                >
+                  <Download size={15} />
+                  {exportBusy === `${deck.id}:pptx` ? "Gerando..." : "PPTX"}
                 </button>
                 <button
                   className="btn ghost sm"
@@ -27115,6 +27150,16 @@ export default function App() {
         );
       case "legal":
         return <LegalPage go={go} />;
+      case "criacao-local":
+        return (
+          <Suspense
+            fallback={
+              <div className="inbox-loading">Carregando ferramentas...</div>
+            }
+          >
+            <CreativeToolkit business={business} setToast={setToast} />
+          </Suspense>
+        );
       case "estudio":
         return (
           <CreativeStudio
