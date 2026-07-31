@@ -6,6 +6,7 @@ import {
   localTemplateAnswer,
   moderateTemplate,
   normalizeAppSchema,
+  OFFICIAL_TEMPLATES,
 } from "./freeSuiteDomain.js";
 
 describe("suíte gratuita", () => {
@@ -38,6 +39,14 @@ describe("suíte gratuita", () => {
       blocks: [...app.blocks, { type: "script", text: "alert(1)" }],
     });
     expect(safe.blocks.some((block) => block.type === "script")).toBe(false);
+  });
+
+  it("mantém ids oficiais determinísticos sem gerar aleatoriedade na inicialização", () => {
+    const blockIds = OFFICIAL_TEMPLATES.flatMap((template) =>
+      template.schema.blocks.map((block) => block.id),
+    );
+    expect(blockIds).toHaveLength(new Set(blockIds).size);
+    expect(blockIds.every((id) => id.startsWith("official-"))).toBe(true);
   });
 
   it("exporta HTML escapando conteúdo do usuário", () => {

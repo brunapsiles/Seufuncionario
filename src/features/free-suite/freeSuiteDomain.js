@@ -114,32 +114,32 @@ export function evaluateAiResponse({
 }
 
 const APP_BLOCKS = {
-  hero: (title) => ({
-    id: crypto.randomUUID(),
+  hero: (title, id) => ({
+    id,
     type: "hero",
     title,
     text: "Uma solução simples, clara e pronta para receber clientes.",
   }),
-  benefits: () => ({
-    id: crypto.randomUUID(),
+  benefits: (_title, id) => ({
+    id,
     type: "benefits",
     title: "Por que escolher",
     items: ["Atendimento próximo", "Processo transparente", "Resultado prático"],
   }),
-  form: () => ({
-    id: crypto.randomUUID(),
+  form: (_title, id) => ({
+    id,
     type: "form",
     title: "Peça um contato",
     fields: ["Nome", "WhatsApp", "Mensagem"],
   }),
-  faq: () => ({
-    id: crypto.randomUUID(),
+  faq: (_title, id) => ({
+    id,
     type: "faq",
     title: "Dúvidas frequentes",
     items: ["Como funciona?", "Qual é o prazo?", "Como começo?"],
   }),
-  metrics: () => ({
-    id: crypto.randomUUID(),
+  metrics: (_title, id) => ({
+    id,
     type: "metrics",
     title: "Indicadores",
     items: ["Clientes", "Pedidos", "Conversão"],
@@ -152,7 +152,11 @@ const cleanName = (value, fallback = "Meu aplicativo") =>
     .trim()
     .slice(0, 80) || fallback;
 
-export function appFromPrompt(prompt, businessName = "") {
+export function appFromPrompt(
+  prompt,
+  businessName = "",
+  createId = () => crypto.randomUUID(),
+) {
   const source = String(prompt || "").trim();
   const titleMatch = source.match(
     /(?:chamad[oa]|nome|título|titulo)\s+["“]?([^".\n”]{3,80})/i,
@@ -175,9 +179,12 @@ export function appFromPrompt(prompt, businessName = "") {
       surface: "#ffffff",
       text: "#17152b",
     },
-    blocks: types.map((type) => APP_BLOCKS[type](name)),
+    blocks: types.map((type, index) => APP_BLOCKS[type](name, createId(type, index))),
   };
 }
+
+const officialBlockIds = (templateId) => (type, index) =>
+  `${templateId}-${type}-${index + 1}`;
 
 export function normalizeAppSchema(input) {
   const source = input && typeof input === "object" ? input : {};
@@ -250,7 +257,11 @@ export const OFFICIAL_TEMPLATES = [
     category: "Vendas",
     license: "CC0-1.0",
     publisherName: "Seu Funcionário",
-    schema: appFromPrompt("Landing page com formulário de contato e FAQ", "Captação de clientes"),
+    schema: appFromPrompt(
+      "Landing page com formulário de contato e FAQ",
+      "Captação de clientes",
+      officialBlockIds("official-leads"),
+    ),
   },
   {
     id: "official-dashboard",
@@ -259,7 +270,11 @@ export const OFFICIAL_TEMPLATES = [
     category: "Gestão",
     license: "CC0-1.0",
     publisherName: "Seu Funcionário",
-    schema: appFromPrompt("Dashboard com indicadores", "Painel de operação"),
+    schema: appFromPrompt(
+      "Dashboard com indicadores",
+      "Painel de operação",
+      officialBlockIds("official-dashboard"),
+    ),
   },
   {
     id: "official-services",
@@ -268,7 +283,11 @@ export const OFFICIAL_TEMPLATES = [
     category: "Marketing",
     license: "CC0-1.0",
     publisherName: "Seu Funcionário",
-    schema: appFromPrompt("Site de serviços com contato", "Nossos serviços"),
+    schema: appFromPrompt(
+      "Site de serviços com contato",
+      "Nossos serviços",
+      officialBlockIds("official-services"),
+    ),
   },
 ];
 
