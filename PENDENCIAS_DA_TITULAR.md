@@ -4,28 +4,16 @@ Ações que somente você pode realizar. **Nenhuma delas impede o uso do app**, 
 
 ## 🔴 Recomendadas agora
 
-### Ligar o meio de pagamento (para poder cobrar de verdade)
+### Meio de pagamento — parado por decisão sua
 
-Os planos, as cotas e a tela "Meu plano" já estão prontos e valendo no
-servidor. O que falta para virar receita é o botão de pagar levar a algum
-lugar. Hoje ele avisa que a troca de plano ainda não está aberta.
+Você definiu que o app é 100% gratuito para todos neste primeiro momento, e
+está assim no ar. Não há nada a fazer aqui agora.
 
-Isso depende de você porque exige uma conta em nome do seu negócio:
-
-1. Abrir conta no **Mercado Pago** (mais simples no Brasil, aceita Pix) ou na
-   **Stripe**. As duas são gratuitas para abrir e cobram só um percentual por
-   venda.
-2. Pegar as credenciais de integração no painel da conta escolhida.
-3. Cadastrar no cofre do app:
-   ```
-   npx wrangler secret put PAGAMENTO_TOKEN
-   ```
-4. Me avisar qual você escolheu, que eu ligo o botão ao checkout e faço a
-   confirmação automática mudar o plano da conta.
-
-Enquanto isso não existe, o app funciona normalmente e todo mundo fica no
-plano Gratuito — nada quebra, só não há como cobrar.
-
+Quando quiser começar a cobrar, o trabalho já está pronto e testado: os três
+planos existem, as cotas funcionam e a tela de plano está construída. Faltará
+só abrir conta no Mercado Pago (aceita Pix) ou Stripe, cadastrar a credencial
+com `npx wrangler secret put PAGAMENTO_TOKEN` e me avisar — eu ligo o botão ao
+checkout e a confirmação passa a mudar o plano da conta sozinha.
 
 ### 0. Destravar a publicação do site (5 minutos, uma vez só)
 

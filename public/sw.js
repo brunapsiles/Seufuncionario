@@ -1,4 +1,4 @@
-const CACHE = "seu-funcionario-v152";
+const CACHE = "seu-funcionario-v153";
 // Marcador de publicação da v150.
 
 self.addEventListener("install", () => self.skipWaiting());

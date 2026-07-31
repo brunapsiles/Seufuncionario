@@ -1,6 +1,22 @@
 # Versão publicada
 
-## v152
+## v153
+
+- O app é 100% gratuito para todo mundo neste primeiro momento. Nada é cobrado
+  e nenhum recurso fica atrás de plano pago. Quem entra hoje já cai no plano
+  "Lançamento", com tudo liberado.
+- A tela "Meu plano" deixou de vender: ela agora só mostra quanto você usou no
+  mês, e diz claramente que está tudo liberado.
+- Continua existindo um teto de uso, e ele não é comercial: a IA do app roda na
+  cota grátis dos provedores, que é compartilhada por todas as contas. O teto
+  impede que uma conta em laço infinito derrube a IA para todo mundo. Os
+  números são altos de propósito — 5.000 conversas por mês — e quem usa o app
+  o dia inteiro não chega perto.
+- Os planos pagos ficam prontos e testados, adormecidos. No dia em que a
+  cobrança começar, é uma linha de configuração: os testes da venda voltam a
+  rodar sozinhos.
+
+## Base preservada da v152
 
 - Planos e limite de uso, que é o que faltava para o app poder ser vendido.
   Três planos: Gratuito, Profissional e Equipe, cada um com sua cota de

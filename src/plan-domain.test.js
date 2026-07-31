@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_PLAN_ID,
   FREE_PLAN_ID,
+  LAUNCH_MODE,
+  LAUNCH_PLAN,
   METRICS,
   PLANS,
   STATUS,
@@ -29,17 +32,20 @@ describe("planById", () => {
     expect(planById("profissional").name).toBe("Profissional");
   });
 
-  it("plano desconhecido cai no mais restrito, nunca no ilimitado", () => {
-    expect(planById("plano_inventado").id).toBe(FREE_PLAN_ID);
-    expect(planById("").id).toBe(FREE_PLAN_ID);
-    expect(planById(null).id).toBe(FREE_PLAN_ID);
-    expect(planById(undefined).id).toBe(FREE_PLAN_ID);
+  it("plano desconhecido cai no padrão, nunca em algo inventado", () => {
+    expect(planById("plano_inventado").id).toBe(DEFAULT_PLAN_ID);
+    expect(planById("").id).toBe(DEFAULT_PLAN_ID);
+    expect(planById(null).id).toBe(DEFAULT_PLAN_ID);
+    expect(planById(undefined).id).toBe(DEFAULT_PLAN_ID);
   });
 
   it("id forjado não vira acesso ilimitado", () => {
+    const padrao = planById(DEFAULT_PLAN_ID);
     expect(limitFor("admin_god_mode", "aiPerMonth")).toBe(
-      gratuito.limits.aiPerMonth,
+      padrao.limits.aiPerMonth,
     );
+    // Mesmo o teto de lançamento é um teto: nunca vira "sem limite".
+    expect(limitFor("admin_god_mode", "aiPerMonth")).not.toBeNull();
   });
 });
 
@@ -63,7 +69,7 @@ describe("limitFor", () => {
     // e id desconhecido cai no gratuito.
     expect(
       limitFor({ id: "x", limits: { aiPerMonth: 999999 } }, "aiPerMonth"),
-    ).toBe(gratuito.limits.aiPerMonth);
+    ).toBe(planById(DEFAULT_PLAN_ID).limits.aiPerMonth);
     expect(
       limitFor({ id: "profissional", limits: { aiPerMonth: 999999 } }, "aiPerMonth"),
     ).toBe(profissional.limits.aiPerMonth);
@@ -250,18 +256,21 @@ describe("warnings", () => {
 });
 
 describe("upgradeSuggestion", () => {
+  // Estes dois descrevem a venda de plano, que fica adormecida no lançamento.
+  // Ficam guardados com skipIf em vez de apagados: voltam a rodar sozinhos no
+  // dia em que LAUNCH_MODE virar false, protegendo a lógica de cobrança.
   it("não sugere nada quando está tudo folgado", () => {
     expect(upgradeSuggestion(gratuito, makeUsage("2026-07"), "2026-07")).toBeNull();
   });
 
-  it("sugere o plano que resolve o aperto", () => {
+  it.skipIf(LAUNCH_MODE)("sugere o plano que resolve o aperto", () => {
     const u = addUsage(makeUsage("2026-07"), "aiPerMonth", 100, "2026-07");
     const s = upgradeSuggestion(gratuito, u, "2026-07");
     expect(s.plan.id).toBe("profissional");
     expect(s.solves).toContain("Conversas com a IA");
   });
 
-  it("pula o plano que não resolveria e vai para o que resolve", () => {
+  it.skipIf(LAUNCH_MODE)("pula o plano que não resolveria e vai para o que resolve", () => {
     const u = addUsage(makeUsage("2026-07"), "aiPerMonth", 2500, "2026-07");
     expect(upgradeSuggestion(gratuito, u, "2026-07").plan.id).toBe("equipe");
   });
@@ -296,5 +305,46 @@ describe("catálogo de planos", () => {
     for (const plano of PLANS)
       for (const metric of Object.keys(plano.limits))
         expect(METRICS[metric]).toBeTruthy();
+  });
+});
+
+
+describe("modo lançamento: tudo liberado para todos", () => {
+  it("o padrão de quem entra hoje é o plano de lançamento", () => {
+    expect(LAUNCH_MODE).toBe(true);
+    expect(DEFAULT_PLAN_ID).toBe(LAUNCH_PLAN.id);
+    expect(LAUNCH_PLAN.price).toBe(0);
+  });
+
+  it("o lançamento libera mais que qualquer plano gratuito pago de entrada", () => {
+    for (const metric of ["aiPerMonth", "webSearchPerMonth", "agentRunsPerMonth"]) {
+      expect(limitFor(LAUNCH_PLAN, metric)).toBeGreaterThan(
+        limitFor(gratuito, metric),
+      );
+    }
+  });
+
+  it("não empurra plano pago enquanto estiver em lançamento", () => {
+    const cheio = addUsage(makeUsage("2026-07"), "aiPerMonth", 999999, "2026-07");
+    expect(upgradeSuggestion(LAUNCH_PLAN, cheio, "2026-07")).toBeNull();
+  });
+
+  it("uso normal de quem trabalha o dia inteiro não encosta no teto", () => {
+    // 40 conversas por dia útil, 22 dias: bem acima do uso real esperado.
+    const pesado = addUsage(makeUsage("2026-07"), "aiPerMonth", 40 * 22, "2026-07");
+    expect(checkQuota(LAUNCH_PLAN, pesado, "aiPerMonth", 1, "2026-07").allowed).toBe(
+      true,
+    );
+  });
+
+  it("mas o teto existe: laço infinito é barrado antes de derrubar a IA de todos", () => {
+    const abusivo = addUsage(makeUsage("2026-07"), "aiPerMonth", 5000, "2026-07");
+    expect(checkQuota(LAUNCH_PLAN, abusivo, "aiPerMonth", 1, "2026-07").allowed).toBe(
+      false,
+    );
+  });
+
+  it("os planos pagos continuam prontos para quando a cobrança começar", () => {
+    expect(PLANS.map((p) => p.id)).toEqual(["gratuito", "profissional", "equipe"]);
   });
 });

@@ -8,7 +8,13 @@ import {
   readUsage,
   recordUsage,
 } from "../worker/services/plan-usage.js";
-import { periodOf } from "../src/features/plans/planDomain.js";
+import {
+  DEFAULT_PLAN_ID,
+  LAUNCH_MODE,
+  LAUNCH_PLAN,
+  limitFor,
+  periodOf,
+} from "../src/features/plans/planDomain.js";
 
 let n = 0;
 const nextIp = () => `198.51.100.${(++n % 240) + 1}`;
@@ -56,9 +62,10 @@ const request = (path, { method = "GET", user, body } = {}) => {
 };
 
 describe("plano e cota no servidor", () => {
-  it("conta nova começa no gratuito sem precisar de cadastro", async () => {
+  it("conta nova já entra com tudo liberado, sem cadastro de plano", async () => {
     const user = await createUser(`pl-${n}-novo`);
-    expect(await readPlanId(env, user.id)).toBe("gratuito");
+    expect(await readPlanId(env, user.id)).toBe(DEFAULT_PLAN_ID);
+    expect(LAUNCH_MODE).toBe(true);
   });
 
   it("id de plano inválido gravado no banco não vira acesso ilimitado", async () => {
@@ -68,7 +75,9 @@ describe("plano e cota no servidor", () => {
     )
       .bind(user.id, "ilimitado_total", new Date().toISOString())
       .run();
-    expect(await readPlanId(env, user.id)).toBe("gratuito");
+    expect(await readPlanId(env, user.id)).toBe(DEFAULT_PLAN_ID);
+    // Mesmo em lançamento o teto continua sendo um teto.
+    expect(limitFor(DEFAULT_PLAN_ID, "aiPerMonth")).not.toBeNull();
   });
 
   it("respeita o plano contratado quando ele é válido", async () => {
@@ -104,14 +113,14 @@ describe("plano e cota no servidor", () => {
     expect(cota.used).toBe(0);
   });
 
-  it("bloqueia quando o consumo do mês bate o limite do plano", async () => {
+  it("o teto anti-abuso barra o laço infinito antes de derrubar a IA de todos", async () => {
     const user = await createUser(`pl-${n}-cheio`);
-    await recordUsage(env, user.id, "aiPerMonth", 100, periodOf());
+    await recordUsage(env, user.id, "aiPerMonth", LAUNCH_PLAN.limits.aiPerMonth, periodOf());
     const cota = await ensureQuota(env, user.id, "aiPerMonth", 1);
     expect(cota.allowed).toBe(false);
-    expect(cota.limit).toBe(100);
-    expect(cota.message).toContain("100 de 100");
-    expect(cota.suggestion.planId).toBe("profissional");
+    expect(cota.limit).toBe(LAUNCH_PLAN.limits.aiPerMonth);
+    // Em lançamento não se empurra plano pago.
+    expect(cota.suggestion).toBeNull();
   });
 
   it("medida desconhecida não é gravada", async () => {
@@ -132,12 +141,12 @@ describe("plano e cota no servidor", () => {
     const user = await createUser(`pl-${n}-snap`);
     await recordUsage(env, user.id, "aiPerMonth", 95, periodOf());
     const snap = await planSnapshot(env, user.id);
-    expect(snap.plan.id).toBe("gratuito");
+    expect(snap.plan.id).toBe(DEFAULT_PLAN_ID);
     const ia = snap.usage.find((x) => x.metric === "aiPerMonth");
     expect(ia.used).toBe(95);
-    expect(ia.limit).toBe(100);
-    expect(ia.status).toBe("atencao");
-    expect(snap.suggestion.planId).toBe("profissional");
+    expect(ia.limit).toBe(LAUNCH_PLAN.limits.aiPerMonth);
+    expect(ia.status).toBe("ok"); // 95 de 5000 é folga enorme
+    expect(snap.suggestion).toBeNull();
   });
 
   it("/api/plan devolve o retrato para quem está logado", async () => {
@@ -145,7 +154,8 @@ describe("plano e cota no servidor", () => {
     const res = await request("/api/plan", { user });
     expect(res.status).toBe(200);
     const dados = await res.json();
-    expect(dados.plan.name).toBe("Gratuito");
+    expect(dados.plan.name).toBe(LAUNCH_PLAN.name);
+    expect(dados.plan.price).toBe(0);
     expect(Array.isArray(dados.usage)).toBe(true);
   });
 
@@ -156,7 +166,7 @@ describe("plano e cota no servidor", () => {
 
   it("a IA é recusada com explicação quando a cota acabou", async () => {
     const user = await createUser(`pl-${n}-ia`);
-    await recordUsage(env, user.id, "aiPerMonth", 100, periodOf());
+    await recordUsage(env, user.id, "aiPerMonth", LAUNCH_PLAN.limits.aiPerMonth, periodOf());
     const res = await request("/api/ai", {
       method: "POST",
       user,
@@ -165,13 +175,12 @@ describe("plano e cota no servidor", () => {
     expect(res.status).toBe(402);
     const dados = await res.json();
     expect(dados.code).toBe("QUOTA_EXCEEDED");
-    expect(dados.error).toContain("100 de 100");
-    expect(dados.suggestion.planName).toBe("Profissional");
+    expect(dados.error).toContain(String(LAUNCH_PLAN.limits.aiPerMonth));
   });
 
   it("o streaming não é um caminho paralelo para furar a cota", async () => {
     const user = await createUser(`pl-${n}-stream`);
-    await recordUsage(env, user.id, "aiPerMonth", 100, periodOf());
+    await recordUsage(env, user.id, "aiPerMonth", LAUNCH_PLAN.limits.aiPerMonth, periodOf());
     const res = await request("/api/ai/stream", {
       method: "POST",
       user,

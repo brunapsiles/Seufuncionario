@@ -3,6 +3,38 @@
 // cobrar por uso maior, e impedir que uma conta sozinha consuma a cota de IA de
 // todo mundo. Sem isso o app não tem como ser vendido nem como se defender.
 
+// ---------------------------------------------------------------------------
+// Lançamento: tudo liberado para todo mundo
+// ---------------------------------------------------------------------------
+
+// Decisão da titular em 31/07/2026: no primeiro momento o app é 100% gratuito
+// para todos. Nada é cobrado e nenhum recurso fica atrás de plano pago.
+//
+// O teto abaixo NÃO é comercial, é de sobrevivência: a IA do app roda na cota
+// grátis dos provedores (Gemini, Groq), que é compartilhada por TODAS as
+// contas. Uma conta em laço infinito, ou alguém agindo de má-fé, derrubaria a
+// IA para todo mundo. Os números são altos de propósito — quem usa o app de
+// verdade, o dia inteiro, não chega perto.
+//
+// Para começar a cobrar depois, basta trocar LAUNCH_MODE para false: o catálogo
+// de planos pagos abaixo já está pronto e testado.
+export const LAUNCH_MODE = true;
+
+export const LAUNCH_PLAN = {
+  id: "lancamento",
+  name: "Lançamento",
+  price: 0,
+  pitch: "Tudo liberado, de graça, enquanto o app está em lançamento.",
+  limits: {
+    aiPerMonth: 5000,
+    webSearchPerMonth: 1000,
+    agentRunsPerMonth: 1000,
+    members: 15,
+    businesses: null,
+    storageMb: 1000,
+  },
+};
+
 // `null` quer dizer "sem limite". Nunca usar 0 para isso: zero é um limite
 // legítimo (recurso desligado no plano) e confundir os dois libera o que
 // deveria estar bloqueado.
@@ -77,11 +109,20 @@ export const METRICS = {
 
 export const FREE_PLAN_ID = "gratuito";
 
-// Plano desconhecido cai no MAIS RESTRITO, nunca no mais liberal. Um id
+// Durante o lançamento todo mundo cai aqui. Depois, quando LAUNCH_MODE virar
+// false, o padrão volta a ser o gratuito e os planos pagos passam a valer.
+export const DEFAULT_PLAN_ID = LAUNCH_MODE ? LAUNCH_PLAN.id : FREE_PLAN_ID;
+
+const ALL_PLANS = [LAUNCH_PLAN, ...PLANS];
+
+// Plano desconhecido cai no PADRÃO, nunca no mais liberal por acidente. Um id
 // digitado errado, vindo de banco corrompido ou forjado numa requisição não
 // pode virar acesso ilimitado — esse é o erro clássico deste tipo de código.
+// Hoje o padrão é generoso porque é o que todo mundo tem de qualquer forma;
+// quando a cobrança começar, o mesmo caminho passa a cair no gratuito sozinho.
 export const planById = (id) =>
-  PLANS.find((p) => p.id === id) || PLANS.find((p) => p.id === FREE_PLAN_ID);
+  ALL_PLANS.find((p) => p.id === id) ||
+  ALL_PLANS.find((p) => p.id === DEFAULT_PLAN_ID);
 
 // Só o catálogo vale. Um objeto de plano com limites escritos à mão é ignorado
 // de propósito: se o plano chegasse de uma requisição, bastaria enviar
@@ -248,6 +289,10 @@ export const warnings = (plan, usage, period) =>
 // Só sugere plano que RESOLVE o problema. Empurrar upgrade que não resolve é
 // vender mal e queima a confiança.
 export const upgradeSuggestion = (plan, usage, period) => {
+  // Em lançamento não existe plano para vender. Oferecer upgrade agora seria
+  // empurrar algo que a titular decidiu não cobrar.
+  if (LAUNCH_MODE) return null;
+
   const atual = planById(plan?.id ?? plan);
   const apertados = warnings(atual, usage, period).map((x) => x.metric);
   if (!apertados.length) return null;

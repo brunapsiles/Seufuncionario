@@ -3,6 +3,7 @@
 // mexendo no navegador. A checagem que vale é esta, antes de gastar recurso.
 
 import {
+  DEFAULT_PLAN_ID,
   METRICS,
   checkQuota,
   periodOf,
@@ -14,7 +15,7 @@ import {
 export { periodOf };
 
 export async function readPlanId(env, ownerId) {
-  if (!ownerId) return "gratuito";
+  if (!ownerId) return DEFAULT_PLAN_ID;
   try {
     const row = await env.DB.prepare(
       "SELECT plan_id FROM workspace_plans WHERE owner_id = ?",
@@ -24,8 +25,8 @@ export async function readPlanId(env, ownerId) {
     // planById já derruba id desconhecido para o gratuito.
     return planById(row?.plan_id).id;
   } catch {
-    // Banco indisponível não pode virar acesso ilimitado.
-    return "gratuito";
+    // Banco indisponível cai no padrão, nunca em acesso ilimitado.
+    return DEFAULT_PLAN_ID;
   }
 }
 

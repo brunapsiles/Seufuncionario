@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Check, Gauge } from "lucide-react";
-import { PLANS, formatPrice } from "./planDomain.js";
+import { LAUNCH_MODE, PLANS, formatPrice } from "./planDomain.js";
 
 const Barra = ({ percent, status }) => (
   <div className="pn-bar" aria-hidden="true">
@@ -44,7 +44,9 @@ export default function PlanPanel({ setToast }) {
         <div>
           <h2>Meu plano</h2>
           <p className="muted">
-            Quanto você já usou neste mês e o que cada plano libera.
+            {LAUNCH_MODE
+              ? "Está tudo liberado, de graça. Aqui você vê quanto já usou neste mês."
+              : "Quanto você já usou neste mês e o que cada plano libera."}
           </p>
         </div>
       </header>
@@ -108,8 +110,8 @@ export default function PlanPanel({ setToast }) {
             </div>
           )}
 
-          <h3>Planos</h3>
-          <div className="pn-planos">
+          {!LAUNCH_MODE && <h3>Planos</h3>}
+          {!LAUNCH_MODE && <div className="pn-planos">
             {PLANS.map((p) => (
               <article
                 key={p.id}
@@ -164,11 +166,12 @@ export default function PlanPanel({ setToast }) {
                 )}
               </article>
             ))}
-          </div>
+          </div>}
 
           <p className="muted pn-nota">
-            A cota mensal renova sozinha no dia 1º. Nada é apagado quando o
-            limite chega: você só não consegue gastar mais até virar o mês.
+            {LAUNCH_MODE
+              ? "Nenhum recurso está fechado e nada é cobrado. Os números acima existem só como proteção: a IA do app roda numa cota compartilhada, e o teto impede que uma conta em laço infinito derrube a IA para todo mundo. Usando normalmente, você não chega perto."
+              : "A cota mensal renova sozinha no dia 1º. Nada é apagado quando o limite chega: você só não consegue gastar mais até virar o mês."}
           </p>
         </>
       )}

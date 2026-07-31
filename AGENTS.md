@@ -351,6 +351,19 @@ gratuito da Cloudflare. O workflow `Publicar` do GitHub é apenas uma contingên
   Falha ao contabilizar nunca derruba o pedido — o risco aceito é contar a
   menos, jamais cobrar a mais ou travar o app.
 
+- **Modo lançamento (v153)**: `LAUNCH_MODE` em
+  `src/features/plans/planDomain.js` é a chave única que decide se o app cobra.
+  Decisão da titular em 31/07/2026: 100% gratuito para todos no primeiro
+  momento. Com `LAUNCH_MODE = true`, todo mundo cai em `LAUNCH_PLAN`,
+  `upgradeSuggestion` devolve `null` (não se empurra plano que não está à
+  venda) e a tela esconde os cartões de preço.
+  O teto do plano de lançamento NÃO é comercial: a IA roda na cota grátis
+  compartilhada dos provedores, e sem teto uma conta em laço infinito derruba a
+  IA de todas as outras. Não remover o teto ao "deixar tudo liberado".
+  Para ligar a cobrança: trocar `LAUNCH_MODE` para false. `DEFAULT_PLAN_ID`
+  volta sozinho ao gratuito e os testes marcados com `it.skipIf(LAUNCH_MODE)`
+  voltam a rodar. Eles estão guardados de propósito, não apagados.
+
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
 - "Esqueci minha senha": ✅ implementado (/api/auth/forgot e /api/auth/reset, códigos via Brevo)
