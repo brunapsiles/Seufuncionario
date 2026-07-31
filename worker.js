@@ -29,6 +29,14 @@ import {
   memoriesToSystemContext,
   selectApprovedMemories,
 } from "./worker/services/ai-memory.js";
+import {
+  moderateTemplate,
+  normalizeAppSchema,
+} from "./src/features/free-suite/freeSuiteDomain.js";
+import {
+  handlePlatformSuite,
+  handlePublicPlatformSuite,
+} from "./worker/services/platform-suite.js";
 
 const specialistInstructions = {
   Diretor: "ORQUESTRADOR",
@@ -6817,6 +6825,617 @@ export async function handleTranscribe(request, env) {
   }
 }
 
+const apiCorsHeaders = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-headers":
+    "authorization, content-type, idempotency-key",
+  "access-control-allow-methods": "GET, POST, OPTIONS",
+  "access-control-max-age": "86400",
+};
+
+function publicApiJson(data, status = 200, extraHeaders = {}) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+      ...apiCorsHeaders,
+      ...extraHeaders,
+    },
+  });
+}
+
+const cleanText = (value, max = 200) =>
+  String(value || "")
+    .replace(/[<>{}]/g, "")
+    .trim()
+    .slice(0, max);
+
+async function freeSuiteOwner(env, user, requestedOwnerId) {
+  const ownerId = requestedOwnerId || user.id;
+  const role = await membershipRole(env, user.id, ownerId);
+  return role ? { ownerId, role } : null;
+}
+
+function mapGeneratedApp(row) {
+  let schema = {};
+  try {
+    schema = normalizeAppSchema(JSON.parse(row.schema_json));
+  } catch {}
+  return {
+    id: row.id,
+    name: row.name,
+    businessId: row.business_id || null,
+    schema,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapMarketplaceTemplate(row) {
+  let schema = {};
+  try {
+    schema = normalizeAppSchema(JSON.parse(row.payload_json));
+  } catch {}
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    category: row.category,
+    license: row.license,
+    publisherName: row.publisher_name,
+    schema,
+    status: row.status,
+    moderationNotes: row.moderation_notes,
+    installs: row.installs,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+async function handleFreeSuite(request, env, user, url) {
+  const parts = url.pathname.split("/").filter(Boolean);
+  const resource = parts[2] || "";
+  const itemId = parts[3] || "";
+  let body = {};
+  if (request.method !== "GET") {
+    try {
+      body = await request.json();
+    } catch {
+      return json({ error: "Solicitação inválida." }, 400);
+    }
+  }
+  const access = await freeSuiteOwner(
+    env,
+    user,
+    request.method === "GET"
+      ? url.searchParams.get("owner")
+      : body.ownerId,
+  );
+  if (!access)
+    return json({ error: "Você não tem acesso a este espaço." }, 403);
+  const { ownerId, role } = access;
+  const now = new Date().toISOString();
+
+  if (resource === "apps") {
+    if (request.method === "GET") {
+      const rows = await env.DB.prepare(
+        `SELECT id, name, business_id, schema_json, created_at, updated_at
+         FROM generated_apps WHERE workspace_owner_id = ?
+         ORDER BY updated_at DESC LIMIT 100`,
+      )
+        .bind(ownerId)
+        .all();
+      return json({ apps: (rows.results || []).map(mapGeneratedApp) });
+    }
+    if (request.method === "POST") {
+      const schema = normalizeAppSchema(body.schema);
+      if (!schema.blocks.length)
+        return json({ error: "Inclua ao menos um bloco válido." }, 400);
+      const id = cleanText(body.id, 80) || crypto.randomUUID();
+      const existing = await env.DB.prepare(
+        "SELECT created_by FROM generated_apps WHERE id = ? AND workspace_owner_id = ?",
+      )
+        .bind(id, ownerId)
+        .first();
+      if (
+        existing &&
+        role !== "owner" &&
+        role !== "admin" &&
+        existing.created_by !== user.id
+      )
+        return json({ error: "Você não pode alterar este aplicativo." }, 403);
+      await env.DB.prepare(
+        `INSERT INTO generated_apps
+          (id, workspace_owner_id, created_by, business_id, name, schema_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           business_id = excluded.business_id,
+           name = excluded.name,
+           schema_json = excluded.schema_json,
+           updated_at = excluded.updated_at`,
+      )
+        .bind(
+          id,
+          ownerId,
+          user.id,
+          cleanText(body.businessId, 80) || null,
+          cleanText(body.name || schema.name, 80),
+          JSON.stringify(schema),
+          now,
+          now,
+        )
+        .run();
+      const row = await env.DB.prepare(
+        `SELECT id, name, business_id, schema_json, created_at, updated_at
+         FROM generated_apps WHERE id = ?`,
+      )
+        .bind(id)
+        .first();
+      return json({ app: mapGeneratedApp(row) }, existing ? 200 : 201);
+    }
+    return json({ error: "Método não permitido." }, 405);
+  }
+
+  if (resource === "marketplace") {
+    if (request.method === "GET") {
+      const rows = await env.DB.prepare(
+        `SELECT id, publisher_name, name, description, category, license,
+                payload_json, status, moderation_notes, installs, created_at, updated_at
+         FROM marketplace_templates
+         WHERE status = 'approved' OR workspace_owner_id = ?
+         ORDER BY CASE status WHEN 'approved' THEN 0 ELSE 1 END, updated_at DESC
+         LIMIT 200`,
+      )
+        .bind(ownerId)
+        .all();
+      return json({
+        templates: (rows.results || []).map(mapMarketplaceTemplate),
+      });
+    }
+    if (request.method === "POST") {
+      const schema = normalizeAppSchema(body.schema);
+      const draft = {
+        name: cleanText(body.name, 80),
+        description: cleanText(body.description, 500),
+        license: cleanText(body.license, 20),
+        schema,
+      };
+      const moderation = moderateTemplate(draft);
+      if (!moderation.approved)
+        return json(
+          {
+            error: moderation.reasons[0],
+            moderation: { approved: false, reasons: moderation.reasons },
+          },
+          422,
+        );
+      const id = crypto.randomUUID();
+      await env.DB.prepare(
+        `INSERT INTO marketplace_templates
+          (id, workspace_owner_id, created_by, publisher_name, name, description,
+           category, license, payload_json, status, moderation_notes, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?, ?, ?)`,
+      )
+        .bind(
+          id,
+          ownerId,
+          user.id,
+          cleanText(user.name, 80) || "Comunidade",
+          draft.name,
+          draft.description,
+          cleanText(body.category, 40) || "Negócios",
+          draft.license,
+          JSON.stringify(schema),
+          "Aprovado pelas regras automáticas de blocos e licença.",
+          now,
+          now,
+        )
+        .run();
+      const row = await env.DB.prepare(
+        `SELECT id, publisher_name, name, description, category, license,
+                payload_json, status, moderation_notes, installs, created_at, updated_at
+         FROM marketplace_templates WHERE id = ?`,
+      )
+        .bind(id)
+        .first();
+      return json(
+        {
+          template: mapMarketplaceTemplate(row),
+          moderation: { approved: true, reasons: [] },
+        },
+        201,
+      );
+    }
+    return json({ error: "Método não permitido." }, 405);
+  }
+
+  if (resource === "api-keys") {
+    if (role !== "owner")
+      return json(
+        { error: "Somente o dono do espaço pode gerenciar chaves." },
+        403,
+      );
+    if (request.method === "GET") {
+      const rows = await env.DB.prepare(
+        `SELECT id, name, key_prefix, scope, last_used_at, revoked_at, created_at
+         FROM public_api_keys WHERE workspace_owner_id = ?
+         ORDER BY created_at DESC`,
+      )
+        .bind(ownerId)
+        .all();
+      return json({
+        keys: (rows.results || []).map((row) => ({
+          id: row.id,
+          name: row.name,
+          keyPrefix: row.key_prefix,
+          scope: row.scope,
+          lastUsedAt: row.last_used_at,
+          revokedAt: row.revoked_at,
+          createdAt: row.created_at,
+        })),
+      });
+    }
+    if (request.method === "POST" && !itemId) {
+      const name = cleanText(body.name, 80);
+      const scope = body.scope === "read-write" ? "read-write" : "read";
+      if (!name) return json({ error: "Informe o nome da chave." }, 400);
+      const count = await env.DB.prepare(
+        `SELECT COUNT(*) AS total FROM public_api_keys
+         WHERE workspace_owner_id = ? AND revoked_at IS NULL`,
+      )
+        .bind(ownerId)
+        .first();
+      if ((count?.total || 0) >= 10)
+        return json(
+          { error: "Revogue uma chave antes de criar outra. Limite: 10." },
+          409,
+        );
+      const key = `sf_live_${randomHex(24)}`;
+      const id = crypto.randomUUID();
+      await env.DB.prepare(
+        `INSERT INTO public_api_keys
+          (id, workspace_owner_id, created_by, name, key_hash, key_prefix, scope, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+        .bind(
+          id,
+          ownerId,
+          user.id,
+          name,
+          await sha256(key),
+          key.slice(0, 16),
+          scope,
+          now,
+        )
+        .run();
+      return json(
+        {
+          id,
+          key,
+          keyPrefix: key.slice(0, 16),
+          scope,
+          warning: "Copie agora: esta chave não será exibida novamente.",
+        },
+        201,
+      );
+    }
+    if (request.method === "DELETE" && itemId) {
+      const result = await env.DB.prepare(
+        `UPDATE public_api_keys SET revoked_at = ?
+         WHERE id = ? AND workspace_owner_id = ? AND revoked_at IS NULL`,
+      )
+        .bind(now, itemId, ownerId)
+        .run();
+      if (!result.meta?.changes)
+        return json({ error: "Chave não encontrada ou já revogada." }, 404);
+      return json({ ok: true });
+    }
+    return json({ error: "Método não permitido." }, 405);
+  }
+
+  return json({ error: "Recurso não encontrado." }, 404);
+}
+
+const PUBLIC_API_COLLECTIONS = new Set([
+  "tasks",
+  "contacts",
+  "opportunities",
+  "transactions",
+]);
+
+function publicApiOpenApi(origin) {
+  const paths = {
+    "/api/public/v1/me": {
+      get: {
+        summary: "Identifica o espaço da chave",
+        security: [{ bearerAuth: [] }],
+        responses: { 200: { description: "Espaço autenticado" } },
+      },
+    },
+  };
+  for (const collection of PUBLIC_API_COLLECTIONS) {
+    paths[`/api/public/v1/${collection}`] = {
+      get: {
+        summary: `Lista ${collection}`,
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: "query",
+            name: "limit",
+            schema: { type: "integer", minimum: 1, maximum: 100 },
+          },
+          { in: "query", name: "businessId", schema: { type: "string" } },
+        ],
+        responses: { 200: { description: "Lista paginada" } },
+      },
+      ...(collection === "tasks" || collection === "contacts"
+        ? {
+            post: {
+              summary: `Cria um item em ${collection}`,
+              security: [{ bearerAuth: [] }],
+              parameters: [
+                {
+                  in: "header",
+                  name: "Idempotency-Key",
+                  required: true,
+                  schema: { type: "string" },
+                },
+              ],
+              responses: {
+                201: { description: "Item criado" },
+                409: { description: "Conflito de atualização" },
+              },
+            },
+          }
+        : {}),
+    };
+  }
+  return {
+    openapi: "3.1.0",
+    info: {
+      title: "Seu Funcionário Public API",
+      version: "1.0.0",
+      description:
+        "API gratuita e versionada para integrar dados do espaço. Chaves são criadas dentro do aplicativo.",
+    },
+    servers: [{ url: origin }],
+    components: {
+      securitySchemes: {
+        bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "sf_live" },
+      },
+    },
+    paths,
+  };
+}
+
+async function publicApiCredentials(request, env) {
+  const token =
+    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || "";
+  if (!token.startsWith("sf_live_")) return null;
+  const row = await env.DB.prepare(
+    `SELECT id, workspace_owner_id, scope FROM public_api_keys
+     WHERE key_hash = ? AND revoked_at IS NULL`,
+  )
+    .bind(await sha256(token))
+    .first();
+  if (!row) return null;
+  if (!allowed(`public-api:${row.id}`, 120)) return { rateLimited: true };
+  await env.DB.prepare(
+    "UPDATE public_api_keys SET last_used_at = ? WHERE id = ?",
+  )
+    .bind(new Date().toISOString(), row.id)
+    .run();
+  return row;
+}
+
+function publicApiRecord(record) {
+  if (!record || typeof record !== "object") return null;
+  const safe = { ...record };
+  for (const field of [
+    "ownerId",
+    "sharedWith",
+    "sharedTeams",
+    "editors",
+    "sharingPermission",
+    "visibility",
+  ])
+    delete safe[field];
+  return safe;
+}
+
+const publicWritableFields = {
+  tasks: [
+    "title",
+    "description",
+    "status",
+    "priority",
+    "dueDate",
+    "businessId",
+    "project",
+    "tags",
+  ],
+  contacts: [
+    "name",
+    "email",
+    "phone",
+    "company",
+    "role",
+    "notes",
+    "businessId",
+    "tags",
+  ],
+};
+
+function buildPublicRecord(collection, body, ownerId) {
+  const record = {
+    id: crypto.randomUUID(),
+    ownerId,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    source: "public-api",
+  };
+  for (const field of publicWritableFields[collection] || []) {
+    if (body[field] === undefined) continue;
+    record[field] = Array.isArray(body[field])
+      ? body[field].slice(0, 20).map((value) => cleanText(value, 80))
+      : cleanText(
+          body[field],
+          field === "description" || field === "notes" ? 2_000 : 200,
+        );
+  }
+  if (!record.name && !record.title) return null;
+  if (collection === "tasks") {
+    record.status = record.status || "pendente";
+    record.priority = record.priority || "media";
+  }
+  return record;
+}
+
+async function handlePublicApi(request, env, url) {
+  if (request.method === "OPTIONS")
+    return new Response(null, { status: 204, headers: apiCorsHeaders });
+  if (url.pathname === "/api/public/v1/openapi.json") {
+    if (request.method !== "GET")
+      return publicApiJson({ error: "Método não permitido." }, 405);
+    return publicApiJson(publicApiOpenApi(url.origin));
+  }
+  const credentials = await publicApiCredentials(request, env);
+  if (credentials?.rateLimited)
+    return publicApiJson(
+      { error: "Limite de 120 chamadas por minuto excedido." },
+      429,
+      { "retry-after": "60" },
+    );
+  if (!credentials)
+    return publicApiJson({ error: "Chave ausente, inválida ou revogada." }, 401);
+  if (url.pathname === "/api/public/v1/me") {
+    if (request.method !== "GET")
+      return publicApiJson({ error: "Método não permitido." }, 405);
+    return publicApiJson({
+      workspaceId: credentials.workspace_owner_id,
+      scope: credentials.scope,
+      version: "v1",
+    });
+  }
+  const collection = url.pathname.split("/").filter(Boolean)[3] || "";
+  if (!PUBLIC_API_COLLECTIONS.has(collection))
+    return publicApiJson({ error: "Recurso não encontrado." }, 404);
+  const workspace = await env.DB.prepare(
+    "SELECT data, revision FROM workspaces WHERE user_id = ?",
+  )
+    .bind(credentials.workspace_owner_id)
+    .first();
+  let data;
+  try {
+    data = workspace ? JSON.parse(workspace.data) : {};
+  } catch {
+    return publicApiJson({ error: "Dados do espaço indisponíveis." }, 503);
+  }
+  if (request.method === "GET") {
+    const limit = Math.min(
+      100,
+      Math.max(
+        1,
+        Number.parseInt(url.searchParams.get("limit") || "50", 10) || 50,
+      ),
+    );
+    const businessId = cleanText(url.searchParams.get("businessId"), 80);
+    const records = (Array.isArray(data[collection]) ? data[collection] : [])
+      .filter((record) => !businessId || record?.businessId === businessId)
+      .slice(0, limit)
+      .map(publicApiRecord)
+      .filter(Boolean);
+    return publicApiJson({ data: records, count: records.length, limit });
+  }
+  if (request.method !== "POST")
+    return publicApiJson({ error: "Método não permitido." }, 405);
+  if (credentials.scope !== "read-write")
+    return publicApiJson({ error: "Esta chave permite somente leitura." }, 403);
+  if (!publicWritableFields[collection])
+    return publicApiJson({ error: "Este recurso não aceita criação." }, 405);
+  const idempotencyKey = cleanText(
+    request.headers.get("idempotency-key"),
+    100,
+  );
+  if (!idempotencyKey)
+    return publicApiJson(
+      { error: "Envie o cabeçalho Idempotency-Key." },
+      400,
+    );
+  const prior = await env.DB.prepare(
+    `SELECT response_json FROM public_api_idempotency
+     WHERE api_key_id = ? AND request_key = ?`,
+  )
+    .bind(credentials.id, idempotencyKey)
+    .first();
+  if (prior) return publicApiJson(JSON.parse(prior.response_json), 200);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return publicApiJson({ error: "Corpo JSON inválido." }, 400);
+  }
+  const record = buildPublicRecord(
+    collection,
+    body && typeof body === "object" ? body : {},
+    credentials.workspace_owner_id,
+  );
+  if (!record)
+    return publicApiJson(
+      {
+        error:
+          collection === "tasks" ? "Informe o título." : "Informe o nome.",
+      },
+      400,
+    );
+  data[collection] = [
+    ...(Array.isArray(data[collection]) ? data[collection] : []),
+    record,
+  ];
+  const updated = JSON.stringify(data);
+  if (updated.length > 900_000)
+    return publicApiJson({ error: "O espaço de dados está cheio." }, 413);
+  const revision = Number.isInteger(workspace?.revision)
+    ? workspace.revision
+    : 0;
+  const result = await env.DB.prepare(
+    `UPDATE workspaces SET data = ?, updated_at = ?, revision = revision + 1
+     WHERE user_id = ? AND revision = ?`,
+  )
+    .bind(
+      updated,
+      new Date().toISOString(),
+      credentials.workspace_owner_id,
+      revision,
+    )
+    .run();
+  if (!result.meta?.changes)
+    return publicApiJson(
+      {
+        error:
+          "Os dados mudaram durante a operação. Repita com a mesma chave de idempotência.",
+      },
+      409,
+    );
+  const responseBody = { data: publicApiRecord(record) };
+  await env.DB.prepare(
+    `INSERT INTO public_api_idempotency
+      (id, api_key_id, request_key, response_json, created_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      crypto.randomUUID(),
+      credentials.id,
+      idempotencyKey,
+      JSON.stringify(responseBody),
+      new Date().toISOString(),
+    )
+    .run();
+  return publicApiJson(responseBody, 201);
+}
+
 export default {
   async scheduled(controller, env, ctx) {
     const now = new Date(controller?.scheduledTime || Date.now());
@@ -6834,6 +7453,49 @@ export default {
   },
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (
+      url.pathname.startsWith("/agenda/") ||
+      url.pathname.startsWith("/atendimento/") ||
+      url.pathname.startsWith("/api/public-scheduling/") ||
+      url.pathname.startsWith("/api/public-support/") ||
+      url.pathname.startsWith("/api/public-analytics/")
+    ) {
+      if (!env.DB)
+        return url.pathname.startsWith("/api/")
+          ? json({ error: "Banco de dados indisponível." }, 503)
+          : new Response("Este serviço ainda não está disponível.", {
+              status: 503,
+              headers: { "content-type": "text/plain; charset=utf-8" },
+            });
+      try {
+        const response = await handlePublicPlatformSuite(request, env, url, {
+          json,
+          allowed,
+        });
+        if (response) return response;
+      } catch (error) {
+        console.error("Public platform suite error", error);
+        return url.pathname.startsWith("/api/")
+          ? json({ error: "Não foi possível concluir a solicitação." }, 500)
+          : new Response("Este serviço não está disponível agora.", {
+              status: 500,
+              headers: { "content-type": "text/plain; charset=utf-8" },
+            });
+      }
+    }
+    if (url.pathname.startsWith("/api/public/v1/")) {
+      if (!env.DB)
+        return publicApiJson({ error: "Banco de dados indisponível." }, 503);
+      try {
+        return await handlePublicApi(request, env, url);
+      } catch (error) {
+        console.error("Public API error", error);
+        return publicApiJson(
+          { error: "Não foi possível concluir a chamada." },
+          500,
+        );
+      }
+    }
     if (url.pathname === "/api/status") {
       let database = "indisponível";
       try {
@@ -6845,11 +7507,11 @@ export default {
       return json({
         status: database === "operacional" ? "operacional" : "degradado",
         database,
-        version: "v146",
+        version: "v148",
         roadmap: {
-          complete: false,
-          completedThrough: 8,
-          nextItem: 9,
+          complete: true,
+          completedThrough: 27,
+          nextItem: null,
         },
         checkedAt: new Date().toISOString(),
       });
@@ -6986,6 +7648,8 @@ export default {
       url.pathname.startsWith("/api/collab") ||
       url.pathname === "/api/tasks/notify" ||
       url.pathname.startsWith("/api/sites/") ||
+      url.pathname.startsWith("/api/free-suite/") ||
+      url.pathname.startsWith("/api/platform/") ||
       url.pathname.startsWith("/api/push/");
     if (needsAuth) {
       if (url.pathname === "/api/ai" && request.method !== "POST")
@@ -7000,6 +7664,8 @@ export default {
           url.pathname.startsWith("/api/client-portals/") ||
           url.pathname.startsWith("/api/collab") ||
           url.pathname.startsWith("/api/sites/") ||
+          url.pathname.startsWith("/api/free-suite/") ||
+          url.pathname.startsWith("/api/platform/") ||
           url.pathname.startsWith("/api/push/")) &&
         !env.DB
       )
@@ -7138,6 +7804,31 @@ export default {
           console.error("Sites error", error);
           return json(
             { error: "Não foi possível concluir a publicação." },
+            500,
+          );
+        }
+      }
+      if (url.pathname.startsWith("/api/free-suite/")) {
+        try {
+          return await handleFreeSuite(request, env, user, url);
+        } catch (error) {
+          console.error("Free suite error", error);
+          return json(
+            { error: "Não foi possível concluir a ação no laboratório." },
+            500,
+          );
+        }
+      }
+      if (url.pathname.startsWith("/api/platform/")) {
+        try {
+          return await handlePlatformSuite(request, env, user, url, {
+            json,
+            ownerAccess: freeSuiteOwner,
+          });
+        } catch (error) {
+          console.error("Platform suite error", error);
+          return json(
+            { error: "Não foi possível concluir a ação nesta central." },
             500,
           );
         }
