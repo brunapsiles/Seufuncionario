@@ -382,6 +382,32 @@ gratuito da Cloudflare. O workflow `Publicar` do GitHub é apenas uma contingên
   Sugestão nunca reordena o menu sozinha: menu que se mexe sozinho faz a pessoa
   perder o botão que já tinha decorado.
 
+- **Layout no celular (v155)**: a queixa da titular foi "quando abro no celular
+  fica tudo desengonçado". Não foi corrigido no olho: foi medido com Chromium
+  real em iPhone SE (320px) e iPhone 13 (390px), varrendo as 63 telas do menu e
+  procurando toda caixa cuja borda direita passasse da tela sem estar dentro de
+  algo que rola.
+  As três causas de raiz, todas na mesma família — "a caixa não consegue
+  encolher":
+  (1) `grid-template-columns: 1fr` no celular. `1fr` tem mínimo `auto`, então a
+  faixa cresce até a largura mínima do conteúdo e o cartão inteiro sai da tela.
+  Em coluna única de celular use SEMPRE `minmax(0, 1fr)`.
+  (2) `.section-head`/`.panel-head` eram `flex` sem `flex-wrap`. O botão da
+  direita não cabia, saía da tela — e, por virar a largura mínima do painel,
+  arrastava o painel junto. Agora quebram linha.
+  (3) `<select>` se dimensiona pela opção mais longa da lista. Dentro de um
+  `label` com `display:grid`, `max-width:100%` não resolve (a porcentagem é da
+  faixa da grade, que já cresceu): a correção é `grid-template-columns:
+  minmax(0,1fr)` no próprio `label`.
+  Conteúdo que legitimamente não cabe (faixa de abas com sete itens) rola
+  dentro do próprio quadro — `overflow-x:auto`. Nunca resolver com
+  `overflow:hidden`: isso esconde o sintoma e deixa o item inalcançável.
+  Duas regras de iOS que não são estéticas: campo com fonte abaixo de 16px faz
+  o iPhone dar zoom sozinho ao receber o toque e NÃO voltar; e `viewport-fit=cover`
+  no `index.html` é pré-requisito para `env(safe-area-inset-*)` funcionar.
+  `src/mobile-layout.test.js` guarda essas regras lendo o CSS. É trava de
+  regressão barata, não substitui abrir o navegador.
+
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
 - "Esqueci minha senha": ✅ implementado (/api/auth/forgot e /api/auth/reset, códigos via Brevo)

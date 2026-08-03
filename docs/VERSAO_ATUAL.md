@@ -1,6 +1,33 @@
 # Versão publicada
 
-## v154
+## v155
+
+- **O app foi ajustado para o celular.** A queixa era direta: "quando abro no
+  celular fica tudo desengonçado". Cada tela foi medida em navegador de
+  verdade, em iPhone SE (320px) e iPhone 13 (390px) — 63 telas, as duas
+  larguras — até nenhuma caixa passar da borda.
+- Cabeçalho de seção agora quebra linha. Antes, o botão da direita (por exemplo
+  "Exportar relatório", no Financeiro) empurrava o cabeçalho para fora da tela
+  e arrastava o painel inteiro junto.
+- Cartões e painéis param de "vazar" pela direita. As grades de coluna única do
+  celular passaram a poder encolher de verdade; antes elas cresciam até a
+  largura mínima do conteúdo e o cartão saía da tela.
+- Campo de escolha (aquele "Com [Diretor]", o período dos Dashboards) não
+  estica mais a linha inteira: ele nasce com a largura da opção mais longa e
+  agora fica limitado à tela.
+- Faixa de abas larga demais (Quadro / Lista / Calendário / Gantt…) agora rola
+  com o dedo em vez de ser cortada. Nenhuma aba fica inalcançável.
+- Campos de texto com 16px no celular: abaixo disso o iOS dá zoom sozinho ao
+  tocar no campo — e não volta.
+- Alvo de toque de no mínimo 44px em botões de ícone e atalhos, porque o dedo
+  não tem a precisão do mouse.
+- Área segura do iPhone com entalhe respeitada (topo, laterais e barra de
+  gestos), para o conteúdo não sumir justamente nas bordas.
+- A página não rola mais para os lados.
+- Ficaram testes automáticos guardando essas regras, para o layout não
+  regredir sem ninguém perceber.
+
+## Base preservada da v154
 
 - Cada pessoa escolhe o seu menu principal. O que você usa fica no topo, e o
   resto vai para "Todas as ferramentas", logo abaixo.
