@@ -1,6 +1,37 @@
 # Versão publicada
 
-## v155
+## v156
+
+- **Tela nova: Mídia.** Três coisas que o negócio precisa todo dia e que até
+  agora dependiam de site de terceiro: editar foto, gravar recado e achar
+  arquivo depois.
+- **Editar imagem** direto no navegador: recortar em 1:1, 4:5, 9:16 ou 16:9;
+  redimensionar por largura, altura ou porcentagem; tamanhos prontos para post
+  quadrado, story, capa de site e foto de produto; girar, espelhar e ajustar
+  brilho, contraste, saturação e preto e branco.
+- **Deixar a foto leve**: escolha WebP, JPEG ou PNG e, se quiser, um tamanho
+  máximo em KB — o app procura sozinho a melhor qualidade que cabe nesse
+  limite. Numa foto de teste, uma imagem virou 90% menor.
+- Um tamanho pronto nunca aumenta a imagem: aumentar só borra. Se a foto já é
+  menor que o tamanho pedido, ela fica como está.
+- **Gravar recado de voz** pelo microfone, com limite de 5 minutos, para não
+  encher o espaço de trabalho sem querer.
+- **Ditar e ouvir**: dite um texto por voz e ouça qualquer texto em voz alta,
+  em português, com velocidade ajustável. Serve para legenda de post, roteiro
+  de vídeo e recado para cliente. Tem um botão que arruma a pontuação do que
+  foi ditado.
+- **Biblioteca de mídia**: tudo o que a IA gerou, o que você editou e o que
+  gravou fica no mesmo lugar. Busca por nome, por etiqueta e até pelo que foi
+  dito dentro do áudio. Dá para renomear, etiquetar, baixar e apagar.
+- A biblioteca mostra quanto está ocupando e avisa quando fica pesada a ponto
+  de deixar o app lento, apontando os arquivos maiores.
+- **Nada disso sai do seu aparelho.** Não há servidor de imagem, não há serviço
+  pago por trás e funciona mesmo sem internet. Foi assim de propósito: é o que
+  permite entregar isto sem custo nenhum.
+- SVG não é aceito como imagem de entrada, de propósito: SVG é código e pode
+  carregar script.
+
+## Base preservada da v155
 
 - **O app foi ajustado para o celular.** A queixa era direta: "quando abro no
   celular fica tudo desengonçado". Cada tela foi medida em navegador de

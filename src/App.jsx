@@ -329,6 +329,7 @@ const PlanPanel = lazy(() => import("./features/plans/PlanPanel.jsx"));
 const MenuSettings = lazy(
   () => import("./features/navigation/MenuSettings.jsx"),
 );
+const MediaStudio = lazy(() => import("./features/media/MediaStudio.jsx"));
 const PersonalInbox = lazy(
   () => import("./features/inbox/PersonalInbox.jsx"),
 );
@@ -544,6 +545,7 @@ const nav = [
   ["criacao-local", "Criação sem custo", WandSparkles],
   ["laboratorio-gratuito", "Laboratório gratuito", Bot],
   ["estudio", "Estúdio de IA", WandSparkles],
+  ["midia", "Mídia", ImageIcon],
   ["historico", "Histórico", History],
   ["certificacoes", "Certificações", Award],
 ];
@@ -626,6 +628,7 @@ const navGroups = [
       "criacao-local",
       "laboratorio-gratuito",
       "estudio",
+      "midia",
     ],
   },
   { label: "REGISTROS", items: ["historico", "certificacoes"] },
@@ -27793,6 +27796,19 @@ export default function App() {
               setToast={setToast}
               authHeaders={authHeaders}
               ownerId={activeSpaceId()}
+            />
+          </Suspense>
+        );
+      case "midia":
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando mídia...</div>}
+          >
+            <MediaStudio
+              db={db}
+              update={update}
+              business={business}
+              setToast={setToast}
             />
           </Suspense>
         );

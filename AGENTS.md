@@ -408,6 +408,36 @@ gratuito da Cloudflare. O workflow `Publicar` do GitHub é apenas uma contingên
   `src/mobile-layout.test.js` guarda essas regras lendo o CSS. É trava de
   regressão barata, não substitui abrir o navegador.
 
+- **Mídia (v156)**: `src/features/media/` — três camadas puras
+  (`imageDomain.js`, `audioDomain.js`, `libraryDomain.js`) e uma tela
+  (`MediaStudio.jsx`, três abas). Reaproveita a coleção `media` que já existia
+  em vez de criar outra: para quem usa, o que a IA gerou, o que foi editado e o
+  que foi gravado são a mesma coisa — arquivo do negócio.
+  A decisão de fundo é a gratuidade: TUDO roda no aparelho, com API que já vem
+  no navegador (canvas para imagem, MediaRecorder para gravar, SpeechRecognition
+  para ditar, speechSynthesis para ouvir). Sem servidor de imagem, sem serviço
+  pago, funcionando offline, e a foto não sai do celular. Não trocar isso por
+  uma API externa sem antes resolver quem paga a conta.
+  Armadilhas que já custaram caro e estão travadas por teste:
+  (1) Tamanho pronto ("Post quadrado") é uma CAIXA, não uma largura fixa.
+  Aplicado depois do recorte, largura fixa AUMENTA a imagem já cortada — e
+  aumentar só borra. `fitInside` nunca amplia, de propósito.
+  (2) JPEG e WebP não têm transparência: sem pintar fundo branco antes, o que
+  era transparente no PNG sai preto.
+  (3) PNG não tem qualidade variável — pedir "máximo 40 KB" num PNG não faz
+  nada. A tela avisa em vez de fingir que funcionou.
+  (4) A busca binária de compressão guarda o MELHOR resultado que coube; sem
+  isso ela devolveria a última tentativa, que pode ser pior.
+  (5) A biblioteca só enxerga a mídia do negócio aberto. Gravar a lista
+  filtrada direto por cima de `media` apagaria a mídia dos outros negócios —
+  `salvarLista` substitui só a fatia visível. Há teste para isso.
+  (6) `chunkForSpeech` existe porque a síntese de fala engasga com texto longo:
+  alguns navegadores cortam no meio, outros param. A quebra é por frase, não
+  por número de letras, senão corta palavra e perde a entonação.
+  (7) SVG não entra como imagem: é código e pode carregar script.
+  Gravar e ditar dependem do navegador. Onde não houver, a tela avisa e o resto
+  continua funcionando — nunca travar a tela inteira por causa disso.
+
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
 - "Esqueci minha senha": ✅ implementado (/api/auth/forgot e /api/auth/reset, códigos via Brevo)
