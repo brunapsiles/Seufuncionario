@@ -1,5 +1,15 @@
 # Versão publicada
 
+## v161
+
+- O topo mobile voltou a priorizar a marca “Seu Funcionário”.
+- O seletor de negócio não aparece mais truncado como “Lava...” na barra
+  superior do celular.
+- A área do mascote na home mobile ficou compacta para a primeira dobra mostrar
+  pergunta, busca e caminhos de navegação com mais clareza.
+- Os cards da home mobile foram levemente reduzidos para parecerem ferramenta
+  de produto, não lista inflada.
+
 ## v160
 
 - A identidade visual saiu do roxo antigo e passou para a paleta do mascote:
