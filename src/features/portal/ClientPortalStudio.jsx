@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Check,
   ChevronRight,
@@ -139,12 +139,12 @@ export default function ClientPortalStudio({
   const suffix = ownerId
     ? `?owner=${encodeURIComponent(ownerId)}`
     : "";
-  const withOwner = (path) =>
+  const withOwner = useCallback((path) =>
     `${path}${path.includes("?") ? "&" : "?"}owner=${encodeURIComponent(
       workspaceOwnerId,
-    )}`;
+    )}`, [workspaceOwnerId]);
 
-  const loadStatus = async () => {
+  const loadStatus = useCallback(async () => {
     try {
       const response = await fetch(`/api/client-portals/status${suffix}`, {
         headers: authHeaders(),
@@ -156,16 +156,25 @@ export default function ClientPortalStudio({
     } catch {
       setRemote({});
     }
-  };
+  }, [authHeaders, suffix]);
 
   useEffect(() => {
-    loadStatus();
-  }, [workspaceOwnerId]);
+    const id = setTimeout(() => {
+      void loadStatus();
+    }, 0);
+    return () => clearTimeout(id);
+  }, [loadStatus]);
 
   useEffect(() => {
-    if (!selectedId && portals[0]) setSelectedId(portals[0].id);
-    if (selectedId && !portals.some((portal) => portal.id === selectedId))
-      setSelectedId(portals[0]?.id || "");
+    const nextSelectedId =
+      !selectedId && portals[0]
+        ? portals[0].id
+        : selectedId && !portals.some((portal) => portal.id === selectedId)
+          ? portals[0]?.id || ""
+          : selectedId;
+    if (nextSelectedId === selectedId) return undefined;
+    const id = setTimeout(() => setSelectedId(nextSelectedId), 0);
+    return () => clearTimeout(id);
   }, [portals, selectedId]);
 
   const patchSelected = (patch) => {
@@ -299,7 +308,7 @@ export default function ClientPortalStudio({
     }
   };
 
-  const loadEvents = async () => {
+  const loadEvents = useCallback(async () => {
     if (!selected) return;
     setBusy("events");
     try {
@@ -321,11 +330,15 @@ export default function ClientPortalStudio({
     } finally {
       setBusy("");
     }
-  };
+  }, [authHeaders, selected, setToast, withOwner]);
 
   useEffect(() => {
-    if (tab === "events" && selected) loadEvents();
-  }, [tab, selected?.id]);
+    if (tab !== "events" || !selected) return undefined;
+    const id = setTimeout(() => {
+      void loadEvents();
+    }, 0);
+    return () => clearTimeout(id);
+  }, [loadEvents, selected, tab]);
 
   const copyLink = async () => {
     const link = links[selected?.id];

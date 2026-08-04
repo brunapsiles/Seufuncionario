@@ -272,8 +272,20 @@ export default function CapacityPlanner({ db, update, business, setToast }) {
       </section>
 
       {modal && (
-        <div className="capacity-modal-backdrop" role="presentation" onMouseDown={() => setModal("")}>
-          <section className="capacity-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+        <div
+          className="capacity-modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Fechar modal"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setModal("");
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" || event.key === "Enter" || event.key === " ")
+              setModal("");
+          }}
+        >
+          <section className="capacity-modal" role="dialog" aria-modal="true">
             {modal === "profile" && (
               <form onSubmit={saveProfile}>
                 <header><h2>Adicionar recurso</h2><p>Defina jornada, competência e economia da função.</p></header>

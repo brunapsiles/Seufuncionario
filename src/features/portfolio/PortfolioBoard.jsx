@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   AlertTriangle,
   GitBranch,
@@ -49,22 +49,23 @@ export default function PortfolioBoard({ db, update, business, setToast }) {
   });
   const [novaRaci, setNovaRaci] = useState({ activity: "", projectId: "" });
 
-  const doNegocio = (lista) =>
+  const businessId = business?.id || "";
+  const doNegocio = useCallback((lista) =>
     (lista || []).filter(
-      (x) => !business || !x.businessId || x.businessId === business.id,
-    );
+      (x) => !businessId || !x.businessId || x.businessId === businessId,
+    ), [businessId]);
 
-  const projetos = useMemo(() => doNegocio(db.projects), [db.projects, business]);
+  const projetos = useMemo(() => doNegocio(db.projects), [db.projects, doNegocio]);
   const vinculos = useMemo(
     () => doNegocio(db.projectLinks),
-    [db.projectLinks, business],
+    [db.projectLinks, doNegocio],
   );
   const riscos = useMemo(
     () => doNegocio(db.portfolioRisks),
-    [db.portfolioRisks, business],
+    [db.portfolioRisks, doNegocio],
   );
-  const racis = useMemo(() => doNegocio(db.raci), [db.raci, business]);
-  const tarefas = db.tasks || [];
+  const racis = useMemo(() => doNegocio(db.raci), [db.raci, doNegocio]);
+  const tarefas = useMemo(() => db.tasks || [], [db.tasks]);
 
   const agenda = useMemo(
     () => portfolioSchedule(projetos, vinculos),

@@ -356,12 +356,19 @@ function DashboardCard({
   const definition = DASHBOARD_WIDGETS.find((widget) => widget.id === item.id);
   const Icon = iconByWidget[item.id] || BarChart3;
   return (
-    <article
+    <div
       className={`config-dashboard-card ${item.size}`}
       draggable
+      role="button"
+      tabIndex={0}
+      aria-label={`Widget ${definition?.title}`}
       onDragStart={() => onDragStart(item.id)}
       onDragOver={(event) => event.preventDefault()}
       onDrop={() => onDrop(item.id)}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowUp") onMove(item.id, "up");
+        if (event.key === "ArrowDown") onMove(item.id, "down");
+      }}
       data-widget-id={item.id}
     >
       <header>
@@ -403,7 +410,7 @@ function DashboardCard({
           Ver detalhes
         </button>
       )}
-    </article>
+    </div>
   );
 }
 

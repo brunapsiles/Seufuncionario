@@ -314,6 +314,12 @@ export default function QuickWhiteboard({ db, update, business, setToast }) {
       <div
         className="qwb-area"
         ref={areaRef}
+        role="button"
+        tabIndex={0}
+        aria-label="Quadro branco"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") terminar();
+        }}
         onMouseDown={comecar}
         onMouseMove={mover}
         onMouseUp={terminar}
@@ -355,8 +361,12 @@ export default function QuickWhiteboard({ db, update, business, setToast }) {
             key={n.id}
             className="qwb-note"
             style={{ left: n.x, top: n.y }}
+            role="button"
+            tabIndex={0}
+            aria-label="Cartão da nota"
             onMouseDown={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
           >
             <textarea
               aria-label="Nota do quadro"

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
   ClipboardCopy,
@@ -55,7 +55,8 @@ export default function PublicFormsStudio({
   authHeaders,
   ownerId,
 }) {
-  const workspaceOwnerId = ownerId || db.user?.id;
+  const currentUserId = db.user?.id;
+  const workspaceOwnerId = ownerId || currentUserId;
   const forms = (db.publicForms || []).filter(
     (form) => !business || form.businessId === business.id,
   );
@@ -89,7 +90,7 @@ export default function PublicFormsStudio({
       ? `?owner=${encodeURIComponent(workspaceOwnerId)}`
       : "";
 
-  const loadStatus = async () => {
+  const loadStatus = useCallback(async () => {
     try {
       const response = await fetch(`/api/forms/status${ownerQuery}`, {
         headers: authHeaders(),
@@ -102,11 +103,14 @@ export default function PublicFormsStudio({
     } catch {
       // O editor local continua funcionando mesmo se o status remoto falhar.
     }
-  };
+  }, [authHeaders, ownerQuery]);
 
   useEffect(() => {
-    loadStatus();
-  }, [workspaceOwnerId]);
+    const id = setTimeout(() => {
+      void loadStatus();
+    }, 0);
+    return () => clearTimeout(id);
+  }, [loadStatus]);
 
   const patchSelected = (patch) => {
     if (!selected) return;
@@ -300,12 +304,12 @@ export default function PublicFormsStudio({
     }
   };
 
-  const loadSubmissions = async () => {
-    if (!selected) return;
+  const loadSubmissions = useCallback(async () => {
+    if (!selectedId) return;
     setLoading(true);
     try {
-      const params = new URLSearchParams({ form_id: selected.id });
-      if (workspaceOwnerId && workspaceOwnerId !== db.user?.id)
+      const params = new URLSearchParams({ form_id: selectedId });
+      if (workspaceOwnerId && workspaceOwnerId !== currentUserId)
         params.set("owner", workspaceOwnerId);
       const response = await fetch(`/api/forms/submissions?${params}`, {
         headers: authHeaders(),
@@ -318,11 +322,15 @@ export default function PublicFormsStudio({
     } finally {
       setLoading(false);
     }
-  };
+  }, [authHeaders, currentUserId, selectedId, setToast, workspaceOwnerId]);
 
   useEffect(() => {
-    if (tab === "submissions" && selected) loadSubmissions();
-  }, [tab, selected?.id]);
+    if (tab !== "submissions" || !selectedId) return undefined;
+    const id = setTimeout(() => {
+      void loadSubmissions();
+    }, 0);
+    return () => clearTimeout(id);
+  }, [loadSubmissions, selectedId, tab]);
 
   const copy = async (text, message) => {
     try {

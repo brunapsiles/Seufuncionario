@@ -54,7 +54,7 @@ export default function KnowledgeCenter({ db, update, business, setToast, go }) 
   const [nova, setNova] = useState({ text: "", scope: "empresa", scopeRef: "", required: false });
   const [novoTermo, setNovoTermo] = useState({ term: "", synonyms: "" });
 
-  const glossario = db.glossary || [];
+  const glossario = useMemo(() => db.glossary || [], [db.glossary]);
   const memorias = useMemo(
     () =>
       (db.memories || []).filter(
@@ -290,8 +290,8 @@ export default function KnowledgeCenter({ db, update, business, setToast, go }) 
           <div className="kc-glossary">
             <h3>Glossário da empresa</h3>
             <p className="kc-hint">
-              Ensine as siglas do seu negócio. Com "NF = nota fiscal", buscar
-              "NF" encontra também o que está escrito por extenso.
+              Ensine as siglas do seu negócio. Se NF significa nota fiscal, a
+              busca encontra também o que está escrito por extenso.
             </p>
             <div className="kc-glossary-form">
               <input

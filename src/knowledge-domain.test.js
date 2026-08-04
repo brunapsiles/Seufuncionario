@@ -21,7 +21,6 @@ import {
   findDuplicates,
   makeGlossaryEntry,
   normalizeToken,
-  scoreDocuments,
   searchWorkspace,
   snippetFor,
   staleContent,

@@ -405,6 +405,12 @@ export default function CanvasBoard({ db, update, business, setToast }) {
       <div
         className="cvs-area"
         ref={areaRef}
+        role="button"
+        tabIndex={0}
+        aria-label="Quadro visual"
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setSelecionadoEl(null);
+        }}
         onWheel={aoRolar}
         onMouseDown={(e) => {
           if (e.target === e.currentTarget || e.target.dataset.bg) {
@@ -429,6 +435,9 @@ export default function CanvasBoard({ db, update, business, setToast }) {
               className={`cvs-el cvs-${el.type} ${
                 selecionadoEl === el.id ? "sel" : ""
               }`}
+              role="button"
+              tabIndex={0}
+              aria-label={`Selecionar ${el.type}`}
               style={{
                 left: el.x,
                 top: el.y,
@@ -439,6 +448,11 @@ export default function CanvasBoard({ db, update, business, setToast }) {
               onMouseDown={(e) => {
                 e.stopPropagation();
                 iniciarArraste(e, el);
+              }}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter" && e.key !== " ") return;
+                e.preventDefault();
+                setSelecionadoEl(el.id);
               }}
             >
               {el.type === "frame" ? (

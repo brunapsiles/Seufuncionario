@@ -139,17 +139,17 @@ export default function DataLab({ db, business }) {
       .map(([month, total]) => ({ month, total: Math.round(total * 100) / 100 }));
   }, [fonte]);
 
-  const serieNumeros = serieMensal.map((s) => s.total);
-  const previsao = useMemo(() => forecast(serieNumeros, 3), [serieMensal]);
-  const anomalos = useMemo(() => anomalies(serieNumeros), [serieMensal]);
-  const media3 = useMemo(() => movingAverage(serieNumeros, 3), [serieMensal]);
+  const serieNumeros = useMemo(() => serieMensal.map((s) => s.total), [serieMensal]);
+  const previsao = useMemo(() => forecast(serieNumeros, 3), [serieNumeros]);
+  const anomalos = useMemo(() => anomalies(serieNumeros), [serieNumeros]);
+  const media3 = useMemo(() => movingAverage(serieNumeros, 3), [serieNumeros]);
   const grupos = useMemo(() => clusterValues(valores, 3), [valores]);
   const tendencia = useMemo(
     () =>
       serieNumeros.length >= 3
         ? linearRegression(serieNumeros.map((_, i) => i + 1), serieNumeros)
         : null,
-    [serieMensal],
+    [serieNumeros],
   );
   const qualidade = useMemo(() => {
     if (!fonte) return null;

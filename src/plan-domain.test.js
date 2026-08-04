@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PLAN_ID,
-  FREE_PLAN_ID,
   LAUNCH_MODE,
   LAUNCH_PLAN,
   METRICS,

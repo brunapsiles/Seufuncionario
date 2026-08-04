@@ -32,6 +32,7 @@ import {
 } from "./diagramDomain.js";
 
 const newId = () => `d-${Math.random().toString(36).slice(2, 10)}`;
+const EMPTY_ARRAY = [];
 
 const baixar = (nome, conteudo, tipo) => {
   const blob = new Blob([conteudo], { type: tipo });
@@ -60,8 +61,8 @@ export default function DiagramStudio({ db, update, business, setToast }) {
   );
   const diagrama =
     diagramas.find((d) => d.id === selecionadoId) || diagramas[0] || null;
-  const nodes = diagrama?.nodes || [];
-  const edges = diagrama?.edges || [];
+  const nodes = diagrama?.nodes || EMPTY_ARRAY;
+  const edges = diagrama?.edges || EMPTY_ARRAY;
   const validacao = useMemo(() => validateDiagram(nodes, edges), [nodes, edges]);
   const bases = (db.databases || []).filter(
     (b) => !business || b.businessId === business.id,
@@ -384,6 +385,12 @@ export default function DiagramStudio({ db, update, business, setToast }) {
 
       <div
         className="dgm-canvas"
+        role="button"
+        tabIndex={0}
+        aria-label="Editor visual de diagrama"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setSelecao([]);
+        }}
         onMouseMove={durante}
         onMouseUp={encerrar}
         onMouseLeave={encerrar}
@@ -414,6 +421,9 @@ export default function DiagramStudio({ db, update, business, setToast }) {
               className={`dgm-node kind-${spec.kind} ${
                 selecao.includes(n.id) ? "sel" : ""
               } ${ligando === n.id ? "origem" : ""}`}
+              role="button"
+              tabIndex={0}
+              aria-label={`Selecionar ${spec.label}`}
               style={{
                 left: n.x,
                 top: n.y,
@@ -425,6 +435,12 @@ export default function DiagramStudio({ db, update, business, setToast }) {
               onClick={(e) =>
                 ligando === "aguardando" ? setLigando(n.id) : clicarNo(e, n)
               }
+              onKeyDown={(e) => {
+                if (e.key !== "Enter" && e.key !== " ") return;
+                e.preventDefault();
+                if (ligando === "aguardando") setLigando(n.id);
+                else clicarNo(e, n);
+              }}
             >
               <textarea
                 aria-label={`Texto de ${spec.label}`}

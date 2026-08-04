@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Bot,
@@ -60,13 +60,14 @@ export default function AgentStudio({
     acceptance: "",
   });
 
-  const doNegocio = (lista) =>
+  const businessId = business?.id || "";
+  const doNegocio = useCallback((lista) =>
     (lista || []).filter(
-      (x) => !business || !x.businessId || x.businessId === business.id,
-    );
+      (x) => !businessId || !x.businessId || x.businessId === businessId,
+    ), [businessId]);
 
-  const agentes = useMemo(() => doNegocio(db.agents), [db.agents, business]);
-  const execucoes = useMemo(() => doNegocio(db.agentRuns), [db.agentRuns, business]);
+  const agentes = useMemo(() => doNegocio(db.agents), [db.agents, doNegocio]);
+  const execucoes = useMemo(() => doNegocio(db.agentRuns), [db.agentRuns, doNegocio]);
   const agente = useMemo(
     () => agentes.find((a) => a.id === selecionado) || null,
     [agentes, selecionado],
