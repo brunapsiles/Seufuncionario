@@ -174,6 +174,25 @@ function json(data, status = 200) {
   });
 }
 
+async function publishedVersion(env, origin) {
+  try {
+    if (!env.ASSETS?.fetch) return null;
+    const response = await env.ASSETS.fetch(
+      new Request(`${origin}/version.json`, {
+        headers: { "cache-control": "no-store" },
+      }),
+    );
+    if (!response.ok) return null;
+    const data = await response.json();
+    return {
+      version: String(data.version || "").trim(),
+      buildTime: data.buildTime || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 const encoder = new TextEncoder();
 const hex = (bytes) =>
   [...new Uint8Array(bytes)]
@@ -7765,10 +7784,17 @@ export default {
           database = "operacional";
         }
       } catch {}
+      const appVersion = await publishedVersion(env, url.origin);
+      const clientVersion = url.searchParams.get("client") || "";
       return json({
         status: database === "operacional" ? "operacional" : "degradado",
         database,
-        version: "v158",
+        version: appVersion?.version || "local",
+        buildTime: appVersion?.buildTime || null,
+        clientVersion,
+        current: clientVersion
+          ? clientVersion === (appVersion?.version || "local")
+          : true,
         roadmap: {
           complete: true,
           completedThrough: 27,

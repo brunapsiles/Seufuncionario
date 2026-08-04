@@ -94,6 +94,7 @@ import {
   Logo,
   PageTitle,
 } from "./components/ui.jsx";
+import HomeHub from "./features/home/HomeHub.jsx";
 import LegalPage, { LegalContent } from "./features/legal/LegalPage.jsx";
 import InboxHub from "./features/omnichannel/InboxHub.jsx";
 import Contacts from "./features/omnichannel/Contacts.jsx";
@@ -2745,13 +2746,15 @@ function Toast({ toast }) {
   ) : null;
 }
 
-function AppUpdate({ visible }) {
+function AppUpdate({ visible, latestVersion }) {
   return visible ? (
     <div className="app-update" role="status" aria-live="polite">
       <span>
         <RefreshCw size={18} />
         <strong>Uma nova versão está pronta.</strong>
-        Atualize para receber as melhorias sem perder seus dados.
+        {latestVersion
+          ? `Versão ${latestVersion} disponível.`
+          : "Atualize para receber as melhorias sem perder seus dados."}
       </span>
       <button type="button" onClick={() => location.reload()}>
         Atualizar agora
@@ -5130,7 +5133,7 @@ function UniversalRequest({ db, update, business, setToast }) {
   );
 }
 
-function Dashboard({ db, update, business, go, setToast }) {
+function Dashboard({ db, update, business, go, setToast, visibleNav }) {
   const isEmployeeMode = (db.preferences.mode || "business") === "employee";
   const [team, setTeam] = useState({ members: [], invites: [] });
   const [goalDraft, setGoalDraft] = useState(business?.weeklyGoal || "");
@@ -5308,6 +5311,17 @@ function Dashboard({ db, update, business, go, setToast }) {
   }, [achievementIds, db.user.id, gamificationEnabled, myAchievements, update]);
   return (
     <>
+      <HomeHub
+        db={db}
+        update={update}
+        business={business}
+        go={go}
+        setToast={setToast}
+        visibleNav={visibleNav}
+        navGroups={navGroups}
+        aiTools={aiTools}
+        businessCatalog={BUSINESS_INDUSTRY_CATALOG}
+      />
       {gamificationEnabled && myPoints > 0 && (
         <div className="progress-card">
           <div>
@@ -24323,6 +24337,9 @@ export default function App() {
   const [updateAvailable, setUpdateAvailable] = useState(
     () => !!window.__SF_UPDATE_AVAILABLE__,
   );
+  const [updateInfo, setUpdateInfo] = useState(() => ({
+    latestVersion: window.__SF_LATEST_VERSION__ || "",
+  }));
   const [sbw, setSbw] = useState(
     Math.min(380, Math.max(210, savedUi.sbw || 266)),
   );
@@ -24335,7 +24352,13 @@ export default function App() {
     } catch {}
   }, [collapsed, menuHidden, sbw]);
   useEffect(() => {
-    const showUpdate = () => setUpdateAvailable(true);
+    const showUpdate = (event) => {
+      setUpdateInfo({
+        latestVersion:
+          event.detail?.latestVersion || window.__SF_LATEST_VERSION__ || "",
+      });
+      setUpdateAvailable(true);
+    };
     window.addEventListener("sf-app-update-available", showUpdate);
     return () =>
       window.removeEventListener("sf-app-update-available", showUpdate);
@@ -24635,6 +24658,7 @@ export default function App() {
             business={business}
             go={go}
             setToast={setToast}
+            visibleNav={visibleNav}
           />
         );
       case "comecar":
@@ -25853,7 +25877,10 @@ export default function App() {
           {content()}
         </div>
       </main>
-      <AppUpdate visible={updateAvailable} />
+      <AppUpdate
+        visible={updateAvailable}
+        latestVersion={updateInfo.latestVersion}
+      />
       <Toast toast={toast} />
     </div>
   );

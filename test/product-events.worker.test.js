@@ -108,9 +108,11 @@ describe("métricas próprias e minimizadas", () => {
     expect(payload).toMatchObject({
       status: "operacional",
       database: "operacional",
-      // Versão tolerante: não quebra a cada release (evita main vermelho).
-      version: expect.stringMatching(/^v\d+$/),
+      // A versão agora vem do build publicado, geralmente o SHA curto do commit.
+      version: expect.any(String),
+      current: true,
     });
+    expect(payload.version.length).toBeGreaterThan(0);
     expect(JSON.stringify(payload)).not.toMatch(/key|token|provider/i);
   });
 });

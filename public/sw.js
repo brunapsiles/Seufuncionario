@@ -1,5 +1,6 @@
-const CACHE = "seu-funcionario-v158";
-// Marcador de publicação da v150.
+const SERVICE_VERSION =
+  new URL(self.location.href).searchParams.get("v") || "local";
+const CACHE = `seu-funcionario-${SERVICE_VERSION}`;
 
 self.addEventListener("install", () => self.skipWaiting());
 
