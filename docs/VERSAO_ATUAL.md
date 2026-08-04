@@ -1,6 +1,23 @@
 # Versão publicada
 
-## v158
+## v159
+
+- **Início virou hub de descoberta.** A primeira tela agora organiza o app por
+  negócio, por área e por tarefa, usando somente rotas, módulos e ferramentas
+  que já existem no produto.
+- O mascote passou a aparecer como referência visual principal da entrada do
+  app, com uma identidade mais verde-azulada, limpa e comercial.
+- A busca do início encontra rapidamente negócios, áreas e tarefas disponíveis,
+  sem depender do menu lateral para descobrir o que o app faz.
+- A publicação agora gera um `version.json` a cada build e registra o Service
+  Worker com a versão do commit, para o navegador sair da versão antiga quando
+  houver atualização.
+- O endpoint `/api/status` compara a versão no ar com a versão do cliente e
+  informa se o app já está atual.
+- O workflow de publicação agora roda em todo push para a `main`, além do botão
+  manual.
+
+## Base preservada da v158
 
 - **O app agora avisa outros sistemas sozinho.** Era a última peça que faltava
   das Integrações, e a única que dependia do servidor.
