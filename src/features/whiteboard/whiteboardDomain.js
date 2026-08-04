@@ -10,7 +10,7 @@ export const PEN_TOOLS = [
   { id: "borracha", label: "Borracha", width: 20, opacity: 1 },
 ];
 
-export const PEN_COLORS = ["#0f172a", "#dc2626", "#2563eb", "#16a34a", "#d97706"];
+export const PEN_COLORS = ["#0f172a", "#dc2626", "#087a83", "#16a34a", "#17a673"];
 
 export const toolSpec = (id) => PEN_TOOLS.find((t) => t.id === id) || PEN_TOOLS[0];
 

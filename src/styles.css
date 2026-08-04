@@ -8963,7 +8963,7 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
 }
 .personal-inbox-kind.kind-change {
   background: color-mix(in srgb, #f59e0b 13%, var(--surface));
-  color: #d97706;
+  color: #17a673;
 }
 .personal-inbox-kind.kind-comment {
   background: color-mix(in srgb, #087a83 12%, var(--surface));
@@ -9343,7 +9343,7 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   background: var(--primary);
 }
 .mywork-dot.warn {
-  background: #d97706;
+  background: #17a673;
 }
 .mywork-dot.ok {
   background: var(--green, #16a34a);
@@ -9633,8 +9633,8 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   color: var(--primary);
 }
 .recurring-status.warn {
-  background: color-mix(in srgb, #d97706 16%, transparent);
-  color: #d97706;
+  background: color-mix(in srgb, #17a673 16%, transparent);
+  color: #17a673;
 }
 .recurring-status.ok {
   background: color-mix(in srgb, var(--green, #16a34a) 16%, transparent);
@@ -12871,9 +12871,9 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
 .block-preview-checklist label{display:flex;align-items:flex-start;gap:8px}
 .block-preview-checklist input{margin-top:3px;accent-color:var(--purple)}
 .block-preview-checklist input:checked+span{text-decoration:line-through;color:var(--muted)}
-.block-preview-callout{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;padding:12px;border-left:3px solid #2c86db;border-radius:8px;background:color-mix(in srgb,#2c86db 7%,var(--surface))}
+.block-preview-callout{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;padding:12px;border-left:3px solid #087a83;border-radius:8px;background:color-mix(in srgb,#087a83 7%,var(--surface))}
 .block-preview-callout.success{border-color:#17a673;background:color-mix(in srgb,#17a673 7%,var(--surface))}
-.block-preview-callout.warning{border-color:#f4a62a;background:color-mix(in srgb,#f4a62a 9%,var(--surface))}
+.block-preview-callout.warning{border-color:#6df7d7;background:color-mix(in srgb,#6df7d7 9%,var(--surface))}
 .block-preview-callout.danger{border-color:#d64545;background:color-mix(in srgb,#d64545 7%,var(--surface))}
 .block-preview-callout.neutral{border-color:var(--muted);background:var(--bg)}
 .block-preview-toggle{padding:10px 12px;border:1px solid var(--border);border-radius:9px}

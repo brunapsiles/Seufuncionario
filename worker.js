@@ -263,7 +263,7 @@ function codeEmailHtml(code) {
     </div>
     <h2 style="margin:24px 0 8px">Seu código de acesso</h2>
     <p style="color:#555;margin:0 0 18px">Use o código abaixo para ativar sua conta. Ele expira em 15 minutos.</p>
-    <div style="font-size:34px;letter-spacing:10px;font-weight:bold;text-align:center;background:#f1eff8;border-radius:12px;padding:18px;color:#6d38e0">${code}</div>
+    <div style="font-size:34px;letter-spacing:10px;font-weight:bold;text-align:center;background:#f1eff8;border-radius:12px;padding:18px;color:#0b9f8f">${code}</div>
     <p style="color:#888;font-size:12px;margin:20px 0 0">Se você não solicitou este código, ignore este e-mail.</p>
   </div>`;
 }
@@ -283,7 +283,7 @@ function inviteEmailHtml(inviteeName, ownerName, role, link) {
     <h2 style="margin:24px 0 8px">${escMail(ownerName)} convidou você</h2>
     <p style="color:#555;margin:0 0 18px">Olá, ${escMail(inviteeName)}. Você foi convidado para o espaço de ${escMail(ownerName)} como <strong>${roleLabel}</strong>. Clique no botão abaixo para criar sua conta e começar.</p>
     <div style="text-align:center;margin:22px 0">
-      <a href="${link}" style="display:inline-block;background:#6d38e0;color:#fff;text-decoration:none;padding:14px 28px;border-radius:10px;font-weight:bold">Aceitar convite</a>
+      <a href="${link}" style="display:inline-block;background:#0b9f8f;color:#fff;text-decoration:none;padding:14px 28px;border-radius:10px;font-weight:bold">Aceitar convite</a>
     </div>
     <p style="color:#888;font-size:12px;margin:20px 0 0">O convite expira em 7 dias e só pode ser usado por este e-mail. Se você não esperava este convite, ignore esta mensagem.</p>
   </div>`;
@@ -4826,10 +4826,10 @@ function renderClientPortal(token, snapshot) {
   const summary = clientPortalSummary(snapshot);
   const primary = /^#[0-9a-f]{6}$/i.test(portal.appearance?.primaryColor || "")
     ? portal.appearance.primaryColor
-    : "#6d38e0";
+    : "#0b9f8f";
   const accent = /^#[0-9a-f]{6}$/i.test(portal.appearance?.accentColor || "")
     ? portal.appearance.accentColor
-    : "#ed3e91";
+    : "#16b8a6";
   const logo = portal.appearance?.logoUrl
     ? `<img class="logo" src="${esc(portal.appearance.logoUrl)}" alt="">`
     : `<span class="logo-fallback">${esc(

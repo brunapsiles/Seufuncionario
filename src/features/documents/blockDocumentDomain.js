@@ -23,7 +23,7 @@ const httpsUrl = (value) => {
   }
 };
 
-const safeColor = (value, fallback = "#6d38e0") =>
+const safeColor = (value, fallback = "#0b9f8f") =>
   /^#[0-9a-f]{6}$/i.test(value || "") ? value : fallback;
 
 const number = (value, fallback = 0) => {
@@ -107,7 +107,7 @@ export function createDocumentBlock(type = "paragraph", seed = {}) {
       chartType: "bar",
       labels: ["Item 1", "Item 2"],
       values: [0, 0],
-      color: "#6d38e0",
+      color: "#0b9f8f",
     },
     columns: {
       columns: [

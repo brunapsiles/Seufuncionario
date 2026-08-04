@@ -80,7 +80,7 @@ function BlockChart({ block }) {
       0,
     );
     let cursor = 0;
-    const colors = ["#6d38e0", "#ed3e91", "#2c86db", "#17a673", "#f4a62a"];
+    const colors = ["#0b9f8f", "#16b8a6", "#087a83", "#17a673", "#6df7d7"];
     const gradient = total
       ? values
           .map((value, index) => {

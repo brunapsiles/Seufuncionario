@@ -440,7 +440,7 @@ export const orgChartFromRows = (
 // Cor da forma a partir de um valor de dado — o "status por cor" do Visio.
 export const STATUS_RULES = [
   { match: ["ok", "concluido", "concluída", "concluido", "ativo", "no prazo", "sim"], color: "#16a34a" },
-  { match: ["atencao", "atenção", "parcial", "em andamento", "fazendo"], color: "#d97706" },
+  { match: ["atencao", "atenção", "parcial", "em andamento", "fazendo"], color: "#17a673" },
   { match: ["risco", "atrasado", "erro", "bloqueado", "critico", "crítico", "nao", "não"], color: "#dc2626" },
 ];
 

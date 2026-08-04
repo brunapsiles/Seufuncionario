@@ -28,7 +28,7 @@ describe("domínio de formulários públicos", () => {
       "2026-07-29T20:00:00.000Z",
     );
     expect(form.slug).toBe("solicitacao-agil");
-    expect(form.appearance.primaryColor).toBe("#6d38e0");
+    expect(form.appearance.primaryColor).toBe("#0b9f8f");
     expect(form.appearance.textColor).toBe("#112233");
     expect(form.payment.link).toBe("");
     expect(form.signature.required).toBe(true);

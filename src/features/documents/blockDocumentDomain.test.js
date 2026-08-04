@@ -89,7 +89,7 @@ select * from metas;
       chartType: "bar",
       labels: ["Receita", "Item 2"],
       values: [10, 20],
-      color: "#6d38e0",
+      color: "#0b9f8f",
     });
   });
 

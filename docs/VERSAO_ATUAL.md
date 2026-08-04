@@ -1,5 +1,13 @@
 # Versão publicada
 
+## v163
+
+- Defaults antigos de roxo, rosa, azul genérico e laranja decorativo foram
+  removidos de formulários públicos, portal do cliente, documentos, editor de
+  blocos, diagramas, whiteboard, certificados, worker e templates públicos.
+- A paleta principal agora fica concentrada em teal, verde-azulado, ciano
+  esverdeado e azul petróleo também fora da home.
+
 ## v162
 
 - A home agora abre como catálogo completo de funções, sem limitar a primeira

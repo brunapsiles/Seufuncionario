@@ -216,7 +216,7 @@ export const normalizePublicForm = (
       ),
     },
     appearance: {
-      primaryColor: validColor(source.appearance?.primaryColor, "#6d38e0"),
+      primaryColor: validColor(source.appearance?.primaryColor, "#0b9f8f"),
       backgroundColor: validColor(
         source.appearance?.backgroundColor,
         "#f6f4fb",

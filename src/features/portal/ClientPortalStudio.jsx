@@ -685,7 +685,7 @@ export default function ClientPortalStudio({
                       Cor principal
                       <input
                         type="color"
-                        value={selected.appearance?.primaryColor || "#6d38e0"}
+                        value={selected.appearance?.primaryColor || "#0b9f8f"}
                         onChange={(event) =>
                           patchSelected({
                             appearance: { primaryColor: event.target.value },
@@ -697,7 +697,7 @@ export default function ClientPortalStudio({
                       Cor de destaque
                       <input
                         type="color"
-                        value={selected.appearance?.accentColor || "#ed3e91"}
+                        value={selected.appearance?.accentColor || "#16b8a6"}
                         onChange={(event) =>
                           patchSelected({
                             appearance: { accentColor: event.target.value },

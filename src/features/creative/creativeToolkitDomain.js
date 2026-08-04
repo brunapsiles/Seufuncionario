@@ -57,7 +57,7 @@ export function createCarouselSlides({
   return slides.slice(0, 10);
 }
 
-export function sanitizeHexColor(value, fallback = "#6d38e0") {
+export function sanitizeHexColor(value, fallback = "#0b9f8f") {
   const color = String(value || "").trim();
   return /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
 }

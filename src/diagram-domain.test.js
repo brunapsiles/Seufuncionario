@@ -413,7 +413,7 @@ describe("statusColor", () => {
   });
 
   it("laranja para atenção e vermelho para risco", () => {
-    expect(statusColor("Em andamento")).toBe("#d97706");
+    expect(statusColor("Em andamento")).toBe("#17a673");
     expect(statusColor("Atrasado")).toBe("#dc2626");
   });
 

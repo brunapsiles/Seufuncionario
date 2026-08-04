@@ -18377,7 +18377,7 @@ export function mergeSiteBrief(base, patch) {
     looksLikeSiteInstruction(next.description)
   )
     next.description = siteFallbackDescription(next);
-  if (!/^#[0-9a-f]{6}$/i.test(next.color || "")) next.color = "#6d38e0";
+  if (!/^#[0-9a-f]{6}$/i.test(next.color || "")) next.color = "#0b9f8f";
   return next;
 }
 
@@ -18518,7 +18518,7 @@ export function makeSite(form, page = "", siteSlug = "") {
       : siteFallbackDescription(form);
   const color = /^#[0-9a-f]{6}$/i.test(form.color || "")
     ? form.color
-    : "#6d38e0";
+    : "#0b9f8f";
   const contact = /^(https?:|mailto:|tel:|#)/i.test(form.contact || "")
     ? form.contact
     : "#contato";
@@ -18687,7 +18687,7 @@ export function websiteMilestones(site) {
       done: !!(
         site &&
         (site.codeEdited ||
-          (brief.color && brief.color !== "#6d38e0") ||
+          (brief.color && brief.color !== "#0b9f8f") ||
           (brief.cta && brief.cta !== "Falar com a gente"))
       ),
     },
@@ -18907,7 +18907,7 @@ function Sites({ db, update, business, setToast, go }) {
     services: business?.offer || "",
     cta: "Falar com a gente",
     contact: "#contato",
-    color: "#6d38e0",
+    color: "#0b9f8f",
     theme: "moderno",
     heroStyle: "centrado",
     heroImage: "",
@@ -22053,7 +22053,7 @@ function HistoryPage({ db, update, business, setToast, go }) {
 }
 
 function certificateDocument(cert) {
-  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHtml(cert.title)}</title><style>@page{size:A4 landscape;margin:0}*{box-sizing:border-box}body{margin:0;background:#eee;font-family:Arial,sans-serif;color:#18142b}.sheet{width:297mm;height:210mm;margin:auto;background:#fff;padding:13mm;position:relative;overflow:hidden}.frame{height:100%;border:2px solid #2b2051;padding:8mm;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;position:relative}.frame:before,.frame:after{content:'';position:absolute;width:100mm;height:100mm;border-radius:50%;filter:blur(2px);opacity:.12}.frame:before{background:#6d38e0;left:-50mm;top:-55mm}.frame:after{background:#ed3e91;right:-48mm;bottom:-58mm}.mark{width:18mm;height:18mm;border-radius:5mm;background:linear-gradient(135deg,#6d38e0,#ed3e91);color:white;display:grid;place-items:center;font-size:9mm;font-weight:bold;margin-bottom:5mm}.issuer{font-size:4mm;letter-spacing:.16em;text-transform:uppercase;font-weight:bold;color:#6d38e0}.sub{font-size:3.1mm;color:#665f75;margin-top:2mm}.rule{width:35mm;height:.6mm;background:linear-gradient(90deg,#6d38e0,#ed3e91);margin:6mm}.label{font-size:3.5mm;color:#665f75}.name{font-family:Georgia,serif;font-size:12mm;margin:4mm 0;color:#211846}.text{font-size:4mm;line-height:1.6;max-width:205mm;color:#413a50}.title{font-size:7mm;font-weight:bold;color:#6d38e0;margin:3mm 0}.footer{display:flex;gap:24mm;margin-top:10mm}.footer div{min-width:55mm;border-top:.4mm solid #aaa;padding-top:2mm;font-size:3.2mm}.code{position:absolute;bottom:6mm;font-size:2.8mm;color:#777}.note{position:absolute;left:10mm;bottom:5mm;font-size:2.5mm;color:#888;max-width:65mm;text-align:left}@media print{body{background:#fff}.sheet{margin:0}}</style></head><body><main class="sheet"><section class="frame"><div class="mark">P</div><div class="issuer">Academia Praxis</div><div class="sub">Competências Aplicadas para Negócios</div><div class="rule"></div><div class="label">CERTIFICADO DE COMPETÊNCIA PRÁTICA</div><h1 class="name">${escapeHtml(cert.name)}</h1><div class="text">concluiu os marcos verificáveis da trilha e demonstrou competência aplicada em</div><h2 class="title">${escapeHtml(cert.title)}</h2><div class="text">por estruturar briefing e conteúdo, personalizar a experiência, validar a responsividade e concluir a publicação de um projeto funcional.</div><div class="footer"><div><strong>${new Date(cert.issuedAt).toLocaleDateString("pt-BR")}</strong><br>Data de emissão</div><div><strong>Academia Praxis</strong><br>Unidade formativa</div></div><div class="note">Programa formativo integrado ao aplicativo Seu Funcionário. Certificado de realização prática; não equivale a diploma acadêmico ou habilitação profissional regulamentada.</div><div class="code">Credencial ${escapeHtml(cert.code)} · Projeto: ${escapeHtml(cert.projectName)}</div></section></main></body></html>`;
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHtml(cert.title)}</title><style>@page{size:A4 landscape;margin:0}*{box-sizing:border-box}body{margin:0;background:#eee;font-family:Arial,sans-serif;color:#18142b}.sheet{width:297mm;height:210mm;margin:auto;background:#fff;padding:13mm;position:relative;overflow:hidden}.frame{height:100%;border:2px solid #2b2051;padding:8mm;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;position:relative}.frame:before,.frame:after{content:'';position:absolute;width:100mm;height:100mm;border-radius:50%;filter:blur(2px);opacity:.12}.frame:before{background:#0b9f8f;left:-50mm;top:-55mm}.frame:after{background:#16b8a6;right:-48mm;bottom:-58mm}.mark{width:18mm;height:18mm;border-radius:5mm;background:linear-gradient(135deg,#0b9f8f,#16b8a6);color:white;display:grid;place-items:center;font-size:9mm;font-weight:bold;margin-bottom:5mm}.issuer{font-size:4mm;letter-spacing:.16em;text-transform:uppercase;font-weight:bold;color:#0b9f8f}.sub{font-size:3.1mm;color:#665f75;margin-top:2mm}.rule{width:35mm;height:.6mm;background:linear-gradient(90deg,#0b9f8f,#16b8a6);margin:6mm}.label{font-size:3.5mm;color:#665f75}.name{font-family:Georgia,serif;font-size:12mm;margin:4mm 0;color:#211846}.text{font-size:4mm;line-height:1.6;max-width:205mm;color:#413a50}.title{font-size:7mm;font-weight:bold;color:#0b9f8f;margin:3mm 0}.footer{display:flex;gap:24mm;margin-top:10mm}.footer div{min-width:55mm;border-top:.4mm solid #aaa;padding-top:2mm;font-size:3.2mm}.code{position:absolute;bottom:6mm;font-size:2.8mm;color:#777}.note{position:absolute;left:10mm;bottom:5mm;font-size:2.5mm;color:#888;max-width:65mm;text-align:left}@media print{body{background:#fff}.sheet{margin:0}}</style></head><body><main class="sheet"><section class="frame"><div class="mark">P</div><div class="issuer">Academia Praxis</div><div class="sub">Competências Aplicadas para Negócios</div><div class="rule"></div><div class="label">CERTIFICADO DE COMPETÊNCIA PRÁTICA</div><h1 class="name">${escapeHtml(cert.name)}</h1><div class="text">concluiu os marcos verificáveis da trilha e demonstrou competência aplicada em</div><h2 class="title">${escapeHtml(cert.title)}</h2><div class="text">por estruturar briefing e conteúdo, personalizar a experiência, validar a responsividade e concluir a publicação de um projeto funcional.</div><div class="footer"><div><strong>${new Date(cert.issuedAt).toLocaleDateString("pt-BR")}</strong><br>Data de emissão</div><div><strong>Academia Praxis</strong><br>Unidade formativa</div></div><div class="note">Programa formativo integrado ao aplicativo Seu Funcionário. Certificado de realização prática; não equivale a diploma acadêmico ou habilitação profissional regulamentada.</div><div class="code">Credencial ${escapeHtml(cert.code)} · Projeto: ${escapeHtml(cert.projectName)}</div></section></main></body></html>`;
 }
 
 function CertificateView({ cert, onClose }) {

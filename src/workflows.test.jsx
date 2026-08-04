@@ -871,7 +871,7 @@ describe("construtor de sites", () => {
         "Crie uma landing page premium e explique claramente tudo o que a plataforma faz.",
       description: "",
       services: "Planejamento\nConteúdo",
-      color: "#6d38e0",
+      color: "#0b9f8f",
     };
     const html = makeSite(brief, "", "seu-funcionario");
     expect(html).not.toContain(brief.instructions);
@@ -886,7 +886,7 @@ describe("construtor de sites", () => {
       description: "Identidades claras para marcas em crescimento.",
       services: "Marca\nSite",
       cta: "Conversar",
-      color: "#6d38e0",
+      color: "#0b9f8f",
     };
     const pages = makeSitePages(brief, "estudio-aurora");
     expect(pages.map((page) => page.slug)).toEqual([
@@ -909,7 +909,7 @@ describe("construtor de sites", () => {
       headline: "Design que aproxima",
       description: "Identidades claras para marcas em crescimento.",
       services: "Marca\nSite",
-      color: "#6d38e0",
+      color: "#0b9f8f",
       theme: "escuro",
       heroImage: "https://exemplo.com/capa.jpg",
       gallery: [{ url: "https://exemplo.com/foto1.jpg", caption: "Projeto 1" }],
@@ -952,7 +952,7 @@ describe("construtor de sites", () => {
   it("compõe a página inicial com os blocos e o estilo de topo escolhidos", () => {
     const brief = {
       name: "Estúdio Aurora",
-      color: "#6d38e0",
+      color: "#0b9f8f",
       heroStyle: "impacto",
       features: [
         { title: "Atendimento rápido", description: "Resposta no mesmo dia." },

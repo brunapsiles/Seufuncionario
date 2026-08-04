@@ -100,10 +100,10 @@ export function normalizeClientPortal(raw = {}, context = {}) {
     appearance: {
       primaryColor: /^#[0-9a-f]{6}$/i.test(raw.appearance?.primaryColor || "")
         ? raw.appearance.primaryColor
-        : "#6d38e0",
+        : "#0b9f8f",
       accentColor: /^#[0-9a-f]{6}$/i.test(raw.appearance?.accentColor || "")
         ? raw.appearance.accentColor
-        : "#ed3e91",
+        : "#16b8a6",
       logoUrl: httpsUrl(raw.appearance?.logoUrl),
     },
     expiresAt,
