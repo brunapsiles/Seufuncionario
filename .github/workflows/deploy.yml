@@ -1,13 +1,15 @@
 name: Publicar
 
-# Contingência manual de publicação. A publicação automática oficial acontece pelo
-# Cloudflare Workers Builds conectado à branch main.
+# Publicação oficial. Todo push na main deve virar produção; o acionamento
+# manual fica como contingência.
 #
 # Só funciona depois que o segredo CLOUDFLARE_API_TOKEN existir no repositório
 # (Settings > Secrets and variables > Actions). O passo abaixo confere isso
 # primeiro e explica o que fazer, em vez de falhar com erro incompreensível.
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -15,7 +17,7 @@ permissions:
 
 concurrency:
   group: publicar-producao
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   publicar:
@@ -74,7 +76,7 @@ jobs:
         run: |
           sleep 15
           NO_AR=$(curl -s https://seufuncionario-expo.brunapsiles.workers.dev/api/status | grep -o '"version":"[^"]*"' | cut -d'"' -f4)
-          ESPERADA=$(grep -o 'version: "v[0-9]*"' worker.js | grep -o 'v[0-9]*')
+          ESPERADA=$(node -e "console.log(JSON.parse(require('fs').readFileSync('dist/version.json', 'utf8')).version)")
           echo "No ar: $NO_AR | Esperada: $ESPERADA"
           if [ "$NO_AR" != "$ESPERADA" ]; then
             echo "::warning::O site respondeu $NO_AR e nao $ESPERADA. Pode ser cache; confira em alguns minutos."
