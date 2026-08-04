@@ -257,4 +257,15 @@ describe("itens fixos", () => {
   it("o início é fixo para a pessoa nunca perder o caminho de volta", () => {
     expect(PINNED).toContain("inicio");
   });
+
+  it("falar com o funcionário é fixo: é a porta de entrada do app", () => {
+    // Com 68 telas, pedir com as próprias palavras é o caminho mais curto para
+    // quase tudo. Quem tirasse isso do menu por engano ficaria procurando.
+    expect(PINNED).toContain("conversar");
+  });
+
+  it("os fixos entram no menu mesmo em preferência antiga, salva sem eles", () => {
+    const ids = [...IDS, "conversar"];
+    expect(normalizeMenu(["vendas", "financeiro"], ids)).toContain("conversar");
+  });
 });

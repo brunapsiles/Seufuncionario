@@ -423,6 +423,13 @@ describe("fluxos de trabalho", () => {
 
   it("anexa um documento diretamente à conversa", async () => {
     render(<App />);
+    // A conversa saiu da tela inicial e ganhou tela própria: a entrada agora é
+    // a caixa de pedido, e o chat completo abre em "Falar com seu Funcionário".
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Falar com seu Funcionário" }),
+    );
+    await screen.findByLabelText("Anexar documentos ao chat");
+
     const bytes = new TextEncoder().encode(
       "Dados do contrato que precisam ser analisados.",
     );

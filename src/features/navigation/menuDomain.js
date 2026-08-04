@@ -9,6 +9,9 @@
 // 59 itens no primeiro dia. Ela muda em dois cliques.
 export const DEFAULT_MENU = [
   "inicio",
+  // Falar com o Funcionário é a porta de entrada do app: quem chega para
+  // resolver uma coisa simples pede, em vez de procurar em 68 telas.
+  "conversar",
   "meu-trabalho",
   "vendas",
   "financeiro",
@@ -21,7 +24,10 @@ export const DEFAULT_MENU = [
 ];
 
 // Itens que não podem sair do menu: sem eles a pessoa perde o caminho de volta.
-export const PINNED = ["inicio"];
+// "conversar" está aqui porque é a porta de entrada do app — com 68 telas, pedir
+// com as próprias palavras é o caminho mais curto para quase tudo, e quem tirar
+// isso do menu por engano fica procurando de novo.
+export const PINNED = ["inicio", "conversar"];
 
 export const MAX_MENU = 20;
 export const MIN_MENU = 1;

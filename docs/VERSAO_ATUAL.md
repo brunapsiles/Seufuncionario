@@ -1,5 +1,21 @@
 # Versão publicada
 
+## Pedir virou a porta de entrada
+
+- **A primeira coisa da tela inicial agora é falar com o seu Funcionário.** Uma
+  caixa onde você escreve com as suas palavras — "manda a cobrança pro cliente
+  atrasado", "quanto entrou este mês", "monta um orçamento" — e ele resolve.
+- O pedido abre a tela **Falar com seu Funcionário**, com a conversa completa:
+  anexar arquivo, escolher o especialista, ver o que foi feito e onde ficou.
+- O que você digitou na entrada já chega escrito lá. Não precisa repetir.
+- Três exemplos prontos embaixo da caixa, para quem não sabe por onde começar.
+  Eles trocam a cada dia, mas não mudam no meio do seu uso.
+- **Por que mudou:** o app tem 68 telas. Quem chega para resolver uma coisa
+  simples não deveria precisar descobrir em qual delas aquilo mora. Agora pede,
+  e o app leva. O catálogo completo continua logo abaixo, em "Ou escolha
+  direto", para quem já sabe onde quer chegar.
+- "Falar com seu Funcionário" é fixo no menu: ninguém tira sem querer.
+
 ## v164
 
 - Removidos também os acentos antigos que estavam em `rgba(...)` e sombras

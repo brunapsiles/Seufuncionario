@@ -528,6 +528,23 @@ gratuito da Cloudflare. O workflow `Publicar` do GitHub é apenas uma contingên
   tela. Não protege nada: quem quisesse burlar não passaria por ela. A checagem
   que vale é a do servidor.
 
+- **A entrada do app é pedir, não procurar**: `src/features/home/askDomain.js`
+  (puro) + a seção `.home-pedido` no topo do `HomeHub`, e a rota `conversar`
+  com o `UniversalRequest` em tela própria.
+  A razão é a que aparece na avaliação honesta do produto: são 68 telas, e a
+  largura virou obstáculo. Quem chega para resolver uma coisa simples pede com
+  as próprias palavras e o app leva. O catálogo continua logo abaixo, rebaixado
+  a "Ou escolha direto" — dois títulos do mesmo peso disputavam a atenção.
+  O texto digitado na entrada viaja para a conversa pelo rascunho que ela já
+  lia (`sf-draft`). `stageRequest` devolve `false` quando não há armazenamento,
+  em vez de mentir que guardou: quem chama decidiria errado com base nisso.
+  Abrir a conversa nunca depende disso dar certo.
+  `UniversalRequest` foi REMOVIDO de dentro do Dashboard. Deixar os dois faria
+  a pessoa conversar em dois lugares diferentes, com históricos separados.
+  "conversar" entrou em `PINNED` (menuDomain): é a porta de entrada, e vale
+  também para quem já tinha menu salvo sem ele — sem isso, todo mundo que já
+  usava o app continuaria sem o item.
+
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
 - "Esqueci minha senha": ✅ implementado (/api/auth/forgot e /api/auth/reset, códigos via Brevo)

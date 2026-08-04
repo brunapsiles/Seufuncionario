@@ -183,6 +183,7 @@ export {
 export { groupInteractions } from "./features/omnichannel/inboxDomain.js";
 import {
   Sparkles,
+  MessagesSquare,
   Home,
   Rocket,
   Target,
@@ -512,6 +513,7 @@ export const hasAnyWorkspaceData = (db) =>
 
 const nav = [
   ["inicio", "Início", Home],
+  ["conversar", "Falar com seu Funcionário", MessagesSquare],
   ["meu-trabalho", "Meu trabalho", BriefcaseBusiness],
   ["comecar", "Começar do zero", Rocket],
   ["perfil-negocio", "Central do negócio", SlidersHorizontal],
@@ -586,7 +588,7 @@ const navSecondary = [
 const navGroups = [
   {
     label: null,
-    items: ["inicio", "meu-trabalho", "comecar", "perfil-negocio"],
+    items: ["inicio", "conversar", "meu-trabalho", "comecar", "perfil-negocio"],
   },
   {
     label: "VENDAS E CLIENTES",
@@ -5479,12 +5481,6 @@ function Dashboard({ db, update, business, go, setToast, visibleNav }) {
           </small>
         </section>
       )}
-      <UniversalRequest
-        db={db}
-        update={update}
-        business={business}
-        setToast={setToast}
-      />
       <section className="section">
         <div className="section-head">
           <div>
@@ -24661,6 +24657,21 @@ export default function App() {
             setToast={setToast}
             visibleNav={visibleNav}
           />
+        );
+      case "conversar":
+        return (
+          <PageTitle
+            eyebrow="SEU FUNCIONÁRIO"
+            title="Peça o que precisar"
+            text="Escreva como você falaria com um funcionário: “manda a cobrança pro cliente atrasado”, “quanto entrou este mês”, “monta um orçamento”. Ele responde, faz e diz onde ficou."
+          >
+            <UniversalRequest
+              db={db}
+              update={update}
+              business={business}
+              setToast={setToast}
+            />
+          </PageTitle>
         );
       case "comecar":
         return <Journeys db={db} update={update} go={go} />;

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import {
   ArrowRight,
+  SendHorizonal,
   Bot,
   Building2,
   Compass,
@@ -12,6 +13,12 @@ import {
 
 import { Empty } from "../../components/ui.jsx";
 import { readVisits } from "../navigation/menuDomain.js";
+import {
+  greeting,
+  isSendable,
+  stageRequest,
+  suggestionsForToday,
+} from "./askDomain.js";
 
 const HOME_MODES = [
   ["funcoes", "Funções", Compass],
@@ -367,6 +374,10 @@ export default function HomeHub({
         : "Configure um negócio para receber caminhos mais específicos na home.",
     },
   }[mode];
+  const [pedido, setPedido] = useState("");
+  const saudacao = useMemo(() => greeting(db?.user?.name), [db?.user?.name]);
+  const sugestoes = useMemo(() => suggestionsForToday(), []);
+
   const counts = {
     funcoes: filteredTasks.length,
     areas: filteredAreas.length,
@@ -374,8 +385,74 @@ export default function HomeHub({
     negocios: filteredBusinesses.length,
   };
 
+  const enviarPedido = () => {
+    if (!isSendable(pedido)) return;
+    // O texto viaja pelo rascunho que a conversa já lê ao abrir. Se o
+    // armazenamento estiver bloqueado, a conversa abre mesmo assim — só vazia.
+    stageRequest(typeof window !== "undefined" ? window.localStorage : null, pedido);
+    setPedido("");
+    go?.("conversar");
+  };
+
   return (
     <div className="home-hub">
+      {/* A porta de entrada é pedir, não procurar. Com 68 telas, quem chega
+          para resolver uma coisa simples não deveria precisar descobrir em qual
+          delas aquilo mora. O catálogo continua logo abaixo, para quem prefere
+          navegar. */}
+      <section className="home-pedido" aria-labelledby="home-pedido-titulo">
+        <div className="home-pedido-topo">
+          <img src="/mascote-96.png" alt="" width="44" height="44" />
+          <div>
+            <span className="home-pedido-ola">{saudacao}</span>
+            <h1 id="home-pedido-titulo">O que você precisa hoje?</h1>
+          </div>
+        </div>
+        <div className="home-pedido-caixa">
+          <textarea
+            aria-label="Peça alguma coisa ao seu funcionário"
+            rows={3}
+            value={pedido}
+            placeholder="Ex.: manda a cobrança pro cliente atrasado"
+            onChange={(e) => setPedido(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter envia; Shift+Enter continua quebrando linha, para quem
+              // quer escrever um pedido mais longo.
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                enviarPedido();
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="home-pedido-enviar"
+            disabled={!isSendable(pedido)}
+            onClick={enviarPedido}
+          >
+            <SendHorizonal size={18} aria-hidden="true" />
+            <span>Pedir</span>
+          </button>
+        </div>
+        <div className="home-pedido-exemplos">
+          {sugestoes.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => {
+                stageRequest(
+                  typeof window !== "undefined" ? window.localStorage : null,
+                  s,
+                );
+                go?.("conversar");
+              }}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      </section>
+
       <section className="home-hub-hero" aria-labelledby="home-hub-title">
         <div className="home-hub-hero-copy">
           <span className="home-hub-kicker">
@@ -390,10 +467,10 @@ export default function HomeHub({
             />{" "}
             Seu Funcionário
           </span>
-          <h1 id="home-hub-title">O que você quer resolver agora?</h1>
+          <h2 id="home-hub-title">Ou escolha direto</h2>
           <p>
-            Escolha uma função, uma área ou o especialista certo. O hub agora
-            mostra o catálogo completo do Seu Funcionário logo na entrada.
+            Tudo o que existe no app, por função, área, especialista ou negócio —
+            para quando você já sabe onde quer chegar.
           </p>
           <label className="home-hub-search" htmlFor="home-hub-search-input">
             <Search size={19} aria-hidden="true" />

@@ -245,13 +245,16 @@ describe("Menu escolhido pelo usuário", () => {
     fireEvent.click(screen.getByRole("button", { name: "Personalizar menu" }));
 
     fireEvent.click(await screen.findByLabelText("Subir Diagramas"));
-    await waitFor(() =>
-      expect(salvo().preferences.mainMenu).toEqual([
-        "inicio",
+    // "conversar" é fixo (é a porta de entrada do app), então entra no menu
+    // junto com o "inicio". O que este teste prova é a troca de ordem entre os
+    // itens que a pessoa escolheu.
+    await waitFor(() => {
+      const menu = salvo().preferences.mainMenu;
+      expect(menu.filter((id) => id === "diagramas" || id === "agentes")).toEqual([
         "diagramas",
         "agentes",
-      ]),
-    );
+      ]);
+    });
   });
 
   it("voltar ao padrão restaura o menu inicial", async () => {
