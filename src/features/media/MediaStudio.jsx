@@ -17,6 +17,7 @@ import {
   Upload,
   Volume2,
 } from "lucide-react";
+import { Button, Empty, Field, PageTitle } from "../../components/ui.jsx";
 import {
   DEFAULT_ADJUST,
   FORMATS,
@@ -551,27 +552,21 @@ function ImageEditor({ onSave, setToast }) {
           </div>
 
           <div className="me-acoes">
-            <button
-              type="button"
-              className="btn primary"
-              disabled={processando}
-              onClick={aplicar}
-            >
-              <Sparkles size={15} />
+            <Button icon={Sparkles} disabled={processando} onClick={aplicar}>
               {processando ? "Processando…" : "Aplicar"}
-            </button>
+            </Button>
             {saida && (
               <>
-                <button
-                  type="button"
-                  className="btn"
+                <Button
+                  icon={Download}
+                  variant="secondary"
                   onClick={() => baixar(saida.url, outputName(arquivo.name, formato))}
                 >
-                  <Download size={15} /> Baixar
-                </button>
-                <button type="button" className="btn" onClick={guardar}>
-                  <Save size={15} /> Guardar na biblioteca
-                </button>
+                  Baixar
+                </Button>
+                <Button icon={Save} variant="secondary" onClick={guardar}>
+                  Guardar na biblioteca
+                </Button>
               </>
             )}
           </div>
@@ -793,31 +788,26 @@ function AudioStudio({ onSave, setToast }) {
         </p>
         <div className="me-acoes">
           {gravando ? (
-            <button type="button" className="btn primary" onClick={pararGravacao}>
-              <Square size={15} /> Parar
-            </button>
+            <Button icon={Square} onClick={pararGravacao}>
+              Parar
+            </Button>
           ) : (
-            <button
-              type="button"
-              className="btn primary"
-              disabled={!suportaGravar}
-              onClick={iniciarGravacao}
-            >
-              <Mic size={15} /> Gravar
-            </button>
+            <Button icon={Mic} disabled={!suportaGravar} onClick={iniciarGravacao}>
+              Gravar
+            </Button>
           )}
           {gravacao && (
             <>
-              <button
-                type="button"
-                className="btn"
+              <Button
+                icon={Download}
+                variant="secondary"
                 onClick={() => baixar(gravacao.url, "gravacao.webm")}
               >
-                <Download size={15} /> Baixar
-              </button>
-              <button type="button" className="btn" onClick={guardarGravacao}>
-                <Save size={15} /> Guardar na biblioteca
-              </button>
+                Baixar
+              </Button>
+              <Button icon={Save} variant="secondary" onClick={guardarGravacao}>
+                Guardar na biblioteca
+              </Button>
             </>
           )}
         </div>
@@ -850,8 +840,7 @@ function AudioStudio({ onSave, setToast }) {
             falando
           </span>
         </div>
-        <label className="field">
-          Texto
+        <Field label="Texto">
           <textarea
             value={texto + (previa ? ` ${previa}` : "")}
             onChange={(e) => {
@@ -861,7 +850,7 @@ function AudioStudio({ onSave, setToast }) {
             placeholder="Dite ou escreva aqui. Serve para legenda de post, roteiro de vídeo ou recado para o cliente."
             rows={6}
           />
-        </label>
+        </Field>
         <div className="me-acoes">
           <button
             type="button"
@@ -1000,11 +989,15 @@ function MediaLibrary({ itens, onChange, setToast }) {
       )}
 
       {!visiveis.length ? (
-        <p className="muted">
-          {itens.length
-            ? "Nada encontrado com esse filtro."
-            : "Ainda não há arquivos. O que você gerar, editar ou gravar aparece aqui."}
-        </p>
+        itens.length ? (
+          <p className="muted">Nada encontrado com esse filtro.</p>
+        ) : (
+          <Empty
+            icon={Search}
+            title="Ainda não há arquivos"
+            text="O que você gerar, editar ou gravar aparece aqui, junto — com busca por nome, por etiqueta e pelo que foi dito dentro do áudio."
+          />
+        )
       ) : (
         <ul className="me-lista">
           {visiveis.map((item) => (
@@ -1137,18 +1130,12 @@ export default function MediaStudio({ db, update, business, setToast }) {
   };
 
   return (
-    <section className="section me">
-      <header className="section-head">
-        <div>
-          <h2>Mídia</h2>
-          <p className="muted">
-            Editar foto, gravar recado e organizar tudo o que o negócio já
-            produziu. Roda no seu aparelho: sem custo, sem enviar arquivo para
-            fora e funcionando mesmo sem internet.
-          </p>
-        </div>
-      </header>
-
+    <PageTitle
+      eyebrow="MÍDIA"
+      title="Editar foto, gravar recado e achar arquivo depois"
+      text="Roda no seu aparelho: sem custo, sem enviar arquivo para fora e funcionando mesmo sem internet."
+      className="me"
+    >
       <div className="studio-tabs">
         {ABAS.map(([id, rotulo, Icone]) => (
           <button
@@ -1172,6 +1159,6 @@ export default function MediaStudio({ db, update, business, setToast }) {
           setToast={setToast}
         />
       )}
-    </section>
+    </PageTitle>
   );
 }

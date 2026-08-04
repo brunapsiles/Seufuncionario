@@ -104,6 +104,23 @@ Depois de cadastrar, teste: Configurações → "Notificações do navegador" �
 
 - Hoje a Caixa de entrada registra o WhatsApp que **sai** (pelos botões do app) e recebe **e-mail e formulários do site**. Receber mensagens de WhatsApp dentro do app exige a **WhatsApp Cloud API** da Meta: tem faixa gratuita, mas pede verificação da sua empresa na Meta, um número dedicado e configuração de webhook. É uma decisão sua — sem ela, tudo o mais da caixa funciona normalmente.
 
+### 6. Envio automático para outro sistema (webhook de saída)
+
+- A tela **Integrações** já traz e leva dados: importa planilha em CSV, exporta
+  qualquer lista em CSV, baixa a agenda em .ics para o Google Agenda / iPhone /
+  Outlook e baixa uma cópia completa em JSON. Tudo isso funciona hoje, sem
+  custo e sem depender de ninguém.
+- O que falta é o **envio automático**: o app avisar sozinho outro sistema
+  (Zapier, Make, n8n, uma planilha do Google, um canal do Discord) quando
+  acontece um pedido novo, um lançamento ou uma tarefa concluída.
+- Por que ainda não está pronto: esse envio precisa sair **do servidor**, não do
+  navegador. Pelo navegador ele seria bloqueado (regra de segurança chamada
+  CORS) e, pior, o endereço secreto do seu canal ficaria guardado no aparelho,
+  visível para quem soubesse olhar.
+- É trabalho de servidor, não depende de conta nem de dinheiro seu — está na
+  fila, e foi deixado de fora agora só para não conflitar com a reorganização
+  que o outro assistente está fazendo no `worker.js`.
+
 ## 🔗 Integrações que você autorizou (dependem de cadastro seu)
 
 Você disse "ok para tudo que depende da minha decisão". Ótimo — mas estas

@@ -438,6 +438,54 @@ gratuito da Cloudflare. O workflow `Publicar` do GitHub é apenas uma contingên
   Gravar e ditar dependem do navegador. Onde não houver, a tela avisa e o resto
   continua funcionando — nunca travar a tela inteira por causa disso.
 
+- **Editor de código, Notebook e Integrações (v157)**: três telas novas em
+  `src/features/code/`, `src/features/notebook/` e `src/features/integrations/`,
+  já no padrão que o Codex está montando — camada pura em `<nome>Domain.js`,
+  tela em `<Nome>.jsx` importando `Button`/`Field`/`Empty`/`PageTitle` de
+  `src/components/ui.jsx`. A tela de Mídia (v156) foi alinhada ao mesmo padrão
+  na mesma leva, para não sobrar como dívida.
+
+  **A prévia do editor de código é o ponto mais sensível do app.** Ela roda num
+  iframe com `sandbox="allow-scripts"` e SEM `allow-same-origin`. Juntar os dois
+  devolve ao código escrito na tela a origem do app: ele passaria a ler o
+  `localStorage` — onde está o token de login — e a chamar a /api com a sessão
+  de quem está usando. Num app multiusuário isso é uma conta acessando o negócio
+  de outra. `isSandboxSafe` e um teste dedicado existem só para impedir que
+  alguém "conserte" a prévia adicionando same-origin. Verificado em navegador
+  real: a tentativa de ler o token de dentro da prévia devolve `SecurityError` e
+  a origem é `null`.
+  Consequências práticas: (1) `event.origin` da prévia é a string opaca "null",
+  então conferir origem não protege nada — o que identifica a prévia é
+  `event.source === iframe.contentWindow`, e `parseConsoleMessage` ainda descarta
+  o que não estiver no nosso formato; (2) `</script>` dentro do JS do usuário
+  fecha o documento inteiro, por isso `escapeScript`; (3) `localStorage` e
+  `alert()` não funcionam na prévia, e a tela avisa em vez de deixar a pessoa
+  procurando o erro.
+
+  **O notebook não executa código, de propósito.** As consultas são uma
+  linguagem fechada em português (`filtrar`, `agrupar`, `somar`, `periodo`…)
+  interpretada em `notebookDomain.js`. Deixar a pessoa escrever JavaScript e
+  rodar com `eval` seria muito mais curto e abriria um caminho para qualquer
+  texto colado de fora executar dentro do app.
+  Armadilha que já custou uma sessão: `dateField` de cada fonte precisa apontar
+  para o nome do campo **depois** do `map()` (o nome em português), não o da
+  coleção crua. Apontar para o nome cru faz `periodo` e `agrupar mes`
+  devolverem zero sem erro nenhum — a pessoa acha que não tem dado. Há teste
+  varrendo todas as fontes.
+  Agrupar sem nenhuma conta depois é o engano mais comum de quem começa: em vez
+  de devolver vazio calado, o notebook conta as linhas e explica o que fazer.
+
+  **Integrações não inclui envio automático** (webhook de saída) porque ele
+  precisa sair do servidor: pelo navegador é bloqueado por CORS e o endereço
+  secreto ficaria no aparelho. Ficou anotado em PENDENCIAS_DA_TITULAR.md. O que
+  está pronto — importar CSV, exportar CSV/JSON e agenda .ics — roda inteiro no
+  aparelho, sem custo.
+  Detalhes que não são frescura: o CSV sai com BOM senão o Excel em português
+  mostra "ServiÃ§o"; o .ics precisa de quebra CRLF senão parte dos calendários
+  recusa o arquivo inteiro sem dizer o motivo; e a importação recusa linha sem
+  campo obrigatório dizendo o NÚMERO da linha — importação que descarta em
+  silêncio é pior que importação que falha.
+
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
 - "Esqueci minha senha": ✅ implementado (/api/auth/forgot e /api/auth/reset, códigos via Brevo)

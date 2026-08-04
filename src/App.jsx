@@ -279,6 +279,8 @@ import {
   Settings,
   SlidersHorizontal,
   Plug,
+  Code2,
+  Table2,
   KeyRound,
   Sparkle,
   Layers,
@@ -346,6 +348,11 @@ const MenuSettings = lazy(
   () => import("./features/navigation/MenuSettings.jsx"),
 );
 const MediaStudio = lazy(() => import("./features/media/MediaStudio.jsx"));
+const CodeStudio = lazy(() => import("./features/code/CodeStudio.jsx"));
+const DataNotebook = lazy(() => import("./features/notebook/DataNotebook.jsx"));
+const IntegrationsHub = lazy(
+  () => import("./features/integrations/IntegrationsHub.jsx"),
+);
 const ConfigurableDashboard = lazy(
   () => import("./features/dashboard/ConfigurableDashboard.jsx"),
 );
@@ -458,6 +465,8 @@ const emptyDb = {
   certificates: [],
   conversations: [],
   media: [],
+  codeProjects: [],
+  notebook: null,
   emailDrafts: [],
   customSpecialists: [],
   pluggedTools: [],
@@ -559,6 +568,9 @@ const nav = [
   ["laboratorio-gratuito", "Laboratório gratuito", Bot],
   ["estudio", "Estúdio de IA", WandSparkles],
   ["midia", "Mídia", ImageIcon],
+  ["editor-codigo", "Editor de código", Code2],
+  ["notebook", "Notebook de dados", Table2],
+  ["integracoes", "Integrações", Plug],
   ["historico", "Histórico", History],
   ["certificacoes", "Certificações", Award],
 ];
@@ -616,6 +628,8 @@ const navGroups = [
       "desenvolvimento",
       "bases",
       "automacoes",
+      "notebook",
+      "integracoes",
     ],
   },
   {
@@ -642,6 +656,7 @@ const navGroups = [
       "laboratorio-gratuito",
       "estudio",
       "midia",
+      "editor-codigo",
     ],
   },
   { label: "REGISTROS", items: ["historico", "certificacoes"] },
@@ -25282,6 +25297,47 @@ export default function App() {
               setToast={setToast}
               authHeaders={authHeaders}
               ownerId={activeSpaceId()}
+            />
+          </Suspense>
+        );
+      case "editor-codigo":
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando editor...</div>}
+          >
+            <CodeStudio
+              db={db}
+              update={update}
+              business={business}
+              setToast={setToast}
+            />
+          </Suspense>
+        );
+      case "notebook":
+        return (
+          <Suspense
+            fallback={<div className="inbox-loading">Carregando notebook...</div>}
+          >
+            <DataNotebook
+              db={db}
+              update={update}
+              business={business}
+              setToast={setToast}
+            />
+          </Suspense>
+        );
+      case "integracoes":
+        return (
+          <Suspense
+            fallback={
+              <div className="inbox-loading">Carregando integrações...</div>
+            }
+          >
+            <IntegrationsHub
+              db={db}
+              update={update}
+              business={business}
+              setToast={setToast}
             />
           </Suspense>
         );

@@ -1,6 +1,42 @@
 # Versão publicada
 
-## v156
+## v157
+
+- **Editor de código com prévia ao vivo.** Escreva HTML, CSS e JavaScript e veja
+  o resultado ao lado, na hora. Vem com pontos de partida prontos — cartão de
+  visita, formulário de pedido, tabela de preços — para quem nunca programou
+  conseguir trocar o texto e usar. Dá para ver como fica no celular, guardar o
+  projeto e baixar o arquivo .html pronto para publicar onde quiser.
+- O editor mostra um console: o que você escrever com `console.log()` aparece
+  ali, e erro de código aparece com o número da linha em vez de a tela
+  simplesmente não fazer nada.
+- Ele também avisa antes de rodar: chave de CSS que ficou aberta, tag que não
+  foi fechada, endereço `http://` que o navegador vai bloquear.
+- **A prévia roda numa caixa isolada.** O código escrito ali não alcança os seus
+  dados nem a sua conta — isso foi testado em navegador de verdade, não só
+  prometido.
+- **Notebook de dados.** Faça perguntas aos seus próprios números, escrevendo em
+  português, uma instrução por linha: `filtrar tipo = receita`, `agrupar mes`,
+  `somar valor`. O resultado sai em tabela, com gráfico quando ele ajuda a ler,
+  e dá para baixar em CSV.
+- Vem com perguntas prontas: quanto entrou por mês, onde mais gastei, meus
+  melhores clientes, tarefas em aberto por responsável, contas em aberto.
+- Ele lê o que o negócio já registrou — financeiro, tarefas, pedidos, contatos,
+  agendamentos, contas a pagar e horas. Não inventa dado nem busca nada fora.
+- Se você errar um comando, ele diz a linha e lista os comandos que existem.
+- **Integrações.** Traga o que está na planilha e leve os seus dados embora.
+- Importar CSV de contatos, produtos e lançamentos: o app adivinha de qual
+  coluna vem cada campo, entende valor brasileiro (R$ 1.234,56) e data
+  brasileira (31/12/2026), não importa duas vezes quem já está cadastrado e
+  avisa o número da linha que ficou de fora e por quê.
+- Exportar qualquer lista em CSV (abre com acento certo no Excel) ou o espaço de
+  trabalho inteiro em JSON. Os seus dados são seus.
+- Baixar a agenda em .ics e importar no Google Agenda, no iPhone ou no Outlook.
+  Sem chave, sem conta, sem custo.
+- Uma lista honesta do que dá para conectar: o que funciona agora e o que ainda
+  depende de uma decisão sua — em vez de anunciar integração que não liga.
+
+## Base preservada da v156
 
 - **Tela nova: Mídia.** Três coisas que o negócio precisa todo dia e que até
   agora dependiam de site de terceiro: editar foto, gravar recado e achar
