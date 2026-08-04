@@ -5320,6 +5320,7 @@ function Dashboard({ db, update, business, go, setToast, visibleNav }) {
         visibleNav={visibleNav}
         navGroups={navGroups}
         aiTools={aiTools}
+        specialists={specialistData}
         businessCatalog={BUSINESS_INDUSTRY_CATALOG}
       />
       {gamificationEnabled && myPoints > 0 && (
@@ -25638,9 +25639,13 @@ export default function App() {
           <button
             className="icon-button mobile-menu"
             onClick={() => setMobile(true)}
+            aria-label="Menu principal"
           >
             <Menu />
           </button>
+          <div className="topbar-mobile-brand">
+            <Logo />
+          </div>
           {menuHidden && (
             <button
               className="icon-button desktop-open"

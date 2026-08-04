@@ -13,7 +13,12 @@ import {
 import { Empty } from "../../components/ui.jsx";
 import { readVisits } from "../navigation/menuDomain.js";
 
-const HOME_TASK_LIMIT = 12;
+const HOME_MODES = [
+  ["funcoes", "Funções", Compass],
+  ["areas", "Áreas", Workflow],
+  ["especialistas", "Especialistas", Bot],
+  ["negocios", "Meus negócios", Building2],
+];
 
 const normalize = (value) =>
   String(value || "")
@@ -54,13 +59,28 @@ function HubCard({ item, kind }) {
         <strong>{item.title}</strong>
         {item.subtitle && <small>{item.subtitle}</small>}
         {item.description && <em>{item.description}</em>}
+        {item.meta?.length > 0 && (
+          <span className="home-hub-card-meta">
+            {item.meta.map((meta) => (
+              <span key={meta}>{meta}</span>
+            ))}
+          </span>
+        )}
       </span>
       <ArrowRight size={18} aria-hidden="true" />
     </button>
   );
 }
 
-function NavigationSection({ eyebrow, title, text, items, kind, emptyTitle, emptyText }) {
+function NavigationSection({
+  eyebrow,
+  title,
+  text,
+  items,
+  kind,
+  emptyTitle,
+  emptyText,
+}) {
   return (
     <section className="home-hub-section" aria-labelledby={`home-hub-${kind}`}>
       <div className="home-hub-section-head">
@@ -85,6 +105,14 @@ function NavigationSection({ eyebrow, title, text, items, kind, emptyTitle, empt
   );
 }
 
+function overdueTasksForBusiness(tasks, businessId, today) {
+  return (tasks || []).filter((task) => {
+    if (!task?.due || task.businessId !== businessId) return false;
+    const status = normalize(task.status);
+    return !status.includes("concluido") && !status.includes("arquivad") && task.due < today;
+  }).length;
+}
+
 function businessDetail(business, businessCatalog) {
   const category = businessCatalog.find(
     (item) => item.id === business?.industryCategoryId,
@@ -107,13 +135,16 @@ export default function HomeHub({
   visibleNav = [],
   navGroups = [],
   aiTools = {},
+  specialists = [],
   businessCatalog = [],
 }) {
   const [query, setQuery] = useState("");
+  const [mode, setMode] = useState("funcoes");
   const [visits] = useState(() => {
     if (typeof window === "undefined") return {};
     return readVisits(window.localStorage);
   });
+  const todayYmd = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const navById = useMemo(
     () => new Map(visibleNav.map(([id, label, icon]) => [id, { id, label, icon }])),
     [visibleNav],
@@ -129,6 +160,10 @@ export default function HomeHub({
           title: item.name,
           subtitle: detail,
           description: selected ? "Selecionado agora" : null,
+          meta: [
+            `${overdueTasksForBusiness(db.tasks, item.id, todayYmd)} atrasadas`,
+            item.id === business?.id ? "negócio ativo" : "abrir contexto",
+          ],
           icon: Building2,
           search: `${item.name} ${detail} ${item.goal || ""} ${item.focusAreas || ""}`,
           onClick: () => {
@@ -141,7 +176,16 @@ export default function HomeHub({
           },
         };
       }),
-    [business?.id, businessCatalog, db.businesses, go, setToast, update],
+    [
+      business?.id,
+      businessCatalog,
+      db.businesses,
+      db.tasks,
+      go,
+      setToast,
+      todayYmd,
+      update,
+    ],
   );
 
   const areaCards = useMemo(
@@ -183,6 +227,7 @@ export default function HomeHub({
         title: label,
         subtitle: groupByRoute.get(id) || "Navegação principal",
         description: null,
+        meta: ["módulo"],
         icon: icon || Compass,
         search: `${label} ${groupByRoute.get(id) || ""}`,
         onClick: () => go(id),
@@ -195,7 +240,8 @@ export default function HomeHub({
         id: `tool-${id}`,
         title: tool.title,
         subtitle: tool.cta || "Ferramenta de IA",
-        description: tool.hint,
+        description: null,
+        meta: [tool.specialist ? `especialista: ${tool.specialist}` : "IA"],
         icon: tool.icon || Bot,
         search: `${tool.title} ${tool.cta || ""} ${tool.hint || ""} ${tool.specialist || ""}`,
         onClick: () => {
@@ -210,6 +256,48 @@ export default function HomeHub({
     () => [...routeTaskCards, ...aiToolCards],
     [aiToolCards, routeTaskCards],
   );
+
+  const specialistCards = useMemo(() => {
+    const standard = (specialists || []).map(([name, icon, description]) => ({
+      id: `specialist-${name}`,
+      title: name,
+      subtitle: "Especialista do time",
+      description,
+      icon: icon || Bot,
+      search: `${name} ${description || ""}`,
+      onClick: () => {
+        update((current) => ({
+          ...current,
+          preferences: {
+            ...(current.preferences || {}),
+            specialist: name,
+          },
+        }));
+        setToast?.(`${name} no comando`);
+        go("agentes");
+      },
+    }));
+    const custom = (db.customSpecialists || []).map((item) => ({
+      id: `custom-specialist-${item.name}`,
+      title: item.name,
+      subtitle: "Funcionário sob medida",
+      description: item.instructions,
+      icon: Sparkles,
+      search: `${item.name} ${item.instructions || ""}`,
+      onClick: () => {
+        update((current) => ({
+          ...current,
+          preferences: {
+            ...(current.preferences || {}),
+            specialist: item.name,
+          },
+        }));
+        setToast?.(`${item.name} no comando`);
+        go("agentes");
+      },
+    }));
+    return [...custom, ...standard];
+  }, [db.customSpecialists, go, setToast, specialists, update]);
 
   const popularCards = useMemo(() => {
     if (!Object.keys(visits || {}).length) return [];
@@ -230,9 +318,61 @@ export default function HomeHub({
   const filteredBusinesses = businessCards.filter((item) => matchesQuery(item, query));
   const filteredAreas = areaCards.filter((item) => matchesQuery(item, query));
   const filteredTasks = taskCards.filter((item) => matchesQuery(item, query));
-  const visibleTasks = query ? filteredTasks : filteredTasks.slice(0, HOME_TASK_LIMIT);
-  const showNoSearchResults =
-    query && !filteredBusinesses.length && !filteredAreas.length && !filteredTasks.length;
+  const filteredSpecialists = specialistCards.filter((item) =>
+    matchesQuery(item, query),
+  );
+  const activeItems = {
+    funcoes: filteredTasks,
+    areas: filteredAreas,
+    especialistas: filteredSpecialists,
+    negocios: filteredBusinesses,
+  }[mode];
+  const activeCopy = {
+    funcoes: {
+      eyebrow: "CATÁLOGO",
+      title: "Todas as funções disponíveis",
+      text: "O menu inicial mostra tudo que a pessoa pode abrir agora, sem depender do menu lateral.",
+      emptyTitle: query ? "Nenhuma função encontrada" : "Nenhuma função disponível",
+      emptyText: query
+        ? "A busca não encontrou funções com esse termo."
+        : "As funções aparecem quando existem rotas ou ferramentas disponíveis.",
+    },
+    areas: {
+      eyebrow: "ÁREAS",
+      title: "Escolha pela área que precisa resolver",
+      text: "Agrupamentos reais do menu, levando para a primeira função segura daquela área.",
+      emptyTitle: query ? "Nenhuma área encontrada" : "Nenhuma área encontrada",
+      emptyText: query
+        ? "A busca não encontrou áreas com esse termo."
+        : "As áreas aparecem quando existem grupos de navegação disponíveis.",
+    },
+    especialistas: {
+      eyebrow: "ESPECIALISTAS",
+      title: "Escolha o especialista que assume a conversa",
+      text: "Equipe padrão e funcionários sob medida que já existem no app.",
+      emptyTitle: query
+        ? "Nenhum especialista encontrado"
+        : "Nenhum especialista disponível",
+      emptyText: query
+        ? "A busca não encontrou especialistas com esse termo."
+        : "Os especialistas aparecem quando existem no time configurado.",
+    },
+    negocios: {
+      eyebrow: "NEGÓCIOS",
+      title: "Abra o contexto do negócio",
+      text: "Selecione o negócio real para acessar tarefas atrasadas, registros, inbox e operação daquele contexto.",
+      emptyTitle: query ? "Nenhum negócio encontrado" : "Nenhum negócio configurado ainda",
+      emptyText: query
+        ? "A busca não encontrou negócios com esse termo."
+        : "Configure um negócio para receber caminhos mais específicos na home.",
+    },
+  }[mode];
+  const counts = {
+    funcoes: filteredTasks.length,
+    areas: filteredAreas.length,
+    especialistas: filteredSpecialists.length,
+    negocios: filteredBusinesses.length,
+  };
 
   return (
     <div className="home-hub">
@@ -243,8 +383,8 @@ export default function HomeHub({
           </span>
           <h1 id="home-hub-title">O que você quer resolver agora?</h1>
           <p>
-            Comece pelo negócio, pela área ou pela tarefa. Tudo aqui leva para
-            funções reais que já existem no Seu Funcionário.
+            Escolha uma função, uma área ou o especialista certo. O hub agora
+            mostra o catálogo completo do Seu Funcionário logo na entrada.
           </p>
           <label className="home-hub-search" htmlFor="home-hub-search-input">
             <Search size={19} aria-hidden="true" />
@@ -259,13 +399,16 @@ export default function HomeHub({
           </label>
           <div className="home-hub-stats" aria-label="Resumo de navegação da home">
             <span>
-              <strong>{businessCards.length}</strong> negócios
+              <strong>{taskCards.length}</strong> funções
             </span>
             <span>
               <strong>{areaCards.length}</strong> áreas
             </span>
             <span>
-              <strong>{taskCards.length}</strong> funções
+              <strong>{specialistCards.length}</strong> especialistas
+            </span>
+            <span>
+              <strong>{businessCards.length}</strong> negócios
             </span>
           </div>
         </div>
@@ -275,77 +418,48 @@ export default function HomeHub({
         </div>
       </section>
 
-      {showNoSearchResults ? (
-        <div className="home-hub-empty">
-          <Empty
-            icon={Search}
-            title="Nada encontrado"
-            text="Tente buscar pelo nome de um módulo, área, negócio ou ferramenta que já existe no app."
-          />
-        </div>
-      ) : (
-        <>
-          {!query && popularCards.length > 0 && (
-            <NavigationSection
-              eyebrow="RECENTES"
-              title="Mais usados neste dispositivo"
-              text="Atalhos baseados no que já foi aberto por aqui."
-              items={popularCards}
-              kind="popular"
-              emptyTitle="Nenhum acesso recente"
-              emptyText="Quando você navegar pelo app, os atalhos mais usados aparecem aqui."
-            />
-          )}
+      <div className="home-hub-switcher" aria-label="Escolher tipo de entrada">
+        {HOME_MODES.map(([id, label, Icon]) => (
+          <button
+            key={id}
+            type="button"
+            className={mode === id ? "active" : ""}
+            onClick={() => setMode(id)}
+          >
+            <Icon size={17} aria-hidden="true" />
+            <span>{label}</span>
+            <strong>{counts[id]}</strong>
+          </button>
+        ))}
+      </div>
 
-          <NavigationSection
-            eyebrow="NEGÓCIO"
-            title="Escolha por negócio"
-            text="Use o negócio configurado para ir ao contexto certo."
-            items={filteredBusinesses}
-            kind="business"
-            emptyTitle={query ? "Nenhum negócio encontrado" : "Nenhum negócio configurado ainda"}
-            emptyText={
-              query
-                ? "A busca não encontrou negócios com esse termo."
-                : "Configure um negócio para receber caminhos mais específicos na home."
-            }
-          />
+      {!query && popularCards.length > 0 && mode === "funcoes" && (
+        <NavigationSection
+          eyebrow="RECENTES"
+          title="Mais usados neste dispositivo"
+          text="Atalhos baseados no que já foi aberto por aqui."
+          items={popularCards}
+          kind="popular"
+          emptyTitle="Nenhum acesso recente"
+          emptyText="Quando você navegar pelo app, os atalhos mais usados aparecem aqui."
+        />
+      )}
 
-          <NavigationSection
-            eyebrow="ÁREA"
-            title="Escolha por área"
-            text="Entre pelos agrupamentos reais do menu."
-            items={filteredAreas}
-            kind="area"
-            emptyTitle={query ? "Nenhuma área encontrada" : "Nenhuma área encontrada"}
-            emptyText={
-              query
-                ? "A busca não encontrou áreas com esse termo."
-                : "As áreas aparecem quando existem grupos de navegação disponíveis."
-            }
-          />
+      <NavigationSection
+        eyebrow={activeCopy.eyebrow}
+        title={activeCopy.title}
+        text={activeCopy.text}
+        items={activeItems}
+        kind={mode}
+        emptyTitle={activeCopy.emptyTitle}
+        emptyText={activeCopy.emptyText}
+      />
 
-          <NavigationSection
-            eyebrow="TAREFA"
-            title="Escolha por tarefa"
-            text="Abra direto uma função existente."
-            items={visibleTasks}
-            kind="task"
-            emptyTitle={query ? "Nenhuma tarefa disponível" : "Nenhuma tarefa disponível"}
-            emptyText={
-              query
-                ? "A busca não encontrou funções com esse termo."
-                : "As funções aparecem quando existem rotas ou ferramentas disponíveis."
-            }
-          />
-
-          {!query && filteredTasks.length > HOME_TASK_LIMIT && (
-            <p className="home-hub-more">
-              Use a busca para encontrar mais {filteredTasks.length - HOME_TASK_LIMIT} funções
-              disponíveis.
-            </p>
-          )}
-        </>
+      {query && !activeItems.length && (
+        <p className="home-hub-more">
+          Dica: troque entre funções, áreas, especialistas e negócios para buscar
+          em outro conjunto real do app.
+        </p>
       )}
     </div>
   );

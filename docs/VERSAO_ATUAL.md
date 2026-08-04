@@ -1,5 +1,19 @@
 # Versão publicada
 
+## v162
+
+- A home agora abre como catálogo completo de funções, sem limitar a primeira
+  tela a 12 cards.
+- Os 72 itens reais aparecem por caminhos: funções, áreas, especialistas e meus
+  negócios.
+- As funções vêm das rotas e ferramentas de IA já existentes; especialistas vêm
+  da equipe real do app; negócios vêm do workspace.
+- Ao abrir um negócio, o card já mostra contexto real de tarefas atrasadas e
+  leva para a Central do negócio.
+- Cards e acentos decorativos foram alinhados à paleta teal, verde-azulado,
+  ciano esverdeado e azul petróleo, sem roxo/azul genérico nos elementos
+  decorativos principais.
+
 ## v161
 
 - O topo mobile voltou a priorizar a marca “Seu Funcionário”.
