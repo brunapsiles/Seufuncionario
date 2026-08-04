@@ -61,6 +61,21 @@ function inboxRequest(user, { method = "GET", owner, body } = {}) {
   );
 }
 
+function apiRequest(user, path, { method = "GET", body } = {}) {
+  return worker.fetch(
+    new Request(`https://app.test${path}`, {
+      method,
+      headers: {
+        authorization: `Bearer ${user.token}`,
+        "content-type": "application/json",
+        "cf-connecting-ip": nextIp(),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }),
+    env,
+  );
+}
+
 const readJson = async (r) => ({ status: r.status, body: await r.json() });
 
 describe("caixa de entrada unificada (/api/inbox)", () => {
@@ -88,6 +103,35 @@ describe("caixa de entrada unificada (/api/inbox)", () => {
     expect(list.body.items[0].contactName).toBe("Cliente João");
     // registro que sai já nasce lido
     expect(list.body.items[0].readAt).toBeTruthy();
+    expect(list.body.items[0].conversationId).toBeTruthy();
+    expect(list.body.items[0].messageId).toBeTruthy();
+
+    const conversations = await readJson(
+      await apiRequest(owner, "/api/inbox/conversations"),
+    );
+    expect(conversations.status).toBe(200);
+    expect(conversations.body.conversations).toHaveLength(1);
+    expect(conversations.body.conversations[0]).toMatchObject({
+      channel: "whatsapp",
+      contactName: "Cliente João",
+      unreadCount: 0,
+      lastMessagePreview: "Seu pedido está pronto!",
+    });
+
+    const detail = await readJson(
+      await apiRequest(
+        owner,
+        `/api/inbox/conversations?conversation=${encodeURIComponent(
+          conversations.body.conversations[0].id,
+        )}`,
+      ),
+    );
+    expect(detail.status).toBe(200);
+    expect(detail.body.messages).toHaveLength(1);
+    expect(detail.body.messages[0]).toMatchObject({
+      direction: "out",
+      body: "Seu pedido está pronto!",
+    });
   });
 
   it("colaborador do espaço enxerga a caixa compartilhada; estranho não", async () => {
@@ -122,6 +166,10 @@ describe("caixa de entrada unificada (/api/inbox)", () => {
     const before = await readJson(await inboxRequest(owner));
     const item = before.body.items[0];
     expect(item.readAt).toBeNull();
+    const conversationsBefore = await readJson(
+      await apiRequest(owner, "/api/inbox/conversations"),
+    );
+    expect(conversationsBefore.body.conversations[0].unreadCount).toBe(1);
 
     const patched = await readJson(
       await inboxRequest(owner, { method: "PATCH", body: { ids: [item.id] } }),
@@ -131,6 +179,48 @@ describe("caixa de entrada unificada (/api/inbox)", () => {
 
     const after = await readJson(await inboxRequest(owner));
     expect(after.body.items[0].readAt).toBeTruthy();
+    const conversationsAfter = await readJson(
+      await apiRequest(owner, "/api/inbox/conversations"),
+    );
+    expect(conversationsAfter.body.conversations[0].unreadCount).toBe(0);
+  });
+
+  it("migra interações antigas para conversas ao listar a inbox", async () => {
+    const owner = await createUser("ib-owner-backfill");
+    const now = new Date().toISOString();
+    await env.DB.prepare(
+      `INSERT INTO interactions
+        (id, workspace_owner_id, author_id, contact_id, contact_name,
+         contact_handle, channel, direction, subject, body, meta_json,
+         created_at, read_at)
+       VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, '{}', ?, NULL)`,
+    )
+      .bind(
+        "legacy-interaction-1",
+        owner.id,
+        owner.id,
+        "Cliente Legado",
+        "legado@example.com",
+        "email",
+        "in",
+        "Mensagem antiga",
+        "Ainda está no modelo antigo.",
+        now,
+      )
+      .run();
+
+    const list = await readJson(await inboxRequest(owner));
+    expect(list.body.items[0].conversationId).toBeTruthy();
+
+    const conversations = await readJson(
+      await apiRequest(owner, "/api/inbox/conversations"),
+    );
+    expect(conversations.body.conversations[0]).toMatchObject({
+      channel: "email",
+      contactName: "Cliente Legado",
+      unreadCount: 1,
+      lastMessagePreview: "Ainda está no modelo antigo.",
+    });
   });
 
   it("uma mensagem do formulário do site cai na caixa de entrada", async () => {

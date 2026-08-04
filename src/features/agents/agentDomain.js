@@ -311,6 +311,7 @@ Escreva no máximo ${agent.maxSteps} passos, um por linha, exatamente neste form
 Regras:
 - Use somente os ids de ferramenta da lista.
 - Não invente dado que você não tem; primeiro leia, depois escreva.
+- Só use enviar_email ou enviar_whatsapp quando houver destinatário e texto final; os argumentos devem incluir para= e texto=.
 - Português do Brasil, direto.
 - Nada além das linhas numeradas.`;
 };

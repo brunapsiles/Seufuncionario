@@ -168,6 +168,8 @@ describe("Agentes", () => {
             : response({});
         if (url === "/api/config") return response({ videoEnabled: false });
         if (url === "/api/ai") return response({ text: respostaIa });
+        if (String(url).startsWith("/api/outbox/send"))
+          return response({ ok: true, channel: "email", delivery: { provider: "brevo" } });
         return response({});
       }),
     );
@@ -329,11 +331,56 @@ describe("Agentes", () => {
     });
   });
 
-  it("não finge que enviou quando a conta de envio não está conectada", async () => {
+  it("envia automaticamente quando a conta de envio está conectada", async () => {
     seedLoggedIn(
       businessDb({
         agents: [agente({ autonomy: "tudo" })],
-        agentRuns: [execucao([passo("p1", "enviar_email", { args: { para: "ana@x.com" } })])],
+        agentRuns: [
+          execucao([
+            passo("p1", "enviar_email", {
+              args: { para: "ana@x.com", texto: "Olá, Ana." },
+            }),
+          ]),
+        ],
+      }),
+    );
+    await abrir();
+    await escolherAgente();
+    fireEvent.click(await screen.findByRole("button", { name: /Executar/ }));
+
+    await waitFor(() => {
+      const run = salvo().agentRuns[0];
+      expect(run.steps[0].status).toBe("feito");
+      expect(run.steps[0].result).toMatch(/enviei o e-mail/);
+    });
+  });
+
+  it("registra falha quando o envio automático é recusado pelo servidor", async () => {
+    const okFetch = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url, options = {}) => {
+        if (String(url).startsWith("/api/outbox/send"))
+          return Promise.resolve({
+            ok: false,
+            json: () =>
+              Promise.resolve({
+                error: "O envio automático de e-mail não está configurado.",
+              }),
+          });
+        return okFetch(url, options);
+      }),
+    );
+    seedLoggedIn(
+      businessDb({
+        agents: [agente({ autonomy: "tudo" })],
+        agentRuns: [
+          execucao([
+            passo("p1", "enviar_email", {
+              args: { para: "ana@x.com", texto: "Olá, Ana." },
+            }),
+          ]),
+        ],
       }),
     );
     await abrir();
@@ -343,7 +390,7 @@ describe("Agentes", () => {
     await waitFor(() => {
       const run = salvo().agentRuns[0];
       expect(run.steps[0].status).toBe("erro");
-      expect(run.steps[0].error).toMatch(/conectar a conta de envio/);
+      expect(run.steps[0].error).toMatch(/envio automático de e-mail/);
     });
   });
 

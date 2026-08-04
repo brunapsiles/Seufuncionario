@@ -40,7 +40,14 @@ import {
 const newId = (p) => `${p}-${Math.random().toString(36).slice(2, 10)}`;
 const hoje = () => new Date().toISOString().slice(0, 10);
 
-export default function AgentStudio({ db, update, business, setToast }) {
+export default function AgentStudio({
+  db,
+  update,
+  business,
+  setToast,
+  authHeaders = () => ({}),
+  workspaceOwnerId = "",
+}) {
   const [aba, setAba] = useState("agentes");
   const [selecionado, setSelecionado] = useState("");
   const [ocupado, setOcupado] = useState(false);
@@ -141,7 +148,7 @@ export default function AgentStudio({ db, update, business, setToast }) {
     try {
       const r = await fetch("/api/ai", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...authHeaders() },
         // webSearch: false é proteção, não economia. O plano decide o que o
         // agente vai FAZER no workspace da titular; deixar texto de site
         // desconhecido entrar aqui seria deixar um estranho opinar sobre criar
@@ -185,7 +192,31 @@ export default function AgentStudio({ db, update, business, setToast }) {
   // direto: gravar dentro do laço faria cada passo partir de uma cópia velha,
   // e a gravação final apagaria o que os passos anteriores criaram — o agente
   // dizia "criei a tarefa" e a tarefa sumia. Uma gravação só, no fim.
-  const executarPasso = (dbAtual, run, passo) => {
+  const outboxUrl = () =>
+    `/api/outbox/send${workspaceOwnerId ? `?owner=${encodeURIComponent(workspaceOwnerId)}` : ""}`;
+
+  const enviarAutomaticamente = async (channel, passo, a) => {
+    const payload = {
+      channel,
+      to: a.para || a.destino || a.email || a.whatsapp || "",
+      subject: a.assunto || passo.title,
+      body: a.texto || a.mensagem || "",
+      contactName: a.nome || "",
+      contactHandle: a.para || a.destino || a.email || a.whatsapp || "",
+      source: "agent",
+    };
+    const response = await fetch(outboxUrl(), {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authHeaders() },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok)
+      throw new Error(data.error || "Não foi possível enviar automaticamente.");
+    return data;
+  };
+
+  const executarPasso = async (dbAtual, run, passo) => {
     const ferramenta = findTool(passo.toolId);
     if (!ferramenta) return { erro: "essa ferramenta não existe no app" };
     const a = passo.args || {};
@@ -308,22 +339,29 @@ export default function AgentStudio({ db, update, business, setToast }) {
           db: { ...dbAtual, emailDrafts: [...(dbAtual.emailDrafts || []), e] },
         };
       }
-      case "enviar_email":
-      case "enviar_whatsapp":
+      case "enviar_email": {
+        const envio = await enviarAutomaticamente("email", passo, a);
+        return {
+          resultado: `enviei o e-mail para ${a.para || a.email || envio.channel}`,
+        };
+      }
+      case "enviar_whatsapp": {
+        const envio = await enviarAutomaticamente("whatsapp", passo, a);
+        return {
+          resultado: `enviei o WhatsApp para ${a.para || a.whatsapp || envio.channel}`,
+        };
+      }
       case "publicar_site":
-        // Envio de verdade depende de credencial que ainda não existe no cofre
-        // (ver PENDENCIAS_DA_TITULAR.md). Em vez de fingir que enviou, o passo
-        // para e diz exatamente o que falta — mentir aqui seria pior que falhar.
         return {
           erro:
-            "ainda não dá para enviar: falta conectar a conta de envio (está nas pendências da titular)",
+            "ainda não dá para publicar automaticamente: falta conectar o destino de publicação",
         };
       default:
         return { erro: "não sei executar esse passo" };
     }
   };
 
-  const rodar = () => {
+  const rodar = async () => {
     if (!agente || !execucao) return;
     let run = execucao;
     // O banco vai sendo carregado de passo em passo e só é gravado no fim,
@@ -347,7 +385,14 @@ export default function AgentStudio({ db, update, business, setToast }) {
           );
           break;
         }
-        const saida = executarPasso(trabalho, run, passo);
+        let saida;
+        try {
+          saida = await executarPasso(trabalho, run, passo);
+        } catch (error) {
+          saida = {
+            erro: error.message || "não foi possível executar este passo",
+          };
+        }
         if (saida.erro) {
           run = failStep(run, passo.id, saida.erro);
           run = logDecision(run, `"${passo.title}" falhou: ${saida.erro}.`, "erro");

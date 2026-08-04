@@ -43,6 +43,10 @@ import {
   handlePlatformSuite,
   handlePublicPlatformSuite,
 } from "./worker/services/platform-suite.js";
+import {
+  ensureInteractionsMigrated,
+  insertInteraction,
+} from "./worker/services/omnichannel.js";
 
 const specialistInstructions = {
   Diretor: "ORQUESTRADOR",
@@ -286,6 +290,65 @@ async function sendEmail(env, to, subject, html) {
     const t = await resp.text().catch(() => "");
     throw new Error(`Falha no envio (${resp.status}) ${t.slice(0, 140)}`);
   }
+}
+
+const plainTextHtml = (text) =>
+  `<div style="font-family:Arial,sans-serif;white-space:pre-wrap;line-height:1.5;color:#1e1b35">${escMail(text)}</div>`;
+
+async function sendEmailText(env, to, subject, text) {
+  if (env.OUTBOX_TEST_DELIVERY === "mock") return { provider: "brevo" };
+  if (!emailEnabled(env))
+    throw new Error("O envio automático de e-mail não está configurado.");
+  await sendEmail(env, to, subject || "Mensagem do Seu Funcionário", plainTextHtml(text));
+  return { provider: "brevo" };
+}
+
+function whatsappEnabled(env) {
+  return !!(env.WHATSAPP_TOKEN && env.WHATSAPP_PHONE_ID);
+}
+
+const normalizeWhatsappTo = (value) => {
+  const digits = String(value || "").replace(/\D/g, "");
+  return digits.length >= 10 && digits.length <= 15 ? digits : "";
+};
+
+async function sendWhatsAppText(env, to, text) {
+  if (env.OUTBOX_TEST_DELIVERY === "mock")
+    return {
+      provider: "whatsapp_cloud_api",
+      providerMessageId: "wamid.test",
+    };
+  if (!whatsappEnabled(env))
+    throw new Error("O envio automático de WhatsApp não está configurado.");
+  const phone = normalizeWhatsappTo(to);
+  if (!phone)
+    throw new Error("Informe o WhatsApp com DDI e DDD para envio automático.");
+  const version = env.WHATSAPP_API_VERSION || "v20.0";
+  const resp = await fetch(
+    `https://graph.facebook.com/${version}/${env.WHATSAPP_PHONE_ID}/messages`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${env.WHATSAPP_TOKEN}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: phone,
+        type: "text",
+        text: { preview_url: false, body: text },
+      }),
+    },
+  );
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok)
+    throw new Error(
+      payload?.error?.message || `Falha no WhatsApp (${resp.status}).`,
+    );
+  return {
+    provider: "whatsapp_cloud_api",
+    providerMessageId: payload?.messages?.[0]?.id || "",
+  };
 }
 
 function pushEnabled(env) {
@@ -2226,32 +2289,21 @@ const safeParseJson = (value) => {
   }
 };
 
-const INBOX_CHANNELS = new Set([
-  "whatsapp",
-  "email",
-  "sms",
-  "phone",
-  "form",
-  "note",
-]);
-const INBOX_DIRECTIONS = new Set(["in", "out"]);
-
-// Caixa de entrada unificada. Tabela relacional por espaço (migração 0015):
-// todo membro do espaço enxerga a caixa compartilhada do negócio; o autor de
-// cada registro fica gravado. É o primeiro passo de tirar dado de alto volume
-// do blob JSON do workspace.
 async function handleInbox(request, env, user, url) {
   const ownerId = url.searchParams.get("owner") || user.id;
   const role = await membershipRole(env, user.id, ownerId);
   if (!role) return json({ error: "Você não tem acesso a este espaço." }, 403);
 
   if (request.method === "GET") {
+    await ensureInteractionsMigrated(env, ownerId);
     const rows = await env.DB.prepare(
-      `SELECT id, author_id, contact_id, contact_name, contact_handle,
-              channel, direction, subject, body, meta_json, created_at, read_at
-         FROM interactions
-        WHERE workspace_owner_id = ?
-        ORDER BY created_at DESC
+      `SELECT i.id, i.author_id, i.contact_id, i.contact_name, i.contact_handle,
+              i.channel, i.direction, i.subject, i.body, i.meta_json,
+              i.created_at, i.read_at, m.conversation_id, m.id AS message_id
+         FROM interactions i
+         LEFT JOIN conversation_messages m ON m.interaction_id = i.id
+        WHERE i.workspace_owner_id = ?
+        ORDER BY i.created_at DESC
         LIMIT 500`,
     )
       .bind(ownerId)
@@ -2269,6 +2321,8 @@ async function handleInbox(request, env, user, url) {
       meta: safeParseJson(r.meta_json),
       createdAt: r.created_at,
       readAt: r.read_at || null,
+      conversationId: r.conversation_id || "",
+      messageId: r.message_id || "",
     }));
     return json({ items });
   }
@@ -2282,45 +2336,12 @@ async function handleInbox(request, env, user, url) {
     } catch {
       return json({ error: "Registro inválido." }, 400);
     }
-    const channel = String(body.channel || "").trim();
-    if (!INBOX_CHANNELS.has(channel))
-      return json({ error: "Canal inválido." }, 400);
-    const direction = INBOX_DIRECTIONS.has(body.direction)
-      ? body.direction
-      : "out";
-    const text = String(body.body || "").slice(0, 4000);
-    const subject = String(body.subject || "").slice(0, 200);
-    if (!text.trim() && !subject.trim())
-      return json({ error: "Escreva algo para registrar." }, 400);
-    const meta =
-      body.meta && typeof body.meta === "object" ? body.meta : {};
-    const id = crypto.randomUUID();
-    const now = new Date().toISOString();
-    await env.DB.prepare(
-      `INSERT INTO interactions
-        (id, workspace_owner_id, author_id, contact_id, contact_name,
-         contact_handle, channel, direction, subject, body, meta_json,
-         created_at, read_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-      .bind(
-        id,
-        ownerId,
-        user.id,
-        String(body.contactId || "").slice(0, 80) || null,
-        String(body.contactName || "").slice(0, 160),
-        String(body.contactHandle || "").slice(0, 160),
-        channel,
-        direction,
-        subject,
-        text,
-        JSON.stringify(meta).slice(0, 2000),
-        now,
-        // registros que eu mesmo envio já nascem lidos; recebidos ficam por ler
-        direction === "out" ? now : null,
-      )
-      .run();
-    return json({ ok: true, id, createdAt: now });
+    try {
+      const record = await insertInteraction(env, ownerId, user.id, body);
+      return json({ ok: true, ...record });
+    } catch (error) {
+      return json({ error: error.message || "Registro inválido." }, 400);
+    }
   }
 
   if (request.method === "PATCH") {
@@ -2343,10 +2364,384 @@ async function handleInbox(request, env, user, url) {
     )
       .bind(now, ownerId, ...ids)
       .run();
+    const messages = await env.DB.prepare(
+      `SELECT DISTINCT conversation_id FROM conversation_messages
+        WHERE workspace_owner_id = ? AND interaction_id IN (${placeholders})`,
+    )
+      .bind(ownerId, ...ids)
+      .all();
+    await env.DB.prepare(
+      `UPDATE conversation_messages SET read_at = ?
+        WHERE workspace_owner_id = ? AND read_at IS NULL
+          AND interaction_id IN (${placeholders})`,
+    )
+      .bind(now, ownerId, ...ids)
+      .run();
+    for (const row of messages.results || []) {
+      await env.DB.prepare(
+        `UPDATE conversations
+            SET unread_count = (
+                  SELECT COUNT(*) FROM conversation_messages
+                   WHERE conversation_id = ? AND direction = 'in' AND read_at IS NULL
+                ),
+                updated_at = ?
+          WHERE id = ? AND workspace_owner_id = ?`,
+      )
+        .bind(row.conversation_id, now, row.conversation_id, ownerId)
+        .run();
+    }
     return json({ ok: true, updated: result.meta?.changes || 0 });
   }
 
   return json({ error: "Método não permitido." }, 405);
+}
+
+async function handleInboxConversations(request, env, user, url) {
+  const ownerId = url.searchParams.get("owner") || user.id;
+  const role = await membershipRole(env, user.id, ownerId);
+  if (!role) return json({ error: "Você não tem acesso a este espaço." }, 403);
+  if (request.method !== "GET")
+    return json({ error: "Método não permitido." }, 405);
+  await ensureInteractionsMigrated(env, ownerId);
+  const conversationId = url.searchParams.get("conversation") || "";
+  if (conversationId) {
+    const row = await env.DB.prepare(
+      `SELECT c.id, c.workspace_owner_id, c.contact_id, c.channel, c.subject,
+              c.status, c.priority, c.assigned_to, c.last_message_at,
+              c.last_message_preview, c.unread_count, c.created_at, c.updated_at,
+              ct.display_name, ct.normalized_handle, ct.email, ct.phone
+         FROM conversations c
+         LEFT JOIN contacts ct ON ct.id = c.contact_id
+        WHERE c.workspace_owner_id = ? AND c.id = ?
+        LIMIT 1`,
+    )
+      .bind(ownerId, conversationId)
+      .first();
+    if (!row) return json({ error: "Conversa não encontrada." }, 404);
+    const messages = await env.DB.prepare(
+      `SELECT id, interaction_id, author_id, channel, direction, subject, body,
+              meta_json, created_at, read_at
+         FROM conversation_messages
+        WHERE workspace_owner_id = ? AND conversation_id = ?
+        ORDER BY created_at ASC
+        LIMIT 500`,
+    )
+      .bind(ownerId, conversationId)
+      .all();
+    return json({
+      conversation: {
+        id: row.id,
+        contactId: row.contact_id || "",
+        contactName: row.display_name || "",
+        contactHandle: row.email || row.phone || row.normalized_handle || "",
+        channel: row.channel,
+        subject: row.subject || "",
+        status: row.status,
+        priority: row.priority,
+        assignedTo: row.assigned_to || "",
+        lastMessageAt: row.last_message_at,
+        lastMessagePreview: row.last_message_preview || "",
+        unreadCount: Number(row.unread_count) || 0,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      },
+      messages: (messages.results || []).map((message) => ({
+        id: message.id,
+        interactionId: message.interaction_id || "",
+        authorId: message.author_id,
+        channel: message.channel,
+        direction: message.direction,
+        subject: message.subject || "",
+        body: message.body || "",
+        meta: safeParseJson(message.meta_json),
+        createdAt: message.created_at,
+        readAt: message.read_at || null,
+      })),
+    });
+  }
+  const rows = await env.DB.prepare(
+    `SELECT c.id, c.contact_id, c.channel, c.subject, c.status, c.priority,
+            c.assigned_to, c.last_message_at, c.last_message_preview,
+            c.unread_count, c.created_at, c.updated_at,
+            ct.display_name, ct.normalized_handle, ct.email, ct.phone
+       FROM conversations c
+       LEFT JOIN contacts ct ON ct.id = c.contact_id
+      WHERE c.workspace_owner_id = ?
+      ORDER BY c.last_message_at DESC
+      LIMIT 200`,
+  )
+    .bind(ownerId)
+    .all();
+  return json({
+    conversations: (rows.results || []).map((row) => ({
+      id: row.id,
+      contactId: row.contact_id || "",
+      contactName: row.display_name || "",
+      contactHandle: row.email || row.phone || row.normalized_handle || "",
+      channel: row.channel,
+      subject: row.subject || "",
+      status: row.status,
+      priority: row.priority,
+      assignedTo: row.assigned_to || "",
+      lastMessageAt: row.last_message_at,
+      lastMessagePreview: row.last_message_preview || "",
+      unreadCount: Number(row.unread_count) || 0,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    })),
+  });
+}
+
+async function handleOutboxSend(request, env, user, url) {
+  if (request.method !== "POST")
+    return json({ error: "Método não permitido." }, 405);
+  if (!allowed(`outbox:${user.id}`, 40))
+    return json({ error: "Muitos envios em pouco tempo." }, 429);
+  const ownerId = url.searchParams.get("owner") || user.id;
+  const role = await membershipRole(env, user.id, ownerId);
+  if (!role) return json({ error: "Você não tem acesso a este espaço." }, 403);
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Envio inválido." }, 400);
+  }
+
+  const channel = String(body.channel || "").trim();
+  const to = String(body.to || body.contactHandle || "").trim();
+  const subject = String(body.subject || "").trim().slice(0, 200);
+  const text = String(body.body || body.text || "").trim().slice(0, 4000);
+  if (!text) return json({ error: "Escreva a mensagem antes de enviar." }, 400);
+
+  try {
+    let delivery;
+    if (channel === "email") {
+      const email = to.toLowerCase();
+      if (!/^\S+@\S+\.\S+$/.test(email))
+        return json({ error: "Informe um e-mail válido." }, 400);
+      delivery = await sendEmailText(env, email, subject, text);
+    } else if (channel === "whatsapp") {
+      delivery = await sendWhatsAppText(env, to, text);
+    } else {
+      return json({ error: "Canal de envio automático inválido." }, 400);
+    }
+
+    const record = await insertInteraction(env, ownerId, user.id, {
+      channel,
+      direction: "out",
+      contactId: body.contactId,
+      contactName: body.contactName,
+      contactHandle: to,
+      subject,
+      body: text,
+      meta: {
+        automatic: true,
+        source: body.source || "outbox",
+        provider: delivery.provider,
+        providerMessageId: delivery.providerMessageId || "",
+      },
+    });
+    return json({ ok: true, channel, ...record, delivery });
+  } catch (error) {
+    const message = error.message || "Não foi possível enviar automaticamente.";
+    const missing = /não está configurado|nao esta configurado/i.test(message);
+    return json({ error: message, code: missing ? "PROVIDER_NOT_CONFIGURED" : "SEND_FAILED" }, missing ? 503 : 502);
+  }
+}
+
+async function resolveInboundOwner(env, provider, accountId) {
+  const id = String(accountId || "").trim().toLowerCase();
+  if (!env.DB || !provider || !id) return "";
+  const row = await env.DB.prepare(
+    `SELECT workspace_owner_id FROM inbound_channels
+      WHERE provider = ? AND lower(provider_account_id) = ? AND active = 1
+      LIMIT 1`,
+  )
+    .bind(provider, id)
+    .first();
+  if (row?.workspace_owner_id) return row.workspace_owner_id;
+  if (provider === "email" && id.includes("@")) {
+    const domain = id.split("@").at(-1);
+    const domainRow = await env.DB.prepare(
+      `SELECT workspace_owner_id FROM inbound_channels
+        WHERE provider = 'email' AND lower(provider_account_id) = ? AND active = 1
+        LIMIT 1`,
+    )
+      .bind(domain)
+      .first();
+    if (domainRow?.workspace_owner_id) return domainRow.workspace_owner_id;
+  }
+  if (provider === "whatsapp" && env.WHATSAPP_INBOUND_OWNER_ID)
+    return env.WHATSAPP_INBOUND_OWNER_ID;
+  if (provider === "email" && env.EMAIL_INBOUND_OWNER_ID)
+    return env.EMAIL_INBOUND_OWNER_ID;
+  return env.INBOUND_WEBHOOK_OWNER_ID || "";
+}
+
+async function hmacSha256Hex(secret, text) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  return hex(await crypto.subtle.sign("HMAC", key, encoder.encode(text)));
+}
+
+async function validMetaSignature(request, rawBody, env) {
+  if (!env.WHATSAPP_APP_SECRET) return true;
+  const signature = request.headers.get("x-hub-signature-256") || "";
+  const expected = `sha256=${await hmacSha256Hex(env.WHATSAPP_APP_SECRET, rawBody)}`;
+  return sameHash(signature, expected);
+}
+
+async function handleInboundWhatsApp(request, env, url) {
+  if (!env.DB) return json({ error: "Banco de dados indisponível." }, 503);
+  if (request.method === "GET") {
+    const mode = url.searchParams.get("hub.mode");
+    const token = url.searchParams.get("hub.verify_token");
+    const challenge = url.searchParams.get("hub.challenge") || "";
+    if (
+      mode === "subscribe" &&
+      env.WHATSAPP_VERIFY_TOKEN &&
+      token === env.WHATSAPP_VERIFY_TOKEN
+    )
+      return new Response(challenge, {
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      });
+    return json({ error: "Webhook não autorizado." }, 403);
+  }
+  if (request.method !== "POST")
+    return json({ error: "Método não permitido." }, 405);
+  const ip = request.headers.get("cf-connecting-ip") || "public";
+  if (!allowed(`inbound-whatsapp:${ip}`, 240))
+    return json({ error: "Muitas mensagens em pouco tempo." }, 429);
+  const raw = await request.text();
+  if (!(await validMetaSignature(request, raw, env)))
+    return json({ error: "Assinatura inválida." }, 403);
+  let payload;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    return json({ error: "Webhook inválido." }, 400);
+  }
+  let inserted = 0;
+  for (const entry of Array.isArray(payload.entry) ? payload.entry : []) {
+    for (const change of Array.isArray(entry.changes) ? entry.changes : []) {
+      const value = change.value || {};
+      const accountId = value.metadata?.phone_number_id || env.WHATSAPP_PHONE_ID || "";
+      const ownerId = await resolveInboundOwner(env, "whatsapp", accountId);
+      if (!ownerId) continue;
+      const contactsByWaId = new Map(
+        (Array.isArray(value.contacts) ? value.contacts : []).map((contact) => [
+          String(contact.wa_id || ""),
+          contact.profile?.name || "",
+        ]),
+      );
+      for (const message of Array.isArray(value.messages) ? value.messages : []) {
+        const from = String(message.from || "");
+        const type = String(message.type || "text");
+        const body =
+          message.text?.body ||
+          message[type]?.caption ||
+          message.button?.text ||
+          message.interactive?.button_reply?.title ||
+          message.interactive?.list_reply?.title ||
+          `[${type || "mensagem"} recebida]`;
+        await insertInteraction(env, ownerId, ownerId, {
+          channel: "whatsapp",
+          direction: "in",
+          contactName: contactsByWaId.get(from) || from,
+          contactHandle: from,
+          subject: "WhatsApp recebido",
+          body,
+          meta: {
+            provider: "whatsapp_cloud_api",
+            providerMessageId: message.id || "",
+            providerAccountId: accountId,
+            messageType: type,
+          },
+        });
+        inserted += 1;
+      }
+    }
+  }
+  return json({ ok: true, inserted });
+}
+
+async function inboundEmailBody(request) {
+  const contentType = request.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) return request.json();
+  const form = await request.formData();
+  return Object.fromEntries([...form.entries()].map(([key, value]) => [key, String(value)]));
+}
+
+const stripHtml = (value) =>
+  String(value || "")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+async function handleInboundEmail(request, env) {
+  if (!env.DB) return json({ error: "Banco de dados indisponível." }, 503);
+  if (request.method !== "POST")
+    return json({ error: "Método não permitido." }, 405);
+  const secret =
+    request.headers.get("x-sf-inbound-secret") ||
+    request.headers.get("x-inbound-secret") ||
+    "";
+  if (!env.INBOUND_EMAIL_SECRET || !sameHash(secret, env.INBOUND_EMAIL_SECRET))
+    return json({ error: "Webhook não autorizado." }, 403);
+  const ip = request.headers.get("cf-connecting-ip") || "public";
+  if (!allowed(`inbound-email:${ip}`, 240))
+    return json({ error: "Muitos e-mails em pouco tempo." }, 429);
+  let body;
+  try {
+    body = await inboundEmailBody(request);
+  } catch {
+    return json({ error: "Webhook inválido." }, 400);
+  }
+  const to = String(
+    body.to ||
+      body.recipient ||
+      body.envelope?.to?.[0] ||
+      body.headers?.to ||
+      "",
+  )
+    .split(",")[0]
+    .trim()
+    .toLowerCase();
+  const ownerId = await resolveInboundOwner(env, "email", to);
+  if (!ownerId)
+    return json({ error: "Nenhum workspace configurado para este e-mail." }, 404);
+  const from = String(body.from || body.sender || body.headers?.from || "").trim();
+  const subject = String(body.subject || "(sem assunto)").slice(0, 200);
+  const text = String(
+    body.text ||
+      body["body-plain"] ||
+      body["stripped-text"] ||
+      body.plain ||
+      "",
+  ).trim();
+  const htmlText = stripHtml(body.html || body["body-html"] || "");
+  await insertInteraction(env, ownerId, ownerId, {
+    channel: "email",
+    direction: "in",
+    contactName: from,
+    contactHandle: from,
+    subject,
+    body: (text || htmlText || "(e-mail sem texto)").slice(0, 4000),
+    meta: {
+      provider: "inbound_email_webhook",
+      providerAccountId: to,
+      messageId: body["message-id"] || body.messageId || "",
+    },
+  });
+  return json({ ok: true, inserted: 1 });
 }
 
 async function handlePersonalInbox(request, env, user, url) {
@@ -4212,29 +4607,19 @@ async function handlePublicForm(request, env, url) {
     )
     .run();
   try {
-    await env.DB.prepare(
-      `INSERT INTO interactions
-        (id, workspace_owner_id, author_id, contact_id, contact_name,
-         contact_handle, channel, direction, subject, body, meta_json,
-         created_at, read_at)
-       VALUES (?, ?, ?, NULL, ?, ?, 'form', 'in', ?, ?, ?, ?, NULL)`,
-    )
-      .bind(
-        crypto.randomUUID(),
-        row.workspace_owner_id,
-        row.workspace_owner_id,
-        contact.name,
-        contact.email || contact.phone,
-        `Formulário: ${form.name}`,
-        publicFormAnswerSummary(form, values) || "(resposta sem texto)",
-        JSON.stringify({
-          publicFormId: form.id,
-          submissionId: submission.id,
-          protocol,
-        }),
-        now,
-      )
-      .run();
+    await insertInteraction(env, row.workspace_owner_id, row.workspace_owner_id, {
+      channel: "form",
+      direction: "in",
+      contactName: contact.name,
+      contactHandle: contact.email || contact.phone,
+      subject: `Formulário: ${form.name}`,
+      body: publicFormAnswerSummary(form, values) || "(resposta sem texto)",
+      meta: {
+        publicFormId: form.id,
+        submissionId: submission.id,
+        protocol,
+      },
+    });
   } catch (error) {
     console.error("inbox from public form", error);
   }
@@ -5588,29 +5973,14 @@ async function handlePublicSite(request, env, url) {
   // o lead é genuinamente novo, para respeitar a deduplicação diária.
   if (leadResult.meta?.changes > 0) {
     try {
-      await env.DB.prepare(
-        `INSERT INTO interactions
-          (id, workspace_owner_id, author_id, contact_id, contact_name,
-           contact_handle, channel, direction, subject, body, meta_json,
-           created_at, read_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-        .bind(
-          crypto.randomUUID(),
-          site.owner_id,
-          site.owner_id,
-          null,
-          name,
-          email || phone,
-          "form",
-          "in",
-          "Mensagem pelo site",
-          message || "(sem mensagem)",
-          "{}",
-          new Date().toISOString(),
-          null,
-        )
-        .run();
+      await insertInteraction(env, site.owner_id, site.owner_id, {
+        channel: "form",
+        direction: "in",
+        contactName: name,
+        contactHandle: email || phone,
+        subject: "Mensagem pelo site",
+        body: message || "(sem mensagem)",
+      });
     } catch (error) {
       console.error("inbox from site form", error);
     }
@@ -7547,6 +7917,22 @@ export default {
         checkedAt: new Date().toISOString(),
       });
     }
+    if (url.pathname === "/api/inbound/whatsapp") {
+      try {
+        return await handleInboundWhatsApp(request, env, url);
+      } catch (error) {
+        console.error("Inbound WhatsApp error", error);
+        return json({ error: "Não foi possível receber o WhatsApp." }, 500);
+      }
+    }
+    if (url.pathname === "/api/inbound/email") {
+      try {
+        return await handleInboundEmail(request, env);
+      } catch (error) {
+        console.error("Inbound email error", error);
+        return json({ error: "Não foi possível receber o e-mail." }, 500);
+      }
+    }
     if (
       url.pathname.startsWith("/orcamento/") ||
       url.pathname.startsWith("/api/public-quotes/")
@@ -7673,6 +8059,7 @@ export default {
       url.pathname === "/api/workspace/backups" ||
       url.pathname === "/api/tasks/action" ||
       url.pathname === "/api/events" ||
+      url.pathname === "/api/outbox/send" ||
       url.pathname.startsWith("/api/inbox") ||
       url.pathname.startsWith("/api/quotes/") ||
       url.pathname.startsWith("/api/forms/") ||
@@ -7691,6 +8078,7 @@ export default {
           url.pathname === "/api/workspace/backups" ||
           url.pathname === "/api/tasks/action" ||
           url.pathname === "/api/events" ||
+          url.pathname === "/api/outbox/send" ||
           url.pathname.startsWith("/api/inbox") ||
           url.pathname.startsWith("/api/forms/") ||
           url.pathname.startsWith("/api/client-portals/") ||
@@ -7756,6 +8144,14 @@ export default {
           return json({ error: "Não foi possível registrar este evento." }, 500);
         }
       }
+      if (url.pathname === "/api/outbox/send") {
+        try {
+          return await handleOutboxSend(request, env, user, url);
+        } catch (error) {
+          console.error("Outbox send error", error);
+          return json({ error: "Não foi possível enviar a mensagem." }, 500);
+        }
+      }
       if (url.pathname === "/api/inbox/personal") {
         try {
           return await handlePersonalInbox(request, env, user, url);
@@ -7763,6 +8159,17 @@ export default {
           console.error("Personal inbox error", error);
           return json(
             { error: "Não foi possível acessar sua caixa de entrada pessoal." },
+            500,
+          );
+        }
+      }
+      if (url.pathname === "/api/inbox/conversations") {
+        try {
+          return await handleInboxConversations(request, env, user, url);
+        } catch (error) {
+          console.error("Inbox conversations error", error);
+          return json(
+            { error: "Não foi possível acessar as conversas da caixa." },
             500,
           );
         }

@@ -18,6 +18,9 @@ export default defineConfig({
           VAPID_PUBLIC_KEY:
             "BEa6RPkBtRlZB3zsc7CJpieeD8RLYLSjWQbfWX69nASq9GcrzQNRHwKgO3T2wYgq8GRi6baoREH4uVvGPxsZC9Y",
           VAPID_PRIVATE_KEY: "WnT6_QQd2c5yTC8ClemX9Djsgtc3Bvs8zgAToy4siGA",
+          OUTBOX_TEST_DELIVERY: "mock",
+          WHATSAPP_VERIFY_TOKEN: "verify-test-token",
+          INBOUND_EMAIL_SECRET: "email-inbound-secret",
         },
       },
     })),
