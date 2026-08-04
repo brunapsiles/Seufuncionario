@@ -4969,8 +4969,8 @@ function UniversalRequest({ db, update, business, setToast }) {
         )}
         {busy && (
           <div className="chat-message assistant">
-            <span className="message-avatar">
-              <Sparkles />
+            <span className="message-avatar pensando">
+              <img src="/mascote-48.png" alt="" width="22" height="22" />
             </span>
             <div className="typing">
               <i />
@@ -25643,6 +25643,9 @@ export default function App() {
           >
             <Menu />
           </button>
+          {/* No celular o menu lateral fica fechado, então nada identificaria o
+              app no topo. O mascote resolve isso sozinho — sem escrever o nome,
+              que não cabe e sairia cortado. */}
           <div className="topbar-mobile-brand">
             <Logo />
           </div>

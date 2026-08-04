@@ -767,7 +767,6 @@ aside nav button.active {
 .topbar-mobile-brand .logo-mark-img {
   width: 32px;
   height: 32px;
-  border-radius: 10px;
 }
 .business-popover button {
   width: 100%;
@@ -4366,17 +4365,20 @@ aside nav button.active {
   .topbar-mobile-brand {
     display: flex;
     min-width: 0;
-    flex: 1 1 auto;
+    flex: 0 0 auto;
     align-items: center;
   }
   .topbar-mobile-brand .logo {
     min-width: 0;
   }
+  /* "Seu F..." é pior do que marca nenhuma: nome cortado parece defeito. Com o
+     mascote como identidade, ele identifica o app sozinho na tela estreita. */
   .topbar-mobile-brand .logo span {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    display: none;
+  }
+  .topbar-mobile-brand .logo-mark-img {
+    width: 34px;
+    height: 34px;
   }
   .top-business {
     display: none;
@@ -5136,6 +5138,32 @@ aside nav button.active {
 .message-avatar svg {
   width: 17px;
 }
+/* Enquanto a IA pensa, quem aparece é o mascote — a mesma figura da marca, só
+   que pequena. O fundo colorido sai para ele não virar um selo. */
+.message-avatar.pensando {
+  background: none;
+  box-shadow: none;
+}
+.message-avatar.pensando img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  animation: mascote-pensa 1.6s ease-in-out infinite;
+}
+@keyframes mascote-pensa {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .message-avatar.pensando img {
+    animation: none;
+  }
+}
 .user .message-avatar {
   background: var(--surface2);
   color: var(--primary);
@@ -5829,16 +5857,21 @@ aside nav button,
 aside nav button span,
 .side-bottom button span {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* Nome de menu cortado ("Contas a receber e pag...") parece defeito e obriga a
+     adivinhar. Estes nomes são curtos: cabem em duas linhas sem esticar o menu. */
+  white-space: normal;
+  overflow-wrap: break-word;
+  line-height: 1.25;
 }
 
 .logo-mark-img {
   width: 36px;
   height: 36px;
-  border-radius: 11px;
-  box-shadow: 0 7px 18px rgba(11, 159, 143, 0.24);
   display: block;
+  /* Sem canto arredondado nem sombra de caixa: o mascote é uma figura recortada,
+     não um bloco. A sombra de caixa apareceria como um retângulo atrás dele. */
+  object-fit: contain;
+  filter: drop-shadow(0 4px 10px color-mix(in srgb, var(--primary) 35%, transparent));
 }
 .md {
   line-height: 1.62;
@@ -17611,39 +17644,6 @@ body {
   font-size: 0.78rem;
 }
 
-.home-hub-mascot-panel {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  place-items: end center;
-  min-height: 300px;
-  overflow: hidden;
-  border: 1px solid rgba(109, 247, 215, 0.18);
-  border-radius: 14px;
-  background:
-    radial-gradient(circle at 50% 32%, rgba(109, 247, 215, 0.24), transparent 38%),
-    linear-gradient(180deg, rgba(7, 57, 64, 0.98), rgba(4, 26, 30, 0.96));
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
-}
-
-.home-hub-mascot-panel img {
-  position: relative;
-  z-index: 1;
-  width: min(80%, 270px);
-  max-height: 430px;
-  object-fit: contain;
-  filter: drop-shadow(0 18px 32px rgba(66, 221, 223, 0.24));
-}
-
-.home-hub-orbit {
-  position: absolute;
-  inset: auto 12% 18px;
-  height: 38px;
-  border-radius: 999px;
-  background: radial-gradient(circle, rgba(66, 221, 223, 0.35), transparent 72%);
-  filter: blur(3px);
-}
-
 .home-hub-section {
   display: grid;
   gap: 13px;
@@ -17831,17 +17831,7 @@ body {
     padding: 18px;
   }
 
-  .home-hub-mascot-panel {
-    min-height: 138px;
-    place-items: center;
-  }
-
-  .home-hub-mascot-panel img {
-    width: min(42%, 132px);
-    max-height: 132px;
-  }
-
-  .home-hub-hero h1 {
+      .home-hub-hero h1 {
     font-size: 2.05rem;
   }
 
@@ -17896,4 +17886,11 @@ body {
   .home-hub-switcher {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+.home-hub-selo-mascote {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  vertical-align: -4px;
 }

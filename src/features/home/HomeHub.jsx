@@ -379,7 +379,16 @@ export default function HomeHub({
       <section className="home-hub-hero" aria-labelledby="home-hub-title">
         <div className="home-hub-hero-copy">
           <span className="home-hub-kicker">
-            <Bot size={16} aria-hidden="true" /> Seu Funcionário
+            {/* O selo da marca usa o mascote, não um robô genérico de biblioteca:
+                é a mesma figura do topo e do "pensando". */}
+            <img
+              className="home-hub-selo-mascote"
+              src="/mascote-48.png"
+              alt=""
+              width="20"
+              height="20"
+            />{" "}
+            Seu Funcionário
           </span>
           <h1 id="home-hub-title">O que você quer resolver agora?</h1>
           <p>
@@ -411,10 +420,6 @@ export default function HomeHub({
               <strong>{businessCards.length}</strong> negócios
             </span>
           </div>
-        </div>
-        <div className="home-hub-mascot-panel" aria-label="Assistente visual do Seu Funcionário">
-          <span className="home-hub-orbit" aria-hidden="true" />
-          <img src="/mascot-robot.png" alt="Robô assistente do Seu Funcionário" />
         </div>
       </section>
 

@@ -1,11 +1,14 @@
 import { ChevronDown, Plus, Sparkles } from "lucide-react";
 
+// O mascote É a marca. Ele aparece aqui em cima, pequeno, e volta como avatar
+// enquanto a IA pensa — é a mesma figura nos dois lugares de propósito: é assim
+// que uma identidade visual se fixa.
 export function Logo({ compact = false }) {
   return (
     <div className="logo">
       <img
         className="logo-mark-img"
-        src="/favicon.svg?v=6"
+        src="/mascote-96.png"
         alt="Seu Funcionário"
         width="36"
         height="36"
