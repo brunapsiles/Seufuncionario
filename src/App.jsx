@@ -100,6 +100,7 @@ import Contacts from "./features/omnichannel/Contacts.jsx";
 import CRM from "./features/omnichannel/CRM.jsx";
 import Appointments from "./features/omnichannel/Appointments.jsx";
 import Quotes from "./features/omnichannel/Quotes.jsx";
+import TimeTracking from "./features/omnichannel/TimeTracking.jsx";
 import {
   BUSINESS_INDUSTRY_CATALOG,
   businessPackLabels,
@@ -8048,6 +8049,7 @@ function Tasks({
       ) : view === "board" ? (
         <div className="kanban" ref={kanbanRef}>
           {statuses.map((s) => (
+            /* eslint-disable-next-line jsx-a11y/no-static-element-interactions */
             <section
               key={s}
               data-kanban-status={s}
@@ -8075,6 +8077,7 @@ function Tasks({
               {items
                 .filter((x) => x.status === s)
                 .map((t) => (
+                  /* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */
                   <article
                     key={t.id}
                     draggable
@@ -11539,280 +11542,6 @@ function DevelopmentPlans({ db, update, business, setToast, go: _go }) {
               </Button>
               <Button type="submit" icon={Save}>
                 {editing ? "Salvar alterações" : "Criar plano"}
-              </Button>
-            </div>
-          </form>
-        </Modal>
-      )}
-    </PageTitle>
-  );
-}
-
-function TimeTracking({ db, update, business, setToast, go: _go }) {
-  const [modal, setModal] = useState(false),
-    [editing, setEditing] = useState(null),
-    [search, setSearch] = useState(""),
-    [filter, setFilter] = useState("Não faturadas");
-  const blankEntry = {
-    clientName: "",
-    project: "",
-    description: "",
-    date: today(),
-    hours: "1",
-    rate: "",
-    billable: true,
-    billed: false,
-  };
-  const [form, setForm] = useState(blankEntry);
-  const scoped = (db.timeEntries || []).filter(
-    (e) => !business || e.businessId === business.id,
-  );
-  const filtered = scoped
-    .filter(
-      (e) =>
-        !search ||
-        `${e.clientName} ${e.project}`.toLowerCase().includes(search.toLowerCase()),
-    )
-    .filter((e) => {
-      if (filter === "Não faturadas") return e.billable && !e.billed;
-      if (filter === "Faturadas") return e.billed;
-      return true;
-    })
-    .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-  const unbilled = scoped.filter((e) => e.billable && !e.billed);
-  const unbilledHours = unbilled.reduce((sum, e) => sum + Number(e.hours || 0), 0);
-  const unbilledValue = unbilled.reduce(
-    (sum, e) => sum + Number(e.hours || 0) * Number(e.rate || 0),
-    0,
-  );
-  const openEntry = (item = null) => {
-    setEditing(item?.id || null);
-    setForm(item ? { ...blankEntry, ...item } : blankEntry);
-    setModal(true);
-  };
-  const save = (e) => {
-    e.preventDefault();
-    if (!form.clientName.trim() || !Number(form.hours)) return;
-    const now = new Date().toISOString();
-    const item = {
-      ...form,
-      clientName: form.clientName.trim(),
-      hours: Number(form.hours) || 0,
-      rate: Number(form.rate) || 0,
-      id: editing || uid(),
-      businessId: business?.id || null,
-      ownerId: form.ownerId || db.user.id,
-      visibility: form.visibility || "privado",
-      createdAt: form.createdAt || now,
-      updatedAt: now,
-    };
-    update((d) => ({
-      ...d,
-      timeEntries: editing
-        ? (d.timeEntries || []).map((x) => (x.id === editing ? item : x))
-        : [item, ...(d.timeEntries || [])],
-    }));
-    setModal(false);
-    setToast(editing ? "Apontamento atualizado" : "Apontamento registrado");
-  };
-  const removeEntry = (id) => {
-    if (!confirm("Excluir este apontamento?")) return;
-    update((d) => ({
-      ...d,
-      timeEntries: (d.timeEntries || []).filter((x) => x.id !== id),
-    }));
-  };
-  const markBilled = (item) => {
-    if (item.billed) return;
-    const value = Number(item.hours) * Number(item.rate);
-    update((d) => ({
-      ...d,
-      timeEntries: (d.timeEntries || []).map((x) =>
-        x.id === item.id
-          ? { ...x, billed: true, updatedAt: new Date().toISOString() }
-          : x,
-      ),
-      transactions: [
-        {
-          id: uid(),
-          type: "Receita",
-          description: `${item.project || item.clientName} — ${item.hours}h`,
-          value,
-          date: today(),
-          category: "Horas faturadas",
-          businessId: business?.id || null,
-          ownerId: db.user.id,
-        },
-        ...d.transactions,
-      ],
-    }));
-    setToast("Horas faturadas e lançadas no Financeiro");
-  };
-  return (
-    <PageTitle
-      eyebrow="HORAS E FATURAMENTO"
-      title="Apontamento de horas por cliente"
-      text="Registre horas trabalhadas e transforme em faturamento com um clique."
-      action={
-        <Button icon={Plus} onClick={() => openEntry()}>
-          Novo apontamento
-        </Button>
-      }
-    >
-      <div className="metric-row">
-        <Metric icon={Clock3} label="Horas não faturadas" value={unbilledHours} />
-        <Metric icon={DollarSign} label="A faturar" value={money(unbilledValue)} />
-      </div>
-      <div className="toolbar">
-        <div className="search">
-          <Search />
-          <input
-            type="search"
-            placeholder="Buscar por cliente ou projeto"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            aria-label="Buscar apontamentos"
-          />
-        </div>
-        <div className="view-toggle">
-          {["Não faturadas", "Faturadas", "Todas"].map((f) => (
-            <button
-              key={f}
-              className={filter === f ? "active" : ""}
-              onClick={() => setFilter(f)}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
-      </div>
-      {filtered.length === 0 ? (
-        <Empty
-          icon={Clock3}
-          title="Nenhum apontamento aqui"
-          text="Registre as horas trabalhadas para um cliente ou projeto."
-          action="Novo apontamento"
-          onAction={() => openEntry()}
-        />
-      ) : (
-        <div className="data-list">
-          {filtered.map((item) => (
-            <article key={item.id}>
-              <span className={`status-dot ${item.billed ? "concluído" : "confirmado"}`} />
-              <span>
-                <strong>
-                  {item.clientName}
-                  {item.project && ` · ${item.project}`}
-                </strong>
-                <small>
-                  {new Date(`${item.date}T12:00`).toLocaleDateString("pt-BR")} ·{" "}
-                  {item.hours}h × {money(item.rate)} = {money(item.hours * item.rate)}
-                  {item.billed && " · Faturado"}
-                  {!item.billable && " · Não faturável"}
-                </small>
-              </span>
-              <span className="task-actions">
-                {item.billable && !item.billed && (
-                  <button
-                    className="icon-button"
-                    aria-label={`Faturar horas de ${item.clientName}`}
-                    title="Marcar como faturado"
-                    onClick={() => markBilled(item)}
-                  >
-                    <DollarSign />
-                  </button>
-                )}
-                <button
-                  className="icon-button"
-                  aria-label={`Editar apontamento de ${item.clientName}`}
-                  onClick={() => openEntry(item)}
-                >
-                  <Edit3 />
-                </button>
-                <button
-                  className="icon-button danger"
-                  aria-label={`Excluir apontamento de ${item.clientName}`}
-                  onClick={() => removeEntry(item.id)}
-                >
-                  <Trash2 />
-                </button>
-              </span>
-            </article>
-          ))}
-        </div>
-      )}
-      {modal && (
-        <Modal
-          title={editing ? "Editar apontamento" : "Novo apontamento"}
-          onClose={() => setModal(false)}
-        >
-          <form className="modal-body" onSubmit={save}>
-            <div className="form-grid">
-              <Field label="Cliente">
-                <input
-                  required
-                  autoFocus
-                  value={form.clientName}
-                  onChange={(e) => setForm({ ...form, clientName: e.target.value })}
-                />
-              </Field>
-              <Field label="Projeto (opcional)">
-                <input
-                  value={form.project}
-                  onChange={(e) => setForm({ ...form, project: e.target.value })}
-                />
-              </Field>
-              <Field label="Data">
-                <input
-                  required
-                  type="date"
-                  value={form.date}
-                  onChange={(e) => setForm({ ...form, date: e.target.value })}
-                />
-              </Field>
-              <Field label="Horas">
-                <input
-                  required
-                  type="number"
-                  min="0.25"
-                  step="0.25"
-                  value={form.hours}
-                  onChange={(e) => setForm({ ...form, hours: e.target.value })}
-                />
-              </Field>
-              <Field label="Valor por hora">
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={form.rate}
-                  onChange={(e) => setForm({ ...form, rate: e.target.value })}
-                />
-              </Field>
-              <Field label="Faturável">
-                <select
-                  value={form.billable ? "sim" : "nao"}
-                  onChange={(e) =>
-                    setForm({ ...form, billable: e.target.value === "sim" })
-                  }
-                >
-                  <option value="sim">Sim</option>
-                  <option value="nao">Não (interno)</option>
-                </select>
-              </Field>
-            </div>
-            <Field label="O que foi feito">
-              <textarea
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-              />
-            </Field>
-            <div className="modal-actions">
-              <Button variant="ghost" onClick={() => setModal(false)}>
-                Cancelar
-              </Button>
-              <Button type="submit" icon={Save}>
-                {editing ? "Salvar alterações" : "Salvar apontamento"}
               </Button>
             </div>
           </form>
@@ -19232,16 +18961,19 @@ function Sites({ db, update, business, setToast, go }) {
     return () => clearTimeout(id);
   }, [preview]);
   const ownerId = activeSpaceId() || db.user.id;
-  const updateSite = (id, patch) =>
-    update((d) => ({
-      ...d,
-      sites: d.sites.map((x) =>
-        x.id === id
-          ? { ...x, ...patch, updatedAt: new Date().toISOString() }
-          : x,
-      ),
-    }));
-  const siteRequest = async (action, body) => {
+  const updateSite = useCallback(
+    (id, patch) =>
+      update((d) => ({
+        ...d,
+        sites: d.sites.map((x) =>
+          x.id === id
+            ? { ...x, ...patch, updatedAt: new Date().toISOString() }
+            : x,
+        ),
+      })),
+    [update],
+  );
+  const siteRequest = useCallback(async (action, body) => {
     const response = await fetch(`/api/sites/${action}`, {
       method: "POST",
       headers: { "content-type": "application/json", ...authHeaders() },
@@ -19251,7 +18983,7 @@ function Sites({ db, update, business, setToast, go }) {
     if (!response.ok)
       throw new Error(data.error || "Não foi possível concluir a publicação.");
     return data;
-  };
+  }, [ownerId]);
   const updateBrief = (patch) => {
     if (!current) return;
     const brief = { ...(current.brief || {}), ...patch };
@@ -19263,7 +18995,7 @@ function Sites({ db, update, business, setToast, go }) {
       serverPublished: false,
     });
   };
-  const repairLegacySite = async () => {
+  const repairLegacySite = useCallback(async () => {
     if (!current) return;
     const oldBrief = current.brief || {};
     const brief = mergeSiteBrief(
@@ -19320,7 +19052,7 @@ function Sites({ db, update, business, setToast, go }) {
     } else {
       setToast("Briefing removido do conteúdo público");
     }
-  };
+  }, [current, setToast, siteRequest, updateSite]);
   const requestSiteChange = async () => {
     const request = siteChatText.trim();
     if (!current || !request || siteChatBusy) return;
@@ -19397,7 +19129,7 @@ function Sites({ db, update, business, setToast, go }) {
       repairLegacySite();
     }, 0);
     return () => clearTimeout(id);
-  }, [current?.id]);
+  }, [current, current?.id, repairLegacySite]);
   const download = (s) => {
     const blob = new Blob([s.html], { type: "text/html" }),
       a = document.createElement("a");
@@ -21543,8 +21275,12 @@ function CreativeStudio({ db, update, business, setToast }) {
       .then((config) => setVideoEnabled(!!config.videoEnabled))
       .catch(() => setVideoEnabled(false));
   }, []);
-  const items = (db.media || []).filter(
-    (x) => !business || x.businessId === business.id,
+  const items = useMemo(
+    () =>
+      (db.media || []).filter(
+        (x) => !business || x.businessId === business.id,
+      ),
+    [business, db.media],
   );
   useEffect(() => {
     let active = true;
@@ -21585,7 +21321,7 @@ function CreativeStudio({ db, update, business, setToast }) {
       active = false;
     };
     // Consulta novamente sempre que o usuário volta ao estúdio ou troca de negócio.
-  }, [business?.id]);
+  }, [business?.id, items, update]);
   const generate = async () => {
     if (prompt.trim().length < 5 || busy || (type === "video" && !videoEnabled))
       return;
@@ -22070,7 +21806,19 @@ function HistoryPage({ db, update, business, setToast, go }) {
       ) : (
         <div className="history-list">
           {items.map((x) => (
-            <article key={x.id} onClick={() => openProject(x)}>
+            <div
+              key={x.id}
+              className="history-card"
+              role="button"
+              tabIndex={0}
+              onClick={() => openProject(x)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  openProject(x);
+                }
+              }}
+            >
               <span className="doc-icon">
                 <Sparkles />
               </span>
@@ -22104,7 +21852,7 @@ function HistoryPage({ db, update, business, setToast, go }) {
                 </button>
               </span>
               <ChevronRight />
-            </article>
+            </div>
           ))}
         </div>
       )}
@@ -24601,7 +24349,14 @@ export default function App() {
     if (activeSpaceId() || !db.user?.id) return;
     const next = buildDasReminder(db.taxProfile, db.notifications, db.user.id);
     if (next) update((d) => ({ ...d, notifications: next }));
-  }, [db.taxProfile?.isMEI, db.taxProfile?.dasHistory, db.user?.id]);
+  }, [
+    db.taxProfile?.isMEI,
+    db.taxProfile?.dasHistory,
+    db.taxProfile,
+    db.notifications,
+    db.user?.id,
+    update,
+  ]);
   // Contratos recorrentes: lembrete mensal dos manuais + lançamento automático
   // dos marcados como autoPost. Só no espaço do próprio dono, idempotente por
   // mês (history[ym] dentro de buildRecurringPostings/Reminder).
@@ -24640,7 +24395,7 @@ export default function App() {
       }
       return next;
     });
-  }, [db.recurring, db.user?.id]);
+  }, [db.notifications, db.recurring, db.user?.id, update]);
   // Automações: regras agendadas que criam tarefas ou lembretes sozinhas.
   // Só no espaço do próprio dono, idempotente por período (history na regra).
   useEffect(() => {
@@ -24671,7 +24426,7 @@ export default function App() {
         notifications: [...notifs, ...(d.notifications || [])],
       };
     });
-  }, [db.automations, db.user?.id]);
+  }, [business?.id, db.automations, db.user?.id, update]);
   const startResize = (e) => {
     e.preventDefault();
     document.body.style.userSelect = "none";
@@ -24700,7 +24455,7 @@ export default function App() {
       module: "app",
       mode: db.preferences.mode || "business",
     });
-  }, [db.user?.id, db.spaceKey]);
+  }, [db.user?.id, db.spaceKey, db.preferences.mode]);
   useEffect(() => {
     if (!db.user) return;
     const m = location.search.match(/[?&]convite=([^&]+)/);
@@ -24718,7 +24473,7 @@ export default function App() {
         else if (d && d.error) setToast(d.error);
       })
       .catch(() => {});
-  }, [db.user]);
+  }, [db.user, setToast]);
   useEffect(() => {
     if (toast) {
       const t = setTimeout(() => setToast(""), 2400);
@@ -24748,7 +24503,7 @@ export default function App() {
         modeChosen: true,
       },
     }));
-  }, [db.user, db.preferences.modeChosen]);
+  }, [db, db.preferences.modeChosen, db.user, update]);
   const publicMatch = location.pathname.match(/^\/s\/([^/]+)(?:\/([^/]+))?/);
   const publicSlug = publicMatch?.[1];
   if (publicSlug)
@@ -25050,7 +24805,6 @@ export default function App() {
             update={update}
             business={business}
             setToast={setToast}
-            go={go}
           />
         );
       case "financeiro":

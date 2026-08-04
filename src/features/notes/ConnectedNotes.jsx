@@ -115,18 +115,24 @@ export default function ConnectedNotes({ db, update, business, setToast }) {
     [db.flashcards, business],
   );
 
+  const selecionadaId = selecionada || notas[0]?.id || "";
   const atual = useMemo(
-    () => notas.find((n) => n.id === selecionada) || null,
-    [notas, selecionada],
+    () => notas.find((n) => n.id === selecionadaId) || null,
+    [notas, selecionadaId],
   );
+  const draft =
+    rascunho || (atual ? { title: atual.title, content: atual.content } : null);
 
   useEffect(() => {
-    if (!selecionada && notas.length) setSelecionada(notas[0].id);
-  }, [notas, selecionada]);
-
-  useEffect(() => {
-    setRascunho(atual ? { title: atual.title, content: atual.content } : null);
-  }, [atual?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    const id = setTimeout(
+      () =>
+        setRascunho(
+          atual ? { title: atual.title, content: atual.content } : null,
+        ),
+      0,
+    );
+    return () => clearTimeout(id);
+  }, [atual]);
 
   const filtradas = useMemo(() => {
     const q = normalize(busca);
@@ -160,16 +166,16 @@ export default function ConnectedNotes({ db, update, business, setToast }) {
   };
 
   const gravarRascunho = () => {
-    if (!atual || !rascunho) return;
-    if (rascunho.title === atual.title && rascunho.content === atual.content) return;
+    if (!atual || !draft) return;
+    if (draft.title === atual.title && draft.content === atual.content) return;
     salvarNotas(
       (db.notes || []).map((n) =>
         n.id === atual.id
           ? {
               ...n,
-              title: rascunho.title.trim() || "Nota sem título",
-              content: rascunho.content,
-              tags: parseTags(rascunho.content),
+              title: draft.title.trim() || "Nota sem título",
+              content: draft.content,
+              tags: parseTags(draft.content),
               updatedAt: new Date().toISOString(),
             }
           : n,
@@ -181,7 +187,7 @@ export default function ConnectedNotes({ db, update, business, setToast }) {
     if (!window.confirm("Apagar esta nota? As ligações para ela viram 'a criar'."))
       return;
     salvarNotas((db.notes || []).filter((n) => n.id !== id));
-    if (selecionada === id) setSelecionada("");
+    if (selecionadaId === id) setSelecionada("");
   };
 
   // Cria a nota que ainda não existe, já com o título que foi citado.
@@ -296,9 +302,9 @@ export default function ConnectedNotes({ db, update, business, setToast }) {
   const previa = useMemo(
     () =>
       atual
-        ? resolveTransclusions(rascunho?.content ?? atual.content, notas)
+        ? resolveTransclusions(draft?.content ?? atual.content, notas)
         : { text: "", warnings: [] },
-    [atual, rascunho?.content, notas],
+    [atual, draft?.content, notas],
   );
   const ausentes = useMemo(
     () => buildGraph(notas).nodes.filter((n) => n.missing),
@@ -375,7 +381,7 @@ export default function ConnectedNotes({ db, update, business, setToast }) {
                 <li key={n.id}>
                   <button
                     type="button"
-                    className={n.id === selecionada ? "active" : ""}
+                    className={n.id === selecionadaId ? "active" : ""}
                     onClick={() => {
                       gravarRascunho();
                       setSelecionada(n.id);
@@ -391,12 +397,12 @@ export default function ConnectedNotes({ db, update, business, setToast }) {
 
           <div className="nt-editor">
             {!atual && <p className="muted">Escolha ou crie uma nota.</p>}
-            {atual && rascunho && (
+            {atual && draft && (
               <>
                 <input
                   className="nt-title"
                   aria-label="Título da nota"
-                  value={rascunho.title}
+                  value={draft.title}
                   onChange={(e) =>
                     setRascunho((r) => ({ ...r, title: e.target.value }))
                   }
@@ -406,7 +412,7 @@ export default function ConnectedNotes({ db, update, business, setToast }) {
                   className="nt-body"
                   aria-label="Conteúdo da nota"
                   rows={14}
-                  value={rascunho.content}
+                  value={draft.content}
                   onChange={(e) =>
                     setRascunho((r) => ({ ...r, content: e.target.value }))
                   }

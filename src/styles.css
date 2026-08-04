@@ -2352,7 +2352,7 @@ aside nav button.active {
   display: grid;
   gap: 8px;
 }
-.history-list article {
+.history-list .history-card {
   display: flex;
   align-items: center;
   gap: 13px;
@@ -2362,10 +2362,10 @@ aside nav button.active {
   border-radius: 13px;
   cursor: pointer;
 }
-.history-list article:hover {
+.history-list .history-card:hover {
   border-color: var(--primary);
 }
-.history-list article > span:nth-child(2) {
+.history-list .history-card > span:nth-child(2) {
   flex: 1;
 }
 .history-list h3 {
@@ -2375,7 +2375,7 @@ aside nav button.active {
 .history-list small {
   color: var(--muted);
 }
-.history-list > article > svg {
+.history-list > .history-card > svg {
   width: 18px;
   color: var(--muted);
 }
