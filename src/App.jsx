@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 242844)
-Total output lines: 28329
-
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   uid,
@@ -11821,7 +11818,5015 @@ function Contacts({ db, update, business, setToast, go: _go, searchSeed, clearSe
               <span>
                 <strong>{c.name}</strong>
                 <small>
-                  {c.company || "Sem em…42844 tokens truncated…                   ?.fields || []
+                  {c.company || "Sem empresa"}
+                  {c.rawContact && ` · ${c.rawContact}`}
+                </small>
+              </span>
+              <span className="task-actions">
+                {c.phone && (
+                  <button
+                    className="icon-button"
+                    aria-label={`Enviar WhatsApp para ${c.name}`}
+                    title="Enviar WhatsApp"
+                    onClick={() =>
+                      wa.open({
+                        phone: c.phone,
+                        category: "Contato",
+                        vars: { nome: c.name || "", negocio: business?.name || "" },
+                      })
+                    }
+                  >
+                    <MessageSquareText />
+                  </button>
+                )}
+                {c.email && (
+                  <button
+                    className="icon-button"
+                    aria-label={`Enviar e-mail para ${c.name}`}
+                    title="Enviar e-mail"
+                    onClick={() => setEmailContact(c)}
+                  >
+                    <Mail />
+                  </button>
+                )}
+                <button
+                  className="icon-button"
+                  aria-label={`Editar ${c.name}`}
+                  onClick={() => openContact(c)}
+                >
+                  <Edit3 />
+                </button>
+                <button
+                  className="icon-button danger"
+                  aria-label={`Excluir ${c.name}`}
+                  onClick={() => removeContact(c.id)}
+                >
+                  <Trash2 />
+                </button>
+              </span>
+            </article>
+          ))}
+          <LoadMoreButton
+            shown={Math.min(visibleCount, contacts.length)}
+            total={contacts.length}
+            onClick={() => setVisibleCount((c) => c + LIST_PAGE_SIZE)}
+          />
+        </div>
+      )}
+      {modal && (
+        <Modal
+          title={editing ? "Editar contato" : "Novo contato"}
+          onClose={() => setModal(false)}
+        >
+          <form className="modal-body" onSubmit={save}>
+            <Field label="Nome">
+              <input
+                required
+                autoFocus
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+              />
+            </Field>
+            <div className="form-grid">
+              <Field label="Empresa (opcional)">
+                <input
+                  value={form.company}
+                  onChange={(e) => setForm({ ...form, company: e.target.value })}
+                />
+              </Field>
+              <Field label="WhatsApp ou e-mail">
+                <input
+                  value={form.rawContact}
+                  onChange={(e) => setForm({ ...form, rawContact: e.target.value })}
+                  placeholder="(11) 98888-7777"
+                />
+              </Field>
+            </div>
+            <Field label="Observações">
+              <textarea
+                value={form.notes}
+                onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              />
+            </Field>
+            <SharingFields
+              value={form}
+              onChange={(next) => setForm({ ...form, ...next })}
+              teams={db.teams}
+            />
+            {editing && (
+              <div className="field">
+                <span>Histórico com este contato</span>
+                <ContactTimeline
+                  contact={{
+                    id: editing,
+                    name: form.name,
+                    rawContact: form.rawContact,
+                  }}
+                />
+              </div>
+            )}
+            <div className="modal-actions">
+              <Button variant="ghost" onClick={() => setModal(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" icon={Save}>
+                {editing ? "Salvar alterações" : "Salvar contato"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {emailContact && (
+        <EmailComposer
+          onClose={() => setEmailContact(null)}
+          setToast={setToast}
+          initial={{
+            to: emailContact.email,
+            subject: `Contato${business?.name ? ` - ${business.name}` : ""}`,
+          }}
+        />
+      )}
+      {wa.modal}
+    </PageTitle>
+  );
+}
+
+const orderStatuses = [
+  "Novo",
+  "Preparando",
+  "Pronto",
+  "Enviado",
+  "Entregue",
+  "Cancelado",
+];
+const orderChannels = ["Balcão", "Retirada", "Delivery", "Online", "Mesa"];
+
+function Catalog({ db, update, business, setToast, go: _go }) {
+  const wa = useWhatsappSender({ db, setToast });
+  const [view, setView] = useState("produtos"),
+    [search, setSearch] = useState(""),
+    [productModal, setProductModal] = useState(false),
+    [editingProduct, setEditingProduct] = useState(null),
+    [orderModal, setOrderModal] = useState(false),
+    [editingOrder, setEditingOrder] = useState(null),
+    [zoneModal, setZoneModal] = useState(false),
+    [editingZone, setEditingZone] = useState(null);
+  const blankProduct = {
+    name: "",
+    category: "",
+    price: "",
+    cost: "",
+    stock: "",
+    lowStockAlert: "5",
+    unit: "un",
+    variants: [],
+    visibility: "espaco_todo",
+    sharedWith: [],
+    sharedTeams: [],
+  };
+  const [productForm, setProductForm] = useState(blankProduct);
+  const blankOrder = {
+    clientName: "",
+    clientContact: "",
+    channel: "Balcão",
+    status: "Novo",
+    notes: "",
+    items: [],
+    deliveryZoneId: "",
+    postToFinance: true,
+    visibility: "espaco_todo",
+    sharedWith: [],
+    sharedTeams: [],
+  };
+  const [orderForm, setOrderForm] = useState(blankOrder);
+  const [pickProduct, setPickProduct] = useState("");
+  const [pickVariant, setPickVariant] = useState("");
+  const [pickQty, setPickQty] = useState("1");
+  const blankZone = { name: "", fee: "", etaMinutes: "" };
+  const [zoneForm, setZoneForm] = useState(blankZone);
+
+  const products = (db.products || []).filter(
+    (p) => !business || p.businessId === business.id,
+  );
+  const orders = (db.orders || []).filter(
+    (o) => !business || o.businessId === business.id,
+  );
+  const zones = (db.deliveryZones || []).filter(
+    (z) => !business || z.businessId === business.id,
+  );
+  const filteredProducts = products.filter(
+    (p) =>
+      !search ||
+      `${p.name} ${p.category}`.toLowerCase().includes(search.toLowerCase()),
+  );
+  const filteredOrders = orders
+    .filter(
+      (o) =>
+        !search ||
+        `${o.clientName} ${o.items.map((i) => i.name).join(" ")}`
+          .toLowerCase()
+          .includes(search.toLowerCase()),
+    )
+    .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+  const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
+  useEffect(() => {
+    setVisibleCount(LIST_PAGE_SIZE);
+  }, [search, view]);
+
+  const openProduct = (item = null) => {
+    setEditingProduct(item?.id || null);
+    setProductForm(item ? { ...blankProduct, ...item } : blankProduct);
+    setProductModal(true);
+  };
+  const addVariantRow = () =>
+    setProductForm((current) => ({
+      ...current,
+      variants: [
+        ...(current.variants || []),
+        { id: uid(), name: "", price: "", stock: "" },
+      ],
+    }));
+  const updateVariantRow = (id, field, value) =>
+    setProductForm((current) => ({
+      ...current,
+      variants: (current.variants || []).map((v) =>
+        v.id === id ? { ...v, [field]: value } : v,
+      ),
+    }));
+  const removeVariantRow = (id) =>
+    setProductForm((current) => ({
+      ...current,
+      variants: (current.variants || []).filter((v) => v.id !== id),
+    }));
+  const saveProduct = (e) => {
+    e.preventDefault();
+    if (!productForm.name.trim()) return;
+    const now = new Date().toISOString();
+    const variants = (productForm.variants || [])
+      .filter((v) => v.name.trim())
+      .map((v) => ({
+        id: v.id || uid(),
+        name: v.name.trim(),
+        price: Number(v.price) || 0,
+        stock: Number(v.stock) || 0,
+      }));
+    const item = {
+      ...productForm,
+      name: productForm.name.trim(),
+      price: Number(productForm.price) || 0,
+      cost: Number(productForm.cost) || 0,
+      stock: Number(productForm.stock) || 0,
+      lowStockAlert: Number(productForm.lowStockAlert) || 0,
+      variants,
+      id: editingProduct || uid(),
+      businessId: business?.id || null,
+      ownerId: productForm.ownerId || db.user.id,
+      visibility: productForm.visibility || "espaco_todo",
+      sharedWith: Array.isArray(productForm.sharedWith)
+        ? productForm.sharedWith
+        : [],
+      sharedTeams: Array.isArray(productForm.sharedTeams)
+        ? productForm.sharedTeams
+        : [],
+      createdAt: productForm.createdAt || now,
+      updatedAt: now,
+    };
+    update((d) => ({
+      ...d,
+      products: editingProduct
+        ? (d.products || []).map((p) => (p.id === editingProduct ? item : p))
+        : [item, ...(d.products || [])],
+    }));
+    setProductModal(false);
+    setToast(editingProduct ? "Produto atualizado" : "Produto cadastrado");
+  };
+  const removeProduct = (id) => {
+    if (!confirm("Excluir este produto do catálogo?")) return;
+    update((d) => ({
+      ...d,
+      products: (d.products || []).filter((p) => p.id !== id),
+    }));
+  };
+  const productPriceLabel = (p) =>
+    (p.variants || []).length > 0
+      ? `A partir de ${money(Math.min(...p.variants.map((v) => v.price)))}`
+      : money(p.price);
+  const productStockTotal = (p) =>
+    (p.variants || []).length > 0
+      ? p.variants.reduce((sum, v) => sum + v.stock, 0)
+      : p.stock;
+
+  const openOrder = (item = null) => {
+    setEditingOrder(item?.id || null);
+    setOrderForm(item ? { ...blankOrder, ...item } : blankOrder);
+    setPickProduct("");
+    setPickVariant("");
+    setPickQty("1");
+    setOrderModal(true);
+  };
+  const addItemToOrder = () => {
+    const product = products.find((p) => p.id === pickProduct);
+    const qty = Number(pickQty) || 0;
+    if (!product || qty <= 0) return;
+    const hasVariants = (product.variants || []).length > 0;
+    const variant = hasVariants
+      ? product.variants.find((v) => v.id === pickVariant)
+      : null;
+    if (hasVariants && !variant) return;
+    const price = variant ? variant.price : product.price;
+    const name = variant ? `${product.name} - ${variant.name}` : product.name;
+    setOrderForm((current) => {
+      const existing = current.items.find(
+        (i) =>
+          i.productId === product.id &&
+          (i.variantId || null) === (variant?.id || null),
+      );
+      const items = existing
+        ? current.items.map((i) =>
+            i.productId === product.id &&
+            (i.variantId || null) === (variant?.id || null)
+              ? { ...i, quantity: i.quantity + qty }
+              : i,
+          )
+        : [
+            ...current.items,
+            {
+              productId: product.id,
+              variantId: variant?.id || null,
+              name,
+              price,
+              quantity: qty,
+            },
+          ];
+      return { ...current, items };
+    });
+    setPickProduct("");
+    setPickVariant("");
+    setPickQty("1");
+  };
+  const removeItemFromOrder = (productId, variantId) =>
+    setOrderForm((current) => ({
+      ...current,
+      items: current.items.filter(
+        (i) =>
+          !(
+            i.productId === productId &&
+            (i.variantId || null) === (variantId || null)
+          ),
+      ),
+    }));
+  const orderTotal = (items) =>
+    (items || []).reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const deliveryFeeFor = (zoneId) =>
+    zones.find((z) => z.id === zoneId)?.fee || 0;
+  const saveOrder = (e) => {
+    e.preventDefault();
+    if (!orderForm.clientName.trim() || !orderForm.items.length) return;
+    const now = new Date().toISOString();
+    const deliveryFee =
+      orderForm.channel === "Delivery"
+        ? deliveryFeeFor(orderForm.deliveryZoneId)
+        : 0;
+    const item = {
+      ...orderForm,
+      deliveryZoneId: orderForm.channel === "Delivery" ? orderForm.deliveryZoneId : "",
+      deliveryFee,
+      clientName: orderForm.clientName.trim(),
+      total: orderTotal(orderForm.items) + deliveryFee,
+      id: editingOrder || uid(),
+      businessId: business?.id || null,
+      ownerId: orderForm.ownerId || db.user.id,
+      visibility: orderForm.visibility || "espaco_todo",
+      sharedWith: Array.isArray(orderForm.sharedWith)
+        ? orderForm.sharedWith
+        : [],
+      sharedTeams: Array.isArray(orderForm.sharedTeams)
+        ? orderForm.sharedTeams
+        : [],
+      createdAt: orderForm.createdAt || now,
+      updatedAt: now,
+    };
+    // Jornada transversal: o pedido também vira receita no caixa (se marcado)
+    // e um registro na linha do tempo do cliente.
+    const receita =
+      !editingOrder && orderForm.postToFinance
+        ? buildOrderReceita(item, {
+            businessId: item.businessId,
+            ownerId: db.user.id,
+          })
+        : null;
+    update((d) => ({
+      ...d,
+      orders: editingOrder
+        ? (d.orders || []).map((o) => (o.id === editingOrder ? item : o))
+        : [item, ...(d.orders || [])],
+      products: editingOrder
+        ? d.products
+        : (d.products || []).map((p) => {
+            const lines = orderForm.items.filter((i) => i.productId === p.id);
+            if (!lines.length) return p;
+            if ((p.variants || []).length > 0) {
+              return {
+                ...p,
+                variants: p.variants.map((v) => {
+                  const line = lines.find((i) => i.variantId === v.id);
+                  return line
+                    ? { ...v, stock: Math.max(0, v.stock - line.quantity) }
+                    : v;
+                }),
+              };
+            }
+            const line = lines[0];
+            return { ...p, stock: Math.max(0, p.stock - line.quantity) };
+          }),
+      contacts:
+        item.channel === "Mesa"
+          ? d.contacts || []
+          : upsertContact(d.contacts || [], {
+              name: item.clientName,
+              contact: item.clientContact,
+              businessId: item.businessId,
+              ownerId: db.user.id,
+            }),
+      transactions: editingOrder
+        ? // ao editar, mantém a receita vinculada em sincronia com o novo total
+          (d.transactions || []).map((t) =>
+            t.sourceOrderId === item.id
+              ? {
+                  ...t,
+                  value: item.total,
+                  description: `Pedido — ${item.clientName}`,
+                }
+              : t,
+          )
+        : receita
+          ? [receita, ...(d.transactions || [])]
+          : d.transactions || [],
+    }));
+    if (!editingOrder && item.channel !== "Mesa" && item.clientName) {
+      const links = contactLinks(item.clientContact);
+      logInteraction({
+        channel: "note",
+        direction: "out",
+        contactName: item.clientName,
+        contactHandle: links.phone || links.email || item.clientContact || "",
+        subject: "Pedido registrado",
+        body: `Pedido de ${money(item.total)} · ${item.items.length} item(ns).`,
+      });
+    }
+    setOrderModal(false);
+    setToast(
+      editingOrder
+        ? "Pedido atualizado"
+        : receita
+          ? "Pedido criado — estoque e caixa atualizados"
+          : "Pedido criado e estoque atualizado",
+    );
+  };
+  const removeOrder = (id) => {
+    if (!confirm("Excluir este pedido?")) return;
+    update((d) => ({ ...d, orders: (d.orders || []).filter((o) => o.id !== id) }));
+  };
+  const changeOrderStatus = (item, status) =>
+    update((d) => ({
+      ...d,
+      orders: (d.orders || []).map((o) =>
+        o.id === item.id ? { ...o, status, updatedAt: new Date().toISOString() } : o,
+      ),
+    }));
+  const confirmOrderWhatsapp = (item) => {
+    const { phone } = contactLinks(item.clientContact);
+    const list = item.items.map((i) => `${i.quantity}x ${i.name}`).join(", ");
+    wa.open({
+      phone,
+      category: "Pedido",
+      vars: {
+        nome: item.clientName || "",
+        negocio: business?.name || "",
+        itens: list,
+        status: item.status || "",
+        valor: money(item.total),
+      },
+    });
+  };
+
+  const openZone = (item = null) => {
+    setEditingZone(item?.id || null);
+    setZoneForm(item ? { ...blankZone, ...item } : blankZone);
+    setZoneModal(true);
+  };
+  const saveZone = (e) => {
+    e.preventDefault();
+    if (!zoneForm.name.trim()) return;
+    const now = new Date().toISOString();
+    const item = {
+      ...zoneForm,
+      name: zoneForm.name.trim(),
+      fee: Number(zoneForm.fee) || 0,
+      etaMinutes: Number(zoneForm.etaMinutes) || 0,
+      id: editingZone || uid(),
+      businessId: business?.id || null,
+      createdAt: zoneForm.createdAt || now,
+      updatedAt: now,
+    };
+    update((d) => ({
+      ...d,
+      deliveryZones: editingZone
+        ? (d.deliveryZones || []).map((z) => (z.id === editingZone ? item : z))
+        : [item, ...(d.deliveryZones || [])],
+    }));
+    setEditingZone(item.id);
+    setZoneForm(item);
+    setToast(editingZone ? "Zona de entrega atualizada" : "Zona de entrega cadastrada");
+  };
+  const removeZone = (id) => {
+    if (!confirm("Excluir esta zona de entrega?")) return;
+    update((d) => ({
+      ...d,
+      deliveryZones: (d.deliveryZones || []).filter((z) => z.id !== id),
+    }));
+    if (editingZone === id) {
+      setEditingZone(null);
+      setZoneForm(blankZone);
+    }
+  };
+
+  return (
+    <PageTitle
+      eyebrow="PRODUTOS E PEDIDOS"
+      title="Catálogo, estoque e pedidos em um só lugar"
+      text="Cadastre produtos, acompanhe o estoque e registre pedidos com atualização automática."
+      action={
+        <Button
+          icon={Plus}
+          onClick={() => (view === "produtos" ? openProduct() : openOrder())}
+        >
+          {view === "produtos" ? "Novo produto" : "Novo pedido"}
+        </Button>
+      }
+    >
+      <div className="toolbar">
+        <div className="search">
+          <Search />
+          <input
+            type="search"
+            placeholder={view === "produtos" ? "Buscar produto" : "Buscar pedido"}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Buscar"
+          />
+        </div>
+        <div className="view-toggle">
+          <button
+            className={view === "produtos" ? "active" : ""}
+            onClick={() => setView("produtos")}
+          >
+            Catálogo
+          </button>
+          <button
+            className={view === "pedidos" ? "active" : ""}
+            onClick={() => setView("pedidos")}
+          >
+            Pedidos
+          </button>
+        </div>
+        {view === "pedidos" && (
+          <Button
+            variant="secondary"
+            icon={MapPin}
+            onClick={() => setZoneModal(true)}
+          >
+            Zonas de entrega
+          </Button>
+        )}
+      </div>
+
+      {view === "produtos" ? (
+        filteredProducts.length === 0 ? (
+          <Empty
+            icon={ShoppingBag}
+            title="Nenhum produto cadastrado"
+            text="Cadastre produtos com preço e estoque para começar a montar pedidos."
+            action="Novo produto"
+            onAction={() => openProduct()}
+          />
+        ) : (
+          <div className="data-list">
+            {filteredProducts.slice(0, visibleCount).map((p) => (
+              <article key={p.id}>
+                <span
+                  className={`status-dot ${productStockTotal(p) <= 0 ? "cancelado" : productStockTotal(p) <= (p.lowStockAlert || 0) ? "faltou" : "concluído"}`}
+                />
+                <span>
+                  <strong>{p.name}</strong>
+                  <small>
+                    {p.category || "Sem categoria"} · {productPriceLabel(p)} ·{" "}
+                    {productStockTotal(p)} {p.unit || "un"} em estoque
+                    {(p.variants || []).length > 0 &&
+                      ` · ${p.variants.length} variações`}
+                    {productStockTotal(p) <= (p.lowStockAlert || 0) &&
+                      " · Estoque baixo"}
+                  </small>
+                </span>
+                <span className="task-actions">
+                  <button
+                    className="icon-button"
+                    aria-label={`Editar ${p.name}`}
+                    onClick={() => openProduct(p)}
+                  >
+                    <Edit3 />
+                  </button>
+                  <button
+                    className="icon-button danger"
+                    aria-label={`Excluir ${p.name}`}
+                    onClick={() => removeProduct(p.id)}
+                  >
+                    <Trash2 />
+                  </button>
+                </span>
+              </article>
+            ))}
+            <LoadMoreButton
+              shown={Math.min(visibleCount, filteredProducts.length)}
+              total={filteredProducts.length}
+              onClick={() => setVisibleCount((c) => c + LIST_PAGE_SIZE)}
+            />
+          </div>
+        )
+      ) : filteredOrders.length === 0 ? (
+        <Empty
+          icon={ReceiptText}
+          title="Nenhum pedido registrado"
+          text="Monte um pedido escolhendo produtos do catálogo."
+          action="Novo pedido"
+          onAction={() => openOrder()}
+        />
+      ) : (
+        <div className="data-list">
+          {filteredOrders.slice(0, visibleCount).map((o) => (
+            <article key={o.id}>
+              <span>
+                <strong>
+                  {o.clientName} · {money(o.total)}
+                </strong>
+                <small>
+                  {o.items.map((i) => `${i.quantity}x ${i.name}`).join(", ")} ·{" "}
+                  {o.channel}
+                </small>
+              </span>
+              <select
+                value={o.status}
+                onChange={(e) => changeOrderStatus(o, e.target.value)}
+              >
+                {orderStatuses.map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
+              </select>
+              <span className="task-actions">
+                {o.channel === "Mesa" &&
+                  !["Entregue", "Cancelado"].includes(o.status) && (
+                    <button
+                      className="icon-button"
+                      aria-label="Fechar comanda"
+                      title="Fechar comanda"
+                      onClick={() => changeOrderStatus(o, "Entregue")}
+                    >
+                      <CheckCircle2 />
+                    </button>
+                  )}
+                {contactLinks(o.clientContact).phone && (
+                  <button
+                    className="icon-button"
+                    aria-label={`Avisar ${o.clientName} por WhatsApp`}
+                    title="Avisar por WhatsApp"
+                    onClick={() => confirmOrderWhatsapp(o)}
+                  >
+                    <MessageSquareText />
+                  </button>
+                )}
+                <button
+                  className="icon-button"
+                  aria-label={`Editar pedido de ${o.clientName}`}
+                  onClick={() => openOrder(o)}
+                >
+                  <Edit3 />
+                </button>
+                <button
+                  className="icon-button danger"
+                  aria-label={`Excluir pedido de ${o.clientName}`}
+                  onClick={() => removeOrder(o.id)}
+                >
+                  <Trash2 />
+                </button>
+              </span>
+            </article>
+          ))}
+          <LoadMoreButton
+            shown={Math.min(visibleCount, filteredOrders.length)}
+            total={filteredOrders.length}
+            onClick={() => setVisibleCount((c) => c + LIST_PAGE_SIZE)}
+          />
+        </div>
+      )}
+
+      {productModal && (
+        <Modal
+          title={editingProduct ? "Editar produto" : "Novo produto"}
+          onClose={() => setProductModal(false)}
+        >
+          <form className="modal-body" onSubmit={saveProduct}>
+            <Field label="Nome do produto">
+              <input
+                required
+                autoFocus
+                value={productForm.name}
+                onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
+              />
+            </Field>
+            <div className="form-grid">
+              <Field label="Categoria">
+                <input
+                  value={productForm.category}
+                  onChange={(e) =>
+                    setProductForm({ ...productForm, category: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Preço de venda">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={productForm.price}
+                  onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
+                />
+              </Field>
+              <Field label="Custo (opcional)">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={productForm.cost}
+                  onChange={(e) => setProductForm({ ...productForm, cost: e.target.value })}
+                />
+              </Field>
+              <Field label="Estoque atual">
+                <input
+                  type="number"
+                  min="0"
+                  value={productForm.stock}
+                  onChange={(e) => setProductForm({ ...productForm, stock: e.target.value })}
+                />
+              </Field>
+              <Field label="Alertar quando estoque for menor que">
+                <input
+                  type="number"
+                  min="0"
+                  value={productForm.lowStockAlert}
+                  onChange={(e) =>
+                    setProductForm({ ...productForm, lowStockAlert: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Unidade">
+                <input
+                  value={productForm.unit}
+                  onChange={(e) => setProductForm({ ...productForm, unit: e.target.value })}
+                  placeholder="un, kg, caixa..."
+                />
+              </Field>
+            </div>
+            <div className="field">
+              <span>Variações (opcional — tamanho, cor...)</span>
+              <div className="variant-rows">
+                {(productForm.variants || []).map((v) => (
+                  <div key={v.id} className="variant-row">
+                    <input
+                      value={v.name}
+                      onChange={(e) =>
+                        updateVariantRow(v.id, "name", e.target.value)
+                      }
+                      placeholder="Nome da variação (ex.: G, Azul)"
+                      aria-label="Nome da variação"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={v.price}
+                      onChange={(e) =>
+                        updateVariantRow(v.id, "price", e.target.value)
+                      }
+                      placeholder="Preço"
+                      aria-label={`Preço da variação ${v.name || ""}`}
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      value={v.stock}
+                      onChange={(e) =>
+                        updateVariantRow(v.id, "stock", e.target.value)
+                      }
+                      placeholder="Estoque"
+                      aria-label={`Estoque da variação ${v.name || ""}`}
+                    />
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label="Remover variação"
+                      onClick={() => removeVariantRow(v.id)}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+                <Button type="button" variant="secondary" onClick={addVariantRow}>
+                  Adicionar variação
+                </Button>
+              </div>
+            </div>
+            <SharingFields
+              value={{
+                visibility: productForm.visibility,
+                sharedWith: productForm.sharedWith,
+                sharedTeams: productForm.sharedTeams,
+              }}
+              onChange={(next) => setProductForm({ ...productForm, ...next })}
+              teams={db.teams}
+            />
+            <div className="modal-actions">
+              <Button variant="ghost" onClick={() => setProductModal(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" icon={Save}>
+                {editingProduct ? "Salvar alterações" : "Salvar produto"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {orderModal && (
+        <Modal
+          title={editingOrder ? "Editar pedido" : "Novo pedido"}
+          wide
+          onClose={() => setOrderModal(false)}
+        >
+          <form className="modal-body" onSubmit={saveOrder}>
+            <div className="form-grid">
+              <Field label={orderForm.channel === "Mesa" ? "Mesa / Comanda" : "Cliente"}>
+                <input
+                  required
+                  autoFocus
+                  value={orderForm.clientName}
+                  onChange={(e) =>
+                    setOrderForm({ ...orderForm, clientName: e.target.value })
+                  }
+                  placeholder={orderForm.channel === "Mesa" ? "Mesa 5" : undefined}
+                />
+              </Field>
+              {orderForm.channel !== "Mesa" && (
+                <Field label="WhatsApp ou e-mail">
+                  <input
+                    value={orderForm.clientContact}
+                    onChange={(e) =>
+                      setOrderForm({ ...orderForm, clientContact: e.target.value })
+                    }
+                    placeholder="(11) 98888-7777"
+                  />
+                </Field>
+              )}
+              <Field label="Canal">
+                <select
+                  value={orderForm.channel}
+                  onChange={(e) => setOrderForm({ ...orderForm, channel: e.target.value })}
+                >
+                  {orderChannels.map((c) => (
+                    <option key={c}>{c}</option>
+                  ))}
+                </select>
+              </Field>
+              {orderForm.channel === "Delivery" && (
+                <Field label="Zona de entrega">
+                  <select
+                    value={orderForm.deliveryZoneId}
+                    onChange={(e) =>
+                      setOrderForm({ ...orderForm, deliveryZoneId: e.target.value })
+                    }
+                  >
+                    <option value="">A combinar (sem taxa)</option>
+                    {zones.map((z) => (
+                      <option key={z.id} value={z.id}>
+                        {z.name} · {money(z.fee)}
+                        {z.etaMinutes ? ` · ${z.etaMinutes} min` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
+              <Field label="Status">
+                <select
+                  value={orderForm.status}
+                  onChange={(e) => setOrderForm({ ...orderForm, status: e.target.value })}
+                >
+                  {orderStatuses.map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <Field label="Adicionar produto">
+              <div className="order-item-picker">
+                <select
+                  value={pickProduct}
+                  onChange={(e) => {
+                    setPickProduct(e.target.value);
+                    setPickVariant("");
+                  }}
+                  aria-label="Escolher produto"
+                >
+                  <option value="">Escolha um produto</option>
+                  {products.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} · {productPriceLabel(p)}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  min="1"
+                  value={pickQty}
+                  onChange={(e) => setPickQty(e.target.value)}
+                  aria-label="Quantidade"
+                />
+                <Button type="button" variant="secondary" onClick={addItemToOrder}>
+                  Adicionar
+                </Button>
+              </div>
+              {(() => {
+                const selected = products.find((p) => p.id === pickProduct);
+                if (!selected || !(selected.variants || []).length) return null;
+                return (
+                  <select
+                    className="variant-picker"
+                    value={pickVariant}
+                    onChange={(e) => setPickVariant(e.target.value)}
+                    aria-label="Escolha a variação"
+                  >
+                    <option value="">Escolha a variação</option>
+                    {selected.variants.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name} · {money(v.price)}
+                      </option>
+                    ))}
+                  </select>
+                );
+              })()}
+            </Field>
+            {orderForm.items.length > 0 && (
+              <div className="order-items">
+                {orderForm.items.map((i) => (
+                  <div
+                    key={`${i.productId}-${i.variantId || "base"}`}
+                    className="order-item-row"
+                  >
+                    <span>
+                      {i.quantity}x {i.name}
+                    </span>
+                    <span>{money(i.price * i.quantity)}</span>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label={`Remover ${i.name} do pedido`}
+                      onClick={() => removeItemFromOrder(i.productId, i.variantId)}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+                {orderForm.channel === "Delivery" &&
+                  deliveryFeeFor(orderForm.deliveryZoneId) > 0 && (
+                    <div className="order-item-row">
+                      <span>Taxa de entrega</span>
+                      <span>{money(deliveryFeeFor(orderForm.deliveryZoneId))}</span>
+                    </div>
+                  )}
+                <div className="order-item-row order-total">
+                  <span>Total</span>
+                  <span>
+                    {money(
+                      orderTotal(orderForm.items) +
+                        (orderForm.channel === "Delivery"
+                          ? deliveryFeeFor(orderForm.deliveryZoneId)
+                          : 0),
+                    )}
+                  </span>
+                </div>
+              </div>
+            )}
+            {!editingOrder && (
+              <label className="cost-check">
+                <input
+                  type="checkbox"
+                  checked={orderForm.postToFinance !== false}
+                  onChange={(e) =>
+                    setOrderForm({ ...orderForm, postToFinance: e.target.checked })
+                  }
+                />
+                <span>Lançar este pedido como receita no Financeiro</span>
+              </label>
+            )}
+            <Field label="Observações">
+              <textarea
+                value={orderForm.notes}
+                onChange={(e) => setOrderForm({ ...orderForm, notes: e.target.value })}
+              />
+            </Field>
+            <SharingFields
+              value={{
+                visibility: orderForm.visibility,
+                sharedWith: orderForm.sharedWith,
+                sharedTeams: orderForm.sharedTeams,
+              }}
+              onChange={(next) => setOrderForm({ ...orderForm, ...next })}
+              teams={db.teams}
+            />
+            <div className="modal-actions">
+              <Button variant="ghost" onClick={() => setOrderModal(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" icon={Save} disabled={!orderForm.items.length}>
+                {editingOrder ? "Salvar alterações" : "Salvar pedido"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {zoneModal && (
+        <Modal
+          title="Zonas de entrega"
+          wide
+          onClose={() => {
+            setZoneModal(false);
+            setEditingZone(null);
+            setZoneForm(blankZone);
+          }}
+        >
+          <form className="modal-body" onSubmit={saveZone}>
+            <div className="form-grid">
+              <Field label="Nome da zona">
+                <input
+                  required
+                  autoFocus
+                  value={zoneForm.name}
+                  onChange={(e) => setZoneForm({ ...zoneForm, name: e.target.value })}
+                  placeholder="Centro, Zona Sul, até 5 km..."
+                />
+              </Field>
+              <Field label="Taxa de entrega">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={zoneForm.fee}
+                  onChange={(e) => setZoneForm({ ...zoneForm, fee: e.target.value })}
+                />
+              </Field>
+              <Field label="Tempo estimado (minutos)">
+                <input
+                  type="number"
+                  min="0"
+                  value={zoneForm.etaMinutes}
+                  onChange={(e) =>
+                    setZoneForm({ ...zoneForm, etaMinutes: e.target.value })
+                  }
+                />
+              </Field>
+            </div>
+            <div className="modal-actions">
+              {editingZone && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setEditingZone(null);
+                    setZoneForm(blankZone);
+                  }}
+                >
+                  Cancelar edição
+                </Button>
+              )}
+              <Button type="submit" icon={Save}>
+                {editingZone ? "Salvar alterações" : "Adicionar zona"}
+              </Button>
+            </div>
+          </form>
+          {zones.length === 0 ? (
+            <Empty
+              icon={MapPin}
+              title="Nenhuma zona de entrega cadastrada"
+              text="Cadastre zonas com taxa fixa para calcular o total do pedido automaticamente."
+            />
+          ) : (
+            <div className="data-list">
+              {zones.map((z) => (
+                <article key={z.id}>
+                  <span>
+                    <strong>{z.name}</strong>
+                    <small>
+                      {money(z.fee)}
+                      {z.etaMinutes ? ` · ${z.etaMinutes} min` : ""}
+                    </small>
+                  </span>
+                  <span className="task-actions">
+                    <button
+                      className="icon-button"
+                      aria-label={`Editar ${z.name}`}
+                      onClick={() => openZone(z)}
+                    >
+                      <Edit3 />
+                    </button>
+                    <button
+                      className="icon-button danger"
+                      aria-label={`Excluir ${z.name}`}
+                      onClick={() => removeZone(z.id)}
+                    >
+                      <Trash2 />
+                    </button>
+                  </span>
+                </article>
+              ))}
+            </div>
+          )}
+        </Modal>
+      )}
+      {wa.modal}
+    </PageTitle>
+  );
+}
+
+const vehicleStatuses = ["Ativo", "Manutenção", "Inativo"];
+const tripStatuses = ["Agendado", "Em rota", "Entregue", "Cancelado"];
+
+function Fleet({ db, update, business, setToast, go: _go }) {
+  const [view, setView] = useState("frota"),
+    [search, setSearch] = useState(""),
+    [vehicleModal, setVehicleModal] = useState(false),
+    [editingVehicle, setEditingVehicle] = useState(null),
+    [tripModal, setTripModal] = useState(false),
+    [editingTrip, setEditingTrip] = useState(null);
+  const blankVehicle = {
+    plate: "",
+    model: "",
+    type: "Caminhão",
+    capacityKg: "",
+    status: "Ativo",
+    driverName: "",
+    driverContact: "",
+    nextMaintenanceDate: "",
+    notes: "",
+    visibility: "espaco_todo",
+    sharedWith: [],
+    sharedTeams: [],
+  };
+  const [vehicleForm, setVehicleForm] = useState(blankVehicle);
+  const blankTrip = {
+    vehicleId: "",
+    driverName: "",
+    origin: "",
+    destination: "",
+    cargoDescription: "",
+    weightKg: "",
+    freightValue: "",
+    cteNumber: "",
+    cteValue: "",
+    status: "Agendado",
+    scheduledDate: today(),
+    notes: "",
+    visibility: "espaco_todo",
+    sharedWith: [],
+    sharedTeams: [],
+  };
+  const [tripForm, setTripForm] = useState(blankTrip);
+
+  const vehicles = (db.vehicles || []).filter(
+    (v) => !business || v.businessId === business.id,
+  );
+  const trips = (db.trips || []).filter(
+    (t) => !business || t.businessId === business.id,
+  );
+  const filteredVehicles = vehicles.filter(
+    (v) =>
+      !search ||
+      `${v.plate} ${v.model} ${v.driverName}`
+        .toLowerCase()
+        .includes(search.toLowerCase()),
+  );
+  const filteredTrips = trips
+    .filter(
+      (t) =>
+        !search ||
+        `${t.origin} ${t.destination} ${t.driverName}`
+          .toLowerCase()
+          .includes(search.toLowerCase()),
+    )
+    .sort((a, b) => (b.scheduledDate || "").localeCompare(a.scheduledDate || ""));
+  const maintenanceDue = (v) =>
+    v.nextMaintenanceDate &&
+    v.nextMaintenanceDate <= addDaysYmdDashed(today(), 7);
+
+  const openVehicle = (item = null) => {
+    setEditingVehicle(item?.id || null);
+    setVehicleForm(item ? { ...blankVehicle, ...item } : blankVehicle);
+    setVehicleModal(true);
+  };
+  const saveVehicle = (e) => {
+    e.preventDefault();
+    if (!vehicleForm.plate.trim()) return;
+    const now = new Date().toISOString();
+    const item = {
+      ...vehicleForm,
+      plate: vehicleForm.plate.trim().toUpperCase(),
+      model: vehicleForm.model.trim(),
+      capacityKg: Number(vehicleForm.capacityKg) || 0,
+      id: editingVehicle || uid(),
+      businessId: business?.id || null,
+      ownerId: vehicleForm.ownerId || db.user.id,
+      visibility: vehicleForm.visibility || "espaco_todo",
+      sharedWith: Array.isArray(vehicleForm.sharedWith)
+        ? vehicleForm.sharedWith
+        : [],
+      sharedTeams: Array.isArray(vehicleForm.sharedTeams)
+        ? vehicleForm.sharedTeams
+        : [],
+      createdAt: vehicleForm.createdAt || now,
+      updatedAt: now,
+    };
+    update((d) => ({
+      ...d,
+      vehicles: editingVehicle
+        ? (d.vehicles || []).map((v) => (v.id === editingVehicle ? item : v))
+        : [item, ...(d.vehicles || [])],
+    }));
+    setVehicleModal(false);
+    setToast(editingVehicle ? "Veículo atualizado" : "Veículo cadastrado");
+  };
+  const removeVehicle = (id) => {
+    if (!confirm("Excluir este veículo da frota?")) return;
+    update((d) => ({
+      ...d,
+      vehicles: (d.vehicles || []).filter((v) => v.id !== id),
+    }));
+  };
+
+  const openTrip = (item = null) => {
+    setEditingTrip(item?.id || null);
+    setTripForm(item ? { ...blankTrip, ...item } : blankTrip);
+    setTripModal(true);
+  };
+  const saveTrip = (e) => {
+    e.preventDefault();
+    if (!tripForm.origin.trim() || !tripForm.destination.trim()) return;
+    const now = new Date().toISOString();
+    const item = {
+      ...tripForm,
+      origin: tripForm.origin.trim(),
+      destination: tripForm.destination.trim(),
+      weightKg: Number(tripForm.weightKg) || 0,
+      freightValue: Number(tripForm.freightValue) || 0,
+      cteValue: Number(tripForm.cteValue) || 0,
+      id: editingTrip || uid(),
+      businessId: business?.id || null,
+      ownerId: tripForm.ownerId || db.user.id,
+      visibility: tripForm.visibility || "espaco_todo",
+      sharedWith: Array.isArray(tripForm.sharedWith) ? tripForm.sharedWith : [],
+      sharedTeams: Array.isArray(tripForm.sharedTeams)
+        ? tripForm.sharedTeams
+        : [],
+      createdAt: tripForm.createdAt || now,
+      updatedAt: now,
+    };
+    update((d) => ({
+      ...d,
+      trips: editingTrip
+        ? (d.trips || []).map((t) => (t.id === editingTrip ? item : t))
+        : [item, ...(d.trips || [])],
+    }));
+    setTripModal(false);
+    setToast(editingTrip ? "Frete atualizado" : "Frete registrado");
+  };
+  const removeTrip = (id) => {
+    if (!confirm("Excluir este frete?")) return;
+    update((d) => ({ ...d, trips: (d.trips || []).filter((t) => t.id !== id) }));
+  };
+  const changeTripStatus = (item, status) =>
+    update((d) => ({
+      ...d,
+      trips: (d.trips || []).map((t) =>
+        t.id === item.id ? { ...t, status, updatedAt: new Date().toISOString() } : t,
+      ),
+    }));
+  const vehicleLabel = (id) => {
+    const v = vehicles.find((x) => x.id === id);
+    return v ? `${v.plate} · ${v.model}` : "Sem veículo definido";
+  };
+
+  return (
+    <PageTitle
+      eyebrow="FROTA E FRETES"
+      title="Veículos e fretes em um só lugar"
+      text="Cadastre a frota, acompanhe manutenções e registre fretes com controle de CT-e."
+      action={
+        <Button
+          icon={Plus}
+          onClick={() => (view === "frota" ? openVehicle() : openTrip())}
+        >
+          {view === "frota" ? "Novo veículo" : "Novo frete"}
+        </Button>
+      }
+    >
+      <div className="toolbar">
+        <div className="search">
+          <Search />
+          <input
+            type="search"
+            placeholder={view === "frota" ? "Buscar veículo" : "Buscar frete"}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Buscar"
+          />
+        </div>
+        <div className="view-toggle">
+          <button
+            className={view === "frota" ? "active" : ""}
+            onClick={() => setView("frota")}
+          >
+            Frota
+          </button>
+          <button
+            className={view === "fretes" ? "active" : ""}
+            onClick={() => setView("fretes")}
+          >
+            Fretes
+          </button>
+        </div>
+      </div>
+
+      {view === "frota" ? (
+        filteredVehicles.length === 0 ? (
+          <Empty
+            icon={Truck}
+            title="Nenhum veículo cadastrado"
+            text="Cadastre os veículos da frota para vinculá-los aos fretes."
+            action="Novo veículo"
+            onAction={() => openVehicle()}
+          />
+        ) : (
+          <div className="data-list">
+            {filteredVehicles.map((v) => (
+              <article key={v.id}>
+                <span
+                  className={`status-dot ${v.status === "Inativo" ? "cancelado" : maintenanceDue(v) ? "faltou" : "concluído"}`}
+                />
+                <span>
+                  <strong>
+                    {v.plate} · {v.model || "Sem modelo"}
+                  </strong>
+                  <small>
+                    {v.type} · {v.status}
+                    {v.driverName && ` · Motorista: ${v.driverName}`}
+                    {maintenanceDue(v) && " · Manutenção próxima"}
+                  </small>
+                </span>
+                <span className="task-actions">
+                  <button
+                    className="icon-button"
+                    aria-label={`Editar ${v.plate}`}
+                    onClick={() => openVehicle(v)}
+                  >
+                    <Edit3 />
+                  </button>
+                  <button
+                    className="icon-button danger"
+                    aria-label={`Excluir ${v.plate}`}
+                    onClick={() => removeVehicle(v.id)}
+                  >
+                    <Trash2 />
+                  </button>
+                </span>
+              </article>
+            ))}
+          </div>
+        )
+      ) : filteredTrips.length === 0 ? (
+        <Empty
+          icon={Route}
+          title="Nenhum frete registrado"
+          text="Registre fretes vinculando veículo, rota e o CT-e correspondente."
+          action="Novo frete"
+          onAction={() => openTrip()}
+        />
+      ) : (
+        <div className="data-list">
+          {filteredTrips.map((t) => (
+            <article key={t.id}>
+              <span>
+                <strong>
+                  {t.origin} → {t.destination}
+                </strong>
+                <small>
+                  {vehicleLabel(t.vehicleId)}
+                  {t.cteNumber && ` · CT-e ${t.cteNumber}`} ·{" "}
+                  {t.scheduledDate}
+                </small>
+              </span>
+              <select
+                value={t.status}
+                onChange={(e) => changeTripStatus(t, e.target.value)}
+              >
+                {tripStatuses.map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
+              </select>
+              <span className="task-actions">
+                <button
+                  className="icon-button"
+                  aria-label={`Editar frete ${t.origin} para ${t.destination}`}
+                  onClick={() => openTrip(t)}
+                >
+                  <Edit3 />
+                </button>
+                <button
+                  className="icon-button danger"
+                  aria-label={`Excluir frete ${t.origin} para ${t.destination}`}
+                  onClick={() => removeTrip(t.id)}
+                >
+                  <Trash2 />
+                </button>
+              </span>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {vehicleModal && (
+        <Modal
+          title={editingVehicle ? "Editar veículo" : "Novo veículo"}
+          onClose={() => setVehicleModal(false)}
+        >
+          <form className="modal-body" onSubmit={saveVehicle}>
+            <div className="form-grid">
+              <Field label="Placa">
+                <input
+                  required
+                  autoFocus
+                  value={vehicleForm.plate}
+                  onChange={(e) =>
+                    setVehicleForm({ ...vehicleForm, plate: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Modelo">
+                <input
+                  value={vehicleForm.model}
+                  onChange={(e) =>
+                    setVehicleForm({ ...vehicleForm, model: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Tipo">
+                <input
+                  value={vehicleForm.type}
+                  onChange={(e) =>
+                    setVehicleForm({ ...vehicleForm, type: e.target.value })
+                  }
+                  placeholder="Caminhão, Van, Moto..."
+                />
+              </Field>
+              <Field label="Capacidade (kg)">
+                <input
+                  type="number"
+                  min="0"
+                  value={vehicleForm.capacityKg}
+                  onChange={(e) =>
+                    setVehicleForm({ ...vehicleForm, capacityKg: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Status">
+                <select
+                  value={vehicleForm.status}
+                  onChange={(e) =>
+                    setVehicleForm({ ...vehicleForm, status: e.target.value })
+                  }
+                >
+                  {vehicleStatuses.map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Motorista">
+                <input
+                  value={vehicleForm.driverName}
+                  onChange={(e) =>
+                    setVehicleForm({ ...vehicleForm, driverName: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="WhatsApp do motorista">
+                <input
+                  value={vehicleForm.driverContact}
+                  onChange={(e) =>
+                    setVehicleForm({
+                      ...vehicleForm,
+                      driverContact: e.target.value,
+                    })
+                  }
+                  placeholder="(11) 98888-7777"
+                />
+              </Field>
+              <Field label="Próxima manutenção">
+                <input
+                  type="date"
+                  value={vehicleForm.nextMaintenanceDate}
+                  onChange={(e) =>
+                    setVehicleForm({
+                      ...vehicleForm,
+                      nextMaintenanceDate: e.target.value,
+                    })
+                  }
+                />
+              </Field>
+            </div>
+            <Field label="Observações">
+              <textarea
+                value={vehicleForm.notes}
+                onChange={(e) =>
+                  setVehicleForm({ ...vehicleForm, notes: e.target.value })
+                }
+              />
+            </Field>
+            <SharingFields
+              value={{
+                visibility: vehicleForm.visibility,
+                sharedWith: vehicleForm.sharedWith,
+                sharedTeams: vehicleForm.sharedTeams,
+              }}
+              onChange={(next) => setVehicleForm({ ...vehicleForm, ...next })}
+              teams={db.teams}
+            />
+            <div className="modal-actions">
+              <Button variant="ghost" onClick={() => setVehicleModal(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" icon={Save}>
+                {editingVehicle ? "Salvar alterações" : "Salvar veículo"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {tripModal && (
+        <Modal
+          title={editingTrip ? "Editar frete" : "Novo frete"}
+          wide
+          onClose={() => setTripModal(false)}
+        >
+          <form className="modal-body" onSubmit={saveTrip}>
+            <div className="form-grid">
+              <Field label="Veículo">
+                <select
+                  value={tripForm.vehicleId}
+                  onChange={(e) =>
+                    setTripForm({ ...tripForm, vehicleId: e.target.value })
+                  }
+                >
+                  <option value="">A definir</option>
+                  {vehicles.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.plate} · {v.model}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Motorista">
+                <input
+                  value={tripForm.driverName}
+                  onChange={(e) =>
+                    setTripForm({ ...tripForm, driverName: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Origem">
+                <input
+                  required
+                  autoFocus
+                  value={tripForm.origin}
+                  onChange={(e) =>
+                    setTripForm({ ...tripForm, origin: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Destino">
+                <input
+                  required
+                  value={tripForm.destination}
+                  onChange={(e) =>
+                    setTripForm({ ...tripForm, destination: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Peso da carga (kg)">
+                <input
+                  type="number"
+                  min="0"
+                  value={tripForm.weightKg}
+                  onChange={(e) =>
+                    setTripForm({ ...tripForm, weightKg: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Valor do frete">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={tripForm.freightValue}
+                  onChange={(e) =>
+                    setTripForm({ ...tripForm, freightValue: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Data programada">
+                <input
+                  type="date"
+                  value={tripForm.scheduledDate}
+                  onChange={(e) =>
+                    setTripForm({ ...tripForm, scheduledDate: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Status">
+                <select
+                  value={tripForm.status}
+                  onChange={(e) =>
+                    setTripForm({ ...tripForm, status: e.target.value })
+                  }
+                >
+                  {tripStatuses.map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <Field label="Descrição da carga">
+              <input
+                value={tripForm.cargoDescription}
+                onChange={(e) =>
+                  setTripForm({ ...tripForm, cargoDescription: e.target.value })
+                }
+              />
+            </Field>
+            <div className="form-grid">
+              <Field label="Número do CT-e (registro manual)">
+                <input
+                  value={tripForm.cteNumber}
+                  onChange={(e) =>
+                    setTripForm({ ...tripForm, cteNumber: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Valor do CT-e">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={tripForm.cteValue}
+                  onChange={(e) =>
+                    setTripForm({ ...tripForm, cteValue: e.target.value })
+                  }
+                />
+              </Field>
+            </div>
+            <p className="settings-note">
+              <CircleAlert />A emissão oficial do CT-e é feita no seu emissor
+              fiscal homologado. Aqui você só registra o número e o valor
+              para controle interno do frete.
+            </p>
+            <Field label="Observações">
+              <textarea
+                value={tripForm.notes}
+                onChange={(e) =>
+                  setTripForm({ ...tripForm, notes: e.target.value })
+                }
+              />
+            </Field>
+            <SharingFields
+              value={{
+                visibility: tripForm.visibility,
+                sharedWith: tripForm.sharedWith,
+                sharedTeams: tripForm.sharedTeams,
+              }}
+              onChange={(next) => setTripForm({ ...tripForm, ...next })}
+              teams={db.teams}
+            />
+            <div className="modal-actions">
+              <Button variant="ghost" onClick={() => setTripModal(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" icon={Save}>
+                {editingTrip ? "Salvar alterações" : "Salvar frete"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </PageTitle>
+  );
+}
+
+const planStatuses = ["Planejado", "Em andamento", "Concluído", "Cancelado"];
+const suggestedCompetencies = [
+  "Organização",
+  "Comunicação",
+  "Responsabilidade",
+  "Atendimento",
+  "Ferramentas digitais",
+  "Vendas",
+  "Qualidade",
+  "Produtividade",
+  "Trabalho em equipe",
+  "Autonomia",
+  "Pontualidade",
+  "Atenção aos detalhes",
+  "Resolução de problemas",
+];
+
+function DevelopmentPlans({ db, update, business, setToast, go: _go }) {
+  const [modal, setModal] = useState(false),
+    [editing, setEditing] = useState(null),
+    [search, setSearch] = useState(""),
+    [realMembers, setRealMembers] = useState([]);
+  useEffect(() => {
+    const space = activeSpaceId();
+    fetch(`/api/collab${space ? `?owner=${encodeURIComponent(space)}` : ""}`, {
+      headers: authHeaders(),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setRealMembers(d.members || []))
+      .catch(() => {});
+  }, []);
+  const blankPlan = {
+    title: "",
+    collaboratorId: "",
+    collaboratorName: "",
+    generalObjective: "",
+    period: "",
+    status: "Planejado",
+    competencies: [],
+    finalResult: "",
+    notes: "",
+  };
+  const [form, setForm] = useState(blankPlan);
+  const plans = db.developmentPlans || [];
+  const filtered = plans.filter(
+    (p) =>
+      (!business || p.businessId === business.id) &&
+      (!search ||
+        `${p.title} ${p.collaboratorName}`
+          .toLowerCase()
+          .includes(search.toLowerCase())),
+  );
+  const openPlan = (plan = null) => {
+    setEditing(plan?.id || null);
+    setForm(plan ? { ...blankPlan, ...plan } : blankPlan);
+    setModal(true);
+  };
+  const save = (e) => {
+    e.preventDefault();
+    if (!form.title.trim() || !form.collaboratorName.trim()) return;
+    const now = new Date().toISOString();
+    update((d) => {
+      const item = {
+        ...form,
+        title: form.title.trim(),
+        id: editing || uid(),
+        businessId: business?.id || null,
+        ownerId: form.ownerId || db.user.id,
+        assigneeId: form.collaboratorId || null,
+        createdAt: form.createdAt || now,
+        updatedAt: now,
+      };
+      return {
+        ...d,
+        developmentPlans: editing
+          ? (d.developmentPlans || []).map((p) => (p.id === editing ? item : p))
+          : [item, ...(d.developmentPlans || [])],
+      };
+    });
+    setModal(false);
+    setToast(editing ? "Plano atualizado" : "Plano de desenvolvimento criado");
+  };
+  const removePlan = (id) => {
+    if (!confirm("Excluir este plano de desenvolvimento?")) return;
+    update((d) => ({
+      ...d,
+      developmentPlans: (d.developmentPlans || []).filter((p) => p.id !== id),
+    }));
+  };
+  const blankCompetency = {
+    name: "",
+    currentSituation: "",
+    objective: "",
+    deadline: "",
+    progress: "0",
+    evidence: "",
+    managerEvaluation: "",
+  };
+  const addCompetency = () =>
+    setForm((c) => ({
+      ...c,
+      competencies: [...(c.competencies || []), { id: uid(), ...blankCompetency }],
+    }));
+  const updateCompetency = (id, field, value) =>
+    setForm((c) => ({
+      ...c,
+      competencies: (c.competencies || []).map((comp) =>
+        comp.id === id ? { ...comp, [field]: value } : comp,
+      ),
+    }));
+  const removeCompetency = (id) =>
+    setForm((c) => ({
+      ...c,
+      competencies: (c.competencies || []).filter((comp) => comp.id !== id),
+    }));
+  const overallProgress = (plan) => {
+    const list = plan.competencies || [];
+    if (!list.length) return 0;
+    return Math.round(
+      list.reduce((sum, c) => sum + (Number(c.progress) || 0), 0) / list.length,
+    );
+  };
+  return (
+    <PageTitle
+      eyebrow="DESENVOLVIMENTO"
+      title="Planos de desenvolvimento"
+      text="Acompanhe competências e evolução da equipe."
+      action={
+        <Button icon={Plus} onClick={() => openPlan()}>
+          Novo plano
+        </Button>
+      }
+    >
+      <div className="toolbar">
+        <div className="search">
+          <Search />
+          <input
+            type="search"
+            placeholder="Buscar plano"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Buscar"
+          />
+        </div>
+      </div>
+      {filtered.length === 0 ? (
+        <Empty
+          icon={TrendingUp}
+          title="Nenhum plano de desenvolvimento"
+          text="Crie um plano vinculando competências e metas práticas para um colaborador."
+          action="Novo plano"
+          onAction={() => openPlan()}
+        />
+      ) : (
+        <div className="data-list">
+          {filtered.map((p) => (
+            <article key={p.id}>
+              <span>
+                <strong>{p.title}</strong>
+                <small>
+                  {p.collaboratorName} · {p.status} · {overallProgress(p)}% concluído
+                </small>
+              </span>
+              <span className="task-actions">
+                <button
+                  className="icon-button"
+                  aria-label={`Editar ${p.title}`}
+                  onClick={() => openPlan(p)}
+                >
+                  <Edit3 />
+                </button>
+                <button
+                  className="icon-button danger"
+                  aria-label={`Excluir ${p.title}`}
+                  onClick={() => removePlan(p.id)}
+                >
+                  <Trash2 />
+                </button>
+              </span>
+            </article>
+          ))}
+        </div>
+      )}
+      {modal && (
+        <Modal
+          title={editing ? "Editar plano" : "Novo plano de desenvolvimento"}
+          wide
+          onClose={() => setModal(false)}
+        >
+          <form className="modal-body" onSubmit={save}>
+            <Field label="Título do plano">
+              <input
+                required
+                autoFocus
+                value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
+              />
+            </Field>
+            <div className="form-grid">
+              <Field label="Colaborador">
+                <input
+                  required
+                  list="dev-plan-members"
+                  value={form.collaboratorName}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    const member = realMembers.find((m) => m.name === value);
+                    setForm({
+                      ...form,
+                      collaboratorName: value,
+                      collaboratorId: member ? member.id : "",
+                    });
+                  }}
+                  placeholder="Nome da pessoa"
+                />
+                <datalist id="dev-plan-members">
+                  {realMembers.map((m) => (
+                    <option key={m.id} value={m.name} />
+                  ))}
+                </datalist>
+              </Field>
+              <Field label="Período">
+                <input
+                  value={form.period}
+                  onChange={(e) => setForm({ ...form, period: e.target.value })}
+                  placeholder="Ex.: Jul–Set 2026"
+                />
+              </Field>
+              <Field label="Status">
+                <select
+                  value={form.status}
+                  onChange={(e) => setForm({ ...form, status: e.target.value })}
+                >
+                  {planStatuses.map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <Field label="Objetivo geral">
+              <textarea
+                value={form.generalObjective}
+                onChange={(e) =>
+                  setForm({ ...form, generalObjective: e.target.value })
+                }
+              />
+            </Field>
+            <div className="field">
+              <span>Competências</span>
+              <div className="variant-rows">
+                {(form.competencies || []).map((c) => (
+                  <div key={c.id} className="competency-row">
+                    <input
+                      list="suggested-competencies"
+                      value={c.name}
+                      onChange={(e) =>
+                        updateCompetency(c.id, "name", e.target.value)
+                      }
+                      placeholder="Competência"
+                      aria-label="Nome da competência"
+                    />
+                    <input
+                      value={c.objective}
+                      onChange={(e) =>
+                        updateCompetency(c.id, "objective", e.target.value)
+                      }
+                      placeholder="Objetivo"
+                      aria-label={`Objetivo da competência ${c.name || ""}`}
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={c.progress}
+                      onChange={(e) =>
+                        updateCompetency(c.id, "progress", e.target.value)
+                      }
+                      placeholder="% concluído"
+                      aria-label={`Progresso da competência ${c.name || ""}`}
+                    />
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label="Remover competência"
+                      onClick={() => removeCompetency(c.id)}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+                <datalist id="suggested-competencies">
+                  {suggestedCompetencies.map((c) => (
+                    <option key={c} value={c} />
+                  ))}
+                </datalist>
+                <Button type="button" variant="secondary" onClick={addCompetency}>
+                  Adicionar competência
+                </Button>
+              </div>
+            </div>
+            <Field label="Resultado final (opcional)">
+              <textarea
+                value={form.finalResult}
+                onChange={(e) => setForm({ ...form, finalResult: e.target.value })}
+              />
+            </Field>
+            <div className="modal-actions">
+              <Button variant="ghost" onClick={() => setModal(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" icon={Save}>
+                {editing ? "Salvar alterações" : "Criar plano"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </PageTitle>
+  );
+}
+
+function TimeTracking({ db, update, business, setToast, go: _go }) {
+  const [modal, setModal] = useState(false),
+    [editing, setEditing] = useState(null),
+    [search, setSearch] = useState(""),
+    [filter, setFilter] = useState("Não faturadas");
+  const blankEntry = {
+    clientName: "",
+    project: "",
+    description: "",
+    date: today(),
+    hours: "1",
+    rate: "",
+    billable: true,
+    billed: false,
+  };
+  const [form, setForm] = useState(blankEntry);
+  const scoped = (db.timeEntries || []).filter(
+    (e) => !business || e.businessId === business.id,
+  );
+  const filtered = scoped
+    .filter(
+      (e) =>
+        !search ||
+        `${e.clientName} ${e.project}`.toLowerCase().includes(search.toLowerCase()),
+    )
+    .filter((e) => {
+      if (filter === "Não faturadas") return e.billable && !e.billed;
+      if (filter === "Faturadas") return e.billed;
+      return true;
+    })
+    .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const unbilled = scoped.filter((e) => e.billable && !e.billed);
+  const unbilledHours = unbilled.reduce((sum, e) => sum + Number(e.hours || 0), 0);
+  const unbilledValue = unbilled.reduce(
+    (sum, e) => sum + Number(e.hours || 0) * Number(e.rate || 0),
+    0,
+  );
+  const openEntry = (item = null) => {
+    setEditing(item?.id || null);
+    setForm(item ? { ...blankEntry, ...item } : blankEntry);
+    setModal(true);
+  };
+  const save = (e) => {
+    e.preventDefault();
+    if (!form.clientName.trim() || !Number(form.hours)) return;
+    const now = new Date().toISOString();
+    const item = {
+      ...form,
+      clientName: form.clientName.trim(),
+      hours: Number(form.hours) || 0,
+      rate: Number(form.rate) || 0,
+      id: editing || uid(),
+      businessId: business?.id || null,
+      ownerId: form.ownerId || db.user.id,
+      visibility: form.visibility || "privado",
+      createdAt: form.createdAt || now,
+      updatedAt: now,
+    };
+    update((d) => ({
+      ...d,
+      timeEntries: editing
+        ? (d.timeEntries || []).map((x) => (x.id === editing ? item : x))
+        : [item, ...(d.timeEntries || [])],
+    }));
+    setModal(false);
+    setToast(editing ? "Apontamento atualizado" : "Apontamento registrado");
+  };
+  const removeEntry = (id) => {
+    if (!confirm("Excluir este apontamento?")) return;
+    update((d) => ({
+      ...d,
+      timeEntries: (d.timeEntries || []).filter((x) => x.id !== id),
+    }));
+  };
+  const markBilled = (item) => {
+    if (item.billed) return;
+    const value = Number(item.hours) * Number(item.rate);
+    update((d) => ({
+      ...d,
+      timeEntries: (d.timeEntries || []).map((x) =>
+        x.id === item.id
+          ? { ...x, billed: true, updatedAt: new Date().toISOString() }
+          : x,
+      ),
+      transactions: [
+        {
+          id: uid(),
+          type: "Receita",
+          description: `${item.project || item.clientName} — ${item.hours}h`,
+          value,
+          date: today(),
+          category: "Horas faturadas",
+          businessId: business?.id || null,
+          ownerId: db.user.id,
+        },
+        ...d.transactions,
+      ],
+    }));
+    setToast("Horas faturadas e lançadas no Financeiro");
+  };
+  return (
+    <PageTitle
+      eyebrow="HORAS E FATURAMENTO"
+      title="Apontamento de horas por cliente"
+      text="Registre horas trabalhadas e transforme em faturamento com um clique."
+      action={
+        <Button icon={Plus} onClick={() => openEntry()}>
+          Novo apontamento
+        </Button>
+      }
+    >
+      <div className="metric-row">
+        <Metric icon={Clock3} label="Horas não faturadas" value={unbilledHours} />
+        <Metric icon={DollarSign} label="A faturar" value={money(unbilledValue)} />
+      </div>
+      <div className="toolbar">
+        <div className="search">
+          <Search />
+          <input
+            type="search"
+            placeholder="Buscar por cliente ou projeto"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Buscar apontamentos"
+          />
+        </div>
+        <div className="view-toggle">
+          {["Não faturadas", "Faturadas", "Todas"].map((f) => (
+            <button
+              key={f}
+              className={filter === f ? "active" : ""}
+              onClick={() => setFilter(f)}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+      </div>
+      {filtered.length === 0 ? (
+        <Empty
+          icon={Clock3}
+          title="Nenhum apontamento aqui"
+          text="Registre as horas trabalhadas para um cliente ou projeto."
+          action="Novo apontamento"
+          onAction={() => openEntry()}
+        />
+      ) : (
+        <div className="data-list">
+          {filtered.map((item) => (
+            <article key={item.id}>
+              <span className={`status-dot ${item.billed ? "concluído" : "confirmado"}`} />
+              <span>
+                <strong>
+                  {item.clientName}
+                  {item.project && ` · ${item.project}`}
+                </strong>
+                <small>
+                  {new Date(`${item.date}T12:00`).toLocaleDateString("pt-BR")} ·{" "}
+                  {item.hours}h × {money(item.rate)} = {money(item.hours * item.rate)}
+                  {item.billed && " · Faturado"}
+                  {!item.billable && " · Não faturável"}
+                </small>
+              </span>
+              <span className="task-actions">
+                {item.billable && !item.billed && (
+                  <button
+                    className="icon-button"
+                    aria-label={`Faturar horas de ${item.clientName}`}
+                    title="Marcar como faturado"
+                    onClick={() => markBilled(item)}
+                  >
+                    <DollarSign />
+                  </button>
+                )}
+                <button
+                  className="icon-button"
+                  aria-label={`Editar apontamento de ${item.clientName}`}
+                  onClick={() => openEntry(item)}
+                >
+                  <Edit3 />
+                </button>
+                <button
+                  className="icon-button danger"
+                  aria-label={`Excluir apontamento de ${item.clientName}`}
+                  onClick={() => removeEntry(item.id)}
+                >
+                  <Trash2 />
+                </button>
+              </span>
+            </article>
+          ))}
+        </div>
+      )}
+      {modal && (
+        <Modal
+          title={editing ? "Editar apontamento" : "Novo apontamento"}
+          onClose={() => setModal(false)}
+        >
+          <form className="modal-body" onSubmit={save}>
+            <div className="form-grid">
+              <Field label="Cliente">
+                <input
+                  required
+                  autoFocus
+                  value={form.clientName}
+                  onChange={(e) => setForm({ ...form, clientName: e.target.value })}
+                />
+              </Field>
+              <Field label="Projeto (opcional)">
+                <input
+                  value={form.project}
+                  onChange={(e) => setForm({ ...form, project: e.target.value })}
+                />
+              </Field>
+              <Field label="Data">
+                <input
+                  required
+                  type="date"
+                  value={form.date}
+                  onChange={(e) => setForm({ ...form, date: e.target.value })}
+                />
+              </Field>
+              <Field label="Horas">
+                <input
+                  required
+                  type="number"
+                  min="0.25"
+                  step="0.25"
+                  value={form.hours}
+                  onChange={(e) => setForm({ ...form, hours: e.target.value })}
+                />
+              </Field>
+              <Field label="Valor por hora">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.rate}
+                  onChange={(e) => setForm({ ...form, rate: e.target.value })}
+                />
+              </Field>
+              <Field label="Faturável">
+                <select
+                  value={form.billable ? "sim" : "nao"}
+                  onChange={(e) =>
+                    setForm({ ...form, billable: e.target.value === "sim" })
+                  }
+                >
+                  <option value="sim">Sim</option>
+                  <option value="nao">Não (interno)</option>
+                </select>
+              </Field>
+            </div>
+            <Field label="O que foi feito">
+              <textarea
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+              />
+            </Field>
+            <div className="modal-actions">
+              <Button variant="ghost" onClick={() => setModal(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" icon={Save}>
+                {editing ? "Salvar alterações" : "Salvar apontamento"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </PageTitle>
+  );
+}
+
+function Metric({ icon: Icon, label, value }) {
+  return (
+    <div className="metric">
+      <span>
+        <Icon />
+      </span>
+      <div>
+        <small>{label}</small>
+        <strong>{value}</strong>
+      </div>
+    </div>
+  );
+}
+
+const REWARD_STATUS_LABELS = {
+  prevista: "Prevista",
+  aguardando_aprovacao: "Aguardando aprovação",
+  aprovada: "Aprovada",
+  pendente_pagamento: "Pendente de pagamento",
+  paga: "Paga",
+  cancelada: "Cancelada",
+};
+
+function RewardsPanel({ db, update, business, setToast }) {
+  const [launchToFinance, setLaunchToFinance] = useState({});
+  const rewardTasks = db.tasks.filter(
+    (t) =>
+      (!business || t.businessId === business.id) &&
+      Number(t.reward) > 0 &&
+      (t.ownerId === db.user.id ||
+        t.assigneeId === db.user.id ||
+        (t.assignees || []).some((a) => a.userId === db.user.id)),
+  );
+  const markPaid = (task) => {
+    const recipientId = task.assigneeId || task.assignees?.[0]?.userId;
+    update((d) => ({
+      ...d,
+      tasks: d.tasks.map((t) =>
+        t.id === task.id
+          ? {
+              ...t,
+              rewardStatus: "paga",
+              paidAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            }
+          : t,
+      ),
+      transactions: launchToFinance[task.id]
+        ? [
+            {
+              id: uid(),
+              type: "Despesa",
+              description: `Recompensa: ${task.title}`,
+              value: task.reward,
+              date: today(),
+              category: "Recompensas e pagamentos",
+              businessId: business?.id || null,
+              ownerId: db.user.id,
+            },
+            ...d.transactions,
+          ]
+        : d.transactions,
+      notifications:
+        recipientId && recipientId !== db.user.id
+          ? pushNotification(d.notifications, {
+              recipientId,
+              message: `Recompensa paga: "${task.title}"`,
+              link: "financeiro",
+              createdBy: db.user.id,
+            })
+          : d.notifications,
+    }));
+    setToast("Recompensa marcada como paga");
+  };
+  if (!rewardTasks.length) return null;
+  return (
+    <section className="panel" id="finance-rewards">
+      <div className="panel-head">
+        <div>
+          <span className="eyebrow">RECOMPENSAS E PAGAMENTOS</span>
+          <h2>Valores de missões e tarefas</h2>
+        </div>
+      </div>
+      <div className="member-list">
+        {rewardTasks.map((t) => {
+          const status = t.rewardStatus || "prevista";
+          const isOwner = t.ownerId === db.user.id;
+          return (
+            <div key={t.id}>
+              <span>
+                <strong>{t.title}</strong>
+                <small>
+                  {REWARD_STATUS_LABELS[status] || status} · {money(t.reward)}
+                </small>
+              </span>
+              {isOwner && status === "aprovada" && (
+                <span className="task-actions">
+                  <label className="cost-check">
+                    <input
+                      type="checkbox"
+                      checked={!!launchToFinance[t.id]}
+                      onChange={(e) =>
+                        setLaunchToFinance((c) => ({
+                          ...c,
+                          [t.id]: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Lançar no Financeiro</span>
+                  </label>
+                  <Button variant="secondary" onClick={() => markPaid(t)}>
+                    Marcar como paga
+                  </Button>
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function Finance({ db, update, business, setToast, go }) {
+  const importRef = useRef(null);
+  const [modal, setModal] = useState(false),
+    [calc, setCalc] = useState({
+      materials: "",
+      hours: "",
+      hourValue: "",
+      fixed: "",
+      tax: "",
+      margin: "",
+    }),
+    [planning, setPlanning] = useState({
+      monthlyGoal: "",
+      fixedCosts: "",
+      contributionMargin: "",
+    });
+  const financeKey = business?.id || "global";
+  useEffect(() => {
+    setPlanning({
+      monthlyGoal: "",
+      fixedCosts: "",
+      contributionMargin: "",
+      ...(db.financeSettings?.[financeKey] || {}),
+    });
+  }, [financeKey]);
+  const [form, setForm] = useState({
+    type: "Receita",
+    description: "",
+    value: "",
+    date: today(),
+    category: "Geral",
+  });
+  const tx = db.transactions.filter(
+      (x) => !business || x.businessId === business.id,
+    ),
+    revenue = tx
+      .filter((x) => x.type === "Receita")
+      .reduce((a, x) => a + Number(x.value), 0),
+    expense = tx
+      .filter((x) => x.type === "Despesa")
+      .reduce((a, x) => a + Number(x.value), 0);
+  const currentMonth = today().slice(0, 7),
+    monthlyRevenue = tx
+      .filter(
+        (item) =>
+          item.type === "Receita" &&
+          String(item.date || "").startsWith(currentMonth),
+      )
+      .reduce((total, item) => total + Number(item.value || 0), 0),
+    monthlyGoal = Number(planning.monthlyGoal || 0),
+    contributionMargin = Number(planning.contributionMargin || 0),
+    breakEven = contributionMargin
+      ? Number(planning.fixedCosts || 0) / (contributionMargin / 100)
+      : 0,
+    goalProgress = monthlyGoal
+      ? Math.min(100, Math.round((monthlyRevenue / monthlyGoal) * 100))
+      : 0;
+  const base =
+      Number(calc.materials || 0) +
+      Number(calc.hours || 0) * Number(calc.hourValue || 0) +
+      Number(calc.fixed || 0),
+    tax = Number(calc.tax || 0) / 100,
+    margin = Number(calc.margin || 0) / 100,
+    suggested = tax + margin < 1 ? base / (1 - tax - margin) : 0;
+  const add = (e) => {
+    e.preventDefault();
+    if (!form.description || !Number(form.value)) return;
+    update((d) => ({
+      ...d,
+      transactions: [
+        {
+          ...form,
+          id: uid(),
+          businessId: business?.id || null,
+          ownerId: db.user.id,
+        },
+        ...d.transactions,
+      ],
+    }));
+    setModal(false);
+    setToast("Movimentação registrada");
+  };
+  const recurring = (db.recurring || []).filter(
+    (c) => !business || !c.businessId || c.businessId === business.id,
+  );
+  const [recModal, setRecModal] = useState(false);
+  const [recForm, setRecForm] = useState(null);
+  const openRecurring = (c = null) => {
+    setRecForm(
+      c
+        ? { ...c }
+        : {
+            clientName: "",
+            description: "",
+            amount: "",
+            dueDay: 5,
+            autoPost: false,
+            active: true,
+          },
+    );
+    setRecModal(true);
+  };
+  const saveRecurring = (e) => {
+    e.preventDefault();
+    if (!recForm?.clientName?.trim() || !(Number(recForm.amount) > 0)) {
+      setToast("Informe o cliente e um valor mensal");
+      return;
+    }
+    const now = new Date().toISOString();
+    const item = {
+      ...recForm,
+      clientName: recForm.clientName.trim(),
+      amount: Number(recForm.amount) || 0,
+      dueDay: Math.min(28, Math.max(1, Number(recForm.dueDay) || 1)),
+      id: recForm.id || uid(),
+      history: recForm.history || {},
+      businessId: business?.id || recForm.businessId || null,
+      ownerId: recForm.ownerId || db.user.id,
+      createdAt: recForm.createdAt || now,
+      updatedAt: now,
+    };
+    update((d) => ({
+      ...d,
+      recurring: recForm.id
+        ? (d.recurring || []).map((c) => (c.id === item.id ? item : c))
+        : [item, ...(d.recurring || [])],
+    }));
+    setRecModal(false);
+    setToast(recForm.id ? "Contrato atualizado" : "Contrato recorrente criado");
+  };
+  const removeRecurring = (id) =>
+    update((d) => ({
+      ...d,
+      recurring: (d.recurring || []).filter((c) => c.id !== id),
+    }));
+  const postRecurring = (contract) => {
+    const ym = today().slice(0, 7);
+    const transaction = buildRecurringTransaction(contract, {
+      userId: db.user.id,
+      businessId: business?.id,
+    });
+    if (!transaction) return;
+    update((d) => ({
+      ...d,
+      transactions: [transaction, ...(d.transactions || [])],
+      recurring: (d.recurring || []).map((c) =>
+        c.id === contract.id
+          ? {
+              ...c,
+              history: {
+                ...(c.history || {}),
+                [ym]: { postedAt: new Date().toISOString() },
+              },
+            }
+          : c,
+      ),
+    }));
+    setToast("Receita do contrato lançada no caixa");
+  };
+  const importTransactions = async (file) => {
+    if (!file) return;
+    const parseMoney = (value) => {
+      const clean = String(value || "")
+        .replace(/R\$/gi, "")
+        .replace(/\s/g, "");
+      const normalized = clean.includes(",")
+        ? clean.replace(/\./g, "").replace(",", ".")
+        : clean;
+      return Number(normalized);
+    };
+    try {
+      const text = await file.text();
+      const isOfx = /\.ofx$/i.test(file.name) || /<OFX>/i.test(text);
+      const sourceRows = isOfx
+        ? parseOfxTransactions(text)
+        : parseDelimitedText(text).map((row) => {
+            const rawValue = row.valor || row.value || row.quantia || row.amount;
+            const amount = parseMoney(rawValue);
+            const informedType = String(row.tipo || row.type || "").toLowerCase();
+            return {
+              fitId: row.id || row.fitid || "",
+              type:
+                informedType.includes("desp") || amount < 0
+                  ? "Despesa"
+                  : "Receita",
+              value: Math.abs(amount),
+              date: row.data || row.date || "",
+              description:
+                row.descricao || row.description || row.historico || row.memo || "",
+              category: row.categoria || row.category || "Importado",
+            };
+          });
+      const existingKeys = new Set(
+        (db.transactions || []).map(
+          (item) =>
+            item.importId ||
+            `${item.date}|${Number(item.value || 0).toFixed(2)}|${String(item.description || "").toLowerCase()}`,
+        ),
+      );
+      const imported = sourceRows
+        .filter(
+          (item) =>
+            item.date && item.description && Number.isFinite(item.value) && item.value > 0,
+        )
+        .map((item) => ({
+          ...item,
+          id: uid(),
+          importId:
+            item.fitId ||
+            `${item.date}|${Number(item.value).toFixed(2)}|${item.description.toLowerCase()}`,
+          businessId: business?.id || null,
+          ownerId: db.user.id,
+          visibility: "privado",
+          createdAt: new Date().toISOString(),
+        }))
+        .filter((item) => {
+          if (existingKeys.has(item.importId)) return false;
+          existingKeys.add(item.importId);
+          return true;
+        });
+      if (!imported.length)
+        throw new Error("Nenhuma movimentação nova foi encontrada no arquivo.");
+      update((current) => ({
+        ...current,
+        transactions: [...imported, ...(current.transactions || [])],
+      }));
+      trackProductEvent("import_completed", {
+        module: "financeiro",
+        kind: isOfx ? "ofx" : "csv",
+        count: imported.length,
+        success: true,
+      });
+      setToast(`${imported.length} movimentação(ões) importada(s)`);
+    } catch (error) {
+      setToast(error.message || "Não foi possível importar o extrato");
+    } finally {
+      if (importRef.current) importRef.current.value = "";
+    }
+  };
+  const savePlanning = () => {
+    update((d) => ({
+      ...d,
+      financeSettings: {
+        ...(d.financeSettings || {}),
+        [financeKey]: planning,
+      },
+    }));
+    setToast("Metas e ponto de equilíbrio salvos");
+  };
+  const taxProfile = db.taxProfile || {
+    isMEI: false,
+    dueDay: 20,
+    cnpj: "",
+    dasHistory: {},
+  };
+  const das = dasStatus(taxProfile);
+  const dasMonths = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - i);
+    return d.toISOString().slice(0, 7);
+  });
+  const patchTaxProfile = (patch) =>
+    update((d) => ({
+      ...d,
+      taxProfile: {
+        isMEI: false,
+        dueDay: 20,
+        cnpj: "",
+        dasHistory: {},
+        ...(d.taxProfile || {}),
+        ...patch,
+      },
+    }));
+  const setDasPaid = (ym, paid) =>
+    update((d) => {
+      const current = {
+        isMEI: false,
+        dueDay: 20,
+        cnpj: "",
+        dasHistory: {},
+        ...(d.taxProfile || {}),
+      };
+      const history = { ...(current.dasHistory || {}) };
+      if (paid) history[ym] = { paid: true, paidAt: new Date().toISOString() };
+      else delete history[ym];
+      return { ...d, taxProfile: { ...current, dasHistory: history } };
+    });
+  const exportReport = () => {
+    const safe = (value) => {
+      const text = String(value ?? "");
+      const protectedText = /^[=+@-]/.test(text) ? `'${text}` : text;
+      return `"${protectedText.replace(/"/g, '""')}"`;
+    };
+    const rows = [
+      ["Data", "Tipo", "Descricao", "Categoria", "Valor"],
+      ...tx.map((item) => [
+        item.date,
+        item.type,
+        item.description,
+        item.category,
+        Number(item.value || 0).toFixed(2),
+      ]),
+      [],
+      ["Resumo", "Valor"],
+      ["Receitas", revenue.toFixed(2)],
+      ["Despesas", expense.toFixed(2)],
+      ["Saldo", (revenue - expense).toFixed(2)],
+      ["Meta mensal", monthlyGoal.toFixed(2)],
+      ["Ponto de equilibrio", breakEven.toFixed(2)],
+    ];
+    const blob = new Blob(
+      [`\ufeff${rows.map((row) => row.map(safe).join(";")).join("\n")}`],
+      { type: "text/csv;charset=utf-8" },
+    );
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `relatorio-financeiro-${currentMonth}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    setToast("Relatório financeiro exportado");
+    trackProductEvent("export_completed", {
+      module: "financeiro",
+      kind: "csv",
+      success: true,
+    });
+  };
+  return (
+    <PageTitle
+      eyebrow="FINANCEIRO"
+      title="Números claros para decisões melhores"
+      text="Registre apenas valores reais. Projeções aparecem sempre identificadas como estimativas."
+      action={
+        <div className="page-actions">
+          <input
+            ref={importRef}
+            type="file"
+            accept=".csv,.ofx,text/csv,text/plain,application/x-ofx"
+            hidden
+            onChange={(event) => importTransactions(event.target.files?.[0])}
+          />
+          <Button
+            variant="secondary"
+            icon={Upload}
+            onClick={() => importRef.current?.click()}
+          >
+            Importar CSV ou OFX
+          </Button>
+          <Button icon={Plus} onClick={() => setModal(true)}>
+            Registrar movimentação
+          </Button>
+        </div>
+      }
+    >
+      <AreaToolkit
+        area="financeiro"
+        db={db}
+        update={update}
+        business={business}
+        setToast={setToast}
+        go={go}
+      />
+      <div className="metric-row">
+        <Metric
+          icon={ArrowUpRight}
+          label="Receitas registradas"
+          value={money(revenue)}
+        />
+        <Metric
+          icon={ArrowUpRight}
+          label="Despesas registradas"
+          value={money(expense)}
+        />
+        <Metric
+          icon={WalletCards}
+          label="Saldo registrado"
+          value={money(revenue - expense)}
+        />
+      </div>
+      <section className="panel finance-planning" id="finance-planning">
+        <div className="panel-head">
+          <div>
+            <span className="eyebrow">PLANEJAMENTO</span>
+            <h2>Meta mensal e ponto de equilíbrio</h2>
+          </div>
+          <Button variant="secondary" icon={Download} onClick={exportReport}>
+            Exportar relatório
+          </Button>
+        </div>
+        <div className="planning-grid">
+          <Field label="Meta de receita mensal (R$)">
+            <input
+              type="number"
+              min="0"
+              value={planning.monthlyGoal}
+              onChange={(e) =>
+                setPlanning({ ...planning, monthlyGoal: e.target.value })
+              }
+            />
+          </Field>
+          <Field label="Custos fixos mensais (R$)">
+            <input
+              type="number"
+              min="0"
+              value={planning.fixedCosts}
+              onChange={(e) =>
+                setPlanning({ ...planning, fixedCosts: e.target.value })
+              }
+            />
+          </Field>
+          <Field
+            label="Margem de contribuição (%)"
+            hint="Receita que sobra após custos e despesas variáveis."
+          >
+            <input
+              type="number"
+              min="0"
+              max="100"
+              value={planning.contributionMargin}
+              onChange={(e) =>
+                setPlanning({
+                  ...planning,
+                  contributionMargin: e.target.value,
+                })
+              }
+            />
+          </Field>
+          <Button icon={Save} onClick={savePlanning}>
+            Salvar planejamento
+          </Button>
+        </div>
+        <div className="planning-results">
+          <div>
+            <small>Receita neste mês</small>
+            <strong>{money(monthlyRevenue)}</strong>
+            <div className="meter">
+              <span style={{ width: `${goalProgress}%` }} />
+            </div>
+            <span>
+              {monthlyGoal ? `${goalProgress}% da meta` : "Defina uma meta"}
+            </span>
+          </div>
+          <div>
+            <small>Ponto de equilíbrio estimado</small>
+            <strong>
+              {breakEven ? money(breakEven) : "Preencha os dados"}
+            </strong>
+            <span>
+              {breakEven
+                ? "Receita mensal necessária para cobrir os custos fixos."
+                : "Informe custos fixos e margem de contribuição."}
+            </span>
+          </div>
+        </div>
+      </section>
+      <section className="panel das-panel" id="finance-das">
+        <div className="panel-head">
+          <div>
+            <span className="eyebrow">IMPOSTO DO MEI</span>
+            <h2>Controle do DAS</h2>
+          </div>
+          <label className="das-toggle">
+            <input
+              type="checkbox"
+              checked={!!taxProfile.isMEI}
+              onChange={(e) => patchTaxProfile({ isMEI: e.target.checked })}
+            />
+            <span>Sou MEI</span>
+          </label>
+        </div>
+        {!taxProfile.isMEI ? (
+          <p className="das-intro">
+            Ative &quot;Sou MEI&quot; para acompanhar o pagamento da guia DAS mês a mês e
+            receber um lembrete automático antes do vencimento (todo dia 20).
+          </p>
+        ) : (
+          <>
+            <div
+              className={`das-current das-${das.status}`}
+              role="status"
+            >
+              <div>
+                <small>
+                  DAS de {monthLabelPt(das.ym)} · vence dia {das.dueDay}
+                </small>
+                <strong>
+                  {das.status === "pago"
+                    ? "Pago ✓"
+                    : das.status === "atrasado"
+                      ? "Atrasado"
+                      : "A pagar"}
+                </strong>
+              </div>
+              <div className="das-actions">
+                <label className="das-paid-check">
+                  <input
+                    type="checkbox"
+                    checked={das.paid}
+                    onChange={(e) => setDasPaid(das.ym, e.target.checked)}
+                  />
+                  <span>Marcar como pago</span>
+                </label>
+                <a
+                  className="button secondary"
+                  href="https://www.gov.br/pt-br/servicos/pagar-o-das-do-microempreendedor-individual"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Emitir/pagar no Portal do MEI <ExternalLink />
+                </a>
+              </div>
+            </div>
+            <div className="das-history">
+              <small className="das-history-title">Meses recentes</small>
+              <div className="das-months">
+                {dasMonths.map((ym) => {
+                  const st = dasStatus(taxProfile, `${ym}-28`);
+                  const paid = st.paid;
+                  return (
+                    <button
+                      key={ym}
+                      type="button"
+                      className={`das-month das-${st.status}`}
+                      onClick={() => setDasPaid(ym, !paid)}
+                      title={
+                        paid
+                          ? "Pago — clique para desmarcar"
+                          : "Não pago — clique para marcar como pago"
+                      }
+                    >
+                      <span>{monthLabelPt(ym)}</span>
+                      <strong>{paid ? "Pago" : "Em aberto"}</strong>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="das-fields">
+              <Field label="Dia de vencimento">
+                <input
+                  type="number"
+                  min="1"
+                  max="28"
+                  value={taxProfile.dueDay || 20}
+                  onChange={(e) =>
+                    patchTaxProfile({
+                      dueDay: Math.min(
+                        28,
+                        Math.max(1, Number(e.target.value) || 20),
+                      ),
+                    })
+                  }
+                />
+              </Field>
+              <Field label="CNPJ (opcional)">
+                <input
+                  value={taxProfile.cnpj || ""}
+                  onChange={(e) => patchTaxProfile({ cnpj: e.target.value })}
+                  placeholder="00.000.000/0001-00"
+                />
+              </Field>
+            </div>
+            <p className="das-note">
+              O controle é manual e serve como lembrete — o pagamento continua
+              sendo feito no portal oficial. Dúvidas sobre enquadramento ou
+              valores? Fale com um contador.
+            </p>
+          </>
+        )}
+      </section>
+      <div className="finance-grid">
+        <section className="panel calculator" id="finance-price">
+          <div className="panel-head">
+            <div>
+              <span className="eyebrow">CALCULADORA</span>
+              <h2>Preço de venda</h2>
+            </div>
+            <Calculator />
+          </div>
+          <p>Informe seus dados. Nenhum valor é preenchido ou presumido.</p>
+          <div className="form-grid">
+            <Field label="Materiais (R$)">
+              <input
+                type="number"
+                min="0"
+                value={calc.materials}
+                onChange={(e) =>
+                  setCalc({ ...calc, materials: e.target.value })
+                }
+              />
+            </Field>
+            <Field label="Horas de trabalho">
+              <input
+                type="number"
+                min="0"
+                value={calc.hours}
+                onChange={(e) => setCalc({ ...calc, hours: e.target.value })}
+              />
+            </Field>
+            <Field label="Valor por hora (R$)">
+              <input
+                type="number"
+                min="0"
+                value={calc.hourValue}
+                onChange={(e) =>
+                  setCalc({ ...calc, hourValue: e.target.value })
+                }
+              />
+            </Field>
+            <Field label="Custos fixos rateados (R$)">
+              <input
+                type="number"
+                min="0"
+                value={calc.fixed}
+                onChange={(e) => setCalc({ ...calc, fixed: e.target.value })}
+              />
+            </Field>
+            <Field label="Impostos (%)">
+              <input
+                type="number"
+                min="0"
+                max="99"
+                value={calc.tax}
+                onChange={(e) => setCalc({ ...calc, tax: e.target.value })}
+              />
+            </Field>
+            <Field label="Margem desejada (%)">
+              <input
+                type="number"
+                min="0"
+                max="99"
+                value={calc.margin}
+                onChange={(e) => setCalc({ ...calc, margin: e.target.value })}
+              />
+            </Field>
+          </div>
+          <div className="calc-result">
+            <span>Preço calculado</span>
+            <strong>{base ? money(suggested) : "Preencha os custos"}</strong>
+            <small>
+              {base
+                ? suggested
+                  ? "Estimativa calculada a partir dos valores informados."
+                  : "Impostos + margem devem ser menores que 100%."
+                : "O resultado aparecerá aqui."}
+            </small>
+          </div>
+        </section>
+        <section className="panel recurring-panel" id="finance-recurring">
+          <div className="panel-head">
+            <div>
+              <h3>Contratos recorrentes</h3>
+              <p>
+                Mensalidades e contratos fixos — lembrete todo mês e
+                lançamento no caixa com um clique (ou automático).
+              </p>
+            </div>
+            <Button icon={Plus} onClick={() => openRecurring()}>
+              Novo contrato
+            </Button>
+          </div>
+          {recurring.length === 0 ? (
+            <Empty
+              icon={CalendarDays}
+              title="Nenhum contrato recorrente"
+              text="Cadastre mensalidades e contratos fixos (ex.: contrato mensal de um condomínio). Todo mês o app lembra você e lança no caixa com um clique."
+              action="Cadastrar contrato"
+              onAction={() => openRecurring()}
+            />
+          ) : (
+            <div className="recurring-list">
+              {recurring.map((c) => {
+                const st = recurringStatus(c);
+                const label = !c.active
+                  ? "Inativo"
+                  : st.status === "lancado"
+                    ? "Lançado este mês"
+                    : st.status === "a_lancar"
+                      ? "Vence — lançar"
+                      : "Agendado";
+                const tone = !c.active
+                  ? "muted"
+                  : st.status === "lancado"
+                    ? "ok"
+                    : st.status === "a_lancar"
+                      ? "warn"
+                      : "info";
+                return (
+                  <div key={c.id} className="recurring-row">
+                    <div className="recurring-info">
+                      <strong>{c.clientName}</strong>
+                      <small>
+                        {money(c.amount)}/mês · vence dia {c.dueDay}
+                        {c.autoPost ? " · automático" : ""}
+                      </small>
+                    </div>
+                    <span className={`recurring-status ${tone}`}>{label}</span>
+                    <div className="recurring-actions">
+                      {c.active && st.status === "a_lancar" && (
+                        <Button
+                          variant="ghost"
+                          icon={WalletCards}
+                          onClick={() => postRecurring(c)}
+                        >
+                          Lançar mês
+                        </Button>
+                      )}
+                      <button
+                        className="icon-button"
+                        aria-label={`Editar ${c.clientName}`}
+                        onClick={() => openRecurring(c)}
+                      >
+                        <Edit3 />
+                      </button>
+                      <button
+                        className="icon-button danger"
+                        aria-label={`Excluir ${c.clientName}`}
+                        onClick={() => {
+                          if (confirm("Excluir este contrato recorrente?"))
+                            removeRecurring(c.id);
+                        }}
+                      >
+                        <Trash2 />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+        {recModal && recForm && (
+          <Modal
+            title={recForm.id ? "Editar contrato" : "Novo contrato recorrente"}
+            onClose={() => setRecModal(false)}
+          >
+            <form className="modal-body" onSubmit={saveRecurring}>
+              <div className="form-grid">
+                <Field label="Cliente">
+                  <input
+                    value={recForm.clientName}
+                    onChange={(e) =>
+                      setRecForm({ ...recForm, clientName: e.target.value })
+                    }
+                    placeholder="Ex.: Condomínio Jardim"
+                  />
+                </Field>
+                <Field label="Valor mensal (R$)">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={recForm.amount}
+                    onChange={(e) =>
+                      setRecForm({ ...recForm, amount: e.target.value })
+                    }
+                    placeholder="600,00"
+                  />
+                </Field>
+              </div>
+              <div className="form-grid">
+                <Field label="Dia de vencimento">
+                  <input
+                    type="number"
+                    min="1"
+                    max="28"
+                    value={recForm.dueDay}
+                    onChange={(e) =>
+                      setRecForm({ ...recForm, dueDay: e.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="Descrição (opcional)">
+                  <input
+                    value={recForm.description}
+                    onChange={(e) =>
+                      setRecForm({ ...recForm, description: e.target.value })
+                    }
+                    placeholder="Ex.: Lavagem mensal de rouparia"
+                  />
+                </Field>
+              </div>
+              <label className="cost-check">
+                <input
+                  type="checkbox"
+                  checked={!!recForm.autoPost}
+                  onChange={(e) =>
+                    setRecForm({ ...recForm, autoPost: e.target.checked })
+                  }
+                />
+                <span>
+                  Lançar a receita no caixa automaticamente todo mês (senão, o
+                  app só lembra e você lança com um clique)
+                </span>
+              </label>
+              <label className="cost-check">
+                <input
+                  type="checkbox"
+                  checked={recForm.active !== false}
+                  onChange={(e) =>
+                    setRecForm({ ...recForm, active: e.target.checked })
+                  }
+                />
+                <span>Contrato ativo</span>
+              </label>
+              <div className="modal-actions">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setRecModal(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit" icon={Save}>
+                  {recForm.id ? "Salvar" : "Criar contrato"}
+                </Button>
+              </div>
+            </form>
+          </Modal>
+        )}
+        <section className="panel" id="finance-transactions">
+          <div className="panel-head">
+            <div>
+              <span className="eyebrow">MOVIMENTAÇÕES</span>
+              <h2>Registros recentes</h2>
+            </div>
+          </div>
+          {tx.length ? (
+            <div className="transactions">
+              {tx.slice(0, 8).map((x) => (
+                <div key={x.id}>
+                  <span className={x.type === "Receita" ? "income" : "expense"}>
+                    {x.type === "Receita" ? "+" : "−"}
+                  </span>
+                  <span>
+                    <strong>{x.description}</strong>
+                    <small>
+                      {x.category} ·{" "}
+                      {new Date(x.date + "T12:00").toLocaleDateString("pt-BR")}
+                    </small>
+                  </span>
+                  <b>{money(x.value)}</b>
+                  <button
+                    className="icon-button danger"
+                    onClick={() =>
+                      update((d) => ({
+                        ...d,
+                        transactions: d.transactions.filter(
+                          (t) => t.id !== x.id,
+                        ),
+                      }))
+                    }
+                  >
+                    <Trash2 />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Empty
+              icon={WalletCards}
+              title="Nenhum valor registrado"
+              text="Comece adicionando uma receita ou despesa real."
+            />
+          )}
+        </section>
+        <RewardsPanel db={db} update={update} business={business} setToast={setToast} />
+      </div>
+      {modal && (
+        <Modal title="Registrar movimentação" onClose={() => setModal(false)}>
+          <form className="modal-body" onSubmit={add}>
+            <div className="form-grid">
+              <Field label="Tipo">
+                <select
+                  value={form.type}
+                  onChange={(e) => setForm({ ...form, type: e.target.value })}
+                >
+                  <option>Receita</option>
+                  <option>Despesa</option>
+                </select>
+              </Field>
+              <Field label="Valor (R$)">
+                <input
+                  required
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={form.value}
+                  onChange={(e) => setForm({ ...form, value: e.target.value })}
+                />
+              </Field>
+              <Field label="Descrição">
+                <input
+                  required
+                  value={form.description}
+                  onChange={(e) =>
+                    setForm({ ...form, description: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Categoria">
+                <input
+                  value={form.category}
+                  onChange={(e) =>
+                    setForm({ ...form, category: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Data">
+                <input
+                  type="date"
+                  value={form.date}
+                  onChange={(e) => setForm({ ...form, date: e.target.value })}
+                />
+              </Field>
+            </div>
+            <div className="modal-actions">
+              <Button variant="ghost" onClick={() => setModal(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" icon={Save}>
+                Registrar
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </PageTitle>
+  );
+}
+
+const DOCUMENT_UPLOAD_LIMIT = 10 * 1024 * 1024;
+const DOCUMENT_TEXT_LIMIT = 300_000;
+
+export function documentFileKind(file) {
+  const extension = String(file?.name || "")
+    .toLowerCase()
+    .split(".")
+    .pop();
+  if (extension === "pdf") return { id: "pdf", label: "PDF importado" };
+  if (extension === "docx") return { id: "docx", label: "Documento Word" };
+  if (["txt", "md", "markdown", "csv"].includes(extension))
+    return {
+      id: "text",
+      label: extension === "csv" ? "Planilha CSV" : "Documento importado",
+    };
+  return null;
+}
+
+export const documentTitleFromFilename = (name) =>
+  String(name || "Documento importado")
+    .replace(/\.[^.]+$/, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim() || "Documento importado";
+
+export async function extractDocumentText(file) {
+  const kind = documentFileKind(file);
+  if (!kind)
+    throw new Error("Formato não aceito. Use PDF, DOCX, TXT, Markdown ou CSV.");
+  if (!file?.size) throw new Error("O arquivo está vazio.");
+  if (file.size > DOCUMENT_UPLOAD_LIMIT)
+    throw new Error("O arquivo ultrapassa o limite de 10 MB.");
+  const arrayBuffer = await file.arrayBuffer();
+  let text = "";
+  if (kind.id === "text") {
+    text = new TextDecoder("utf-8").decode(arrayBuffer);
+  } else if (kind.id === "docx") {
+    const module = await import("mammoth");
+    const mammoth = module.default || module;
+    const result = await mammoth.extractRawText(
+      typeof globalThis.Buffer !== "undefined"
+        ? { buffer: globalThis.Buffer.from(arrayBuffer) }
+        : { arrayBuffer },
+    );
+    text = result.value || "";
+  } else {
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    if (typeof globalThis.Worker === "undefined") {
+      globalThis.pdfjsWorker =
+        await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
+    } else {
+      const worker =
+        await import("pdfjs-dist/legacy/build/pdf.worker.min.mjs?url");
+      pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+    }
+    const loadingTask = pdfjs.getDocument({
+      data: new Uint8Array(arrayBuffer),
+    });
+    const pdf = await loadingTask.promise;
+    const pages = [];
+    for (let index = 1; index <= pdf.numPages; index += 1) {
+      const page = await pdf.getPage(index);
+      const content = await page.getTextContent();
+      pages.push(
+        content.items
+          .map((item) => ("str" in item ? item.str : ""))
+          .join(" ")
+          .trim(),
+      );
+      page.cleanup();
+    }
+    if (typeof pdf.cleanup === "function") await pdf.cleanup();
+    if (typeof loadingTask.destroy === "function") await loadingTask.destroy();
+    text = pages.filter(Boolean).join("\n\n");
+  }
+  text = String(text)
+    .replace(/\u0000/g, "")
+    .trim();
+  if (!text)
+    throw new Error(
+      kind.id === "pdf"
+        ? "Este PDF não contém texto selecionável. PDFs digitalizados precisam de OCR."
+        : "Não foi possível encontrar texto nesse arquivo.",
+    );
+  return {
+    content: text.slice(0, DOCUMENT_TEXT_LIMIT),
+    truncated: text.length > DOCUMENT_TEXT_LIMIT,
+    kind,
+  };
+}
+
+const ATTACHMENT_IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp"];
+const MAX_ATTACHMENT_IMAGE_BYTES = 350_000;
+const MAX_ATTACHMENT_TEXT_CHARS = 8_000;
+const MAX_ATTACHMENTS_PER_ITEM = 5;
+
+function isImageAttachmentFile(file) {
+  const extension = String(file?.name || "").toLowerCase().split(".").pop();
+  return (
+    ATTACHMENT_IMAGE_EXTENSIONS.includes(extension) ||
+    (file?.type || "").startsWith("image/")
+  );
+}
+
+export async function compressImageForAttachment(file) {
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Não foi possível ler a imagem."));
+    reader.readAsDataURL(file);
+  });
+  const image = await new Promise((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error("Imagem inválida."));
+    el.src = dataUrl;
+  });
+  const maxDim = 1280;
+  const width = image.naturalWidth || image.width || maxDim;
+  const height = image.naturalHeight || image.height || maxDim;
+  const scale = Math.min(1, maxDim / Math.max(width, height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+  let quality = 0.72;
+  let out = canvas.toDataURL("image/jpeg", quality);
+  while (out.length * 0.75 > MAX_ATTACHMENT_IMAGE_BYTES && quality > 0.35) {
+    quality -= 0.12;
+    out = canvas.toDataURL("image/jpeg", quality);
+  }
+  if (out.length * 0.75 > MAX_ATTACHMENT_IMAGE_BYTES)
+    throw new Error(
+      "A imagem é grande demais mesmo após compressão. Tente uma imagem menor.",
+    );
+  return out;
+}
+
+export async function buildAttachment(file) {
+  if (!file?.size) throw new Error("O arquivo está vazio.");
+  if (isImageAttachmentFile(file)) {
+    const dataUrl = await compressImageForAttachment(file);
+    return {
+      id: uid(),
+      name: file.name,
+      kind: "image",
+      dataUrl,
+      size: file.size,
+      createdAt: new Date().toISOString(),
+    };
+  }
+  const { content, truncated } = await extractDocumentText(file);
+  return {
+    id: uid(),
+    name: file.name,
+    kind: "document",
+    content: content.slice(0, MAX_ATTACHMENT_TEXT_CHARS),
+    truncated: truncated || content.length > MAX_ATTACHMENT_TEXT_CHARS,
+    size: file.size,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+export async function addAttachmentsFromFiles(fileList, current, onError) {
+  const existing = Array.isArray(current) ? current : [];
+  const room = Math.max(0, MAX_ATTACHMENTS_PER_ITEM - existing.length);
+  const files = [...(fileList || [])].slice(0, room);
+  const results = [...existing];
+  for (const file of files) {
+    try {
+      results.push(await buildAttachment(file));
+    } catch (error) {
+      onError?.(error.message || `Não foi possível anexar "${file.name}".`);
+    }
+  }
+  return results;
+}
+
+function AttachmentList({ attachments, onRemove }) {
+  const [preview, setPreview] = useState(null);
+  useEffect(() => {
+    if (!preview) return undefined;
+    const h = (e) => e.key === "Escape" && setPreview(null);
+    addEventListener("keydown", h);
+    return () => removeEventListener("keydown", h);
+  }, [preview]);
+  if (!attachments || attachments.length === 0) return null;
+  return (
+    <div className="attachment-list">
+      {attachments.map((a) => (
+        <span key={a.id} className="attachment-chip">
+          {a.kind === "image" ? (
+            <button
+              type="button"
+              className="attachment-thumb"
+              aria-label={`Ver imagem ampliada de ${a.name}`}
+              onClick={() => setPreview(a)}
+            >
+              <img src={a.dataUrl} alt={a.name} />
+            </button>
+          ) : (
+            <FileText />
+          )}
+          <b>{a.name}</b>
+          {onRemove && (
+            <button
+              type="button"
+              className="icon-button"
+              aria-label={`Remover anexo ${a.name}`}
+              onClick={() => onRemove(a.id)}
+            >
+              <X />
+            </button>
+          )}
+        </span>
+      ))}
+      {preview && (
+        <div
+          className="attachment-lightbox"
+          role="dialog"
+          aria-label={`Imagem ampliada: ${preview.name}`}
+          onClick={() => setPreview(null)}
+        >
+          <img
+            src={preview.dataUrl}
+            alt={preview.name}
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            type="button"
+            className="attachment-lightbox-close"
+            aria-label="Fechar imagem ampliada"
+            onClick={() => setPreview(null)}
+          >
+            <X />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const AUTOMATION_TEMPLATES = [
+  {
+    name: "Planejar a semana",
+    frequency: "weekly",
+    day: 1,
+    actionType: "task",
+    actionText: "Planejar as prioridades da semana",
+  },
+  {
+    name: "Fechar o caixa do mês",
+    frequency: "monthly",
+    day: 1,
+    actionType: "task",
+    actionText: "Conferir entradas e saídas do mês passado",
+  },
+  {
+    name: "Lembrete de cobrança",
+    frequency: "monthly",
+    day: 5,
+    actionType: "reminder",
+    actionText: "Enviar as cobranças pendentes aos clientes",
+  },
+];
+
+const automationScheduleLabel = (rule) => {
+  if (rule.frequency === "monthly") return `Todo dia ${rule.day || 1} do mês`;
+  const wd = AUTOMATION_WEEKDAYS.find(([v]) => v === Number(rule.day));
+  return `Toda ${wd ? wd[1].toLowerCase() : "semana"}`;
+};
+
+function Automations({ db, update, business, setToast }) {
+  const rules = (db.automations || []).filter(
+    (r) => !r.businessId || !business || r.businessId === business.id,
+  );
+  const blank = {
+    id: null,
+    name: "",
+    enabled: true,
+    frequency: "weekly",
+    day: 1,
+    actionType: "task",
+    actionText: "",
+  };
+  const [editing, setEditing] = useState(null);
+
+  const persist = (list) => update((prev) => ({ ...prev, automations: list }));
+  const createFromTemplate = (t) => {
+    const rule = {
+      ...blank,
+      ...t,
+      id: uid(),
+      history: {},
+      businessId: business?.id || null,
+      ownerId: db.user.id,
+      createdAt: new Date().toISOString(),
+    };
+    persist([rule, ...(db.automations || [])]);
+    setToast("Automação criada");
+  };
+  const saveRule = () => {
+    if (!editing.name.trim() || !editing.actionText.trim()) return;
+    const id = editing.id || uid();
+    const rule = {
+      ...editing,
+      id,
+      day: Number(editing.day) || 1,
+      businessId: editing.businessId || business?.id || null,
+      ownerId: editing.ownerId || db.user.id,
+      history: editing.history || {},
+      createdAt: editing.createdAt || new Date().toISOString(),
+    };
+    persist(
+      (db.automations || []).some((r) => r.id === id)
+        ? (db.automations || []).map((r) => (r.id === id ? rule : r))
+        : [rule, ...(db.automations || [])],
+    );
+    setEditing(null);
+    setToast("Automação salva");
+  };
+  const toggle = (id) =>
+    persist(
+      (db.automations || []).map((r) =>
+        r.id === id ? { ...r, enabled: !r.enabled } : r,
+      ),
+    );
+  const remove = (id) => {
+    if (!window.confirm("Excluir esta automação?")) return;
+    persist((db.automations || []).filter((r) => r.id !== id));
+    setToast("Automação excluída");
+  };
+  const runNow = () => {
+    const { rules: updatedRules, intents } = runAutomations(db.automations || []);
+    if (intents.length === 0) {
+      setToast("Nada para executar agora — nenhuma automação vencida");
+      return;
+    }
+    update((d) => {
+      const tasks = intents
+        .filter((i) => i.actionType === "task")
+        .map((i) => taskFromIdea(i.text, { businessId: business?.id, ownerId: d.user.id }));
+      const notifs = intents
+        .filter((i) => i.actionType === "reminder")
+        .map((i) => ({
+          id: uid(),
+          assigneeId: d.user.id,
+          ownerId: d.user.id,
+          message: i.text,
+          link: "automacoes",
+          read: false,
+          createdAt: new Date().toISOString(),
+        }));
+      return {
+        ...d,
+        automations: updatedRules,
+        tasks: [...tasks, ...(d.tasks || [])],
+        notifications: [...notifs, ...(d.notifications || [])],
+      };
+    });
+    setToast(`${intents.length} automação(ões) executada(s)`);
+  };
+
+  return (
+    <div className="page automations-page">
+      <header className="page-head">
+        <div>
+          <h1>Automações</h1>
+          <p className="page-sub">
+            Crie regras que rodam sozinhas: toda semana ou todo mês, elas criam
+            uma tarefa ou um lembrete para você, mesmo com o aplicativo fechado.
+          </p>
+        </div>
+      </header>
+
+      <div className="card automation-templates">
+        <div className="notice">
+          <Zap />
+          <span>
+            Comece por um modelo ou crie a sua. As automações nunca gastam
+            dinheiro nem enviam nada sozinhas — só criam tarefas e lembretes
+            para você decidir. A execução é verificada de hora em hora.
+          </span>
+        </div>
+        <div className="automation-template-row">
+          {AUTOMATION_TEMPLATES.map((t) => (
+            <button
+              key={t.name}
+              className="chip-btn"
+              onClick={() => createFromTemplate(t)}
+            >
+              <Plus size={13} /> {t.name}
+            </button>
+          ))}
+          <button
+            className="btn ghost sm"
+            onClick={() => setEditing({ ...blank })}
+          >
+            <Plus size={15} /> Nova automação
+          </button>
+          {rules.length > 0 && (
+            <button className="btn primary sm" onClick={runNow}>
+              Rodar agora
+            </button>
+          )}
+        </div>
+      </div>
+
+      {rules.length === 0 ? (
+        <div className="empty-state">
+          <Zap />
+          <h3>Nenhuma automação ainda</h3>
+          <p>Crie uma regra acima para o app trabalhar por você.</p>
+        </div>
+      ) : (
+        <div className="automation-list">
+          {rules.map((r) => (
+            <article
+              key={r.id}
+              className={`card automation-item ${r.enabled === false ? "off" : ""}`}
+            >
+              <div className="automation-info">
+                <h4>{r.name}</h4>
+                <p className="automation-when">
+                  {automationScheduleLabel(r)} ·{" "}
+                  {r.actionType === "reminder" ? "Lembrete" : "Tarefa"}: “{r.actionText}”
+                </p>
+                {r.lastRun && (
+                  <p className="automation-last">
+                    Última execução:{" "}
+                    {new Date(r.lastRun).toLocaleDateString("pt-BR")}
+                  </p>
+                )}
+              </div>
+              <div className="automation-actions">
+                <label className="automation-switch">
+                  <input
+                    type="checkbox"
+                    checked={r.enabled !== false}
+                    onChange={() => toggle(r.id)}
+                  />
+                  <span>{r.enabled === false ? "Pausada" : "Ativa"}</span>
+                </label>
+                <button className="btn ghost sm" onClick={() => setEditing({ ...r })}>
+                  <Pencil size={15} /> Editar
+                </button>
+                <button className="btn ghost sm danger" onClick={() => remove(r.id)}>
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {editing && (
+        <Modal
+          title={editing.id ? "Editar automação" : "Nova automação"}
+          onClose={() => setEditing(null)}
+        >
+          <div className="modal-body">
+            <Field label="Nome da automação">
+              <input
+                value={editing.name}
+                onChange={(e) => setEditing((m) => ({ ...m, name: e.target.value }))}
+                placeholder="Ex.: Planejar a semana"
+                autoFocus
+              />
+            </Field>
+            <div className="form-grid">
+              <Field label="Frequência">
+                <select
+                  value={editing.frequency}
+                  onChange={(e) =>
+                    setEditing((m) => ({ ...m, frequency: e.target.value }))
+                  }
+                >
+                  <option value="weekly">Toda semana</option>
+                  <option value="monthly">Todo mês</option>
+                </select>
+              </Field>
+              {editing.frequency === "weekly" ? (
+                <Field label="Dia da semana">
+                  <select
+                    value={editing.day}
+                    onChange={(e) =>
+                      setEditing((m) => ({ ...m, day: Number(e.target.value) }))
+                    }
+                  >
+                    {AUTOMATION_WEEKDAYS.map(([v, label]) => (
+                      <option key={v} value={v}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              ) : (
+                <Field label="Dia do mês">
+                  <input
+                    type="number"
+                    min="1"
+                    max="28"
+                    value={editing.day}
+                    onChange={(e) =>
+                      setEditing((m) => ({ ...m, day: Number(e.target.value) }))
+                    }
+                  />
+                </Field>
+              )}
+            </div>
+            <Field label="O que fazer">
+              <select
+                value={editing.actionType}
+                onChange={(e) =>
+                  setEditing((m) => ({ ...m, actionType: e.target.value }))
+                }
+              >
+                {AUTOMATION_ACTIONS.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field
+              label={
+                editing.actionType === "reminder"
+                  ? "Texto do lembrete"
+                  : "Título da tarefa"
+              }
+            >
+              <input
+                value={editing.actionText}
+                onChange={(e) =>
+                  setEditing((m) => ({ ...m, actionText: e.target.value }))
+                }
+                placeholder="Ex.: Conferir o caixa do mês"
+              />
+            </Field>
+            <div className="form-actions">
+              <button className="btn primary" onClick={saveRule}>
+                Salvar automação
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function WikiTreeNodes({ nodes, selectedId, onSelect, depth }) {
+  return nodes.map((node) => (
+    <div key={node.id}>
+      <button
+        className={`wiki-tree-item ${node.id === selectedId ? "active" : ""}`}
+        style={{ paddingLeft: depth * 14 + 10 }}
+        onClick={() => onSelect(node.id)}
+      >
+        <FileText size={14} />
+        <span>{node.title || "Sem título"}</span>
+      </button>
+      {node.children.length > 0 && (
+        <WikiTreeNodes
+          nodes={node.children}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          depth={depth + 1}
+        />
+      )}
+    </div>
+  ));
+}
+
+function Wiki({ db, update, business, setToast }) {
+  const pages = (db.wikiPages || []).filter(
+    (p) => !business || p.businessId === business.id,
+  );
+  const [selectedId, setSelectedId] = useState(pages[0]?.id || null);
+  const [search, setSearch] = useState("");
+  const [preview, setPreview] = useState(false);
+
+  const selected = pages.find((p) => p.id === selectedId) || null;
+  const visiblePages = search.trim() ? searchPages(pages, search) : pages;
+  const tree = buildPageTree(visiblePages);
+
+  const createPage = (parentId = null) => {
+    const now = new Date().toISOString();
+    const page = {
+      id: uid(),
+      title: "Nova página",
+      content: "",
+      parentId: parentId || null,
+      businessId: business?.id || null,
+      ownerId: db.user.id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    update((prev) => ({ ...prev, wikiPages: [...(prev.wikiPages || []), page] }));
+    setSelectedId(page.id);
+    setPreview(false);
+  };
+  const patchPage = (id, patch) =>
+    update((prev) => ({
+      ...prev,
+      wikiPages: (prev.wikiPages || []).map((p) =>
+        p.id === id ? { ...p, ...patch, updatedAt: new Date().toISOString() } : p,
+      ),
+    }));
+  const deletePage = (id) => {
+    const ids = pageDescendantIds(pages, id);
+    const msg =
+      ids.length > 1
+        ? `Excluir esta página e as ${ids.length - 1} subpáginas?`
+        : "Excluir esta página?";
+    if (!window.confirm(msg)) return;
+    update((prev) => ({
+      ...prev,
+      wikiPages: (prev.wikiPages || []).filter((p) => !ids.includes(p.id)),
+    }));
+    if (ids.includes(selectedId))
+      setSelectedId(pages.find((p) => !ids.includes(p.id))?.id || null);
+    setToast("Página excluída");
+  };
+
+  const parentOptions = selected
+    ? pages.filter((p) => !pageDescendantIds(pages, selected.id).includes(p.id))
+    : [];
+
+  if (pages.length === 0) {
+    return (
+      <div className="page wiki-page">
+        <header className="page-head">
+          <div>
+            <h1>Base de conhecimento</h1>
+            <p className="page-sub">
+              Crie páginas em pastas e subpáginas, com busca — a sua wiki
+              interna para processos, manuais e anotações. Grátis.
+            </p>
+          </div>
+        </header>
+        <div className="empty-state">
+          <BookOpen />
+          <h3>Nenhuma página ainda</h3>
+          <p>Crie a primeira página da sua base de conhecimento.</p>
+          <button className="btn primary" onClick={() => createPage(null)}>
+            <Plus size={16} /> Criar primeira página
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="page wiki-page">
+      <header className="page-head">
+        <div>
+          <h1>Base de conhecimento</h1>
+          <p className="page-sub">Sua wiki interna: páginas, subpáginas e busca.</p>
+        </div>
+      </header>
+
+      <div className="wiki-layout">
+        <aside className="wiki-sidebar">
+          <div className="wiki-search">
+            <Search size={15} />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar páginas..."
+            />
+          </div>
+          <button className="btn ghost sm wiki-newroot" onClick={() => createPage(null)}>
+            <Plus size={15} /> Nova página
+          </button>
+          <div className="wiki-tree">
+            {tree.length === 0 ? (
+              <p className="wiki-empty-hint">Nenhuma página encontrada.</p>
+            ) : (
+              <WikiTreeNodes
+                nodes={tree}
+                selectedId={selectedId}
+                onSelect={(id) => {
+                  setSelectedId(id);
+                  setPreview(false);
+                }}
+                depth={0}
+              />
+            )}
+          </div>
+        </aside>
+
+        {selected ? (
+          <section className="wiki-main">
+            <div className="wiki-toolbar">
+              <input
+                className="wiki-title-input"
+                value={selected.title}
+                onChange={(e) => patchPage(selected.id, { title: e.target.value })}
+                placeholder="Título da página"
+                aria-label="Título da página"
+              />
+              <div className="wiki-toolbar-actions">
+                <button
+                  className="btn ghost sm"
+                  onClick={() => createPage(selected.id)}
+                  title="Nova subpágina"
+                >
+                  <Plus size={15} /> Subpágina
+                </button>
+                <button
+                  className={`btn ghost sm ${preview ? "active" : ""}`}
+                  onClick={() => setPreview((p) => !p)}
+                >
+                  {preview ? "Editar" : "Ler"}
+                </button>
+                <button
+                  className="btn ghost sm danger"
+                  onClick={() => deletePage(selected.id)}
+                  title="Excluir página"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </div>
+            <div className="wiki-meta">
+              <label>
+                Dentro de:{" "}
+                <select
+                  value={selected.parentId || ""}
+                  onChange={(e) =>
+                    patchPage(selected.id, { parentId: e.target.value || null })
+                  }
+                >
+                  <option value="">— Raiz —</option>
+                  {parentOptions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.title || "Sem título"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {preview ? (
+              <div className="wiki-preview">
+                {selected.content.trim() ? (
+                  <Markdown text={selected.content} />
+                ) : (
+                  <p className="wiki-empty-hint">Página vazia. Clique em “Editar”.</p>
+                )}
+              </div>
+            ) : (
+              <textarea
+                className="wiki-editor"
+                value={selected.content}
+                onChange={(e) => patchPage(selected.id, { content: e.target.value })}
+                placeholder="Escreva aqui. Aceita Markdown: # títulos, - listas, **negrito**, links..."
+              />
+            )}
+          </section>
+        ) : (
+          <section className="wiki-main">
+            <div className="empty-state">
+              <BookOpen />
+              <h3>Selecione uma página</h3>
+              <p>Escolha uma página na lista ou crie uma nova.</p>
+            </div>
+          </section>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const DB_TEMPLATES = [
+  {
+    name: "Clientes",
+    fields: [
+      { name: "Nome", type: "text" },
+      { name: "Telefone", type: "text" },
+      { name: "Cidade", type: "text" },
+      { name: "Status", type: "select", options: ["Novo", "Ativo", "Inativo"] },
+    ],
+  },
+  {
+    name: "Estoque",
+    fields: [
+      { name: "Produto", type: "text" },
+      { name: "Quantidade", type: "number" },
+      { name: "Preço", type: "number" },
+      { name: "Repor?", type: "checkbox" },
+    ],
+  },
+  {
+    name: "Projetos",
+    fields: [
+      { name: "Projeto", type: "text" },
+      { name: "Responsável", type: "text" },
+      { name: "Prazo", type: "date" },
+      { name: "Etapa", type: "select", options: ["A fazer", "Fazendo", "Feito"] },
+    ],
+  },
+];
+
+const dbNewField = (name, type, options) => ({
+  id: uid(),
+  name: name || "Campo",
+  type: type || "text",
+  options: type === "select" ? options || [] : undefined,
+});
+const dbMakeBase = (name, template, ctx = {}) => ({
+  id: uid(),
+  name: name || template?.name || "Nova base",
+  fields: (template?.fields || [{ name: "Nome", type: "text" }]).map((f) =>
+    dbNewField(f.name, f.type, f.options),
+  ),
+  rows: [],
+  businessId: ctx.businessId || null,
+  ownerId: ctx.ownerId || null,
+  createdAt: new Date().toISOString(),
+});
+
+function DbCell({ field, value, onChange, bases }) {
+  if (field.type === "checkbox")
+    return (
+      <input
+        type="checkbox"
+        checked={!!value}
+        onChange={(e) => onChange(e.target.checked)}
+        aria-label={field.name}
+      />
+    );
+  if (field.type === "relation") {
+    const target = (bases || []).find((b) => b.id === field.targetBaseId);
+    if (field.multiple !== false)
+      return (
+        <select
+          multiple
+          value={relationIds(value)}
+          onChange={(e) =>
+            onChange([...e.target.selectedOptions].map((option) => option.value))
+          }
+          aria-label={field.name}
+          className="db-relation-multiple"
+        >
+          {(target?.rows || []).map((r) => (
+            <option key={r.id} value={r.id}>
+              {recordLabel(target, r.id) || "(sem título)"}
+            </option>
+          ))}
+        </select>
+      );
+    return (
+      <select
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={field.name}
+      >
+        <option value="">—</option>
+        {(target?.rows || []).map((r) => (
+          <option key={r.id} value={r.id}>
+            {recordLabel(target, r.id) || "(sem título)"}
+          </option>
+        ))}
+      </select>
+    );
+  }
+  if (field.type === "select")
+    return (
+      <select
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={field.name}
+      >
+        <option value="">—</option>
+        {(field.options || []).map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+    );
+  if (field.type === "multiselect")
+    return (
+      <input
+        value={Array.isArray(value) ? value.join(", ") : value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={field.name}
+        placeholder="Separe por vírgulas"
+      />
+    );
+  if (field.type === "longtext")
+    return (
+      <textarea
+        rows={1}
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={field.name}
+      />
+    );
+  return (
+    <input
+      type={
+        ["number", "currency", "percent"].includes(field.type)
+          ? "number"
+          : field.type === "date"
+            ? "date"
+            : field.type === "datetime"
+              ? "datetime-local"
+              : field.type === "email"
+                ? "email"
+                : field.type === "url"
+                  ? "url"
+                  : field.type === "phone"
+                    ? "tel"
+                    : "text"
+      }
+      value={value ?? ""}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label={field.name}
+    />
+  );
+}
+
+function DataBases({ db, update, business, setToast }) {
+  const bases = (db.databases || []).filter(
+    (b) => !business || b.businessId === business.id,
+  );
+  const [selectedId, setSelectedId] = useState(bases[0]?.id || null);
+  const [view, setView] = useState("table");
+  const [kanbanFieldId, setKanbanFieldId] = useState(null);
+  const [calFieldId, setCalFieldId] = useState(null);
+  const [calMonth, setCalMonth] = useState(today().slice(0, 7));
+  const [fieldModal, setFieldModal] = useState(null); // {mode, id?, name, type, options, targetBaseId}
+  const [newBaseName, setNewBaseName] = useState("");
+  const [recordPageId, setRecordPageId] = useState(null);
+  const [recordComment, setRecordComment] = useState("");
+
+  const selected = bases.find((b) => b.id === selectedId) || bases[0] || null;
+  const selectFields = (selected?.fields || []).filter((f) => f.type === "select");
+  const dateFields = (selected?.fields || []).filter((f) => f.type === "date");
+  const activeKanbanField =
+    kanbanFieldId && selectFields.some((f) => f.id === kanbanFieldId)
+      ? kanbanFieldId
+      : selectFields[0]?.id || null;
+  const activeCalField =
+    calFieldId && dateFields.some((f) => f.id === calFieldId)
+      ? calFieldId
+      : dateFields[0]?.id || null;
+  const rowNumericValues = (row) => {
+    const map = {};
+    for (const f of selected?.fields || []) {
+      if (f.type === "formula") continue;
+      map[f.name] =
+        Number(String(row?.cells?.[f.id] ?? "").replace(",", ".")) || 0;
+    }
+    return map;
+  };
+  const formulaResult = (f, row) => {
+    const r = evalFormula(f.formula, rowNumericValues(row));
+    return r === "" ? "" : formatCellValue("number", r);
+  };
+  const displayCell = (f, row) => {
+    if (f.type === "formula") return formulaResult(f, row);
+    if (["lookup", "rollup"].includes(f.type)) {
+      const computed = computedDatabaseValue(bases, selected, row, f);
+      return Array.isArray(computed)
+        ? computed.map((value) => formatCellValue("text", value)).join(", ")
+        : formatCellValue("number", computed);
+    }
+    const value = row?.cells?.[f.id];
+    if (f.type === "relation")
+      return relationLabels(bases, f, value).join(", ");
+    return formatCellValue(f.type, value);
+  };
+
+  const patchBase = (id, updater) =>
+    update((prev) => ({
+      ...prev,
+      databases: (prev.databases || []).map((b) => (b.id === id ? updater(b) : b)),
+    }));
+
+  const createBase = (template) => {
+    const base = dbMakeBase(newBaseName.trim() || template?.name, template, {
+      businessId: business?.id,
+      ownerId: db.user.id,
+    });
+    update((prev) => ({ ...prev, databases: [base, ...(prev.databases || [])] }));
+    setSelectedId(base.id);
+    setView("table");
+    setNewBaseName("");
+    setToast("Base criada");
+  };
+  const renameBase = (id, name) => patchBase(id, (b) => ({ ...b, name }));
+  const deleteBase = (id) => {
+    if (!window.confirm("Excluir esta base e todos os seus dados?")) return;
+    update((prev) => ({
+      ...prev,
+      databases: (prev.databases || []).filter((b) => b.id !== id),
+    }));
+    setSelectedId(bases.find((b) => b.id !== id)?.id || null);
+    setToast("Base excluída");
+  };
+  const addRow = () => {
+    const row = createDatabaseRecord(uid());
+    patchBase(selected.id, (b) => ({ ...b, rows: [...b.rows, row] }));
+  };
+  const updateCell = (rowId, field, raw) =>
+    field.type === "relation"
+      ? update((prev) => ({
+          ...prev,
+          databases: updateRelation(prev.databases || [], {
+            baseId: selected.id,
+            rowId,
+            fieldId: field.id,
+            value: raw,
+          }),
+        }))
+      : patchBase(selected.id, (b) => ({
+          ...b,
+          rows: b.rows.map((r) =>
+            r.id === rowId
+              ? {
+                  ...r,
+                  cells: {
+                    ...r.cells,
+                    [field.id]: coerceCellValue(field.type, raw),
+                  },
+                  updatedAt: new Date().toISOString(),
+                }
+              : r,
+          ),
+        }));
+  const deleteRow = (rowId) =>
+    update((prev) => ({
+      ...prev,
+      databases: removeRecordAndReferences(prev.databases || [], selected.id, rowId),
+    }));
+
+  const patchRecord = (rowId, patch) =>
+    patchBase(selected.id, (base) => ({
+      ...base,
+      rows: base.rows.map((row) =>
+        row.id === rowId
+          ? { ...row, ...patch, updatedAt: new Date().toISOString() }
+          : row,
+      ),
+    }));
+
+  const addRecordComment = () => {
+    const text = recordComment.trim();
+    if (!text) return;
+    patchBase(selected.id, (base) => ({
+      ...base,
+      rows: base.rows.map((row) =>
+        row.id === recordPageId
+          ? appendRecordComment(row, {
+              id: uid(),
+              text,
+              authorId: db.user?.id,
+              authorName: db.user?.name,
+            })
+          : row,
+      ),
+    }));
+    setRecordComment("");
+  };
+
+  const saveField = () => {
+    const name = fieldModal.name.trim();
+    if (!name) return;
+    const options =
+      fieldModal.type === "select"
+        ? (fieldModal.options || "")
+            .split(/[\n,]/)
+            .map((o) => o.trim())
+            .filter(Boolean)
+        : undefined;
+    const targetBaseId =
+      fieldModal.type === "relation" ? fieldModal.targetBaseId || "" : undefined;
+    const multiple =
+      fieldModal.type === "relation" ? fieldModal.multiple !== false : undefined;
+    const reciprocalFieldId =
+      fieldModal.type === "relation"
+        ? fieldModal.reciprocalFieldId || ""
+        : undefined;
+    const relationFieldId = ["lookup", "rollup"].includes(fieldModal.type)
+      ? fieldModal.relationFieldId || ""
+      : undefined;
+    const targetFieldId = ["lookup", "rollup"].includes(fieldModal.type)
+      ? fieldModal.targetFieldId || ""
+      : undefined;
+    const rollupOperation =
+      fieldModal.type === "rollup" ? fieldModal.rollupOperation || "count" : undefined;
+    const formula =
+      fieldModal.type === "formula" ? fieldModal.formula || "" : undefined;
+    if (fieldModal.mode === "edit") {
+      patchBase(selected.id, (b) => ({
+        ...b,
+        fields: b.fields.map((f) =>
+          f.id === fieldModal.id
+            ? {
+                ...f,
+                name,
+                type: fieldModal.type,
+                options,
+                targetBaseId,
+                multiple,
+                reciprocalFieldId,
+                relationFieldId,
+                targetFieldId,
+                rollupOperation,
+                formula,
+              }
+            : f,
+        ),
+      }));
+    } else {
+      patchBase(selected.id, (b) => ({
+        ...b,
+        fields: [
+          ...b.fields,
+          {
+            ...dbNewField(name, fieldModal.type, options),
+            targetBaseId,
+            multiple,
+            reciprocalFieldId,
+            relationFieldId,
+            targetFieldId,
+            rollupOperation,
+            formula,
+          },
+        ],
+      }));
+    }
+    setFieldModal(null);
+  };
+  const deleteField = (fieldId) => {
+    if (!window.confirm("Excluir esta coluna?")) return;
+    patchBase(selected.id, (b) => ({
+      ...b,
+      fields: b.fields.filter((f) => f.id !== fieldId),
+      rows: b.rows.map((r) => {
+        const cells = { ...r.cells };
+        delete cells[fieldId];
+        return { ...r, cells };
+      }),
+    }));
+  };
+
+  if (bases.length === 0) {
+    return (
+      <div className="page databases-page">
+        <header className="page-head">
+          <div>
+            <h1>Meus dados</h1>
+            <p className="page-sub">
+              Crie bases relacionais com registros completos, campos calculados e
+              visualizações diferentes sobre os mesmos dados.
+            </p>
+          </div>
+        </header>
+        <div className="card db-starter">
+          <h3>Comece com um modelo</h3>
+          <div className="db-template-grid">
+            {DB_TEMPLATES.map((t) => (
+              <button key={t.name} className="template-card" onClick={() => createBase(t)}>
+                <span className="template-card-type">Modelo</span>
+                <strong>{t.name}</strong>
+                <span className="template-card-seg">
+                  {t.fields.map((f) => f.name).join(", ")}
+                </span>
+              </button>
+            ))}
+            <button className="template-card" onClick={() => createBase(null)}>
+              <span className="template-card-type">Vazia</span>
+              <strong>Base em branco</strong>
+              <span className="template-card-seg">Comece do zero</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="page databases-page">
+      <header className="page-head">
+        <div>
+          <h1>Meus dados</h1>
+          <p className="page-sub">
+            Suas bases de dados: tabelas, campos personalizados e visões.
+          </p>
+        </div>
+      </header>
+
+      <div className="db-layout">
+        <aside className="db-sidebar">
+          <div className="db-sidebar-head">
+            <span>Bases</span>
+          </div>
+          <ul className="db-base-list">
+            {bases.map((b) => (
+              <li key={b.id}>
+                <button
+                  className={`db-base-item ${b.id === selected?.id ? "active" : ""}`}
+                  onClick={() => setSelectedId(b.id)}
+                >
+                  <Database size={15} /> {b.name}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="db-new-base">
+            <input
+              value={newBaseName}
+              onChange={(e) => setNewBaseName(e.target.value)}
+              placeholder="Nome da nova base"
+            />
+            <button className="btn ghost sm" onClick={() => createBase(null)}>
+              <Plus size={15} /> Criar
+            </button>
+          </div>
+        </aside>
+
+        {selected && (
+          <section className="db-main">
+            <div className="db-toolbar">
+              <input
+                className="db-base-name"
+                value={selected.name}
+                onChange={(e) => renameBase(selected.id, e.target.value)}
+                aria-label="Nome da base"
+              />
+              <div className="db-views">
+                {[
+                  ["table", "Tabela"],
+                  ["gallery", "Galeria"],
+                  ["kanban", "Quadro"],
+                  ["calendar", "Calendário"],
+                ].map(([v, label]) => (
+                  <button
+                    key={v}
+                    className={`db-view-btn ${view === v ? "active" : ""}`}
+                    onClick={() => setView(v)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="db-toolbar-actions">
+                <button className="btn ghost sm" onClick={addRow}>
+                  <Plus size={15} /> Registro
+                </button>
+                <button
+                  className="btn ghost sm"
+                  onClick={() =>
+                    setFieldModal({ mode: "add", name: "", type: "text", options: "" })
+                  }
+                >
+                  <Plus size={15} /> Campo
+                </button>
+                <button
+                  className="btn ghost sm danger"
+                  onClick={() => deleteBase(selected.id)}
+                  title="Excluir base"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </div>
+
+            {view === "table" && (
+              <div className="db-scroll">
+                <table className="db-table">
+                  <thead>
+                    <tr>
+                      {selected.fields.map((f) => (
+                        <th key={f.id}>
+                          <button
+                            className="db-field-head"
+                            onClick={() =>
+                              setFieldModal({
+                                mode: "edit",
+                                id: f.id,
+                                name: f.name,
+                                type: f.type,
+                                options: (f.options || []).join(", "),
+                                targetBaseId: f.targetBaseId || "",
+                                multiple: f.multiple !== false,
+                                reciprocalFieldId: f.reciprocalFieldId || "",
+                                relationFieldId: f.relationFieldId || "",
+                                targetFieldId: f.targetFieldId || "",
+                                rollupOperation: f.rollupOperation || "count",
+                                formula: f.formula || "",
+                              })
+                            }
+                            title="Editar campo"
+                          >
+                            {f.name}
+                          </button>
+                        </th>
+                      ))}
+                      <th className="db-rowactions" aria-hidden="true"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selected.rows.map((row) => (
+                      <tr key={row.id}>
+                        {selected.fields.map((f) => (
+                          <td key={f.id}>
+                            {["formula", "lookup", "rollup"].includes(f.type) ? (
+                              <span className="db-formula-cell">
+                                {displayCell(f, row) || "—"}
+                              </span>
+                            ) : (
+                              <DbCell
+                                field={f}
+                                value={row.cells?.[f.id]}
+                                onChange={(v) => updateCell(row.id, f, v)}
+                                bases={bases}
+                              />
+                            )}
+                          </td>
+                        ))}
+                        <td className="db-rowactions">
+                          <button
+                            className="sheet-row-del"
+                            onClick={() => setRecordPageId(row.id)}
+                            title="Abrir página do registro"
+                            aria-label="Abrir página do registro"
+                          >
+                            <ExternalLink size={13} />
+                          </button>
+                          <button
+                            className="sheet-row-del"
+                            onClick={() => deleteRow(row.id)}
+                            title="Excluir registro"
+                          >
+                            <X size={13} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {selected.rows.length === 0 && (
+                  <p className="db-empty-hint">
+                    Sem registros. Use “+ Registro” para começar.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {view === "gallery" && (
+              <div className="db-gallery">
+                {selected.rows.map((row) => (
+                  <article key={row.id} className="card db-card">
+                    <button
+                      className="db-card-open"
+                      onClick={() => setRecordPageId(row.id)}
+                    >
+                      Abrir página
+                    </button>
+                    {selected.fields.map((f) => (
+                      <div key={f.id} className="db-card-row">
+                        <span className="db-card-label">{f.name}</span>
+                        <span className="db-card-value">
+                          {displayCell(f, row) || "—"}
+                        </span>
+                      </div>
+                    ))}
+                    <button
+                      className="btn ghost sm danger db-card-del"
+                      onClick={() => deleteRow(row.id)}
+                    >
+                      <Trash2 size={14} /> Excluir
+                    </button>
+                  </article>
+                ))}
+                {selected.rows.length === 0 && (
+                  <p className="db-empty-hint">Sem registros ainda.</p>
+                )}
+              </div>
+            )}
+
+            {view === "kanban" &&
+              (activeKanbanField ? (
+                <>
+                  <div className="db-kanban-pick">
+                    <span>Agrupar por: </span>
+                    <select
+                      value={activeKanbanField}
+                      onChange={(e) => setKanbanFieldId(e.target.value)}
+                      aria-label="Agrupar por"
+                    >
+                      {selectFields.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="db-kanban">
+                    {kanbanColumns(selected, activeKanbanField).map((col) => {
+                      const titleField =
+                        selected.fields.find((f) => f.type !== "select") ||
+                        selected.fields[0];
+                      return (
+                        <div key={col.key} className="db-kanban-col">
+                          <h4>
+                            {col.key} <span>{col.rows.length}</span>
+                          </h4>
+                          {col.rows.map((row) => (
+                            <div key={row.id} className="db-kanban-card">
+                              <span>
+                                {formatCellValue(
+                                  titleField?.type,
+                                  row.cells?.[titleField?.id],
+                                ) || "Registro"}
+                              </span>
+                              <select
+                                value={row.cells?.[activeKanbanField] ?? ""}
+                                onChange={(e) =>
+                                  updateCell(
+                                    row.id,
+                                    selected.fields.find((f) => f.id === activeKanbanField),
+                                    e.target.value,
+                                  )
+                                }
+                                aria-label="Mover"
+                              >
+                                <option value="">—</option>
+                                {(
+                                  selected.fields.find((f) => f.id === activeKanbanField)
+                                    ?.options || []
+                                ).map((o) => (
+                                  <option key={o} value={o}>
+                                    {o}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <div className="empty-state">
+                  <Database />
+                  <h3>Crie um campo de seleção</h3>
+                  <p>
+                    O quadro agrupa por um campo do tipo “Seleção” (ex.: Status,
+                    Etapa). Adicione um em “+ Campo”.
+                  </p>
+                </div>
+              ))}
+
+            {view === "calendar" &&
+              (activeCalField ? (
+                (() => {
+                  const groups = groupRowsByDate(selected.rows, activeCalField);
+                  const titleField =
+                    selected.fields.find((f) => f.type !== "date") ||
+                    selected.fields[0];
+                  const [cy, cm] = calMonth.split("-").map(Number);
+                  const shift = (delta) =>
+                    setCalMonth(
+                      new Date(Date.UTC(cy, cm - 1 + delta, 1))
+                        .toISOString()
+                        .slice(0, 7),
+                    );
+                  const monthLabel = new Date(
+                    `${calMonth}-01T12:00:00`,
+                  ).toLocaleDateString("pt-BR", {
+                    month: "long",
+                    year: "numeric",
+                  });
+                  return (
+                    <>
+                      <div className="db-cal-head">
+                        <span>Datas por: </span>
+                        <select
+                          value={activeCalField}
+                          onChange={(e) => setCalFieldId(e.target.value)}
+                          aria-label="Campo de data"
+                        >
+                          {dateFields.map((f) => (
+                            <option key={f.id} value={f.id}>
+                              {f.name}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="db-cal-nav">
+                          <button className="btn ghost sm" onClick={() => shift(-1)}>
+                            ‹
+                          </button>
+                          <strong>{monthLabel}</strong>
+                          <button className="btn ghost sm" onClick={() => shift(1)}>
+                            ›
+                          </button>
+                        </div>
+                      </div>
+                      <div className="db-cal-grid">
+                        {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map(
+                          (d) => (
+                            <div key={d} className="db-cal-dow">
+                              {d}
+                            </div>
+                          ),
+                        )}
+                        {monthMatrix(calMonth)
+                          .flat()
+                          .map((cell) => (
+                            <div
+                              key={cell.date}
+                              className={`db-cal-cell ${cell.inMonth ? "" : "out"}`}
+                            >
+                              <span className="db-cal-daynum">
+                                {Number(cell.date.slice(8, 10))}
+                              </span>
+                              {(groups[cell.date] || []).map((row) => (
+                                <div key={row.id} className="db-cal-event">
+                                  {displayCell(titleField, row) || "Registro"}
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                      </div>
+                    </>
+                  );
+                })()
+              ) : (
+                <div className="empty-state">
+                  <CalendarDays />
+                  <h3>Crie um campo de data</h3>
+                  <p>
+                    O calendário posiciona os registros por um campo do tipo
+                    “Data”. Adicione um em “+ Campo”.
+                  </p>
+                </div>
+              ))}
+          </section>
+        )}
+      </div>
+
+      {fieldModal && (
+        <Modal
+          title={fieldModal.mode === "edit" ? "Editar campo" : "Novo campo"}
+          onClose={() => setFieldModal(null)}
+        >
+          <div className="modal-body">
+            <Field label="Nome do campo">
+              <input
+                value={fieldModal.name}
+                onChange={(e) => setFieldModal((m) => ({ ...m, name: e.target.value }))}
+                autoFocus
+              />
+            </Field>
+            <Field label="Tipo">
+              <select
+                value={fieldModal.type}
+                onChange={(e) => setFieldModal((m) => ({ ...m, type: e.target.value }))}
+              >
+                {DB_FIELD_TYPES.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {fieldModal.type === "select" && (
+              <Field label="Opções (uma por linha ou separadas por vírgula)">
+                <textarea
+                  rows={3}
+                  value={fieldModal.options}
+                  onChange={(e) =>
+                    setFieldModal((m) => ({ ...m, options: e.target.value }))
+                  }
+                  placeholder={"Novo\nAtivo\nInativo"}
+                />
+              </Field>
+            )}
+            {fieldModal.type === "relation" && (
+              <>
+                <Field label="Base relacionada">
+                  <select
+                    value={fieldModal.targetBaseId || ""}
+                    onChange={(e) =>
+                      setFieldModal((m) => ({
+                        ...m,
+                        targetBaseId: e.target.value,
+                        reciprocalFieldId: "",
+                      }))
+                    }
+                  >
+                    <option value="">Escolha uma base...</option>
+                    {bases.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <label className="check-row">
+                  <input
+                    type="checkbox"
+                    checked={fieldModal.multiple !== false}
+                    onChange={(e) =>
+                      setFieldModal((m) => ({ ...m, multiple: e.target.checked }))
+                    }
+                  />
+                  Permitir vários registros
+                </label>
+                <Field label="Campo inverso (relação bidirecional)">
+                  <select
+                    value={fieldModal.reciprocalFieldId || ""}
+                    onChange={(e) =>
+                      setFieldModal((m) => ({
+                        ...m,
+                        reciprocalFieldId: e.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">Sem sincronização inversa</option>
+                    {(
+                      bases.find((base) => base.id === fieldModal.targetBaseId)
+                        ?.fields || []
                     )
                       .filter(
                         (field) =>
