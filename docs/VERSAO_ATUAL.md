@@ -1,5 +1,16 @@
 # Versão publicada
 
+## v160
+
+- A identidade visual saiu do roxo antigo e passou para a paleta do mascote:
+  teal, verde-azulado, ciano esverdeado e azul petróleo.
+- O topo mobile deixou de cortar o nome do negócio como se fosse marca
+  principal; no celular ele vira contexto discreto.
+- Os cards da home foram refeitos com vidro leve, borda teal, transparência
+  real, sombra mais controlada e texto mais claro.
+- A área do mascote ficou menor no mobile para não engolir a primeira dobra.
+- Favicon, manifest e theme-color agora seguem a mesma paleta da interface.
+
 ## v159
 
 - **Início virou hub de descoberta.** A primeira tela agora organiza o app por
