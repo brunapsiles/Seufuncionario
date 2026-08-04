@@ -5523,7 +5523,7 @@ function Dashboard({ db, update, business, go, setToast, visibleNav }) {
           ) : (
             quick.map(([t, I, p], i) => (
               <button key={t} onClick={() => go(p)}>
-                <span className={`quick-icon q${i}`}>
+                <span className={`quick-icon q${i % 6}`}>
                   <I />
                 </span>
                 <span>
