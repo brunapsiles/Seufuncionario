@@ -691,6 +691,9 @@ aside nav button.active {
 .mobile-menu {
   display: none;
 }
+.topbar-mobile-brand {
+  display: none;
+}
 .top-business {
   position: relative;
   min-width: 0;
@@ -757,6 +760,14 @@ aside nav button.active {
   border-radius: 14px;
   padding: 8px;
   z-index: 40;
+}
+.topbar-mobile-brand .logo {
+  font-size: 15px;
+}
+.topbar-mobile-brand .logo-mark-img {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
 }
 .business-popover button {
   width: 100%;
@@ -4350,6 +4361,25 @@ aside nav button.active {
   .topbar {
     padding: 0 14px;
     gap: 8px;
+    justify-content: flex-start;
+  }
+  .topbar-mobile-brand {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    align-items: center;
+  }
+  .topbar-mobile-brand .logo {
+    min-width: 0;
+  }
+  .topbar-mobile-brand .logo span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .top-business {
+    display: none;
   }
   .top-business > span {
     display: none;
@@ -4372,17 +4402,10 @@ aside nav button.active {
   .top-actions > .icon-button.changelog-trigger {
     display: flex;
   }
-  .top-business {
-    min-width: 0;
-    flex: 0 0 auto;
-    overflow: hidden;
-  }
-  .top-business > button {
-    max-width: none;
-  }
   /* Os botões de ação mantêm o tamanho: são alvos de toque, e encolher aqui
      deixaria o dedo sem onde acertar. */
   .top-actions {
+    margin-left: auto;
     flex-shrink: 0;
   }
   .page {
@@ -17720,26 +17743,29 @@ body {
   }
 
   .home-hub-mascot-panel {
-    min-height: 210px;
+    min-height: 138px;
+    place-items: center;
   }
 
   .home-hub-mascot-panel img {
-    width: min(68%, 190px);
+    width: min(42%, 132px);
+    max-height: 132px;
   }
 
   .home-hub-hero h1 {
-    font-size: 2rem;
+    font-size: 2.05rem;
   }
 }
 
 @media (max-width: 560px) {
   .home-hub {
-    gap: 22px;
+    gap: 24px;
   }
 
   .home-hub-hero {
     border-radius: 14px;
     gap: 16px;
+    padding: 16px;
   }
 
   .home-hub-hero::before {
@@ -17756,12 +17782,21 @@ body {
   }
 
   .home-hub-card {
-    min-height: 88px;
-    padding: 14px;
+    min-height: 82px;
+    padding: 13px;
+    gap: 12px;
   }
 
   .home-hub-card-icon {
-    width: 42px;
-    height: 42px;
+    width: 40px;
+    height: 40px;
+  }
+
+  .home-hub-card-copy strong {
+    font-size: 0.96rem;
+  }
+
+  .home-hub-card-copy small {
+    font-size: 0.78rem;
   }
 }
