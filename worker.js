@@ -40,6 +40,14 @@ import {
   normalizeAppSchema,
 } from "./src/features/free-suite/freeSuiteDomain.js";
 import {
+  LOGISTICS_PRODUCTS,
+  TODO_GREEN_MODULE_CATALOG,
+  TODO_GREEN_TENANT,
+  centralPricingEngine,
+  createPricingScenarioSnapshot,
+  summarizeTodoGreenDashboard,
+} from "./src/features/logistics/logisticsVerticalDomain.js";
+import {
   handlePlatformSuite,
   handlePublicPlatformSuite,
 } from "./worker/services/platform-suite.js";
@@ -7138,6 +7146,309 @@ async function freeSuiteOwner(env, user, requestedOwnerId) {
   return role ? { ownerId, role } : null;
 }
 
+function parseJsonSafe(value, fallback = null) {
+  try {
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function emailAllowedForTodoGreen(env, email) {
+  const value = String(email || "").toLowerCase();
+  if (!value) return false;
+  if (/@todogreen\.com\.br$/i.test(value)) return true;
+  const list = String(env.TODOGREEN_ADMIN_EMAILS || "")
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+  return list.includes(value);
+}
+
+async function workspaceLooksLikeTodoGreen(env, ownerId) {
+  const row = await env.DB.prepare("SELECT data FROM workspaces WHERE user_id = ?")
+    .bind(ownerId)
+    .first();
+  const data = parseJsonSafe(row?.data, {});
+  return Array.isArray(data?.businesses)
+    ? data.businesses.some(
+        (item) =>
+          /to\s*do\s*green/i.test(String(item?.name || "")) ||
+          item?.tenantSlug === TODO_GREEN_TENANT.slug,
+      )
+    : false;
+}
+
+async function todoGreenAccess(env, user, ownerId) {
+  const workspaceRole = await membershipRole(env, user.id, ownerId);
+  if (!workspaceRole) return null;
+  const tenantUser = await env.DB.prepare(
+    `SELECT role, status, permissions_json FROM tenant_users
+       WHERE tenant_id = ? AND user_id = ? AND workspace_owner_id = ?
+       LIMIT 1`,
+  )
+    .bind(TODO_GREEN_TENANT.id, user.id, ownerId)
+    .first()
+    .catch(() => null);
+  if (tenantUser?.status === "active")
+    return {
+      ownerId,
+      workspaceRole,
+      role: tenantUser.role || workspaceRole,
+      permissions: parseJsonSafe(tenantUser.permissions_json, []),
+    };
+  if (user.id === ownerId && emailAllowedForTodoGreen(env, user.email))
+    return { ownerId, workspaceRole, role: "admin", permissions: ["*"] };
+  if (user.id === ownerId && (await workspaceLooksLikeTodoGreen(env, ownerId)))
+    return { ownerId, workspaceRole, role: "admin", permissions: ["*"] };
+  return null;
+}
+
+async function ensureTodoGreenCatalog(env) {
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO tenants (id, slug, name, segment, status, theme_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'active', ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       name = excluded.name,
+       segment = excluded.segment,
+       status = excluded.status,
+       theme_json = excluded.theme_json,
+       updated_at = excluded.updated_at`,
+  )
+    .bind(
+      TODO_GREEN_TENANT.id,
+      TODO_GREEN_TENANT.slug,
+      TODO_GREEN_TENANT.name,
+      TODO_GREEN_TENANT.segment,
+      JSON.stringify(TODO_GREEN_TENANT.theme || {}),
+      now,
+      now,
+    )
+    .run();
+  const statements = [];
+  for (const item of TODO_GREEN_MODULE_CATALOG) {
+    statements.push(
+      env.DB.prepare(
+        `INSERT INTO module_catalog
+          (id, name, description, icon, category, route, status, version,
+           dependencies_json, permissions_json, settings_json, availability,
+           exclusive_tenant_id, display_order, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           name = excluded.name,
+           description = excluded.description,
+           icon = excluded.icon,
+           category = excluded.category,
+           route = excluded.route,
+           status = excluded.status,
+           version = excluded.version,
+           dependencies_json = excluded.dependencies_json,
+           permissions_json = excluded.permissions_json,
+           settings_json = excluded.settings_json,
+           availability = excluded.availability,
+           exclusive_tenant_id = excluded.exclusive_tenant_id,
+           display_order = excluded.display_order,
+           updated_at = excluded.updated_at`,
+      ).bind(
+        item.id,
+        item.name,
+        item.description,
+        item.icon,
+        item.category,
+        item.route,
+        item.status,
+        item.version,
+        JSON.stringify(item.dependencies || []),
+        JSON.stringify(item.permissions || []),
+        JSON.stringify(item.settings || {}),
+        item.availability,
+        item.exclusiveTenant || TODO_GREEN_TENANT.id,
+        item.order,
+        now,
+      ),
+      env.DB.prepare(
+        `INSERT INTO tenant_modules (tenant_id, module_id, status, settings_json, enabled_at)
+         VALUES (?, ?, 'active', '{}', ?)
+         ON CONFLICT(tenant_id, module_id) DO UPDATE SET status = 'active'`,
+      ).bind(TODO_GREEN_TENANT.id, item.id, now),
+    );
+  }
+  for (const item of LOGISTICS_PRODUCTS) {
+    statements.push(
+      env.DB.prepare(
+        `INSERT INTO logistics_products
+          (id, tenant_id, code, name, modality, billing_unit, description,
+           required_fields_json, optional_fields_json, pricing_rules_json,
+           approval_rules_json, indicators_json, status, version, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           name = excluded.name,
+           modality = excluded.modality,
+           billing_unit = excluded.billing_unit,
+           description = excluded.description,
+           required_fields_json = excluded.required_fields_json,
+           optional_fields_json = excluded.optional_fields_json,
+           pricing_rules_json = excluded.pricing_rules_json,
+           approval_rules_json = excluded.approval_rules_json,
+           indicators_json = excluded.indicators_json,
+           status = excluded.status,
+           version = excluded.version,
+           updated_at = excluded.updated_at`,
+      ).bind(
+        item.id,
+        TODO_GREEN_TENANT.id,
+        item.code,
+        item.name,
+        item.modality,
+        item.billingUnit,
+        item.description,
+        JSON.stringify(item.requiredFields || []),
+        JSON.stringify(item.optionalFields || []),
+        JSON.stringify(item.pricingRules || {}),
+        JSON.stringify(item.approvalRules || {}),
+        JSON.stringify({
+          operational: item.operationalIndicators || [],
+          environmental: item.environmentalIndicators || [],
+        }),
+        item.status,
+        item.version,
+        now,
+        now,
+      ),
+    );
+  }
+  if (statements.length) await env.DB.batch(statements);
+}
+
+async function handleTodoGreen(request, env, user, url) {
+  const ownerId = url.searchParams.get("owner") || user.id;
+  const access = await todoGreenAccess(env, user, ownerId);
+  if (!access) return json({ error: "Você não tem acesso à vertical To Do Green." }, 403);
+  const parts = url.pathname.split("/").filter(Boolean);
+  const resource = parts[2] || "access";
+  if (request.method === "GET" && resource === "access")
+    return json({
+      tenant: TODO_GREEN_TENANT,
+      role: access.role,
+      permissions: access.permissions,
+      ownerId: access.ownerId,
+    });
+  if (["catalog", "dashboard", "products"].includes(resource))
+    await ensureTodoGreenCatalog(env);
+  if (request.method === "GET" && resource === "catalog")
+    return json({
+      tenant: TODO_GREEN_TENANT,
+      modules: TODO_GREEN_MODULE_CATALOG,
+      products: LOGISTICS_PRODUCTS,
+      access,
+    });
+  if (request.method === "GET" && resource === "products")
+    return json({ products: LOGISTICS_PRODUCTS });
+  if (request.method === "GET" && resource === "dashboard") {
+    const rows = await env.DB.prepare(
+      `SELECT id, product_id, client_id, result_json, status, created_at
+         FROM pricing_scenarios
+        WHERE tenant_id = ? AND workspace_owner_id = ?
+        ORDER BY created_at DESC LIMIT 200`,
+    )
+      .bind(TODO_GREEN_TENANT.id, ownerId)
+      .all()
+      .catch(() => ({ results: [] }));
+    const pricingScenarios = (rows.results || []).map((row) => ({
+      id: row.id,
+      productId: row.product_id,
+      clientId: row.client_id,
+      status: row.status,
+      result: parseJsonSafe(row.result_json, {}),
+      createdAt: row.created_at,
+    }));
+    return json({ summary: summarizeTodoGreenDashboard({ pricingScenarios }) });
+  }
+  if (request.method === "POST" && resource === "simulate") {
+    let body = {};
+    try {
+      body = await request.json();
+    } catch {
+      return json({ error: "Corpo JSON inválido." }, 400);
+    }
+    const productId = String(body.productId || "");
+    let scenario;
+    try {
+      scenario = createPricingScenarioSnapshot(productId, body.inputs || {}, {
+        tenantId: TODO_GREEN_TENANT.id,
+        userId: user.id,
+        clientId: body.clientId || "",
+        opportunityId: body.opportunityId || "",
+        justification: body.justification || "",
+      });
+    } catch (error) {
+      return json({ error: error.message || "Simulação inválida." }, 400);
+    }
+    if (body.persist === true) {
+      await env.DB.prepare(
+        `INSERT INTO pricing_scenarios
+          (id, tenant_id, workspace_owner_id, product_id, client_id, opportunity_id,
+           created_by, rule_version, inputs_json, result_json, approvals_json, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)`,
+      )
+        .bind(
+          scenario.id,
+          TODO_GREEN_TENANT.id,
+          ownerId,
+          productId,
+          scenario.clientId,
+          scenario.opportunityId,
+          user.id,
+          scenario.ruleVersion,
+          JSON.stringify(scenario.inputs),
+          JSON.stringify(scenario.result),
+          JSON.stringify(scenario.approvals),
+          scenario.createdAt,
+        )
+        .run();
+      await logAudit(
+        env,
+        ownerId,
+        user,
+        "todogreen_simulacao_criada",
+        scenario.id,
+        `${scenario.result.productName}: ${scenario.result.recommendation.decision}`,
+      );
+    }
+    return json({ scenario });
+  }
+  if (request.method === "POST" && resource === "audit") {
+    let body = {};
+    try {
+      body = await request.json();
+    } catch {}
+    await logAudit(
+      env,
+      ownerId,
+      user,
+      String(body.action || "todogreen_event").slice(0, 80),
+      String(body.target || "").slice(0, 160),
+      String(body.details || "").slice(0, 600),
+    );
+    return json({ ok: true });
+  }
+  if (request.method === "POST" && resource === "calculate") {
+    let body = {};
+    try {
+      body = await request.json();
+    } catch {
+      return json({ error: "Corpo JSON inválido." }, 400);
+    }
+    try {
+      return json({ result: centralPricingEngine(String(body.productId || ""), body.inputs || {}) });
+    } catch (error) {
+      return json({ error: error.message || "Cálculo inválido." }, 400);
+    }
+  }
+  return json({ error: "Recurso To Do Green não encontrado." }, 404);
+}
+
 function mapGeneratedApp(row) {
   let schema = {};
   try {
@@ -7956,6 +8267,7 @@ export default {
       url.pathname.startsWith("/api/sites/") ||
       url.pathname.startsWith("/api/free-suite/") ||
       url.pathname.startsWith("/api/platform/") ||
+      url.pathname.startsWith("/api/todogreen/") ||
       url.pathname.startsWith("/api/push/");
     if (needsAuth) {
       if (url.pathname === "/api/ai" && request.method !== "POST")
@@ -7973,6 +8285,7 @@ export default {
           url.pathname.startsWith("/api/sites/") ||
           url.pathname.startsWith("/api/free-suite/") ||
           url.pathname.startsWith("/api/platform/") ||
+          url.pathname.startsWith("/api/todogreen/") ||
           url.pathname === "/api/plan" ||
           url.pathname === "/api/webhooks" ||
           url.pathname.startsWith("/api/push/")) &&
@@ -8168,6 +8481,17 @@ export default {
           console.error("Platform suite error", error);
           return json(
             { error: "Não foi possível concluir a ação nesta central." },
+            500,
+          );
+        }
+      }
+      if (url.pathname.startsWith("/api/todogreen/")) {
+        try {
+          return await handleTodoGreen(request, env, user, url);
+        } catch (error) {
+          console.error("To Do Green error", error);
+          return json(
+            { error: "Não foi possível concluir a ação da To Do Green." },
             500,
           );
         }
