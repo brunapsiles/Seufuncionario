@@ -48,6 +48,7 @@ import {
   insertInteraction,
 } from "./worker/services/omnichannel.js";
 import { createQuoteHandlers } from "./worker/services/quotes.js";
+import { createWebhookHandlers } from "./worker/services/webhooks.js";
 
 const specialistInstructions = {
   Diretor: "ORQUESTRADOR",
@@ -1709,7 +1710,7 @@ async function ensureWorkspaceSnapshotsSchema(env) {
   ).run();
 }
 
-async function handleWorkspace(request, env, user, url) {
+async function handleWorkspace(request, env, user, url, ctx) {
   const ownerId = url.searchParams.get("owner") || user.id;
   const role = await membershipRole(env, user.id, ownerId);
   if (!role) return json({ error: "Você não tem acesso a este espaço." }, 403);
@@ -1928,6 +1929,23 @@ async function handleWorkspace(request, env, user, url) {
   } catch (error) {
     console.error("push notify", error);
   }
+  // Envio automático para outro sistema. Comparar aqui o espaço anterior com o
+  // novo é o que permite avisar sem mexer em cada tela do app: funciona venha o
+  // registro de onde vier. Nunca derruba a gravação — falhar em avisar um
+  // sistema externo não pode custar os dados de quem está usando.
+  // Depois da resposta, e não antes: um destino lento seguraria a gravação por
+  // segundos e a pessoa acharia que o app travou. E nunca propaga erro — falhar
+  // em avisar um sistema externo não pode custar os dados de quem usa.
+  const avisar = notifyWorkspaceChange(
+    env,
+    ownerId,
+    currentData,
+    data,
+    (data?.businesses || []).find((b) => b?.id === data?.selectedBusinessId)
+      ?.name || null,
+  ).catch((error) => console.error("webhook notify", error));
+  if (ctx?.waitUntil) ctx.waitUntil(avisar);
+  else await avisar;
   return json({
     ok: true,
     updatedAt: updated.updated_at,
@@ -2902,6 +2920,12 @@ const { handlePublicQuote, handleQuotes } = createQuoteHandlers({
   randomHex,
   escMail,
   moneyBRL,
+});
+
+const { handleWebhooks, notifyWorkspaceChange } = createWebhookHandlers({
+  json,
+  allowed,
+  randomHex,
 });
 
 // ── Resumo semanal ──────────────────────────────────────────────────────
@@ -7688,7 +7712,7 @@ export default {
       ),
     );
   },
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (
       url.pathname.startsWith("/agenda/") ||
@@ -7744,7 +7768,7 @@ export default {
       return json({
         status: database === "operacional" ? "operacional" : "degradado",
         database,
-        version: "v157",
+        version: "v158",
         roadmap: {
           complete: true,
           completedThrough: 27,
@@ -7893,6 +7917,7 @@ export default {
       url.pathname === "/api/media" ||
       url.pathname === "/api/workspace" ||
       url.pathname === "/api/workspace/backups" ||
+      url.pathname === "/api/webhooks" ||
       url.pathname === "/api/tasks/action" ||
       url.pathname === "/api/events" ||
       url.pathname === "/api/outbox/send" ||
@@ -7923,6 +7948,7 @@ export default {
           url.pathname.startsWith("/api/free-suite/") ||
           url.pathname.startsWith("/api/platform/") ||
           url.pathname === "/api/plan" ||
+          url.pathname === "/api/webhooks" ||
           url.pathname.startsWith("/api/push/")) &&
         !env.DB
       )
@@ -7941,11 +7967,22 @@ export default {
       }
       if (url.pathname === "/api/workspace") {
         try {
-          return await handleWorkspace(request, env, user, url);
+          return await handleWorkspace(request, env, user, url, ctx);
         } catch (error) {
           console.error("Workspace error", error);
           return json(
             { error: "Não foi possível sincronizar seus dados." },
+            500,
+          );
+        }
+      }
+      if (url.pathname === "/api/webhooks") {
+        try {
+          return await handleWebhooks(request, env, user, url);
+        } catch (error) {
+          console.error("Webhook error", error);
+          return json(
+            { error: "Não foi possível configurar o envio automático." },
             500,
           );
         }

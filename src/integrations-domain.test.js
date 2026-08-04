@@ -12,6 +12,7 @@ import {
   exportableCollections,
   guessMapping,
   importById,
+  looksLikeValidHook,
   parseCsv,
   parseDate,
   parseNumber,
@@ -313,6 +314,29 @@ describe("levar tudo embora", () => {
   });
 });
 
+describe("checagem do endereço no navegador", () => {
+  it("aceita endereço público", () => {
+    expect(looksLikeValidHook("https://hooks.zapier.com/x").ok).toBe(true);
+  });
+
+  it("recusa http e endereço interno na hora, sem ida ao servidor", () => {
+    for (const alvo of [
+      "http://exemplo.com/x",
+      "https://localhost/x",
+      "https://192.168.0.1/x",
+      "https://10.0.0.1/x",
+      "https://api.internal/x",
+      "https://user:pass@exemplo.com/x",
+    ])
+      expect({ alvo, ok: looksLikeValidHook(alvo).ok }).toEqual({ alvo, ok: false });
+  });
+
+  it("endereço vazio ou sem sentido não quebra", () => {
+    expect(looksLikeValidHook("").ok).toBe(false);
+    expect(looksLikeValidHook("qualquer coisa").ok).toBe(false);
+  });
+});
+
 describe("catálogo de conexões", () => {
   it("separa o que funciona agora do que depende da titular", () => {
     expect(connectionsByState("pronto").length).toBeGreaterThan(0);
@@ -326,8 +350,15 @@ describe("catálogo de conexões", () => {
     }
   });
 
-  it("o envio automático está marcado como pendente, e não anunciado como pronto", () => {
-    // Anunciar integração que não liga é pior do que não ter.
-    expect(CONNECTIONS.find((c) => c.id === "webhook").estado).toBe("depende");
+  it("o envio automático saiu de pendente quando passou a existir de verdade", () => {
+    // Ele era "depende" enquanto faltava o lado do servidor. Agora existe
+    // (worker/services/webhooks.js) e a tela pode oferecê-lo.
+    expect(CONNECTIONS.find((c) => c.id === "webhook").estado).toBe("pronto");
+  });
+
+  it("o que continua dependendo da titular segue marcado como pendente", () => {
+    // Anunciar integração que não liga é pior do que não ter. A cobrança
+    // depende de um provedor de pagamento na conta dela — não de código.
+    expect(CONNECTIONS.find((c) => c.id === "pagamento").estado).toBe("depende");
   });
 });

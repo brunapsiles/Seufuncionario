@@ -486,6 +486,48 @@ gratuito da Cloudflare. O workflow `Publicar` do GitHub é apenas uma contingên
   campo obrigatório dizendo o NÚMERO da linha — importação que descarta em
   silêncio é pior que importação que falha.
 
+- **Envio automático / webhook de saída (v158)**: `worker/services/webhooks.js`,
+  painel em `IntegrationsHub.jsx`, migração `0026_webhooks.sql`.
+
+  **Este é o único ponto do app em que o nosso servidor busca um endereço
+  escolhido por quem usa.** Isso o transforma numa ponte, e é a definição de
+  SSRF: alguém cadastra `https://169.254.169.254/...` e o servidor vai lá com a
+  identidade dele. `validateWebhookUrl` é por isso uma lista de PERMISSÃO
+  estreita, não de bloqueio — só https, só porta 443, sem usuário/senha na URL,
+  nada que resolva para rede privada, link-local, CGNAT, `.local`/`.internal`,
+  nem para o próprio host do app. IPv6 que embrulha IPv4 (`::ffff:127.0.0.1`) é
+  resolvido antes de comparar, senão passaria batido. A entrega usa
+  `redirect: "manual"`: um endereço público que responde 302 para 127.0.0.1
+  driblaria a checagem, que só acontece no cadastro.
+  A rota `/api/webhooks` PRECISA estar nas duas listas de `needsAuth` no
+  worker.js. Um endereço que dispara requisições de saída sem login seria um
+  amplificador aberto para qualquer um.
+
+  **Como os avisos são disparados**: comparando o espaço de trabalho anterior
+  com o novo dentro de `handleWorkspace`, usando o `currentData` que já existia
+  ali. Foi essa a escolha porque funciona venha o registro de onde vier, sem
+  precisar instrumentar cada uma das dezenas de telas. Três guardas que não são
+  opcionais: (1) `diffNewItems(null, ...)` devolve vazio — a PRIMEIRA gravação
+  não dispara nada, senão quem chega com 300 contatos receberia 300 avisos;
+  (2) teto de 20 avisos por gravação, para importação de planilha não virar
+  enxurrada; (3) a entrega roda em `ctx.waitUntil`, depois da resposta — um
+  destino lento seguraria o salvamento e a pessoa acharia que o app travou.
+  Falha de entrega nunca sobe: perder os dados de quem usa porque um sistema
+  externo caiu seria inaceitável, e há teste para isso.
+
+  **O corpo enviado** vem de um catálogo fechado de eventos com lista explícita
+  de campos, e `pickFields` ainda descarta qualquer campo cujo nome pareça
+  segredo ou documento. O espaço de trabalho inteiro nunca sai.
+
+  O segredo da assinatura é mostrado UMA vez, na criação, e nunca volta na
+  listagem — se vazasse, qualquer um forjaria avisos para o destino. A
+  assinatura cobre `carimbo + corpo`, não só o corpo: assinar só o corpo
+  deixaria quem interceptasse reenviar a mesma mensagem para sempre.
+
+  `looksLikeValidHook` em `integrationsDomain.js` é só conforto — erra rápido na
+  tela. Não protege nada: quem quisesse burlar não passaria por ela. A checagem
+  que vale é a do servidor.
+
 ## Pendências conhecidas (ver PENDENCIAS_DA_TITULAR.md)
 
 - "Esqueci minha senha": ✅ implementado (/api/auth/forgot e /api/auth/reset, códigos via Brevo)

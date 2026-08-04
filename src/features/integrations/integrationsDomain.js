@@ -7,10 +7,10 @@
 // nem de conta em serviço de terceiro — foi assim de propósito, para caber na
 // promessa de gratuidade.
 //
-// O envio automático para outro sistema (webhook de saída) NÃO está aqui: ele
-// precisa sair do servidor, e não do navegador, senão o navegador bloqueia por
-// CORS e o endereço secreto do cliente ficaria visível no aparelho. Ver
-// PENDENCIAS_DA_TITULAR.md.
+// O envio automático para outro sistema (webhook de saída) mora no servidor, em
+// worker/services/webhooks.js, e não aqui: pelo navegador ele seria bloqueado
+// por CORS e o endereço secreto ficaria guardado no aparelho. Este arquivo só
+// cuida do que roda no aparelho.
 
 const texto = (v) => String(v ?? "");
 
@@ -406,9 +406,9 @@ export const CONNECTIONS = [
   },
   {
     id: "webhook",
-    nome: "Envio automático para outro sistema",
-    estado: "depende",
-    como: "Precisa de um endereço de saída no servidor: o navegador é bloqueado por CORS e guardaria o endereço secreto no aparelho. Está anotado nas pendências.",
+    nome: "Envio automático (Zapier, Make, n8n, Discord, planilha)",
+    estado: "pronto",
+    como: "Cadastre o endereço aqui embaixo e escolha o que avisar. O servidor avisa sozinho quando entra pedido, contato, lançamento, agendamento ou tarefa.",
   },
   {
     id: "pagamento",
@@ -420,3 +420,37 @@ export const CONNECTIONS = [
 
 export const connectionsByState = (estado) =>
   CONNECTIONS.filter((c) => c.estado === estado);
+
+// ---------------------------------------------------------------------------
+// Envio automático
+// ---------------------------------------------------------------------------
+
+// Espelho enxuto da checagem do servidor, só para a pessoa ver o erro na hora
+// em vez de esperar a ida e a volta. A checagem que VALE é a do servidor
+// (worker/services/webhooks.js): esta aqui roda no aparelho e portanto não
+// protege nada — quem quisesse burlar simplesmente não passaria por ela.
+export const looksLikeValidHook = (bruto) => {
+  const cru = String(bruto ?? "").trim();
+  if (!cru) return { ok: false, motivo: "Informe o endereço." };
+  let url;
+  try {
+    url = new URL(cru);
+  } catch {
+    return { ok: false, motivo: "Endereço inválido. Comece com https://" };
+  }
+  if (url.protocol !== "https:")
+    return { ok: false, motivo: "Só https: em http qualquer um no caminho lê o que foi enviado." };
+  if (url.username || url.password)
+    return { ok: false, motivo: "Não coloque usuário e senha no endereço." };
+  const host = url.hostname.toLowerCase();
+  if (
+    host === "localhost" ||
+    host.endsWith(".local") ||
+    host.endsWith(".internal") ||
+    /^(10|127|0)\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^169\.254\./.test(host)
+  )
+    return { ok: false, motivo: "Esse endereço aponta para dentro da rede." };
+  return { ok: true };
+};

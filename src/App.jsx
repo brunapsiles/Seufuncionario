@@ -25338,6 +25338,7 @@ export default function App() {
               update={update}
               business={business}
               setToast={setToast}
+              authHeaders={authHeaders}
             />
           </Suspense>
         );

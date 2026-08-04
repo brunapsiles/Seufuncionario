@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CalendarDays,
@@ -7,7 +7,10 @@ import {
   Download,
   FileSpreadsheet,
   Plug,
+  Send,
+  Trash2,
   Upload,
+  Zap,
 } from "lucide-react";
 import { Button, Empty, Field, PageTitle } from "../../components/ui.jsx";
 import { uid } from "../../domain.js";
@@ -22,6 +25,7 @@ import {
   exportableCollections,
   guessMapping,
   importById,
+  looksLikeValidHook,
   parseCsv,
   toCsv,
   withBom,
@@ -190,7 +194,215 @@ function ImportPanel({ db, update, business, setToast }) {
   );
 }
 
-export default function IntegrationsHub({ db, update, business, setToast }) {
+
+function AutoSendPanel({ setToast, authHeaders }) {
+  const [lista, setLista] = useState([]);
+  const [eventos, setEventos] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [form, setForm] = useState({ url: "", label: "", events: [] });
+  const [erro, setErro] = useState("");
+  const [segredo, setSegredo] = useState(null);
+  const [salvando, setSalvando] = useState(false);
+
+  const carregar = useCallback(async () => {
+    try {
+      const r = await fetch("/api/webhooks", { headers: authHeaders?.() || {} });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Não consegui ler os envios.");
+      setLista(d.webhooks || []);
+      setEventos(d.eventos || []);
+      setErro("");
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setCarregando(false);
+    }
+  }, [authHeaders]);
+
+  // O setTimeout(0) tira a busca do caminho da renderização — mesma forma usada
+  // nas outras telas que carregam do servidor.
+  useEffect(() => {
+    const id = setTimeout(carregar, 0);
+    return () => clearTimeout(id);
+  }, [carregar]);
+
+  const alternarEvento = (id) =>
+    setForm((f) => ({
+      ...f,
+      events: f.events.includes(id)
+        ? f.events.filter((x) => x !== id)
+        : [...f.events, id],
+    }));
+
+  const criar = async () => {
+    const checagem = looksLikeValidHook(form.url);
+    if (!checagem.ok) {
+      setErro(checagem.motivo);
+      return;
+    }
+    if (!form.events.length) {
+      setErro("Escolha pelo menos um aviso para enviar.");
+      return;
+    }
+    setSalvando(true);
+    try {
+      const r = await fetch("/api/webhooks", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...(authHeaders?.() || {}) },
+        body: JSON.stringify(form),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Não consegui cadastrar.");
+      setSegredo(d.secret);
+      setForm({ url: "", label: "", events: [] });
+      setErro("");
+      await carregar();
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const testar = async (id) => {
+    const r = await fetch("/api/webhooks", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(authHeaders?.() || {}) },
+      body: JSON.stringify({ testar: id }),
+    });
+    const d = await r.json();
+    setToast?.(
+      d.ok ? "Teste entregue. O outro sistema respondeu." : `O destino respondeu: ${d.status || "erro"}.`,
+    );
+    carregar();
+  };
+
+  const apagar = async (id) => {
+    await fetch(`/api/webhooks?id=${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: authHeaders?.() || {},
+    });
+    setToast?.("Envio removido.");
+    carregar();
+  };
+
+  return (
+    <section className="int-bloco">
+      <h3>
+        <Zap size={16} /> Avisar outro sistema sozinho
+      </h3>
+      <p className="muted">
+        Cole o endereço que o Zapier, o Make, o n8n, o Discord ou a sua planilha
+        do Google fornecem. Quando entrar um pedido, um contato, um lançamento,
+        um agendamento ou uma tarefa, o servidor avisa lá — mesmo com o app
+        fechado.
+      </p>
+
+      {segredo && (
+        <div className="int-segredo">
+          <strong>Guarde este segredo agora:</strong>
+          <code>{segredo}</code>
+          <small>
+            Ele serve para o outro sistema conferir que o aviso veio mesmo de
+            nós. Não vamos mostrá-lo de novo.
+          </small>
+          <button type="button" className="btn tiny" onClick={() => setSegredo(null)}>
+            Já guardei
+          </button>
+        </div>
+      )}
+
+      {erro && <div className="ask-error">{erro}</div>}
+
+      <div className="int-linha">
+        <Field label="Endereço (https)">
+          <input
+            type="url"
+            value={form.url}
+            placeholder="https://hooks.zapier.com/..."
+            onChange={(e) => {
+              setForm({ ...form, url: e.target.value });
+              setErro("");
+            }}
+          />
+        </Field>
+        <Field label="Apelido (opcional)">
+          <input
+            value={form.label}
+            placeholder="Minha planilha"
+            onChange={(e) => setForm({ ...form, label: e.target.value })}
+          />
+        </Field>
+      </div>
+
+      <h4>O que avisar</h4>
+      <div className="me-chips">
+        {eventos.map((ev) => (
+          <button
+            key={ev.id}
+            type="button"
+            className={`btn tiny${form.events.includes(ev.id) ? " ativo" : ""}`}
+            onClick={() => alternarEvento(ev.id)}
+            title={`Envia: ${ev.campos.join(", ")}`}
+          >
+            {ev.label}
+          </button>
+        ))}
+      </div>
+      <small className="muted">
+        Só os campos daquele aviso são enviados — nunca o seu espaço de trabalho
+        inteiro. Passe o dedo sobre cada um para ver exatamente o que vai.
+      </small>
+
+      <Button icon={Send} disabled={salvando} onClick={criar}>
+        {salvando ? "Cadastrando…" : "Cadastrar envio"}
+      </Button>
+
+      {carregando ? (
+        <p className="muted">Carregando…</p>
+      ) : !lista.length ? (
+        <p className="muted">Nenhum envio cadastrado ainda.</p>
+      ) : (
+        <ul className="int-hooks">
+          {lista.map((h) => (
+            <li key={h.id}>
+              <div>
+                <strong>{h.label || h.url}</strong>
+                <small>{h.url}</small>
+                <small>
+                  {h.events.join(", ")}
+                  {h.lastStatus ? ` · última resposta: ${h.lastStatus}` : " · ainda não usado"}
+                  {h.enabled ? "" : " · desligado por falhas seguidas"}
+                </small>
+              </div>
+              <div className="int-hook-acoes">
+                <button type="button" className="btn tiny" onClick={() => testar(h.id)}>
+                  <Send size={12} /> Testar
+                </button>
+                <button
+                  type="button"
+                  className="btn tiny"
+                  aria-label={`Apagar ${h.label || h.url}`}
+                  onClick={() => apagar(h.id)}
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+export default function IntegrationsHub({
+  db,
+  update,
+  business,
+  setToast,
+  authHeaders,
+}) {
   const colecoes = useMemo(() => exportableCollections(db), [db]);
   const agendamentos = useMemo(() => {
     const todos = db?.appointments || [];
@@ -249,6 +461,8 @@ export default function IntegrationsHub({ db, update, business, setToast }) {
         business={business}
         setToast={setToast}
       />
+
+      <AutoSendPanel setToast={setToast} authHeaders={authHeaders} />
 
       <section className="int-bloco">
         <h3>

@@ -1,6 +1,31 @@
 # Versão publicada
 
-## v157
+## v158
+
+- **O app agora avisa outros sistemas sozinho.** Era a última peça que faltava
+  das Integrações, e a única que dependia do servidor.
+- Em Integrações, cole o endereço que o Zapier, o Make, o n8n, o Discord ou a
+  sua planilha do Google fornecem, escolha o que quer avisar, e pronto. Quando
+  entrar um pedido, um contato, um lançamento no caixa, um agendamento ou uma
+  tarefa, o aviso sai na hora — **mesmo com o app fechado**, porque quem envia
+  é o servidor.
+- Cada aviso vai **assinado**. O outro sistema consegue conferir que a mensagem
+  veio mesmo de nós, e não de alguém se passando por nós. O segredo dessa
+  assinatura aparece uma única vez, na hora de cadastrar.
+- **Só os campos daquele aviso são enviados**, nunca o seu espaço de trabalho
+  inteiro. Passando o dedo sobre cada aviso, você vê exatamente o que vai.
+- Tem um botão de testar, e a tela mostra a última resposta de cada destino.
+  Um endereço que falha 20 vezes seguidas se desliga sozinho, em vez de o
+  servidor ficar batendo para sempre num lugar que morreu.
+- Só aceitamos endereços https e públicos. Endereço de rede interna é recusado,
+  na tela e no servidor — sem isso, alguém poderia usar o nosso servidor para
+  alcançar lugares que ele não deveria alcançar.
+- Falhar em avisar um sistema de fora **nunca** custa os seus dados: o app grava
+  primeiro e avisa depois.
+- A lista de conexões de Integrações foi atualizada: o envio automático saiu de
+  "depende de você" e passou a "funciona agora".
+
+## Base preservada da v157
 
 - **Editor de código com prévia ao vivo.** Escreva HTML, CSS e JavaScript e veja
   o resultado ao lado, na hora. Vem com pontos de partida prontos — cartão de
