@@ -128,7 +128,7 @@ export default function HomeHub({
           id: `business-${item.id}`,
           title: item.name,
           subtitle: detail,
-          description: selected ? "Selecionado na home" : "Abrir central do negócio",
+          description: selected ? "Selecionado agora" : null,
           icon: Building2,
           search: `${item.name} ${detail} ${item.goal || ""} ${item.focusAreas || ""}`,
           onClick: () => {
@@ -182,7 +182,7 @@ export default function HomeHub({
         id: `route-${id}`,
         title: label,
         subtitle: groupByRoute.get(id) || "Navegação principal",
-        description: "Abrir módulo",
+        description: null,
         icon: icon || Compass,
         search: `${label} ${groupByRoute.get(id) || ""}`,
         onClick: () => go(id),
@@ -241,10 +241,10 @@ export default function HomeHub({
           <span className="home-hub-kicker">
             <Bot size={16} aria-hidden="true" /> Seu Funcionário
           </span>
-          <h1 id="home-hub-title">Escolha como quer começar</h1>
+          <h1 id="home-hub-title">O que você quer resolver agora?</h1>
           <p>
-            Encontre o caminho pelo seu negócio, pela área que precisa resolver
-            ou pela tarefa que você já quer executar.
+            Comece pelo negócio, pela área ou pela tarefa. Tudo aqui leva para
+            funções reais que já existem no Seu Funcionário.
           </p>
           <label className="home-hub-search" htmlFor="home-hub-search-input">
             <Search size={19} aria-hidden="true" />
@@ -300,7 +300,7 @@ export default function HomeHub({
           <NavigationSection
             eyebrow="NEGÓCIO"
             title="Escolha por negócio"
-            text="Comece pelo negócio configurado no workspace."
+            text="Use o negócio configurado para ir ao contexto certo."
             items={filteredBusinesses}
             kind="business"
             emptyTitle={query ? "Nenhum negócio encontrado" : "Nenhum negócio configurado ainda"}
@@ -314,7 +314,7 @@ export default function HomeHub({
           <NavigationSection
             eyebrow="ÁREA"
             title="Escolha por área"
-            text="Use os agrupamentos reais do menu para encontrar o departamento certo."
+            text="Entre pelos agrupamentos reais do menu."
             items={filteredAreas}
             kind="area"
             emptyTitle={query ? "Nenhuma área encontrada" : "Nenhuma área encontrada"}
@@ -328,7 +328,7 @@ export default function HomeHub({
           <NavigationSection
             eyebrow="TAREFA"
             title="Escolha por tarefa"
-            text="Abra direto um módulo ou ferramenta real do app."
+            text="Abra direto uma função existente."
             items={visibleTasks}
             kind="task"
             emptyTitle={query ? "Nenhuma tarefa disponível" : "Nenhuma tarefa disponível"}
