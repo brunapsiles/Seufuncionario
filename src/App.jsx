@@ -9683,16 +9683,19 @@ function CRM({ db, update, business, setToast, go, searchSeed, clearSearchSeed }
       note: "",
       at: today(),
     });
+  const searchTerm = searchSeed || search;
   useEffect(() => {
-    if (searchSeed) {
-      setSearch(searchSeed);
+    if (!searchSeed) return undefined;
+    const id = setTimeout(() => {
       clearSearchSeed?.();
-    }
-  }, [searchSeed]);
+    }, 0);
+    return () => clearTimeout(id);
+  }, [clearSearchSeed, searchSeed]);
   const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
   useEffect(() => {
-    setVisibleCount(LIST_PAGE_SIZE);
-  }, [search, filter]);
+    const id = setTimeout(() => setVisibleCount(LIST_PAGE_SIZE), 0);
+    return () => clearTimeout(id);
+  }, [searchTerm, filter]);
   const blankLead = {
     name: "",
     company: "",
@@ -9725,10 +9728,10 @@ function CRM({ db, update, business, setToast, go, searchSeed, clearSearchSeed }
   const leads = db.leads.filter(
     (l) =>
       (!business || l.businessId === business.id) &&
-      (!search ||
+      (!searchTerm ||
         `${l.name} ${l.company}`
           .toLowerCase()
-          .includes(search.toLowerCase())) &&
+          .includes(searchTerm.toLowerCase())) &&
       (filter === "Todos" || l.status === filter),
   );
   const openLead = (lead = null) => {
@@ -9897,8 +9900,11 @@ function CRM({ db, update, business, setToast, go, searchSeed, clearSearchSeed }
         <div className="search">
           <Search />
           <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchTerm}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              clearSearchSeed?.();
+            }}
             placeholder="Pesquisar nome ou empresa"
           />
         </div>
@@ -11379,16 +11385,17 @@ function InboxPage({ db: _db, business: _business, setToast, go: _go }) {
   const [items, setItems] = useState(null);
   const [filter, setFilter] = useState("todos");
   const [registering, setRegistering] = useState(false);
-  const load = () => {
+  const load = useCallback(() => {
     setItems(null);
     fetch(inboxUrl(), { headers: authHeaders() })
       .then((r) => (r.ok ? r.json() : { items: [] }))
       .then((d) => setItems(d.items || []))
       .catch(() => setItems([]));
-  };
-  useEffect(() => {
-    load();
   }, []);
+  useEffect(() => {
+    const id = setTimeout(load, 0);
+    return () => clearTimeout(id);
+  }, [load]);
   const markRead = (ids) => {
     if (!ids.length) return;
     const now = new Date().toISOString();
@@ -11632,16 +11639,19 @@ function Contacts({ db, update, business, setToast, go: _go, searchSeed, clearSe
     [editing, setEditing] = useState(null),
     [search, setSearch] = useState(""),
     [emailContact, setEmailContact] = useState(null);
+  const searchTerm = searchSeed || search;
   useEffect(() => {
-    if (searchSeed) {
-      setSearch(searchSeed);
+    if (!searchSeed) return undefined;
+    const id = setTimeout(() => {
       clearSearchSeed?.();
-    }
-  }, [searchSeed]);
+    }, 0);
+    return () => clearTimeout(id);
+  }, [clearSearchSeed, searchSeed]);
   const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
   useEffect(() => {
-    setVisibleCount(LIST_PAGE_SIZE);
-  }, [search]);
+    const id = setTimeout(() => setVisibleCount(LIST_PAGE_SIZE), 0);
+    return () => clearTimeout(id);
+  }, [searchTerm]);
   const blankContact = {
     name: "",
     rawContact: "",
@@ -11657,10 +11667,10 @@ function Contacts({ db, update, business, setToast, go: _go, searchSeed, clearSe
     .filter((c) => !business || c.businessId === business.id)
     .filter(
       (c) =>
-        !search ||
+        !searchTerm ||
         `${c.name} ${c.company || ""} ${c.rawContact || ""}`
           .toLowerCase()
-          .includes(search.toLowerCase()),
+          .includes(searchTerm.toLowerCase()),
     )
     .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   const openContact = (item = null) => {
@@ -11797,8 +11807,11 @@ function Contacts({ db, update, business, setToast, go: _go, searchSeed, clearSe
           <input
             type="search"
             placeholder="Buscar por nome, empresa ou contato"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchTerm}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              clearSearchSeed?.();
+            }}
             aria-label="Buscar contatos"
           />
         </div>
@@ -12030,7 +12043,8 @@ function Catalog({ db, update, business, setToast, go: _go }) {
     .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
   const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
   useEffect(() => {
-    setVisibleCount(LIST_PAGE_SIZE);
+    const id = setTimeout(() => setVisibleCount(LIST_PAGE_SIZE), 0);
+    return () => clearTimeout(id);
   }, [search, view]);
 
   const openProduct = (item = null) => {
@@ -14283,13 +14297,16 @@ function Finance({ db, update, business, setToast, go }) {
     });
   const financeKey = business?.id || "global";
   useEffect(() => {
-    setPlanning({
-      monthlyGoal: "",
-      fixedCosts: "",
-      contributionMargin: "",
-      ...(db.financeSettings?.[financeKey] || {}),
-    });
-  }, [financeKey]);
+    const id = setTimeout(() => {
+      setPlanning({
+        monthlyGoal: "",
+        fixedCosts: "",
+        contributionMargin: "",
+        ...(db.financeSettings?.[financeKey] || {}),
+      });
+    }, 0);
+    return () => clearTimeout(id);
+  }, [db.financeSettings, financeKey]);
   const [form, setForm] = useState({
     type: "Receita",
     description: "",
@@ -15418,13 +15435,8 @@ function AttachmentList({ attachments, onRemove }) {
           className="attachment-lightbox"
           role="dialog"
           aria-label={`Imagem ampliada: ${preview.name}`}
-          onClick={() => setPreview(null)}
         >
-          <img
-            src={preview.dataUrl}
-            alt={preview.name}
-            onClick={(e) => e.stopPropagation()}
-          />
+          <img src={preview.dataUrl} alt={preview.name} />
           <button
             type="button"
             className="attachment-lightbox-close"
@@ -18226,17 +18238,23 @@ function SheetChart({ series, type }) {
     const cx = 100;
     const cy = 100;
     const r = 82;
-    let angle = -Math.PI / 2;
     const polar = (a) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+    const slices = data.reduce(
+      (acc, d, i) => {
+        const frac = Math.max(0, d.value) / total;
+        if (frac <= 0) return acc;
+        const start = acc.angle;
+        const end = start + frac * Math.PI * 2;
+        acc.items.push({ i, start, end });
+        acc.angle = end;
+        return acc;
+      },
+      { angle: -Math.PI / 2, items: [] },
+    ).items;
     return (
       <div className="sheet-chart-wrap">
         <svg viewBox="0 0 200 200" className="sheet-chart-svg" role="img">
-          {data.map((d, i) => {
-            const frac = Math.max(0, d.value) / total;
-            if (frac <= 0) return null;
-            const start = angle;
-            const end = angle + frac * Math.PI * 2;
-            angle = end;
+          {slices.map(({ i, start, end }) => {
             const [x1, y1] = polar(start);
             const [x2, y2] = polar(end);
             const large = end - start > Math.PI ? 1 : 0;
@@ -20057,16 +20075,19 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
     [mergeOpen, setMergeOpen] = useState(false),
     [signingId, setSigningId] = useState(null),
     [dragging, setDragging] = useState(false);
+  const searchTerm = searchSeed || search;
   useEffect(() => {
-    if (searchSeed) {
-      setSearch(searchSeed);
+    if (!searchSeed) return undefined;
+    const id = setTimeout(() => {
       clearSearchSeed?.();
-    }
-  }, [searchSeed]);
+    }, 0);
+    return () => clearTimeout(id);
+  }, [clearSearchSeed, searchSeed]);
   const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
   useEffect(() => {
-    setVisibleCount(LIST_PAGE_SIZE);
-  }, [search]);
+    const id = setTimeout(() => setVisibleCount(LIST_PAGE_SIZE), 0);
+    return () => clearTimeout(id);
+  }, [searchTerm]);
   const uploadRef = useRef(null);
   const blockContext = {
     syncedBlocks: db.syncedBlocks || [],
@@ -20086,7 +20107,7 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
         document.originalFileName || ""
       } ${resolvedDocumentContent(document)}`
         .toLowerCase()
-        .includes(search.toLowerCase()),
+        .includes(searchTerm.toLowerCase()),
   );
   const blankDocument = {
     title: "",
@@ -20568,8 +20589,11 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
         <div className="search">
           <Search />
           <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchTerm}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              clearSearchSeed?.();
+            }}
             placeholder="Pesquisar documentos"
           />
         </div>
@@ -21538,7 +21562,8 @@ function Sites({ db, update, business, setToast, go }) {
   );
   const previewHtml = selectedSitePage?.html || current?.html || "";
   useEffect(() => {
-    setPreviewPage("");
+    const id = setTimeout(() => setPreviewPage(""), 0);
+    return () => clearTimeout(id);
   }, [preview]);
   const ownerId = activeSpaceId() || db.user.id;
   const updateSite = (id, patch) =>
@@ -21550,6 +21575,17 @@ function Sites({ db, update, business, setToast, go }) {
           : x,
       ),
     }));
+  const siteRequest = async (action, body) => {
+    const response = await fetch(`/api/sites/${action}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ ...body, ownerId }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok)
+      throw new Error(data.error || "Não foi possível concluir a publicação.");
+    return data;
+  };
   const updateBrief = (patch) => {
     if (!current) return;
     const brief = { ...(current.brief || {}), ...patch };
@@ -21689,8 +21725,12 @@ function Sites({ db, update, business, setToast, go }) {
     }
   };
   useEffect(() => {
-    if (current && looksLikeSiteInstruction(current.brief?.description))
+    if (!current || !looksLikeSiteInstruction(current.brief?.description))
+      return undefined;
+    const id = setTimeout(() => {
       repairLegacySite();
+    }, 0);
+    return () => clearTimeout(id);
   }, [current?.id]);
   const download = (s) => {
     const blob = new Blob([s.html], { type: "text/html" }),
@@ -21699,17 +21739,6 @@ function Sites({ db, update, business, setToast, go }) {
     a.download = `${s.slug}.html`;
     a.click();
     URL.revokeObjectURL(a.href);
-  };
-  const siteRequest = async (action, body) => {
-    const response = await fetch(`/api/sites/${action}`, {
-      method: "POST",
-      headers: { "content-type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ ...body, ownerId }),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok)
-      throw new Error(data.error || "Não foi possível concluir a publicação.");
-    return data;
   };
   const publishSite = async () => {
     if (!current || publishing) return;
@@ -21772,34 +21801,37 @@ function Sites({ db, update, business, setToast, go }) {
 
   useEffect(() => {
     if (!current?.published) {
-      setLeads([]);
-      return;
+      const id = setTimeout(() => setLeads([]), 0);
+      return () => clearTimeout(id);
     }
     let cancelled = false;
-    setLoadingLeads(true);
-    fetch(`/api/sites/leads?site_id=${encodeURIComponent(current.id)}`, {
-      headers: authHeaders(),
-    })
-      .then(async (response) => ({
-        ok: response.ok,
-        data: await response.json().catch(() => ({})),
-      }))
-      .then(({ ok, data }) => {
-        if (cancelled) return;
-        if (!ok)
-          throw new Error(
-            data.error || "Não foi possível carregar os contatos.",
-          );
-        setLeads(data.leads || []);
+    const id = setTimeout(() => {
+      setLoadingLeads(true);
+      fetch(`/api/sites/leads?site_id=${encodeURIComponent(current.id)}`, {
+        headers: authHeaders(),
       })
-      .catch((error) => {
-        if (!cancelled) setSiteError(error.message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingLeads(false);
-      });
+        .then(async (response) => ({
+          ok: response.ok,
+          data: await response.json().catch(() => ({})),
+        }))
+        .then(({ ok, data }) => {
+          if (cancelled) return;
+          if (!ok)
+            throw new Error(
+              data.error || "Não foi possível carregar os contatos.",
+            );
+          setLeads(data.leads || []);
+        })
+        .catch((error) => {
+          if (!cancelled) setSiteError(error.message);
+        })
+        .finally(() => {
+          if (!cancelled) setLoadingLeads(false);
+        });
+    }, 0);
     return () => {
       cancelled = true;
+      clearTimeout(id);
     };
   }, [current?.id, current?.published, current?.publishedAt]);
   if (current) {
@@ -24129,7 +24161,9 @@ function CreativeStudio({ db, update, business, setToast }) {
               <article key={item.id}>
                 {item.status === "done" && item.url ? (
                   item.type === "video" ? (
-                    <video controls src={item.url} />
+                    <video controls src={item.url}>
+                      <track kind="captions" />
+                    </video>
                   ) : (
                     <img src={item.url} alt={item.prompt} />
                   )
@@ -25134,8 +25168,9 @@ function Collaborators({ db, update, setToast }) {
         : [...current.memberIds, id],
     }));
   };
-  const load = () =>
-    fetch(`/api/collab${collabQuery}`, { headers: authHeaders() })
+  const load = useCallback(
+    () =>
+      fetch(`/api/collab${collabQuery}`, { headers: authHeaders() })
       .then((r) => (r.ok ? r.json() : null))
       .then(
         (d) =>
@@ -25147,10 +25182,13 @@ function Collaborators({ db, update, setToast }) {
             canManage: d.canManage !== false,
           }),
       )
-      .catch(() => {});
+        .catch(() => {}),
+    [collabQuery],
+  );
   useEffect(() => {
-    load();
-  }, [active]);
+    const id = setTimeout(load, 0);
+    return () => clearTimeout(id);
+  }, [load]);
   const sendInvite = async (e) => {
     e.preventDefault();
     if (!form.name.trim() || !form.email.trim()) return;
@@ -28041,7 +28079,17 @@ export default function App() {
         <div className="sb-resize" onPointerDown={startResize} />
       </aside>
       {mobile && (
-        <div className="mobile-overlay" onClick={() => setMobile(false)} />
+        <div
+          className="mobile-overlay"
+          role="button"
+          tabIndex={0}
+          aria-label="Fechar menu"
+          onClick={() => setMobile(false)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" || event.key === "Enter" || event.key === " ")
+              setMobile(false);
+          }}
+        />
       )}
       <main className="workspace">
         {workspaceConflict && (
