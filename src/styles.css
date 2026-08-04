@@ -4005,7 +4005,7 @@ aside nav button.active {
   place-items: center;
   color: #fff;
   font: 800 22px "Plus Jakarta Sans";
-  box-shadow: 0 8px 22px rgba(109, 56, 224, 0.25);
+  box-shadow: 0 8px 22px rgba(11, 159, 143, 0.22);
 }
 .cert-track {
   background: var(--surface);
@@ -5355,7 +5355,7 @@ aside nav button.active {
   align-items: center;
   gap: 30px;
   background:
-    radial-gradient(circle at 90% 0, rgba(237, 62, 145, 0.22), transparent 30%),
+    radial-gradient(circle at 90% 0, rgba(66, 221, 191, 0.22), transparent 30%),
     linear-gradient(125deg, #073940, #0b706f);
   color: #fff;
   border-radius: 22px;
@@ -5837,7 +5837,7 @@ aside nav button span,
   width: 36px;
   height: 36px;
   border-radius: 11px;
-  box-shadow: 0 7px 18px rgba(132, 76, 230, 0.3);
+  box-shadow: 0 7px 18px rgba(11, 159, 143, 0.24);
   display: block;
 }
 .md {
@@ -9913,8 +9913,8 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
 .content-chip {
   font-size: 11px;
   font-weight: 700;
-  background: rgba(56, 189, 248, 0.15);
-  color: #0369a1;
+  background: rgba(11, 159, 143, 0.12);
+  color: #087568;
   padding: 3px 8px;
   border-radius: 999px;
 }
@@ -9954,7 +9954,7 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   margin: 6px 0 2px;
 }
 .content-tags {
-  color: #0369a1;
+  color: #087568;
   font-size: 13px;
   margin: 2px 0 0;
   word-break: break-word;
@@ -10167,12 +10167,12 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   line-height: 1.45;
 }
 .analysis-answer {
-  background: rgba(56, 189, 248, 0.1);
+  background: rgba(11, 159, 143, 0.09);
   border-radius: 10px;
   padding: 12px 14px;
 }
 .analysis-answer h4 {
-  color: #0369a1;
+  color: #087568;
 }
 .analysis-risks h4 {
   color: #b45309;
@@ -10321,7 +10321,7 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
 .link-btn {
   border: none;
   background: transparent;
-  color: #0369a1;
+  color: #087568;
   font: inherit;
   cursor: pointer;
   padding: 0;
@@ -10402,7 +10402,7 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  color: #0369a1;
+  color: #087568;
 }
 .template-card-seg {
   font-size: 12px;
@@ -10643,7 +10643,7 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   font-size: 14px;
 }
 .db-base-item.active {
-  background: rgba(56, 189, 248, 0.15);
+  background: rgba(11, 159, 143, 0.12);
   font-weight: 600;
 }
 .db-new-base {
@@ -10684,7 +10684,7 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   color: var(--muted);
 }
 .db-view-btn.active {
-  background: rgba(56, 189, 248, 0.15);
+  background: rgba(11, 159, 143, 0.12);
   color: inherit;
   font-weight: 600;
 }
@@ -10899,7 +10899,7 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   text-overflow: ellipsis;
 }
 .wiki-tree-item.active {
-  background: rgba(56, 189, 248, 0.15);
+  background: rgba(11, 159, 143, 0.12);
   font-weight: 600;
 }
 .wiki-empty-hint {
@@ -10935,7 +10935,7 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   font-size: 12px;
 }
 .wiki-toolbar-actions .btn.active {
-  background: rgba(56, 189, 248, 0.15);
+  background: rgba(11, 159, 143, 0.12);
 }
 .wiki-meta {
   font-size: 12px;
@@ -11306,8 +11306,8 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
 }
 .db-cal-event {
   font-size: 11px;
-  background: rgba(56, 189, 248, 0.16);
-  color: #0369a1;
+  background: rgba(11, 159, 143, 0.16);
+  color: #087568;
   border-radius: 5px;
   padding: 2px 5px;
   white-space: nowrap;
@@ -11359,7 +11359,7 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   padding: 8px 10px;
   font-size: 13px;
   min-width: 110px;
-  color: #0369a1;
+  color: #087568;
   font-variant-numeric: tabular-nums;
 }
 :root[data-theme="dark"] .db-formula-cell {
@@ -12402,7 +12402,7 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
 }
 .bills-direction button.active {
   border-color: #087a83;
-  background: rgba(37, 99, 235, 0.09);
+  background: rgba(11, 159, 143, 0.09);
   font-weight: 600;
 }
 .bill-field {
@@ -12976,11 +12976,11 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   font-size: 0.76rem;
 }
 .pipe-summary .weighted {
-  border-color: rgba(37, 99, 235, 0.45);
-  background: rgba(37, 99, 235, 0.05);
+  border-color: rgba(11, 159, 143, 0.4);
+  background: rgba(11, 159, 143, 0.06);
 }
 .pipe-summary .weighted strong {
-  color: #1d4ed8;
+  color: #087568;
 }
 .pipe-summary .ok strong {
   color: #15803d;
@@ -13088,7 +13088,7 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
 }
 .pipe-conv strong {
   margin-left: auto;
-  color: #1d4ed8;
+  color: #087568;
 }
 .pipe-forecast table {
   width: 100%;
@@ -13228,7 +13228,7 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   font-size: 0.9rem;
 }
 .pipe-card-weighted {
-  color: #1d4ed8 !important;
+  color: #087568 !important;
 }
 .pipe-card-actions {
   display: flex;
@@ -13619,7 +13619,7 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
 }
 .mtg-list button.active {
   border-color: #087a83;
-  background: rgba(37, 99, 235, 0.07);
+  background: rgba(11, 159, 143, 0.08);
 }
 .mtg-list strong {
   font-size: 0.86rem;
@@ -13782,7 +13782,7 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
 .mtg-hits li {
   font-size: 0.81rem;
   line-height: 1.45;
-  border-left: 3px solid rgba(37, 99, 235, 0.4);
+  border-left: 3px solid rgba(11, 159, 143, 0.38);
   padding-left: 9px;
 }
 .mtg-hits em {
@@ -13834,8 +13834,8 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   font-size: 0.74rem;
   border-radius: 999px;
   padding: 3px 9px;
-  background: rgba(37, 99, 235, 0.1);
-  color: #1d4ed8;
+  background: rgba(11, 159, 143, 0.1);
+  color: #087568;
 }
 .mtg-hint {
   font-size: 0.84rem;
@@ -13963,8 +13963,8 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   color: var(--muted, #64748b);
 }
 .cvs-top span {
-  background: rgba(37, 99, 235, 0.1);
-  color: #1d4ed8;
+  background: rgba(11, 159, 143, 0.1);
+  color: #087568;
   border-radius: 999px;
   padding: 2px 9px;
 }
@@ -14180,7 +14180,7 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
 }
 .dgm-tools .active {
   border-color: #087a83;
-  background: rgba(37, 99, 235, 0.09);
+  background: rgba(11, 159, 143, 0.09);
 }
 .dgm-validation {
   border: 1px solid rgba(194, 65, 12, 0.4);
@@ -14422,7 +14422,7 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
 }
 .qwb-tools > button.active {
   border-color: #087a83;
-  background: rgba(37, 99, 235, 0.09);
+  background: rgba(11, 159, 143, 0.09);
   font-weight: 600;
 }
 .qwb-sep {
@@ -14551,8 +14551,8 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  background: rgba(37, 99, 235, 0.06);
-  border: 1px solid rgba(37, 99, 235, 0.28);
+  background: rgba(11, 159, 143, 0.06);
+  border: 1px solid rgba(11, 159, 143, 0.28);
   border-radius: 11px;
   padding: 9px 12px;
   margin-bottom: 14px;
@@ -14694,8 +14694,8 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
 }
 .plan-slots li {
   font-size: 0.7rem;
-  color: #1d4ed8;
-  background: rgba(37, 99, 235, 0.08);
+  color: #087568;
+  background: rgba(11, 159, 143, 0.08);
   border-radius: 5px;
   padding: 1px 5px;
 }
@@ -14735,14 +14735,14 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
 }
 .plan-when {
   font-weight: 600;
-  color: #1d4ed8;
+  color: #087568;
   white-space: nowrap;
 }
 .plan-placements em {
   font-style: normal;
   font-size: 0.7rem;
-  background: rgba(37, 99, 235, 0.12);
-  color: #1d4ed8;
+  background: rgba(11, 159, 143, 0.12);
+  color: #087568;
   border-radius: 999px;
   padding: 1px 7px;
 }
@@ -14825,8 +14825,8 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   font-size: 0.92rem;
 }
 .kc-answer {
-  border: 1px solid rgba(37, 99, 235, 0.35);
-  background: rgba(37, 99, 235, 0.05);
+  border: 1px solid rgba(11, 159, 143, 0.35);
+  background: rgba(11, 159, 143, 0.06);
   border-radius: 13px;
   padding: 13px 15px;
   margin-bottom: 12px;
@@ -14844,7 +14844,7 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
 .kc-answer ol button {
   border: none;
   background: transparent;
-  color: #1d4ed8;
+  color: #087568;
   cursor: pointer;
   padding: 0;
   text-decoration: underline;
@@ -15111,8 +15111,8 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   color: #b45309;
 }
 .kc-memory-meta .kc-req {
-  background: rgba(37, 99, 235, 0.14);
-  color: #1d4ed8;
+  background: rgba(11, 159, 143, 0.14);
+  color: #087568;
   font-weight: 600;
 }
 .kc-memory-buttons {
@@ -15219,8 +15219,8 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
 .lab-explain {
   font-size: 0.87rem;
   line-height: 1.6;
-  background: rgba(37, 99, 235, 0.06);
-  border-left: 3px solid rgba(37, 99, 235, 0.5);
+  background: rgba(11, 159, 143, 0.06);
+  border-left: 3px solid rgba(11, 159, 143, 0.5);
   border-radius: 0 9px 9px 0;
   padding: 10px 13px;
   margin: 0 0 16px;
@@ -15298,8 +15298,8 @@ aside:focus-within .side-buttons { opacity: 1; pointer-events: auto; }
   color: #c2410c;
 }
 .lab-down {
-  background: rgba(37, 99, 235, 0.14);
-  color: #1d4ed8;
+  background: rgba(11, 159, 143, 0.14);
+  color: #087568;
 }
 .lab-chart {
   display: flex;

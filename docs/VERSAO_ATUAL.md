@@ -1,5 +1,13 @@
 # Versão publicada
 
+## v164
+
+- Removidos também os acentos antigos que estavam em `rgba(...)` e sombras
+  derivadas de roxo/azul nos módulos de ferramentas, conteúdo, análise, bases,
+  wiki, contas, funil e reuniões.
+- O build gerado foi varrido e não contém mais os tokens antigos monitorados
+  da identidade anterior.
+
 ## v163
 
 - Defaults antigos de roxo, rosa, azul genérico e laranja decorativo foram
