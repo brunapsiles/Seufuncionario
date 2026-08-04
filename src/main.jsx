@@ -65,7 +65,15 @@ createRoot(document.getElementById("root")).render(
   </React.StrictMode>,
 );
 
-const UPDATE_EVENT = "sf-app-update-available";
+import {
+  INTERACTION_EVENTS,
+  UPDATE_EVENT,
+  isEditableElement,
+  reloadKey,
+  shouldAnnounce,
+  shouldAutoReload,
+} from "./features/app/updateDomain.js";
+
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || "local";
 const BUILD_TIME = import.meta.env.VITE_BUILD_TIME || "";
 
@@ -78,12 +86,34 @@ const announceUpdate = (detail = {}) => {
   window.dispatchEvent(new CustomEvent(UPDATE_EVENT, { detail }));
 };
 
-const reloadOnceForVersion = (latestVersion) => {
-  if (!latestVersion || latestVersion === APP_VERSION) return false;
-  const key = `sf-auto-reloaded:${latestVersion}`;
+// Basta um toque, uma tecla ou um texto colado para esta aba deixar de ser
+// "intocada" — e, a partir daí, quem decide quando atualizar é quem está nela.
+let interagiu = false;
+for (const evento of INTERACTION_EVENTS)
+  window.addEventListener(evento, () => {
+    interagiu = true;
+  }, { once: true, capture: true, passive: true });
+
+const jaRecarregou = (versao) => {
   try {
-    if (sessionStorage.getItem(key) === "1") return false;
-    sessionStorage.setItem(key, "1");
+    return sessionStorage.getItem(reloadKey(versao)) === "1";
+  } catch {
+    // Sem sessionStorage não dá para saber se já recarregou; não arriscar.
+    return true;
+  }
+};
+
+const recarregarSePuder = (latestVersion) => {
+  const pode = shouldAutoReload({
+    currentVersion: APP_VERSION,
+    latestVersion,
+    interacted: interagiu,
+    hasFocusedField: isEditableElement(document.activeElement),
+    alreadyReloaded: jaRecarregou(latestVersion),
+  });
+  if (!pode) return false;
+  try {
+    sessionStorage.setItem(reloadKey(latestVersion), "1");
   } catch {}
   location.reload();
   return true;
@@ -97,14 +127,26 @@ const checkPublishedVersion = async () => {
     );
     const status = await response.json();
     const latestVersion = status?.version;
-    if (latestVersion && latestVersion !== APP_VERSION) {
+    if (shouldAnnounce({ currentVersion: APP_VERSION, latestVersion })) {
+      // O aviso vem SEMPRE: é ele que devolve a escolha para quem está usando.
+      // O recarregamento automático só acontece por cima disso, e só em aba que
+      // ninguém tocou — recarregar no meio de um texto joga fora o que foi
+      // escrito, sem aviso e sem desfazer.
       announceUpdate({ currentVersion: APP_VERSION, latestVersion });
-      window.setTimeout(() => reloadOnceForVersion(latestVersion), 250);
+      window.setTimeout(() => recarregarSePuder(latestVersion), 250);
     }
   } catch {
     // Sem rede, o app continua usando a versão instalada.
   }
 };
+
+// A checagem de versão fica FORA do registro do service worker, de propósito.
+// Ela morava dentro dele: bastava o registro falhar — navegação privada, alguma
+// política do navegador, um erro qualquer — para o catch engolir tudo e a
+// pessoa nunca mais ser avisada de uma versão nova. Uma aba pode ficar aberta
+// por dias.
+checkPublishedVersion();
+window.setInterval(checkPublishedVersion, 5 * 60_000);
 
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.addEventListener("message", (event) => {
@@ -135,12 +177,8 @@ if ("serviceWorker" in navigator) {
         if (controlled) announceUpdate();
         controlled = true;
       });
-      // Uma aba pode permanecer aberta por muitas horas. Verificar em intervalos
-      // curtos evita que ela continue indefinidamente em uma versão antiga.
-      await checkPublishedVersion();
       window.setInterval(() => {
         registration.update().catch(() => {});
-        checkPublishedVersion();
       }, 5 * 60_000);
     } catch {
       // O aplicativo continua funcionando normalmente sem o modo instalável.

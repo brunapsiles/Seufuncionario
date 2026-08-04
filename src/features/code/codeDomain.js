@@ -85,11 +85,11 @@ export const TEMPLATES = [
   <a class="zap" href="https://wa.me/5511999999999">Falar no WhatsApp</a>
 </main>`,
     css: `body { margin:0; min-height:100vh; display:grid; place-items:center;
-  font-family: system-ui; background:#faf7ff; }
+  font-family: system-ui; background:#f2fbf8; }
 .cartao { text-align:center; padding:40px 28px; border-radius:20px;
-  background:#fff; box-shadow:0 18px 50px rgba(60,40,120,.12); }
+  background:#fff; box-shadow:0 18px 50px rgba(11,159,143,.14); }
 .cartao h1 { margin:0 0 6px; }
-.cartao p { color:#6b6580; margin:0 0 20px; }
+.cartao p { color:#5b6f6d; margin:0 0 20px; }
 .zap { display:inline-block; padding:12px 22px; border-radius:12px;
   background:#25d366; color:#fff; text-decoration:none; font-weight:700; }`,
     js: "",
@@ -109,7 +109,7 @@ form { display:grid; gap:12px; max-width:380px; margin:0 auto; padding:24px;
   background:#fff; border-radius:16px; }
 label { display:grid; gap:5px; font-size:14px; font-weight:600; }
 input { padding:10px; border:1px solid #ddd; border-radius:9px; font:inherit; }
-button { padding:12px; border:0; border-radius:10px; background:#6b46ff;
+button { padding:12px; border:0; border-radius:10px; background:#0b9f8f;
   color:#fff; font-weight:700; cursor:pointer; }`,
     js: `document.getElementById("pedido").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -126,12 +126,12 @@ button { padding:12px; border:0; border-radius:10px; background:#6b46ff;
   <article class="destaque"><h3>Festa</h3><strong>R$ 140</strong><p>Bolo de 2 andares</p></article>
   <article><h3>Casamento</h3><strong>sob consulta</strong><p>Projeto exclusivo</p></article>
 </section>`,
-    css: `body { font-family: system-ui; padding:24px; background:#f7f5ff; }
+    css: `body { font-family: system-ui; padding:24px; background:#f2fbf8; }
 .precos { display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr)); }
 article { padding:22px; border-radius:16px; background:#fff; text-align:center; }
-.destaque { outline:2px solid #6b46ff; }
-strong { display:block; font-size:26px; margin:8px 0; color:#6b46ff; }
-p { color:#6b6580; margin:0; }`,
+.destaque { outline:2px solid #0b9f8f; }
+strong { display:block; font-size:26px; margin:8px 0; color:#0b9f8f; }
+p { color:#5b6f6d; margin:0; }`,
     js: "",
   },
 ];
