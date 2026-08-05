@@ -161,11 +161,11 @@
   opacity: 0.76;
 }
 
-.tdg-section[data-tdg-catalog="secondary"] .tdg-section-head h2::after {
-  color: #62766f;
-  content: " — subfunções agrupadas";
-  font-weight: 500;
-}
+/* Antes havia aqui um `content: " — subfunções agrupadas"` colado no título de
+   cada área. "Subfunção agrupada" é como nós descrevemos a organização por
+   dentro; para quem usa, é ruído — a pessoa quer saber o que a área faz, não
+   como ela foi catalogada. O destaque visual (opacidade) já diferencia o
+   catálogo secundário sem precisar explicar a arquitetura na tela. */
 
 @media (max-width: 980px) {
   .tdg-routine-grid,

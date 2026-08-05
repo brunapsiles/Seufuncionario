@@ -169,8 +169,12 @@ const replaceTextNode = (node) => {
   next = next
     .replace(/ · planejado$/i, "")
     .replace(/ · ativo$/i, "")
-    .replace(/\s+([,.])/g, "$1")
-    .trimStart();
+    .replace(/\s+([,.])/g, "$1");
+  // Só apara o começo quando este é o primeiro nó do elemento. O React quebra
+  // `{40} funcionais · {13} backlog` em nós separados — "40", " funcionais · ",
+  // "13", " backlog" — e aparar o começo de cada um colava as palavras nos
+  // números: "40ativas · 13planejado". O espaço aqui é conteúdo, não sobra.
+  if (!node.previousSibling) next = next.trimStart();
   if (next !== original) node.nodeValue = next;
 };
 
@@ -194,7 +198,7 @@ const buildRoutineCard = (routine) => {
   button.type = "button";
   button.setAttribute("aria-label", `Abrir ${routine.title}`);
   button.innerHTML = `
-    <header><strong>${routine.title}</strong><b>nota ${routine.score}</b></header>
+    <header><strong>${routine.title}</strong></header>
     <p>${routine.text}</p>
     <div class="tdg-routine-sub">${routine.subs.map((item) => `<span>${item}</span>`).join("")}</div>
   `;
@@ -214,9 +218,8 @@ const ensureRoutineMap = () => {
       <div>
         <span class="tdg-kicker">ROTINAS PRINCIPAIS</span>
         <h2>8 rotinas para operar a To Do Green</h2>
-        <p>As demais entradas ficam como subfunções dentro dessas rotinas. A navegação deixa de inflar o produto com itens soltos.</p>
+        <p>Cada rotina reúne o que você precisa para tocar aquela parte da operação.</p>
       </div>
-      <span class="tdg-routine-score">régua mínima 8/10</span>
     </div>
     <div class="tdg-routine-grid"></div>
   `;

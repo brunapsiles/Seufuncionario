@@ -266,17 +266,26 @@
   min-height: 104px;
   padding: 15px;
   text-align: left;
+  /* Item de grade tem largura mínima automática: sem isto o cartão cresce até
+     caber o texto e invade o vizinho, em vez de o texto se ajustar ao cartão.
+     É o que fazia "R$ 26.685" e "Preço recomendado" se atropelarem. */
+  min-width: 0;
 }
 
 .tdg-metric span,
 .tdg-metric small {
   color: var(--tdg-muted);
   font-size: 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .tdg-metric strong {
-  font-size: clamp(1.35rem, 3vw, 2rem);
+  /* Valor monetário não tem onde quebrar; o tamanho precisa ceder à coluna. */
+  font-size: clamp(1.05rem, 2.2vw, 1.75rem);
   letter-spacing: -0.04em;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .tdg-metric.good { border-color: color-mix(in srgb, #16a34a 35%, var(--tdg-line)); }
@@ -438,7 +447,7 @@
   .tdg-metrics,
   .tdg-result,
   .tdg-output-grid,
-  .tdg-governance-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tdg-governance-grid { grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); }
   .tdg-calculator-grid { grid-template-columns: 1fr; }
   .tdg-access-form,
   .tdg-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }

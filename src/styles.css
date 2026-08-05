@@ -1,6 +1,6 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap");
+@import url("./fontes.css");
 :root {
-  font-family: "Inter", system-ui, sans-serif;
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   color: #092f34;
   background: #eef8f5;
   font-synthesis: none;
@@ -116,7 +116,7 @@ h1,
 h2,
 h3,
 .logo {
-  font-family: "Plus Jakarta Sans", sans-serif;
+  font-family: "Plus Jakarta Sans", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 .button {
   border: 0;
@@ -5996,7 +5996,7 @@ aside nav button span,
 .md h2,
 .md h3,
 .md h4 {
-  font-family: "Plus Jakarta Sans", sans-serif;
+  font-family: "Plus Jakarta Sans", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   letter-spacing: -0.01em;
   margin: 18px 0 9px;
 }
@@ -6021,7 +6021,7 @@ aside nav button span,
   width: 100%;
 }
 .md th {
-  font-family: "Plus Jakarta Sans", sans-serif;
+  font-family: "Plus Jakarta Sans", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -6104,7 +6104,7 @@ aside nav button span,
 .team-grid strong {
   display: block;
   font-size: 15px;
-  font-family: "Plus Jakarta Sans", sans-serif;
+  font-family: "Plus Jakarta Sans", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 .team-grid small {
   color: var(--muted);
@@ -6885,7 +6885,7 @@ input[readonly] {
   align-items: center;
   gap: 9px;
   font-size: 15px;
-  font-family: "Plus Jakarta Sans", sans-serif;
+  font-family: "Plus Jakarta Sans", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   margin: 0 0 6px;
 }
 .collab-card h3 svg {
@@ -6916,7 +6916,7 @@ input[readonly] {
   margin-bottom: 8px;
 }
 .invite-box strong {
-  font-family: "Plus Jakarta Sans", sans-serif;
+  font-family: "Plus Jakarta Sans", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   letter-spacing: 0.08em;
   color: var(--primary);
 }
@@ -7388,7 +7388,7 @@ h4,
 }
 .smart-card strong {
   display: block;
-  font-family: "Plus Jakarta Sans", sans-serif;
+  font-family: "Plus Jakarta Sans", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 15px;
 }
 .smart-card small {
@@ -7561,7 +7561,7 @@ h4,
   font-size: 26px;
   letter-spacing: 12px;
   font-weight: 700;
-  font-family: "Plus Jakarta Sans", sans-serif;
+  font-family: "Plus Jakarta Sans", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 .smart-icon.g9 {
   background: linear-gradient(135deg, #0b9f8f, #17a673);

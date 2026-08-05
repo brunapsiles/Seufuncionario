@@ -1,9 +1,16 @@
 import "./LogisticsVerticalWorkCenter.css";
 import {
+
   buildWorkCenterAiRequest,
   createWorkCenterObject,
   summarizeWorkCenter,
 } from "./todoGreenWorkCenterDomain.js";
+
+// Plural em português se escreve, não se abrevia com "(ns)". E zero merece
+// palavra: "nenhum item" informa; "0 item(ns)" só mostra o código por baixo.
+const contarItens = (n) =>
+  n === 0 ? "nenhum item" : n === 1 ? "1 item" : `${n} itens`;
+
 
 const STORAGE_KEY = "todogreen-work-center-v2";
 const AUTH_TOKEN_KEY = "seu-funcionario-auth-token";
@@ -169,7 +176,7 @@ const renderWorkCenter = () => {
         <div class="tdg-work-center-actions"><button class="tdg-action" type="button" data-work-new>+ Novo item</button><button class="tdg-login-secondary" type="button" data-work-ai>Analisar com IA</button></div>
       </div>
       <div class="tdg-work-center-layout">
-        <aside class="tdg-board-sidebar">${state.boards.map((item) => `<button type="button" data-board-id="${item.id}" class="${item.id === activeBoardId ? "active" : ""}"><strong>${item.name}</strong><small>${state.items.filter((workItem) => workItem.boardId === item.id && !workItem.archivedAt).length} item(ns)</small></button>`).join("")}</aside>
+        <aside class="tdg-board-sidebar">${state.boards.map((item) => `<button type="button" data-board-id="${item.id}" class="${item.id === activeBoardId ? "active" : ""}"><strong>${item.name}</strong><small>${contarItens(state.items.filter((workItem) => workItem.boardId === item.id && !workItem.archivedAt).length)}</small></button>`).join("")}</aside>
         <div class="tdg-board-main">
           <div class="tdg-work-metrics"><span><small>Ativos</small><strong>${summary.total}</strong></span><span><small>Atrasados</small><strong>${summary.overdue}</strong></span><span><small>Bloqueados</small><strong>${summary.blocked}</strong></span><span><small>Aprovações</small><strong>${summary.pendingApprovals}</strong></span></div>
           <div class="tdg-board-toolbar"><input data-work-search value="${search}" placeholder="Buscar título, cliente, operação ou responsável" /><select data-work-filter><option value="todos">Todos os status</option>${statusOptions.map((status) => `<option value="${status}" ${status === statusFilter ? "selected" : ""}>${label(status)}</option>`).join("")}</select></div>

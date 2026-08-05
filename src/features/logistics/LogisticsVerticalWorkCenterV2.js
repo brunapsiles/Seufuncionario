@@ -1,8 +1,15 @@
 import "./LogisticsVerticalWorkCenter.css";
 import {
+
   buildWorkCenterAiRequest,
   summarizeWorkCenter,
 } from "./todoGreenWorkCenterDomain.js";
+
+// Plural em português se escreve, não se abrevia com "(ns)". E zero merece
+// palavra: "nenhum item" informa; "0 item(ns)" só mostra o código por baixo.
+const contarItens = (n) =>
+  n === 0 ? "nenhum item" : n === 1 ? "1 item" : `${n} itens`;
+
 
 const AUTH_TOKEN_KEY = "seu-funcionario-auth-token";
 const CACHE_KEY = "todogreen-work-center-api-cache-v1";
@@ -210,7 +217,7 @@ const renderWorkCenter = () => {
   root.innerHTML = `<section class="tdg-panel tdg-work-center">
     <div class="tdg-work-center-head"><div><span class="tdg-kicker">CENTRAL DE TRABALHO</span><h2>${esc(board?.name || "Central de Trabalho")}</h2><p>${esc(board?.description || "Quadros compartilhados da To Do Green.")}</p></div><div class="tdg-work-center-actions"><button class="tdg-login-secondary" type="button" data-work-sync>${state.loading ? "Sincronizando..." : "Atualizar"}</button>${state.canWrite ? '<button class="tdg-action" type="button" data-work-new>+ Novo item</button>' : ""}<button class="tdg-login-secondary" type="button" data-work-ai>Analisar com IA</button></div></div>
     ${(state.error || state.notice) ? `<div class="tdg-alert"><span>${esc(state.error || state.notice)}</span></div>` : ""}
-    <div class="tdg-work-center-layout"><aside class="tdg-board-sidebar">${state.boards.map((item) => `<button type="button" data-board-id="${esc(item.id)}" class="${item.id === state.activeBoardId ? "active" : ""}"><strong>${esc(item.name)}</strong><small>${state.items.filter((work) => work.boardId === item.id && !work.archivedAt).length} item(ns)</small></button>`).join("")}</aside>
+    <div class="tdg-work-center-layout"><aside class="tdg-board-sidebar">${state.boards.map((item) => `<button type="button" data-board-id="${esc(item.id)}" class="${item.id === state.activeBoardId ? "active" : ""}"><strong>${esc(item.name)}</strong><small>${contarItens(state.items.filter((work) => work.boardId === item.id && !work.archivedAt).length)}</small></button>`).join("")}</aside>
     <div class="tdg-board-main"><div class="tdg-work-metrics"><span><small>Ativos</small><strong>${summary.total}</strong></span><span><small>Atrasados</small><strong>${summary.overdue}</strong></span><span><small>Bloqueados</small><strong>${summary.blocked}</strong></span><span><small>Aprovações</small><strong>${summary.pendingApprovals}</strong></span></div>
     <div class="tdg-board-toolbar"><input data-work-search value="${esc(state.search)}" placeholder="Buscar título, cliente, operação ou responsável"><select data-work-filter><option value="todos">Todos os status</option>${statuses.map((value) => `<option value="${value}" ${value === state.status ? "selected" : ""}>${label(value)}</option>`).join("")}</select></div>
     ${formHtml()}<div class="tdg-work-list">${filteredItems().length ? filteredItems().map(rowHtml).join("") : `<div class="tdg-work-empty">${state.loading ? "Carregando itens..." : "Nenhum item neste quadro."}</div>`}</div>
