@@ -72,6 +72,7 @@
 .tdg.tdg-module-page > .tdg-tabs,
 .tdg.tdg-module-page > .tdg-metrics,
 .tdg.tdg-module-page > .tdg-section,
+.tdg.tdg-module-page > .tdg-routine-map,
 .tdg.tdg-module-page > [data-tdg-home-only="true"] {
   display: none !important;
 }
