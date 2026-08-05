@@ -1142,6 +1142,7 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
   const allowed = canAccessTodoGreen(db, remoteAccess);
   const role = accessRole(db, remoteAccess);
   const page = todoGreenRouteToPage(path);
+  const isHome = /^\/todogreen\/?$/.test(path);
   const verticalData = useMemo(() => defaultVerticalData(db, remoteAccess), [db, remoteAccess]);
   const dashboard = useMemo(() => summarizeTodoGreenDashboard(verticalData), [verticalData]);
   const filteredCatalog = TODO_GREEN_MODULE_CATALOG.filter((item) => moduleMatches(item, query));
@@ -1202,12 +1203,16 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
       {page === "acessos" && <AccessPanel role={role} authHeaders={authHeaders} setToast={setToast} />}
       {!Object.keys(MODULE_IMPLEMENTATION).includes(page) && !["green-score", "calculadora-ambiental", "tradutor-esg", "escopo-3", "custos", "comissoes"].includes(page) && <DashboardPanel data={verticalData} dashboard={dashboard} />}
 
-      <section className="tdg-panel">
-        <div className="tdg-section-head"><div><span className="tdg-kicker">PRODUTOS LOGÍSTICOS</span><h2>Calculadoras reais disponíveis</h2></div><button className="tdg-action" type="button" onClick={openPricing}>Abrir precificação</button></div>
-        <div className="tdg-product-strip">{LOGISTICS_PRODUCTS.map((product) => <ProductCard product={product} active={false} onSelect={openPricing} key={product.id} />)}</div>
-      </section>
+      {isHome && (
+        <>
+          <section className="tdg-panel">
+            <div className="tdg-section-head"><div><span className="tdg-kicker">PRODUTOS LOGÍSTICOS</span><h2>Calculadoras reais disponíveis</h2></div><button className="tdg-action" type="button" onClick={openPricing}>Abrir precificação</button></div>
+            <div className="tdg-product-strip">{LOGISTICS_PRODUCTS.map((product) => <ProductCard product={product} active={false} onSelect={openPricing} key={product.id} />)}</div>
+          </section>
 
-      {modulesByArea.map((area) => <AreaSection area={area} modules={area.modules} key={area.id} />)}
+          {modulesByArea.map((area) => <AreaSection area={area} modules={area.modules} key={area.id} />)}
+        </>
+      )}
     </main>
   );
 }
