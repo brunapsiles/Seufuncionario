@@ -2,6 +2,7 @@ import appWorker from "./worker.js";
 import { handleTodoGreenWorkCenter } from "./worker/services/todogreen-work-center.js";
 import { handleTodoGreenFleet } from "./worker/services/todogreen-fleet.js";
 import { handleTodoGreenCustomerPortal } from "./worker/services/todogreen-customer-portal.js";
+import { handleTodoGreenEsg } from "./worker/services/todogreen-esg.js";
 
 const apiError = (message) => new Response(JSON.stringify({ error: message }), {
   status: 500,
@@ -20,6 +21,10 @@ export default {
     if (url.pathname.startsWith("/api/todogreen/portal")) {
       try { return await handleTodoGreenCustomerPortal(request, env); }
       catch (error) { console.error("To Do Green customer portal error", error); return apiError("Não foi possível abrir o portal do cliente."); }
+    }
+    if (url.pathname.startsWith("/api/todogreen/esg")) {
+      try { return await handleTodoGreenEsg(request, env); }
+      catch (error) { console.error("To Do Green ESG error", error); return apiError("Não foi possível processar o cálculo ambiental."); }
     }
     if (url.pathname.startsWith("/api/todogreen/fleet")) {
       try { return await handleTodoGreenFleet(request, env); }

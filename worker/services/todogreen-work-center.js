@@ -25,7 +25,9 @@ const sha256 = async (value) => {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 };
 
-async function authenticatedUser(request, env) {
+// Exportado para o servico de ESG usar as MESMAS regras de sessao. Uma
+// segunda copia divergiria no primeiro ajuste.
+export async function authenticatedUser(request, env) {
   const auth = request.headers.get("authorization") || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
   if (!token || !env.DB) return null;
@@ -39,7 +41,9 @@ async function authenticatedUser(request, env) {
     .first();
 }
 
-async function resolveAccess(env, user, requestedOwnerId) {
+// Exportado pelo mesmo motivo: quem pode operar a vertical e decidido em um
+// lugar so.
+export async function resolveAccess(env, user, requestedOwnerId) {
   const adminEmails = String(env.TODOGREEN_ADMIN_EMAILS || "")
     .split(",")
     .map((item) => item.trim().toLowerCase())
