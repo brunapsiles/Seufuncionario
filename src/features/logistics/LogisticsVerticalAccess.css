@@ -130,30 +130,6 @@
   padding: 14px;
 }
 
-.tdg [data-tdg-clickable="true"] {
-  position: relative;
-}
-
-.tdg [data-tdg-clickable="true"]::after {
-  content: "Abrir";
-  position: absolute;
-  right: 12px;
-  bottom: 10px;
-  border-radius: 999px;
-  background: rgba(23, 98, 79, 0.1);
-  color: #17624f;
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  padding: 4px 7px;
-  text-transform: uppercase;
-}
-
-.tdg-tabs [data-tdg-clickable="true"]::after,
-.tdg-product-card[data-tdg-clickable="true"]::after {
-  display: none;
-}
-
 @media (max-width: 720px) {
   .tdg-denied {
     padding: 12px;
@@ -180,7 +156,4 @@
     font-size: clamp(2.1rem, 12vw, 3.4rem);
   }
 
-  .tdg [data-tdg-clickable="true"]::after {
-    display: none;
-  }
 }
