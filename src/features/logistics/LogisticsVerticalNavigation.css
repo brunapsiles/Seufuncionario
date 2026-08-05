@@ -111,6 +111,162 @@
   margin-bottom: 20px;
 }
 
+/* A calculadora usa a largura da página: formulário em cima, decisão embaixo.
+   O layout anterior espremia quatro valores monetários em colunas estreitas. */
+.tdg-pricing-detail {
+  overflow: hidden;
+}
+
+.tdg-pricing-detail .tdg-calculator-workspace {
+  display: grid;
+  gap: 20px;
+}
+
+.tdg-pricing-detail .tdg-form {
+  align-items: start;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.tdg-price-summary {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.tdg-price-summary > div {
+  background: #f7fbf9;
+  border: 1px solid var(--tdg-line, #d6e8df);
+  border-radius: 18px;
+  display: grid;
+  gap: 8px;
+  min-height: 150px;
+  min-width: 0;
+  padding: 18px;
+}
+
+.tdg-price-summary > div.featured {
+  background: #17624f;
+  border-color: #17624f;
+  color: #fff;
+}
+
+.tdg-price-summary > div.good {
+  background: #edf8f2;
+  border-color: #9ad3bc;
+}
+
+.tdg-price-summary > div.risk {
+  background: #fff4f1;
+  border-color: #efb9ae;
+}
+
+.tdg-price-summary span,
+.tdg-price-summary small {
+  color: var(--tdg-muted, #62766f);
+  line-height: 1.35;
+}
+
+.tdg-price-summary .featured span,
+.tdg-price-summary .featured small {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.tdg-price-summary strong {
+  align-self: center;
+  font-size: clamp(1.45rem, 2.5vw, 2.2rem);
+  letter-spacing: -0.045em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.tdg-price-details {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
+  margin-top: 18px;
+}
+
+.tdg-price-details > span {
+  background: #f7fbf9;
+  border: 1px solid var(--tdg-line, #d6e8df);
+  border-radius: 14px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px 16px;
+}
+
+.tdg-price-details small {
+  color: var(--tdg-muted, #62766f);
+}
+
+.tdg-price-details strong {
+  font-size: 1.05rem;
+  overflow-wrap: anywhere;
+}
+
+.tdg-price-guidance {
+  background: #f2f8f5;
+  border: 1px solid var(--tdg-line, #d6e8df);
+  border-radius: 20px;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.55fr);
+  margin-top: 18px;
+  padding: 20px;
+}
+
+.tdg-price-guidance h3 {
+  font-size: 1.35rem;
+  margin: 6px 0 0;
+}
+
+.tdg-price-guidance p {
+  color: var(--tdg-muted, #62766f);
+  line-height: 1.55;
+  margin: 10px 0 0;
+}
+
+.tdg-price-guidance ul {
+  color: var(--tdg-muted, #62766f);
+  line-height: 1.5;
+  margin: 12px 0 0;
+  padding-left: 18px;
+}
+
+.tdg-environmental-summary {
+  background: #fff;
+  border: 1px solid var(--tdg-line, #d6e8df);
+  border-radius: 16px;
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+}
+
+.tdg-environmental-summary span,
+.tdg-environmental-summary small {
+  color: var(--tdg-muted, #62766f);
+  line-height: 1.4;
+}
+
+.tdg-calculation-details {
+  border-bottom: 1px solid var(--tdg-line, #d6e8df);
+  margin-top: 16px;
+  padding-bottom: 16px;
+}
+
+.tdg-calculation-details summary {
+  color: var(--tdg-green, #17624f);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.tdg-pricing-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
 @media (max-width: 720px) {
   .tdg-page-header {
     align-items: stretch;
@@ -130,5 +286,30 @@
 
   .tdg-pricing.tdg-pricing-select .tdg-product-strip {
     grid-template-columns: 1fr;
+  }
+
+  .tdg-pricing-detail .tdg-form,
+  .tdg-price-summary,
+  .tdg-price-guidance {
+    grid-template-columns: 1fr;
+  }
+
+  .tdg-price-summary > div {
+    min-height: 120px;
+  }
+
+  .tdg-price-summary strong {
+    white-space: normal;
+  }
+
+  .tdg-pricing-actions .tdg-action {
+    width: 100%;
+  }
+}
+
+@media (min-width: 721px) and (max-width: 1040px) {
+  .tdg-pricing-detail .tdg-form,
+  .tdg-price-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
