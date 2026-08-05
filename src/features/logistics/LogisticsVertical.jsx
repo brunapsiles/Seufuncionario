@@ -65,6 +65,7 @@ const PricingParametersPanel = lazy(() => import("./PricingParametersPanel.jsx")
 const DashboardBuilderPage = lazy(() => import("./pages/DashboardBuilderPage.jsx"));
 const ClientsPage = lazy(() => import("./pages/ClientsPage.jsx"));
 const TrackerPage = lazy(() => import("./pages/TrackerPage.jsx"));
+const OpportunitiesPage = lazy(() => import("./pages/OpportunitiesPage.jsx"));
 
 const iconMap = {
   Activity,
@@ -881,31 +882,6 @@ function ClientPanel({ data, update, setToast }) {
   );
 }
 
-function OpportunityPanel({ data, update, setToast }) {
-  const [form, setForm] = useState({ client: "", productId: "middle-mile", stage: "Diagnóstico", value: 0, probability: 30, priority: "Alta", nextStep: "" });
-  const save = (event) => {
-    event.preventDefault();
-    appendRecord(update, "todoGreenOpportunities", { id: `opp-${Date.now()}`, createdAt: new Date().toISOString(), ...form, value: Number(form.value || 0), probability: Number(form.probability || 0) });
-    setToast?.("Oportunidade To Do Green cadastrada");
-    setForm({ client: "", productId: "middle-mile", stage: "Diagnóstico", value: 0, probability: 30, priority: "Alta", nextStep: "" });
-  };
-  return (
-    <section className="tdg-panel">
-      <div className="tdg-section-head"><div><span className="tdg-kicker">PIPELINE</span><h2>Oportunidades com produto, valor, estágio e probabilidade</h2></div><strong>{data.opportunities.length} aberta(s)</strong></div>
-      <form className="tdg-access-form" onSubmit={save}>
-        <label><span>Cliente</span><input value={form.client} required onChange={(event) => setForm((current) => ({ ...current, client: event.target.value }))} /></label>
-        <label><span>Produto</span><select value={form.productId} onChange={(event) => setForm((current) => ({ ...current, productId: event.target.value }))}>{LOGISTICS_PRODUCTS.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
-        {[["stage", "Estágio"], ["value", "Valor estimado R$"], ["probability", "Probabilidade %"], ["priority", "Prioridade"], ["nextStep", "Próximo passo"]].map(([key, label]) => <label key={key}><span>{label}</span><input value={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} /></label>)}
-        <button className="tdg-action" type="submit"><Plus size={17} />Criar oportunidade</button>
-      </form>
-      <div className="tdg-access-list">
-        {data.opportunities.length === 0 && <div className="tdg-empty-access">Nenhuma oportunidade real cadastrada.</div>}
-        {data.opportunities.map((item) => <div className="tdg-access-row" key={item.id}><span><strong>{item.client}</strong><small>{item.productId} · {item.stage}</small></span><span>{BRL.format(item.value)}</span><span>{item.probability}%</span></div>)}
-      </div>
-    </section>
-  );
-}
-
 function PricingPanel({ role, update, db, authHeaders, setToast }) {
   const [productId, setProductId] = useState("middle-mile");
   const [inputs, setInputs] = useState(productDefaults["middle-mile"]);
@@ -1238,7 +1214,7 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
       {page === "dashboard" && <DashboardPanel data={verticalData} dashboard={dashboard} />}
       {page === "dashboards" && <Suspense fallback={<section className="tdg-panel">Carregando seus painéis...</section>}><DashboardBuilderPage authHeaders={authHeaders} summary={dashboard} setToast={setToast} /></Suspense>}
       {page === "clientes" && <Suspense fallback={<section className="tdg-panel">Carregando clientes...</section>}><ClientsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
-      {page === "oportunidades" && <OpportunityPanel data={verticalData} update={update} setToast={setToast} />}
+      {page === "oportunidades" && <Suspense fallback={<section className="tdg-panel">Carregando oportunidades...</section>}><OpportunitiesPage opportunities={verticalData.opportunities} onCreate={(registro) => appendRecord(update, "todoGreenOpportunities", registro)} setToast={setToast} /></Suspense>}
       {page === "propostas" && <ProposalPanel data={verticalData} update={update} setToast={setToast} />}
       {page === "precificacao" && <PricingPanel role={role} update={update} db={db} authHeaders={authHeaders} setToast={setToast} />}
       {["esg", "green-score", "calculadora-ambiental", "tradutor-esg", "escopo-3"].includes(page) && <EsgPanel dashboard={dashboard} data={verticalData} />}

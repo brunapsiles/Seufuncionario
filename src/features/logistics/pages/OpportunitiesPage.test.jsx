@@ -1,0 +1,123 @@
+/* @vitest-environment jsdom */
+import "@testing-library/jest-dom/vitest";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import OpportunitiesPage from "./OpportunitiesPage.jsx";
+
+// A configuração do projeto não usa `globals`, então o auto-cleanup da
+// Testing Library não se registra sozinho: sem isto, cada teste enxerga o DOM
+// dos anteriores e as buscas encontram elementos duplicados.
+afterEach(cleanup);
+
+const completa = {
+  id: "opp-1",
+  cliente: "Distribuidora Norte",
+  estagio: "Proposta",
+  tipoVeiculo: "elétrico",
+  distanciaKm: 120,
+  viagensMes: 20,
+  mesesContrato: 24,
+  valorMensal: 10000,
+  ocupacaoPrevistaPercent: 78,
+  frotaLimpaPercent: 60,
+};
+
+// O registro que o CRM já grava hoje: sem nenhum dado operacional.
+const crua = {
+  id: "opp-2",
+  client: "Atacado Sul",
+  stage: "Diagnóstico",
+  value: 180000,
+  probability: 30,
+};
+
+const abrir = (nome) => fireEvent.click(screen.getByRole("button", { name: new RegExp(nome) }));
+
+describe("página de oportunidades", () => {
+  it("mostra o pipeline separando valor cheio de valor ponderado", () => {
+    render(<OpportunitiesPage opportunities={[completa]} />);
+    const resumo = screen.getByText("Ponderado pela probabilidade").closest("article");
+    // 240.000 × 60% (estágio Proposta)
+    expect(within(resumo).getByText(/144\.000/)).toBeInTheDocument();
+    expect(screen.getByText("Valor em contrato").closest("article")).toHaveTextContent(
+      /240\.000/,
+    );
+  });
+
+  it("conta as oportunidades sem dado ambiental como fila de trabalho", () => {
+    render(<OpportunitiesPage opportunities={[completa, crua]} />);
+    expect(screen.getByText("1 sem dado operacional")).toBeInTheDocument();
+  });
+
+  it("abre a oportunidade com potencial ESG, Green Score e próxima ação", () => {
+    render(<OpportunitiesPage opportunities={[completa]} />);
+    abrir("Distribuidora Norte");
+    expect(screen.getByText("Potencial ambiental")).toBeInTheDocument();
+    expect(screen.getByText(/Green Score projetado/)).toBeInTheDocument();
+    expect(screen.getByText("Ver memória de cálculo")).toBeInTheDocument();
+    expect(screen.getByText(/Potencial de expansão/)).toBeInTheDocument();
+  });
+
+  it("a memória de cálculo fica disponível, não escondida em outra tela", () => {
+    render(<OpportunitiesPage opportunities={[completa]} />);
+    abrir("Distribuidora Norte");
+    fireEvent.click(screen.getByText("Ver memória de cálculo"));
+    expect(screen.getByText(/inventário nacional/i)).toBeInTheDocument();
+    expect(screen.getByText(/não constitui certificação/i)).toBeInTheDocument();
+  });
+
+  it("sem dado operacional, diz o que falta em vez de mostrar zero", () => {
+    render(<OpportunitiesPage opportunities={[crua]} />);
+    abrir("Atacado Sul");
+    // Aparece no lugar dos números ambientais e também na lista de riscos —
+    // são duas leituras diferentes da mesma pendência, e o vendedor pode
+    // chegar por qualquer uma das duas.
+    expect(
+      screen.getAllByText(/Informe a distância e a frequência mensal/i).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText("Potencial ambiental")).not.toBeInTheDocument();
+    // O valor herdado continua sendo o contrato inteiro, não a mensalidade.
+    expect(screen.getByText("Valor em contrato").closest("article")).toHaveTextContent(
+      /180\.000/,
+    );
+  });
+
+  it("risco crítico aparece no cabeçalho, antes de abrir o card", () => {
+    render(
+      <OpportunitiesPage
+        opportunities={[{ ...completa, viagensMes: 220, veiculosDisponiveis: 2 }]}
+      />,
+    );
+    const cabecalho = screen.getByRole("button", { name: /Distribuidora Norte/ });
+    expect(cabecalho).toHaveTextContent("1");
+    fireEvent.click(cabecalho);
+    expect(screen.getByText(/Confirmar capacidade de frota/i)).toBeInTheDocument();
+  });
+
+  it("grava os números do formulário como número, não como texto", () => {
+    const onCreate = vi.fn();
+    render(<OpportunitiesPage opportunities={[]} onCreate={onCreate} />);
+    fireEvent.change(screen.getByLabelText("Cliente"), { target: { value: "Nova Conta" } });
+    fireEvent.change(screen.getByLabelText("Distância por viagem (km)"), {
+      target: { value: "90" },
+    });
+    fireEvent.change(screen.getByLabelText("Viagens por mês"), { target: { value: "40" } });
+    fireEvent.change(screen.getByLabelText("Valor mensal (R$)"), {
+      target: { value: "12000" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Registrar oportunidade/ }));
+
+    const registro = onCreate.mock.calls[0][0];
+    // Guardar "90" como string faria o motor somar texto e produzir um
+    // pipeline errado sem erro nenhum.
+    expect(registro.distanciaKm).toBe(90);
+    expect(registro.viagensMes).toBe(40);
+    expect(registro.valorMensal).toBe(12000);
+    expect(registro.cliente).toBe("Nova Conta");
+  });
+
+  it("carteira vazia convida em vez de mostrar tela em branco", () => {
+    render(<OpportunitiesPage opportunities={[]} />);
+    expect(screen.getByText(/Nenhuma oportunidade registrada ainda/)).toBeInTheDocument();
+  });
+});
