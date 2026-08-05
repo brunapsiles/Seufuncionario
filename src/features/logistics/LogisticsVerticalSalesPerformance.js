@@ -1,4 +1,6 @@
 import "./LogisticsVerticalSalesPerformance.css";
+import "./LogisticsVerticalRecovery.css";
+import "./LogisticsVerticalRecovery.js";
 import "./LogisticsVerticalCredentials.js";
 import "./LogisticsVerticalAccessPolicy.js";
 
