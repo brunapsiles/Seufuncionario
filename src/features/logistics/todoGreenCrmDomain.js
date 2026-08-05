@@ -55,7 +55,7 @@ export const TODO_GREEN_QUALIFICATION_FIELDS = Object.freeze([
   { key: "budgetCycle", label: "Ciclo orçamentário", type: "textarea" },
   { key: "customerTarget", label: "Target do cliente", type: "number" },
   { key: "esgMaturity", label: "Maturidade ESG", type: "select" },
-  { key: "scope3Pressure", label: "Pressão sobre Escopo 3", type: "select" },
+  { key: "scope3Pressure", label: "Pressão para reduzir emissões da cadeia logística", type: "select" },
   { key: "electrificationTarget", label: "Meta de eletrificação", type: "textarea" },
   { key: "decisionCriteria", label: "Critérios de decisão", type: "textarea" },
   { key: "knownRisks", label: "Riscos conhecidos", type: "textarea" },
@@ -202,7 +202,7 @@ export const recommendNextCommercialAction = ({ account = {}, contacts = [], opp
   if (asNumber(account.dataQuality) < 60)
     return "Concluir diagnóstico logístico antes de precificar.";
   if (asNumber(account.esgFit) >= 70 && !account.qualification?.electrificationTarget)
-    return "Validar metas de eletrificação e Escopo 3 do cliente.";
+    return "Validar metas de eletrificação e redução de emissões da cadeia logística do cliente.";
   if (!health.openOpportunities && ["Cliente ativo", "Expansão"].includes(account.stage))
     return "Abrir oportunidade de expansão por rota, região ou produto.";
   return account.nextAction;
