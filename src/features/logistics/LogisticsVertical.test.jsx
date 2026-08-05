@@ -52,7 +52,7 @@ describe("LogisticsVertical", () => {
     expect(screen.getByText("Middle Mile enterprise")).toBeTruthy();
     expect(screen.getByText("Origem *")).toBeTruthy();
     expect(screen.getByText("Pedágio por viagem R$")).toBeTruthy();
-    fireEvent.click(screen.getByText("Last Mile"));
+    fireEvent.click(screen.getAllByText("Last Mile")[0]);
     expect(screen.getByText("Last Mile e-commerce")).toBeTruthy();
     expect(screen.getByText("Pacotes *")).toBeTruthy();
     expect(screen.getByText("Sucesso entrega (%)")).toBeTruthy();
@@ -69,13 +69,14 @@ describe("LogisticsVertical", () => {
     expect(update).toHaveBeenCalled();
   });
 
-  it("filters functions without inventing unrelated cards", async () => {
+  it("filters functions while preserving real workflow navigation", async () => {
     render(<LogisticsVertical db={authorizedDb} update={vi.fn()} />);
     fireEvent.change(screen.getByLabelText("Buscar funções da vertical To Do Green"), {
       target: { value: "Green Score" },
     });
     expect(screen.getAllByText("Green Score").length).toBeGreaterThan(0);
-    expect(screen.queryByText("Pipeline")).toBeNull();
+    expect(screen.getByText("Pipeline")).toBeTruthy();
+    expect(screen.queryByText("Remuneração Variável")).toBeNull();
   });
 
   it("shows the access panel for admins", async () => {
