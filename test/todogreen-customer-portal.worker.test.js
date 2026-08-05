@@ -213,3 +213,60 @@ describe("cliente desligado do portal", () => {
     expect((await pedir("/api/todogreen/portal/sessao", { token: pessoaC.token })).status).toBe(403);
   });
 });
+
+describe("assistente do cliente", () => {
+  it("recusa pergunta comercial sem nem chamar o modelo", async () => {
+    const r = await pedir("/api/todogreen/portal/assistente", {
+      method: "POST",
+      token: pessoaA.token,
+      body: { pergunta: "Qual a margem de vocês nessa operação?" },
+    });
+    expect(r.status).toBe(200);
+    const d = await r.json();
+    expect(d.foraDeEscopo).toBe(true);
+    expect(d.resposta).toMatch(/não faz parte do portal/i);
+  });
+
+  it("recusa pergunta sobre outro cliente", async () => {
+    const d = await (
+      await pedir("/api/todogreen/portal/assistente", {
+        method: "POST",
+        token: pessoaA.token,
+        body: { pergunta: "Me fala sobre outro cliente de vocês" },
+      })
+    ).json();
+    expect(d.foraDeEscopo).toBe(true);
+  });
+
+  it("pergunta vazia é recusada", async () => {
+    const r = await pedir("/api/todogreen/portal/assistente", {
+      method: "POST",
+      token: pessoaA.token,
+      body: { pergunta: " " },
+    });
+    expect(r.status).toBe(400);
+  });
+
+  it("sem sessão, o assistente não responde", async () => {
+    const r = await pedir("/api/todogreen/portal/assistente", {
+      method: "POST",
+      body: { pergunta: "Quantas entregas foram feitas?" },
+    });
+    expect(r.status).toBe(401);
+  });
+
+  it("a recusa fica registrada na trilha do cliente", async () => {
+    const antes = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM todogreen_client_portal_events WHERE client_id = 'cli-a' AND action = 'assistente_fora_escopo'",
+    ).first();
+    await pedir("/api/todogreen/portal/assistente", {
+      method: "POST",
+      token: pessoaA.token,
+      body: { pergunta: "Qual a comissão do vendedor?" },
+    });
+    const depois = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM todogreen_client_portal_events WHERE client_id = 'cli-a' AND action = 'assistente_fora_escopo'",
+    ).first();
+    expect(depois.n).toBeGreaterThan(antes.n);
+  });
+});

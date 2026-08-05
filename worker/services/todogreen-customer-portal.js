@@ -17,6 +17,13 @@ import {
   resolveClientScope,
   scopedWhere,
 } from "../../src/features/logistics/customerPortalDomain.js";
+import {
+  INSTRUCAO_ASSISTENTE,
+  RESPOSTA_FORA_DE_ESCOPO,
+  foraDoEscopoDoCliente,
+  montarContextoDoCliente,
+  validarContexto,
+} from "../../src/features/logistics/customerAssistantDomain.js";
 
 const TENANT_ID = "todogreen";
 const MAX_LIMIT = 100;
@@ -323,6 +330,94 @@ export async function handleTodoGreenCustomerPortal(request, env) {
       .all()
       .catch(() => ({ results: [] }));
     return response({ eventos: linhas.results || [] });
+  }
+
+  // Assistente. Reusa a IA já configurada no Worker; o que muda é o contexto,
+  // montado aqui com o cliente da sessão e mais nada.
+  if (request.method === "POST" && resource === "assistente") {
+    let body = {};
+    try {
+      body = await request.json();
+    } catch {
+      return response({ error: "Corpo JSON inválido." }, 400);
+    }
+    const pergunta = clean(body.pergunta ?? body.question, 2000);
+    if (pergunta.length < 2)
+      return response({ error: "Escreva a sua pergunta." }, 400);
+
+    // Recusa antes de chamar o modelo: garantia que não depende de o modelo
+    // obedecer à instrução.
+    if (foraDoEscopoDoCliente(pergunta)) {
+      await logPortalEvent(env, escopo, user, "assistente_fora_escopo", "", pergunta.slice(0, 120));
+      return response({ resposta: RESPOSTA_FORA_DE_ESCOPO, foraDeEscopo: true });
+    }
+
+    const resumo = await clientOverview(env, escopo);
+    const { sql, params } = scopedWhere(escopo);
+    const recentes = await env.DB.prepare(
+      `SELECT reference, status, service_date, origin, destination, fields_json
+         FROM todogreen_client_operations
+        WHERE ${sql}
+        ORDER BY service_date DESC LIMIT 20`,
+    )
+      .bind(...params)
+      .all()
+      .catch(() => ({ results: [] }));
+
+    let contexto;
+    try {
+      contexto = montarContextoDoCliente({
+        cliente: { id: escopo.clientId, nome: escopo.clientName },
+        resumo,
+        greenScore: resumo.greenScore,
+        operacoes: (recentes.results || []).map((linha) => ({
+          referencia: linha.reference,
+          data: linha.service_date,
+          origem: linha.origin,
+          destino: linha.destination,
+          status: linha.status,
+          campos: parse(linha.fields_json, {}),
+        })),
+      });
+      // Se algum campo interno escapou para o contexto, a chamada cai aqui em
+      // vez de sair pela rede.
+      validarContexto(contexto);
+    } catch (erro) {
+      console.error("contexto do assistente", erro);
+      return response({ error: "Não foi possível preparar o assistente." }, 500);
+    }
+
+    if (!env.AI)
+      return response(
+        { error: "Assistente indisponível no momento." },
+        503,
+      );
+
+    const modelo = env.GEMINI_MODEL || "gemini-flash-lite-latest";
+    try {
+      const saida = await env.AI.run(modelo, {
+        messages: [
+          { role: "system", content: INSTRUCAO_ASSISTENTE },
+          {
+            role: "user",
+            content: `Dados do cliente (únicos disponíveis):\n${JSON.stringify(contexto, null, 2)}\n\nPergunta: ${pergunta}`,
+          },
+        ],
+        max_tokens: 1200,
+      });
+      const texto =
+        saida?.response ||
+        saida?.result?.response ||
+        saida?.choices?.[0]?.message?.content ||
+        "";
+      if (!texto.trim())
+        return response({ error: "O assistente não respondeu. Tente de novo." }, 502);
+      await logPortalEvent(env, escopo, user, "assistente_pergunta", "", pergunta.slice(0, 120));
+      return response({ resposta: texto.trim(), foraDeEscopo: false });
+    } catch (erro) {
+      console.error("assistente do portal", erro);
+      return response({ error: "O assistente está indisponível agora." }, 502);
+    }
   }
 
   return response({ error: "Rota do portal não encontrada." }, 404);
