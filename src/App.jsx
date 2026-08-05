@@ -385,6 +385,9 @@ const BusinessProfileStudio = lazy(
 const LogisticsVertical = lazy(
   () => import("./features/logistics/LogisticsVertical.jsx"),
 );
+const CustomerPortal = lazy(
+  () => import("./features/logistics/CustomerPortal.jsx"),
+);
 
 const LEGACY_STORAGE_KEY = "seu-funcionario-v1";
 const ACTIVE_USER_KEY = "seu-funcionario-active-user";
@@ -24555,6 +24558,17 @@ export default function App() {
   if (inviteMatch)
     return <AcceptInvite db={db} update={update} token={inviteMatch[1]} />;
   if (!db.user) return <Login update={update} />;
+  // Portal do cliente: antes da vertical, porque quem entra aqui é cliente e
+  // não pode nem passar perto da navegação interna. Quem manda no que ele vê
+  // é o servidor — esta tela só pergunta "de quem é esta sessão".
+  if (location.pathname.match(/^\/portal-cliente(?:\/|$)/))
+    return (
+      <Suspense
+        fallback={<div className="inbox-loading">Abrindo seu portal...</div>}
+      >
+        <CustomerPortal />
+      </Suspense>
+    );
   if (location.pathname.match(/^\/todogreen(?:\/|$)/))
     return (
       <Suspense
