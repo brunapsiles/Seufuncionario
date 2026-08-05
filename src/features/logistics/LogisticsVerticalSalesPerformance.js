@@ -1,4 +1,5 @@
 import "./LogisticsVerticalSalesPerformance.css";
+import "./LogisticsVerticalCredentials.js";
 
 const SALES_BLOCKS = [
   ["Meta por vendedor", "Receita, margem, novos clientes, propostas enviadas, contratos recorrentes e indicadores ESG vendidos."],
