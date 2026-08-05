@@ -70,7 +70,7 @@ const relabelExistingRoutines = () => {
     }
     if (text.includes("CRM") || text.includes("Oportunidades")) appendSubfunctions(card, COMMERCIAL_SUBFUNCTIONS);
   });
-  setTextIfChanged(document.querySelector(".tdg-routine-score"), "régua mínima 8/10 · 8 rotinas");
+  document.querySelector(".tdg-routine-score")?.remove();
 };
 
 const run = () => {
