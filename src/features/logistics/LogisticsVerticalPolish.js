@@ -187,9 +187,8 @@ const walk = (root) => {
   });
 };
 
-const navigate = (route) => {
-  window.history.pushState({}, "", route);
-  window.dispatchEvent(new PopStateEvent("popstate"));
+const openFunctionPage = (route) => {
+  window.open(route, "_blank", "noopener,noreferrer");
 };
 
 const buildRoutineCard = (routine) => {
@@ -202,7 +201,7 @@ const buildRoutineCard = (routine) => {
     <p>${routine.text}</p>
     <div class="tdg-routine-sub">${routine.subs.map((item) => `<span>${item}</span>`).join("")}</div>
   `;
-  button.addEventListener("click", () => navigate(routine.route));
+  button.addEventListener("click", () => openFunctionPage(routine.route));
   return button;
 };
 
