@@ -46,7 +46,6 @@ import {
 } from "lucide-react";
 import {
   LOGISTICS_PRODUCTS,
-  TODO_GREEN_FEATURE_COUNT,
   TODO_GREEN_MODULE_AREAS,
   TODO_GREEN_MODULE_CATALOG,
   TODO_GREEN_PRODUCTION_DATA_POLICY,
@@ -181,11 +180,11 @@ const IMPLEMENTED_MODULE_IDS = new Set([
 
 const MODULE_IMPLEMENTATION = Object.freeze({
   dashboard: {
-    title: "Cockpit executivo",
+    title: "Painel de Gerenciamento",
     route: "/todogreen/dashboard",
     area: "gestao",
     status: "functional",
-    description: "KPIs reais, pendências, pipeline, rentabilidade e impacto ESG calculados a partir dos registros do workspace.",
+    description: "Visibilidade comercial e estratégica sobre clientes, oportunidades, preços, resultados, operação e ESG, sem substituir a gestão das áreas responsáveis.",
   },
   clientes: {
     title: "Clientes e contatos",
@@ -767,11 +766,11 @@ function DashboardPanel({ data, dashboard }) {
     <section className="tdg-panel">
       <div className="tdg-section-head">
         <div>
-          <span className="tdg-kicker">COCKPIT EXECUTIVO</span>
-          <h2>Visão real da vertical, sem card falso.</h2>
-          <p>Os indicadores abaixo são calculados a partir de clientes, oportunidades, simulações, receitas, custos e operações cadastradas.</p>
+          <span className="tdg-kicker">COMERCIAL &amp; ESTRATÉGIA</span>
+          <h2>Painel de Gerenciamento</h2>
+          <p>Uma visão consolidada para acompanhamento comercial e estratégico. Os dados operacionais aparecem como indicadores, sem substituir a gestão da área responsável.</p>
         </div>
-        <strong>{data.demo ? "modo demonstração" : "produção"}</strong>
+        <strong>{data.demo ? "modo demonstração" : "dados reais"}</strong>
       </div>
       <div className="tdg-result">
         <MetricCard label="Clientes" value={number.format(data.clients.length)} detail="cadastros reais" />
@@ -1148,7 +1147,6 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
   const dashboard = useMemo(() => summarizeTodoGreenDashboard(verticalData), [verticalData]);
   const filteredCatalog = TODO_GREEN_MODULE_CATALOG.filter((item) => moduleMatches(item, query));
   const modulesByArea = TODO_GREEN_MODULE_AREAS.map((area) => ({ ...area, modules: filteredCatalog.filter((item) => item.area === area.id).sort((a, b) => a.order - b.order) }));
-  const implementedCount = TODO_GREEN_MODULE_CATALOG.filter((item) => IMPLEMENTED_MODULE_IDS.has(item.id)).length;
 
   if (!allowed) return <AccessDenied db={db} />;
 
@@ -1159,11 +1157,10 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
       <section className="tdg-hero">
         <div>
           <span className="tdg-kicker">VERTICAL PRIVADA · {TODO_GREEN_TENANT.name}</span>
-          <h1 id="tdg-title">Logística sustentável com preço, operação e ESG no mesmo painel.</h1>
-          <p>A vertical agora separa módulos funcionais de backlog. Card sem fluxo real não aparece como pronto.</p>
+          <h1 id="tdg-title">Painel de Gerenciamento</h1>
+          <p>Visibilidade comercial e estratégica sobre clientes, oportunidades, preços, resultados, operação e indicadores ambientais.</p>
           <div className="tdg-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar função, área, produto ou especialista" aria-label="Buscar funções da vertical To Do Green" /></div>
         </div>
-        <aside><strong>{TODO_GREEN_FEATURE_COUNT}</strong><span>{implementedCount} funcionais · {TODO_GREEN_FEATURE_COUNT - implementedCount} backlog</span><small>módulos por tenant, com rota e permissão</small></aside>
       </section>
 
       <nav className="tdg-tabs" aria-label="Navegação To Do Green">
