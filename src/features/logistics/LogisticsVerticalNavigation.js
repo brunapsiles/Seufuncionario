@@ -112,7 +112,7 @@ const simplifyHomeLanguage = (root) => {
   }
 
   root.querySelectorAll(".tdg-module-card em").forEach((label) => {
-    setText(label, /backlog/i.test(label.textContent || "") ? "Em preparação" : "Abrir");
+    setText(label, "Em preparação");
   });
   root.querySelectorAll(".tdg-section-head > span").forEach((label) => {
     if (!/funcionais|backlog/i.test(label.textContent || "")) return;
