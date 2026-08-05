@@ -23,7 +23,7 @@ async function createUser(id, email) {
     `INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at)
      VALUES (?, ?, ?, '2099-01-01T00:00:00.000Z', ?)`,
   ).bind(`session-${id}`, id, await sha256(token), now).run();
-  return { id, token };
+  return { id, email, token };
 }
 
 const request = (path, { method = "GET", token, body, headers = {} } = {}) => {
@@ -46,6 +46,12 @@ let integrationId;
 
 beforeAll(async () => {
   manager = await createUser("tracker-manager", "operacao.tracker@todogreen.com.br");
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO todogreen_access_emails
+      (id, tenant_id, email, role, status, permissions_json, note, created_by, created_at, updated_at)
+     VALUES (?, 'todogreen', ?, 'operations', 'active', '["read","fleet:manage","integration:manage"]', '', ?, ?, ?)`,
+  ).bind(crypto.randomUUID(), manager.email, manager.id, now, now).run();
 });
 
 describe("estrutura de integração com a Sistemas Tracker", () => {
