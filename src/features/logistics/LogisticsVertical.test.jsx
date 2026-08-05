@@ -1,7 +1,6 @@
 /* @vitest-environment jsdom */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TODO_GREEN_FEATURE_COUNT } from "./logisticsVerticalDomain.js";
 import LogisticsVertical from "./LogisticsVertical.jsx";
 
 const baseDb = {
@@ -35,8 +34,11 @@ describe("LogisticsVertical", () => {
 
   it("renders the private hub for authorized To Do Green users", () => {
     render(<LogisticsVertical db={authorizedDb} update={vi.fn()} />);
-    expect(screen.getByText(/Logística sustentável com preço/)).toBeTruthy();
-    expect(screen.getByText(String(TODO_GREEN_FEATURE_COUNT))).toBeTruthy();
+    expect(screen.getAllByText("Painel de Gerenciamento").length).toBeGreaterThan(0);
+    expect(screen.getByText("COMERCIAL & ESTRATÉGIA")).toBeTruthy();
+    expect(screen.queryByText(/Painel operacional/i)).toBeNull();
+    expect(screen.queryByText(/ativas.*planejado/i)).toBeNull();
+    expect(screen.queryByText(/Recursos organizados por área/i)).toBeNull();
     expect(screen.getByText("Middle Mile")).toBeTruthy();
     expect(screen.getByText("Operação a granel")).toBeTruthy();
     expect(screen.getByText("Inteligência ESG")).toBeTruthy();
