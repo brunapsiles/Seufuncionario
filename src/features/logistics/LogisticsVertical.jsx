@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   ChevronRight,
   DollarSign,
+  ExternalLink,
   FileCheck,
   FileText,
   Gauge,
@@ -536,6 +537,11 @@ const navigate = (route) => {
   window.dispatchEvent(new PopStateEvent("popstate"));
 };
 
+const openFunctionPage = (route) => {
+  if (typeof window === "undefined") return;
+  window.open(route, "_blank", "noopener,noreferrer");
+};
+
 const ownerId = () => {
   try {
     return localStorage.getItem("sf-space") || localStorage.getItem("sf-active-user") || "";
@@ -669,14 +675,14 @@ function ModuleCard({ item }) {
   const Icon = iconMap[item.icon] || Boxes;
   const implemented = IMPLEMENTED_MODULE_IDS.has(item.id);
   return (
-    <button className={`tdg-module-card ${implemented ? "" : "disabled"}`} type="button" onClick={() => implemented && navigate(item.route)}>
+    <button className={`tdg-module-card ${implemented ? "" : "disabled"}`} type="button" onClick={() => implemented && openFunctionPage(item.route)}>
       <span className="tdg-module-icon"><Icon size={22} /></span>
       <span>
         <strong>{item.name}</strong>
         <small>{implemented ? item.description || "Abrir módulo" : "Backlog mapeado; ainda não exibido como funcional."}</small>
       </span>
       <em>{implemented ? "funcional" : "backlog"}</em>
-      {implemented && <ChevronRight size={18} />}
+      {implemented && <ExternalLink size={18} aria-hidden="true" />}
     </button>
   );
 }
