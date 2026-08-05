@@ -1,4 +1,5 @@
 import "./LogisticsVerticalAccess.css";
+import "./LogisticsVerticalEnterprise.css";
 
 const LABELS = new Map([
   ["VERTICAL PRIVADA · To Do Green", "TO DO GREEN"],
@@ -89,6 +90,72 @@ const BLOCKED_PATTERNS = [
   /\bmódulo funcional\b/gi,
 ];
 
+const ROUTINES = [
+  {
+    title: "Painel",
+    route: "/todogreen/dashboard",
+    score: "8.4",
+    text: "Indicadores, pendências, risco comercial e leitura diária da operação.",
+    subs: ["KPIs", "Pendências", "Alertas", "Prioridades"],
+  },
+  {
+    title: "CRM",
+    route: "/todogreen/clientes",
+    score: "8.6",
+    text: "Contas enterprise com decisores, dores, histórico, oportunidades e próximos passos.",
+    subs: ["Contas", "Contatos", "Histórico", "Próximas ações"],
+  },
+  {
+    title: "Oportunidades",
+    route: "/todogreen/oportunidades",
+    score: "8.2",
+    text: "Pipeline por produto, etapa, valor, probabilidade, urgência e risco.",
+    subs: ["Pipeline", "Forecast", "Prioridade", "Follow-up"],
+  },
+  {
+    title: "Precificação",
+    route: "/todogreen/precificacao",
+    score: "8.5",
+    text: "Custo, margem, preço mínimo, preço recomendado e aprovação comercial.",
+    subs: ["Produtos", "Margem", "Deal Desk", "Simulações"],
+  },
+  {
+    title: "Propostas",
+    route: "/todogreen/propostas",
+    score: "8.1",
+    text: "Escopo, condições, premissas, impacto ambiental e status de negociação.",
+    subs: ["Versões", "Condições", "Aprovação", "Status"],
+  },
+  {
+    title: "Operações",
+    route: "/todogreen/operacoes",
+    score: "8.1",
+    text: "Rotas, viagens, frota, entregas, ocupação, energia e ocorrências.",
+    subs: ["Rotas", "Viagens", "Frota", "Ocorrências"],
+  },
+  {
+    title: "Financeiro",
+    route: "/todogreen/receita",
+    score: "8.0",
+    text: "Receita, custos, margem, forecast, faturamento e rentabilidade.",
+    subs: ["Receita", "Custos", "Margem", "Forecast"],
+  },
+  {
+    title: "ESG",
+    route: "/todogreen/esg",
+    score: "8.3",
+    text: "CO2 evitado, Green Score, Escopo 3, metodologia e evidências.",
+    subs: ["Green Score", "Escopo 3", "Evidências", "Relatórios"],
+  },
+];
+
+const CRM_FIELDS = [
+  ["Conta", "perfil, segmento, potencial e prioridade"],
+  ["Decisores", "compras, operação, ESG e financeiro"],
+  ["Histórico", "reuniões, follow-ups, objeções e documentos"],
+  ["Inteligência", "dor logística, risco, fit e próxima ação"],
+];
+
 const replaceTextNode = (node) => {
   const original = node.nodeValue;
   if (!original) return;
@@ -113,6 +180,72 @@ const walk = (root) => {
     for (const node of element.childNodes) {
       if (node.nodeType === Node.TEXT_NODE) replaceTextNode(node);
     }
+  });
+};
+
+const navigate = (route) => {
+  window.history.pushState({}, "", route);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+};
+
+const buildRoutineCard = (routine) => {
+  const button = document.createElement("button");
+  button.className = "tdg-routine-card";
+  button.type = "button";
+  button.setAttribute("aria-label", `Abrir ${routine.title}`);
+  button.innerHTML = `
+    <header><strong>${routine.title}</strong><b>nota ${routine.score}</b></header>
+    <p>${routine.text}</p>
+    <div class="tdg-routine-sub">${routine.subs.map((item) => `<span>${item}</span>`).join("")}</div>
+  `;
+  button.addEventListener("click", () => navigate(routine.route));
+  return button;
+};
+
+const ensureRoutineMap = () => {
+  const root = document.querySelector(".tdg");
+  const hero = document.querySelector(".tdg-hero");
+  if (!root || !hero || document.querySelector(".tdg-routine-map")) return;
+
+  const section = document.createElement("section");
+  section.className = "tdg-routine-map";
+  section.innerHTML = `
+    <div class="tdg-routine-head">
+      <div>
+        <span class="tdg-kicker">ROTINAS PRINCIPAIS</span>
+        <h2>8 rotinas para operar a To Do Green</h2>
+        <p>As demais entradas ficam como subfunções dentro dessas rotinas. A navegação deixa de inflar o produto com itens soltos.</p>
+      </div>
+      <span class="tdg-routine-score">régua mínima 8/10</span>
+    </div>
+    <div class="tdg-routine-grid"></div>
+  `;
+  const grid = section.querySelector(".tdg-routine-grid");
+  ROUTINES.forEach((routine) => grid.appendChild(buildRoutineCard(routine)));
+  hero.insertAdjacentElement("afterend", section);
+};
+
+const ensureCrmUpgrade = () => {
+  const clientPanel = [...document.querySelectorAll(".tdg-panel")].find((panel) =>
+    panel.textContent.includes("CLIENTES E CONTATOS") || panel.textContent.includes("Cadastro de clientes"),
+  );
+  if (!clientPanel || clientPanel.querySelector(".tdg-crm-upgrade")) return;
+  const box = document.createElement("div");
+  box.className = "tdg-crm-upgrade";
+  box.innerHTML = `
+    <h3>CRM de contas enterprise</h3>
+    <p>O cadastro de cliente passa a ser a base da venda: conta, decisores, dor logística, maturidade ESG, histórico, oportunidades e próxima ação. A referência não é formulário simples; é rotina comercial completa.</p>
+    <div class="tdg-crm-grid">
+      ${CRM_FIELDS.map(([title, text]) => `<span><small>${title}</small><strong>${text}</strong></span>`).join("")}
+    </div>
+  `;
+  clientPanel.prepend(box);
+};
+
+const markSecondaryCatalog = () => {
+  document.querySelectorAll(".tdg-section").forEach((section) => {
+    if (section.classList.contains("tdg-routine-map")) return;
+    section.setAttribute("data-tdg-catalog", "secondary");
   });
 };
 
@@ -141,6 +274,9 @@ const polishAccessScreen = () => {
 const polish = () => {
   walk(document);
   markCards();
+  ensureRoutineMap();
+  ensureCrmUpgrade();
+  markSecondaryCatalog();
   polishAccessScreen();
 };
 
