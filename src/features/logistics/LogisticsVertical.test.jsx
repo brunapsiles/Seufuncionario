@@ -103,6 +103,7 @@ describe("LogisticsVertical", () => {
     const card = [...container.querySelectorAll(".tdg-module-card")].find((item) =>
       item.textContent.includes("Clientes"),
     );
+    expect(card.textContent).not.toMatch(/abrir/i);
     fireEvent.click(card);
     expect(open).toHaveBeenCalledWith("/todogreen/clientes", "_blank", "noopener,noreferrer");
   });
