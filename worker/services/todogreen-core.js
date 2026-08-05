@@ -1,0 +1,232 @@
+import {
+  LOGISTICS_PRODUCTS,
+  TODO_GREEN_MODULE_CATALOG,
+  TODO_GREEN_ROLES,
+  TODO_GREEN_TENANT,
+  centralPricingEngine,
+  createPricingScenarioSnapshot,
+  summarizeTodoGreenDashboard,
+} from "../../src/features/logistics/logisticsVerticalDomain.js";
+
+const response = (data, status = 200) => new Response(JSON.stringify(data), {
+  status,
+  headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+});
+const parse = (value, fallback = null) => {
+  try { return value ? JSON.parse(value) : fallback; } catch { return fallback; }
+};
+const email = (value) => String(value || "").trim().toLowerCase();
+
+const envAllows = (env, value) => {
+  const normalized = email(value);
+  return normalized.endsWith("@todogreen.com.br") || String(env.TODOGREEN_ADMIN_EMAILS || "")
+    .split(",").map(email).filter(Boolean).includes(normalized);
+};
+
+async function emailAccess(env, value) {
+  const normalized = email(value);
+  if (!normalized) return null;
+  if (envAllows(env, normalized)) return { role: "admin", permissions: ["*"], source: normalized.endsWith("@todogreen.com.br") ? "domain" : "env" };
+  const row = await env.DB.prepare(
+    "SELECT role, status, permissions_json FROM todogreen_access_emails WHERE tenant_id = ? AND email = ? LIMIT 1",
+  ).bind(TODO_GREEN_TENANT.id, normalized).first().catch(() => null);
+  if (row?.status !== "active") return null;
+  return {
+    role: TODO_GREEN_ROLES.includes(row.role) ? row.role : "admin",
+    permissions: parse(row.permissions_json, ["*"]),
+    source: "manual",
+  };
+}
+
+async function workspaceIsTodoGreen(env, ownerId) {
+  const row = await env.DB.prepare("SELECT data FROM workspaces WHERE user_id = ?").bind(ownerId).first();
+  const data = parse(row?.data, {});
+  return Array.isArray(data?.businesses) && data.businesses.some((item) =>
+    /to\s*do\s*green/i.test(String(item?.name || "")) || item?.tenantSlug === TODO_GREEN_TENANT.slug);
+}
+
+async function resolveCoreAccess(env, user, ownerId, membershipRole) {
+  const workspaceRole = await membershipRole(env, user.id, ownerId);
+  if (!workspaceRole) return null;
+  const tenantUser = await env.DB.prepare(
+    `SELECT role, status, permissions_json FROM tenant_users
+      WHERE tenant_id = ? AND user_id = ? AND workspace_owner_id = ? LIMIT 1`,
+  ).bind(TODO_GREEN_TENANT.id, user.id, ownerId).first().catch(() => null);
+  if (tenantUser?.status === "active") return {
+    ownerId,
+    workspaceRole,
+    role: tenantUser.role || workspaceRole,
+    permissions: parse(tenantUser.permissions_json, []),
+    source: "tenant_user",
+  };
+  const allowed = await emailAccess(env, user.email);
+  if (allowed && user.id === ownerId) return { ownerId, workspaceRole, ...allowed };
+  if (user.id === ownerId && await workspaceIsTodoGreen(env, ownerId))
+    return { ownerId, workspaceRole, role: "admin", permissions: ["*"], source: "workspace" };
+  return null;
+}
+
+const canManage = (access) => ["owner", "admin"].includes(access?.role) || access?.permissions?.includes("*");
+
+let tablesReady = false;
+async function ensureTables(env) {
+  if (tablesReady) return;
+  const ddl = [
+    `CREATE TABLE IF NOT EXISTS tenants (id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE, name TEXT NOT NULL, segment TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'active', theme_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+    `CREATE TABLE IF NOT EXISTS tenant_users (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, workspace_owner_id TEXT NOT NULL, user_id TEXT NOT NULL, role TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active', permissions_json TEXT NOT NULL DEFAULT '[]', invited_by TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(tenant_id, user_id))`,
+    `CREATE INDEX IF NOT EXISTS idx_tenant_users_user ON tenant_users (user_id, tenant_id, status)`,
+    `CREATE TABLE IF NOT EXISTS todogreen_access_emails (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, email TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'admin', status TEXT NOT NULL DEFAULT 'active', permissions_json TEXT NOT NULL DEFAULT '["*"]', note TEXT NOT NULL DEFAULT '', created_by TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(tenant_id, email))`,
+    `CREATE TABLE IF NOT EXISTS module_catalog (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', icon TEXT NOT NULL DEFAULT '', category TEXT NOT NULL DEFAULT '', route TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'active', version TEXT NOT NULL DEFAULT '1.0.0', dependencies_json TEXT NOT NULL DEFAULT '[]', permissions_json TEXT NOT NULL DEFAULT '[]', settings_json TEXT NOT NULL DEFAULT '{}', availability TEXT NOT NULL DEFAULT 'global', exclusive_tenant_id TEXT, display_order INTEGER NOT NULL DEFAULT 100, updated_at TEXT NOT NULL)`,
+    `CREATE TABLE IF NOT EXISTS tenant_modules (tenant_id TEXT NOT NULL, module_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active', settings_json TEXT NOT NULL DEFAULT '{}', enabled_at TEXT NOT NULL, PRIMARY KEY (tenant_id, module_id))`,
+    `CREATE TABLE IF NOT EXISTS logistics_products (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, code TEXT NOT NULL, name TEXT NOT NULL, modality TEXT NOT NULL, billing_unit TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', required_fields_json TEXT NOT NULL DEFAULT '[]', optional_fields_json TEXT NOT NULL DEFAULT '[]', pricing_rules_json TEXT NOT NULL DEFAULT '{}', approval_rules_json TEXT NOT NULL DEFAULT '{}', indicators_json TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'active', version TEXT NOT NULL DEFAULT '1.0.0', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(tenant_id, code))`,
+    `CREATE TABLE IF NOT EXISTS pricing_scenarios (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, workspace_owner_id TEXT NOT NULL, product_id TEXT NOT NULL, client_id TEXT NOT NULL DEFAULT '', opportunity_id TEXT NOT NULL DEFAULT '', created_by TEXT NOT NULL, rule_version TEXT NOT NULL, inputs_json TEXT NOT NULL, result_json TEXT NOT NULL, approvals_json TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'draft', created_at TEXT NOT NULL)`,
+    `CREATE INDEX IF NOT EXISTS idx_pricing_scenarios_tenant_owner ON pricing_scenarios (tenant_id, workspace_owner_id, created_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS environmental_calculations (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, workspace_owner_id TEXT NOT NULL, created_by TEXT NOT NULL, product_id TEXT NOT NULL DEFAULT '', client_id TEXT NOT NULL DEFAULT '', inputs_json TEXT NOT NULL, result_json TEXT NOT NULL, methodology_version TEXT NOT NULL, data_quality INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)`,
+  ];
+  for (const statement of ddl) await env.DB.prepare(statement).run();
+  tablesReady = true;
+}
+
+async function seedCatalog(env) {
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO tenants (id, slug, name, segment, status, theme_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'active', ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET name=excluded.name, segment=excluded.segment,
+       status=excluded.status, theme_json=excluded.theme_json, updated_at=excluded.updated_at`,
+  ).bind(TODO_GREEN_TENANT.id, TODO_GREEN_TENANT.slug, TODO_GREEN_TENANT.name,
+    TODO_GREEN_TENANT.segment, JSON.stringify(TODO_GREEN_TENANT.theme || {}), now, now).run();
+  const statements = [];
+  for (const item of TODO_GREEN_MODULE_CATALOG) {
+    statements.push(env.DB.prepare(
+      `INSERT INTO module_catalog
+       (id,name,description,icon,category,route,status,version,dependencies_json,
+        permissions_json,settings_json,availability,exclusive_tenant_id,display_order,updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,
+        icon=excluded.icon,category=excluded.category,route=excluded.route,status=excluded.status,
+        version=excluded.version,permissions_json=excluded.permissions_json,
+        settings_json=excluded.settings_json,display_order=excluded.display_order,updated_at=excluded.updated_at`,
+    ).bind(item.id,item.name,item.description,item.icon,item.category,item.route,item.status,item.version,
+      JSON.stringify(item.dependencies || []),JSON.stringify(item.permissions || []),JSON.stringify(item.settings || {}),
+      item.availability,item.exclusiveTenant || TODO_GREEN_TENANT.id,item.order,now));
+    statements.push(env.DB.prepare(
+      `INSERT INTO tenant_modules (tenant_id,module_id,status,settings_json,enabled_at)
+       VALUES (?,?,'active','{}',?) ON CONFLICT(tenant_id,module_id) DO UPDATE SET status='active'`,
+    ).bind(TODO_GREEN_TENANT.id,item.id,now));
+  }
+  for (const item of LOGISTICS_PRODUCTS) statements.push(env.DB.prepare(
+    `INSERT INTO logistics_products
+     (id,tenant_id,code,name,modality,billing_unit,description,required_fields_json,
+      optional_fields_json,pricing_rules_json,approval_rules_json,indicators_json,status,version,created_at,updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+     ON CONFLICT(id) DO UPDATE SET name=excluded.name,modality=excluded.modality,
+      billing_unit=excluded.billing_unit,description=excluded.description,
+      required_fields_json=excluded.required_fields_json,optional_fields_json=excluded.optional_fields_json,
+      pricing_rules_json=excluded.pricing_rules_json,approval_rules_json=excluded.approval_rules_json,
+      indicators_json=excluded.indicators_json,status=excluded.status,version=excluded.version,updated_at=excluded.updated_at`,
+  ).bind(item.id,TODO_GREEN_TENANT.id,item.code,item.name,item.modality,item.billingUnit,item.description,
+    JSON.stringify(item.requiredFields || []),JSON.stringify(item.optionalFields || []),JSON.stringify(item.pricingRules || {}),
+    JSON.stringify(item.approvalRules || {}),JSON.stringify({operational:item.operationalIndicators || [],environmental:item.environmentalIndicators || []}),
+    item.status,item.version,now,now));
+  if (statements.length) await env.DB.batch(statements);
+}
+
+export async function handleTodoGreenCore(request, env, user, url, dependencies) {
+  await ensureTables(env);
+  const ownerId = url.searchParams.get("owner") || user.id;
+  const access = await resolveCoreAccess(env, user, ownerId, dependencies.membershipRole);
+  if (!access) return response({ error: "Você não tem acesso à To Do Green." }, 403);
+  const resource = url.pathname.split("/").filter(Boolean)[2] || "access";
+
+  if (request.method === "GET" && resource === "access")
+    return response({ tenant: TODO_GREEN_TENANT, role: access.role, permissions: access.permissions,
+      ownerId: access.ownerId, source: access.source });
+
+  if (resource === "access-list") {
+    if (!canManage(access)) return response({ error: "Você não pode gerenciar acessos da To Do Green." }, 403);
+    await seedCatalog(env);
+    if (request.method === "GET") {
+      const rows = await env.DB.prepare(
+        `SELECT email,role,status,note,created_at AS createdAt,updated_at AS updatedAt
+         FROM todogreen_access_emails WHERE tenant_id=? ORDER BY status='active' DESC,email`,
+      ).bind(TODO_GREEN_TENANT.id).all();
+      return response({ emails: rows.results || [] });
+    }
+    if (request.method === "POST") {
+      const body = await request.json().catch(() => ({}));
+      const normalized = email(body.email);
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) return response({ error: "Informe um e-mail válido." }, 400);
+      const role = TODO_GREEN_ROLES.includes(body.role) ? body.role : "admin";
+      const permissions = Array.isArray(body.permissions)
+        ? body.permissions.map((item) => String(item).slice(0,80)).slice(0,30)
+        : ["owner","admin"].includes(role) ? ["*"] : ["read"];
+      const now = new Date().toISOString();
+      await env.DB.prepare(
+        `INSERT INTO todogreen_access_emails
+         (id,tenant_id,email,role,status,permissions_json,note,created_by,created_at,updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id,email) DO UPDATE SET
+          role=excluded.role,status=excluded.status,permissions_json=excluded.permissions_json,
+          note=excluded.note,updated_at=excluded.updated_at`,
+      ).bind(crypto.randomUUID(),TODO_GREEN_TENANT.id,normalized,role,body.status === "inactive" ? "inactive" : "active",
+        JSON.stringify(permissions),String(body.note || "").trim().slice(0,240),user.id,now,now).run();
+      await dependencies.audit(env,ownerId,user,"todogreen_acesso_autorizado",normalized,`papel: ${role}`);
+      return response({ ok:true,email:normalized,role,status:body.status === "inactive" ? "inactive" : "active",permissions },201);
+    }
+    if (request.method === "DELETE") {
+      const normalized = email(url.searchParams.get("email"));
+      if (!normalized) return response({ error:"Informe o e-mail." },400);
+      await env.DB.prepare("DELETE FROM todogreen_access_emails WHERE tenant_id=? AND email=?")
+        .bind(TODO_GREEN_TENANT.id,normalized).run();
+      await dependencies.audit(env,ownerId,user,"todogreen_acesso_removido",normalized,"");
+      return response({ok:true});
+    }
+    return response({error:"Método não permitido."},405);
+  }
+
+  if (["catalog","dashboard","products"].includes(resource)) await seedCatalog(env);
+  if (request.method === "GET" && resource === "catalog")
+    return response({tenant:TODO_GREEN_TENANT,modules:TODO_GREEN_MODULE_CATALOG,products:LOGISTICS_PRODUCTS,access});
+  if (request.method === "GET" && resource === "products") return response({products:LOGISTICS_PRODUCTS});
+  if (request.method === "GET" && resource === "dashboard") {
+    const rows = await env.DB.prepare(
+      `SELECT id,product_id,client_id,result_json,status,created_at FROM pricing_scenarios
+       WHERE tenant_id=? AND workspace_owner_id=? ORDER BY created_at DESC LIMIT 200`,
+    ).bind(TODO_GREEN_TENANT.id,ownerId).all().catch(() => ({results:[]}));
+    const pricingScenarios = (rows.results || []).map((row) => ({id:row.id,productId:row.product_id,
+      clientId:row.client_id,status:row.status,result:parse(row.result_json,{}),createdAt:row.created_at}));
+    return response({summary:summarizeTodoGreenDashboard({pricingScenarios})});
+  }
+  if (request.method === "POST" && resource === "simulate") {
+    const body = await request.json().catch(() => ({}));
+    let scenario;
+    try { scenario = createPricingScenarioSnapshot(String(body.productId || ""),body.inputs || {},{
+      tenantId:TODO_GREEN_TENANT.id,userId:user.id,clientId:body.clientId || "",
+      opportunityId:body.opportunityId || "",justification:body.justification || ""}); }
+    catch (error) { return response({error:error.message || "Simulação inválida."},400); }
+    if (body.persist === true) {
+      await env.DB.prepare(
+        `INSERT INTO pricing_scenarios
+        (id,tenant_id,workspace_owner_id,product_id,client_id,opportunity_id,created_by,
+         rule_version,inputs_json,result_json,approvals_json,status,created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,'draft',?)`,
+      ).bind(scenario.id,TODO_GREEN_TENANT.id,ownerId,String(body.productId || ""),scenario.clientId,
+        scenario.opportunityId,user.id,scenario.ruleVersion,JSON.stringify(scenario.inputs),JSON.stringify(scenario.result),
+        JSON.stringify(scenario.approvals),scenario.createdAt).run();
+      await dependencies.audit(env,ownerId,user,"todogreen_simulacao_criada",scenario.id,scenario.result.productName);
+    }
+    return response({scenario});
+  }
+  if (request.method === "POST" && resource === "audit") {
+    const body = await request.json().catch(() => ({}));
+    await dependencies.audit(env,ownerId,user,String(body.action || "todogreen_event").slice(0,80),
+      String(body.target || "").slice(0,160),String(body.details || "").slice(0,600));
+    return response({ok:true});
+  }
+  if (request.method === "POST" && resource === "calculate") {
+    const body = await request.json().catch(() => ({}));
+    try { return response({result:centralPricingEngine(String(body.productId || ""),body.inputs || {})}); }
+    catch (error) { return response({error:error.message || "Cálculo inválido."},400); }
+  }
+  return response({error:"Recurso To Do Green não encontrado."},404);
+}

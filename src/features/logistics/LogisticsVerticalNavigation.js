@@ -1,3 +1,5 @@
+import { TODO_GREEN_MODULE_CATALOG } from "./logisticsVerticalDomain.js";
+
 const PRODUCT_IDS = [
   "middle-mile",
   "last-mile",
@@ -23,6 +25,7 @@ const PRODUCT_NAMES = {
 };
 
 const MODULE_META = {
+  dashboards: ["Meus painéis", "Crie e organize visões para clientes, vendas, resultados, operação e indicadores ambientais."],
   clientes: ["Clientes e contatos", "Cadastre e acompanhe clientes, decisores, necessidades e próximos passos."],
   oportunidades: ["Oportunidades", "Acompanhe oportunidades comerciais, etapas, prioridades e potencial de negócio."],
   propostas: ["Propostas e contratos", "Crie propostas comerciais e acompanhe as condições de cada negociação."],
@@ -30,6 +33,7 @@ const MODULE_META = {
   esg: ["Inteligência ESG", "Acompanhe impacto ambiental, Green Score e informações para clientes."],
   "central-esg": ["Central ESG", "Calcule, registre e acompanhe os resultados ambientais de cada cliente."],
   operacoes: ["Operações", "Registre e acompanhe rotas, viagens, entregas, produtividade e ocorrências."],
+  rastreamento: ["TMS Tracker", "Configure e acompanhe a integração de posições e eventos da frota."],
   receita: ["Receitas", "Acompanhe previsão, faturamento e recebimentos por cliente e serviço."],
   custos: ["Custos e margem", "Registre custos e acompanhe a rentabilidade das operações."],
   comissoes: ["Comissões", "Acompanhe valores e regras comerciais aplicáveis."],
@@ -42,6 +46,10 @@ const MODULE_META = {
   "tradutor-esg": ["Tradutor ESG", "Transforme resultados ambientais em informações claras para o cliente."],
   "escopo-3": ["Emissões da cadeia logística", "Organize as emissões relacionadas às operações do cliente. Nos relatórios, isso também aparece como Escopo 3."],
 };
+
+for (const item of TODO_GREEN_MODULE_CATALOG) {
+  if (!MODULE_META[item.id]) MODULE_META[item.id] = [item.name, item.description || `Acesse ${item.name.toLowerCase()} no To Do Green.`];
+}
 
 export const parseTodoGreenRoute = (pathname = "") => {
   const parts = String(pathname)

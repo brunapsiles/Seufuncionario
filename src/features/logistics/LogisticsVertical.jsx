@@ -62,6 +62,9 @@ import {
 
 const EsgCenter = lazy(() => import("./EsgCenter.jsx"));
 const PricingParametersPanel = lazy(() => import("./PricingParametersPanel.jsx"));
+const DashboardBuilderPage = lazy(() => import("./pages/DashboardBuilderPage.jsx"));
+const ClientsPage = lazy(() => import("./pages/ClientsPage.jsx"));
+const TrackerPage = lazy(() => import("./pages/TrackerPage.jsx"));
 
 const iconMap = {
   Activity,
@@ -176,6 +179,8 @@ const IMPLEMENTED_MODULE_IDS = new Set([
   "usuarios",
   "permissoes",
   "configuracoes",
+  "dashboards",
+  "rastreamento",
 ]);
 
 const MODULE_IMPLEMENTATION = Object.freeze({
@@ -185,6 +190,13 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     area: "gestao",
     status: "functional",
     description: "Visibilidade comercial e estratégica sobre clientes, oportunidades, preços, resultados, operação e ESG, sem substituir a gestão das áreas responsáveis.",
+  },
+  dashboards: {
+    title: "Painéis personalizados",
+    route: "/todogreen/dashboards",
+    area: "gestao",
+    status: "functional",
+    description: "Criação de painéis pessoais ou compartilhados com indicadores escolhidos por cada usuário.",
   },
   clientes: {
     title: "Clientes e contatos",
@@ -241,6 +253,13 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     area: "operacional",
     status: "functional",
     description: "Registro de rotas, viagens, entregas, frota, ocupação, produtividade, energia e ocorrências.",
+  },
+  rastreamento: {
+    title: "TMS Tracker",
+    route: "/todogreen/rastreamento",
+    area: "operacional",
+    status: "functional",
+    description: "Configuração, teste e sincronização segura de posições e eventos da frota em modo somente leitura.",
   },
   receita: {
     title: "Receita, forecast e faturamento",
@@ -515,11 +534,51 @@ const sectionFromPath = (path) => {
   return slug || "dashboard";
 };
 
+const TODO_GREEN_PAGE_ALIASES = Object.freeze({
+  "dashboard-esg": "esg",
+  "relatorios-esg": "relatorios",
+  "cofre-evidencias": "auditoria",
+  certificados: "relatorios",
+  contatos: "clientes",
+  pipeline: "oportunidades",
+  contratos: "propostas",
+  simulacoes: "precificacao",
+  "deal-desk": "precificacao",
+  metas: "dashboards",
+  remuneracao: "comissoes",
+  forecast: "receita",
+  faturamento: "receita",
+  recebimento: "receita",
+  opex: "custos",
+  margem: "custos",
+  rentabilidade: "custos",
+  "produtos-logisticos": "operacoes",
+  rotas: "operacoes",
+  viagens: "operacoes",
+  veiculos: "operacoes",
+  motoristas: "operacoes",
+  entregas: "operacoes",
+  pacotes: "operacoes",
+  ocupacao: "dashboard",
+  produtividade: "dashboard",
+  energia: "esg",
+  ocorrencias: "operacoes",
+  tarefas: "dashboard",
+  documentos: "relatorios",
+  aprovacoes: "precificacao",
+  notificacoes: "dashboard",
+  inbox: "dashboard",
+  exportacoes: "relatorios",
+  usuarios: "acessos",
+  permissoes: "acessos",
+  configuracoes: "acessos",
+});
+
 export const todoGreenRouteToPage = (path) => {
   const section = sectionFromPath(path);
   if (section === "comercial") return "clientes";
   if (!section || section === "dashboard") return "dashboard";
-  return section;
+  return TODO_GREEN_PAGE_ALIASES[section] || section;
 };
 
 const normalize = (value) =>
@@ -1177,7 +1236,8 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
 
       {!verticalData.demo && dashboard.receitaPrevista === 0 && dashboard.receitaRealizada === 0 && verticalData.clients.length === 0 && page === "dashboard" && <EmptyState onCreate={openPricing} />}
       {page === "dashboard" && <DashboardPanel data={verticalData} dashboard={dashboard} />}
-      {page === "clientes" && <ClientPanel data={verticalData} update={update} setToast={setToast} />}
+      {page === "dashboards" && <Suspense fallback={<section className="tdg-panel">Carregando seus painéis...</section>}><DashboardBuilderPage authHeaders={authHeaders} summary={dashboard} setToast={setToast} /></Suspense>}
+      {page === "clientes" && <Suspense fallback={<section className="tdg-panel">Carregando clientes...</section>}><ClientsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "oportunidades" && <OpportunityPanel data={verticalData} update={update} setToast={setToast} />}
       {page === "propostas" && <ProposalPanel data={verticalData} update={update} setToast={setToast} />}
       {page === "precificacao" && <PricingPanel role={role} update={update} db={db} authHeaders={authHeaders} setToast={setToast} />}
@@ -1193,6 +1253,7 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
         </Suspense>
       )}
       {page === "operacoes" && <OperationsPanel data={verticalData} update={update} setToast={setToast} />}
+      {page === "rastreamento" && <Suspense fallback={<section className="tdg-panel">Carregando TMS Tracker...</section>}><TrackerPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "receita" && <FinancePanel type="revenue" data={verticalData} update={update} setToast={setToast} />}
       {["custos", "comissoes"].includes(page) && <FinancePanel type="cost" data={verticalData} update={update} setToast={setToast} />}
       {page === "relatorios" && <ReportsPanel dashboard={dashboard} data={verticalData} />}

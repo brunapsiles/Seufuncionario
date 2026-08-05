@@ -95,6 +95,7 @@ import {
   PageTitle,
 } from "./components/ui.jsx";
 import HomeHub from "./features/home/HomeHub.jsx";
+import PrimaryAppRouter, { resolvePrimaryRoute } from "./routing/PrimaryAppRouter.jsx";
 import LegalPage, { LegalContent } from "./features/legal/LegalPage.jsx";
 import InboxHub from "./features/omnichannel/InboxHub.jsx";
 import Contacts from "./features/omnichannel/Contacts.jsx";
@@ -382,13 +383,6 @@ const PlatformSuite = lazy(
 const BusinessProfileStudio = lazy(
   () => import("./features/business-profile/BusinessProfileStudio.jsx"),
 );
-const LogisticsVertical = lazy(
-  () => import("./features/logistics/LogisticsVertical.jsx"),
-);
-const CustomerPortal = lazy(
-  () => import("./features/logistics/CustomerPortal.jsx"),
-);
-
 const LEGACY_STORAGE_KEY = "seu-funcionario-v1";
 const ACTIVE_USER_KEY = "seu-funcionario-active-user";
 const STORAGE_PREFIX = "seu-funcionario-v2:";
@@ -24545,46 +24539,19 @@ export default function App() {
       },
     }));
   }, [db, db.preferences.modeChosen, db.user, update]);
-  const publicMatch = location.pathname.match(/^\/s\/([^/]+)(?:\/([^/]+))?/);
-  const publicSlug = publicMatch?.[1];
-  if (publicSlug)
+  const primaryRoute = resolvePrimaryRoute(location.pathname, Boolean(db.user));
+  if (primaryRoute.kind !== "workspace")
     return (
-      <PublicSite
-        site={db.sites.find((x) => x.slug === publicSlug)}
-        page={publicMatch?.[2] || ""}
+      <PrimaryAppRouter
+        route={primaryRoute}
+        db={db}
+        update={update}
+        setToast={setToast}
+        authHeaders={authHeaders}
+        PublicSite={PublicSite}
+        AcceptInvite={AcceptInvite}
+        Login={Login}
       />
-    );
-  const inviteMatch = location.pathname.match(/^\/convite\/([^/]+)/);
-  if (inviteMatch)
-    return <AcceptInvite db={db} update={update} token={inviteMatch[1]} />;
-  if (!db.user) return <Login update={update} />;
-  // Portal do cliente: antes da vertical, porque quem entra aqui é cliente e
-  // não pode nem passar perto da navegação interna. Quem manda no que ele vê
-  // é o servidor — esta tela só pergunta "de quem é esta sessão".
-  if (location.pathname.match(/^\/portal-cliente(?:\/|$)/))
-    return (
-      <Suspense
-        fallback={<div className="inbox-loading">Abrindo seu portal...</div>}
-      >
-        <CustomerPortal />
-      </Suspense>
-    );
-  if (location.pathname.match(/^\/todogreen(?:\/|$)/))
-    return (
-      <Suspense
-        fallback={
-          <div className="inbox-loading">
-            Carregando vertical To Do Green...
-          </div>
-        }
-      >
-        <LogisticsVertical
-          db={db}
-          update={update}
-          setToast={setToast}
-          authHeaders={authHeaders}
-        />
-      </Suspense>
     );
   if (!db.preferences.modeChosen && !hasAnyWorkspaceData(db))
     return <ModeOnboarding update={update} />;

@@ -194,6 +194,20 @@ async function ensureTables(env) {
     )`,
     `CREATE INDEX IF NOT EXISTS idx_todogreen_evidences_scope
        ON todogreen_evidences (tenant_id, client_id, emitido_em DESC)`,
+    `CREATE TABLE IF NOT EXISTS todogreen_client_assignments (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'todogreen',
+      client_id TEXT NOT NULL,
+      seller_email TEXT NOT NULL COLLATE NOCASE,
+      status TEXT NOT NULL DEFAULT 'active',
+      note TEXT NOT NULL DEFAULT '',
+      assigned_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE (tenant_id, client_id, seller_email)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_todogreen_client_assignments_seller
+       ON todogreen_client_assignments (tenant_id, seller_email, status, updated_at DESC)`,
   ];
   for (const sql of ddl) await env.DB.prepare(sql).run().catch(() => {});
 }
@@ -592,12 +606,14 @@ export async function handleTodoGreenCustomerPortal(request, env) {
 // é a To Do Green cadastrando clientes e liberando quem entra em cada sala.
 export async function handleTodoGreenClients(request, env, access, user) {
   if (!env.DB) return response({ error: "Banco indisponível." }, 503);
-  if (!["owner", "admin"].includes(access?.role))
-    return response({ error: "Sem permissão para gerenciar clientes." }, 403);
-
   await ensureTables(env);
   const url = new URL(request.url);
   const agora = new Date().toISOString();
+  const podeGerenciar = ["owner", "admin"].includes(access?.role) ||
+    access?.permissions?.includes("*") ||
+    access?.permissions?.includes("clients:manage") ||
+    access?.permissions?.includes("clients:assign");
+  const emailSessao = normalizeEmail(user?.email);
 
   if (request.method === "GET") {
     const linhas = await env.DB.prepare(
@@ -607,13 +623,41 @@ export async function handleTodoGreenClients(request, env, access, user) {
                 WHERE v.client_id = c.id AND v.status = 'active') AS pessoas
          FROM todogreen_clients c
         WHERE c.tenant_id = ? AND c.archived_at IS NULL
+          AND (? = 1 OR EXISTS (
+            SELECT 1 FROM todogreen_client_assignments a
+             WHERE a.tenant_id = c.tenant_id AND a.client_id = c.id
+               AND a.status = 'active' AND lower(a.seller_email) = ?
+          ))
         ORDER BY c.name`,
     )
-      .bind(TENANT_ID)
+      .bind(TENANT_ID, podeGerenciar ? 1 : 0, emailSessao)
       .all()
       .catch(() => ({ results: [] }));
-    return response({ clientes: linhas.results || [] });
+    const ids = (linhas.results || []).map((item) => item.id);
+    let atribuicoes = [];
+    if (ids.length) {
+      const placeholders = ids.map(() => "?").join(",");
+      const resultado = await env.DB.prepare(
+        `SELECT client_id, seller_email, note, updated_at
+           FROM todogreen_client_assignments
+          WHERE tenant_id = ? AND status = 'active' AND client_id IN (${placeholders})
+          ORDER BY seller_email`,
+      ).bind(TENANT_ID, ...ids).all().catch(() => ({ results: [] }));
+      atribuicoes = resultado.results || [];
+    }
+    return response({
+      clientes: (linhas.results || []).map((cliente) => ({
+        ...cliente,
+        vendedores: atribuicoes
+          .filter((item) => item.client_id === cliente.id)
+          .map((item) => ({ email: item.seller_email, observacao: item.note, atualizadoEm: item.updated_at })),
+      })),
+      acesso: { podeGerenciar, somenteCarteira: !podeGerenciar, vendedor: emailSessao },
+    });
   }
+
+  if (!podeGerenciar)
+    return response({ error: "Somente uma pessoa autorizada pode alterar clientes e carteiras." }, 403);
 
   if (request.method === "POST") {
     let body = {};
@@ -723,6 +767,70 @@ export async function handleTodoGreenClients(request, env, access, user) {
     )
       .bind(TENANT_ID, email)
       .run();
+    return response({ ok: true });
+  }
+
+  return response({ error: "Método não permitido." }, 405);
+}
+
+export async function handleTodoGreenClientAssignments(request, env, access, user) {
+  if (!env.DB) return response({ error: "Banco indisponível." }, 503);
+  await ensureTables(env);
+  const podeAtribuir = ["owner", "admin"].includes(access?.role) ||
+    access?.permissions?.includes("*") ||
+    access?.permissions?.includes("clients:assign");
+  if (!podeAtribuir)
+    return response({ error: "Você não pode definir carteiras comerciais." }, 403);
+
+  const url = new URL(request.url);
+  if (request.method === "GET") {
+    const rows = await env.DB.prepare(
+      `SELECT a.id, a.client_id AS clientId, c.name AS clientName,
+              a.seller_email AS sellerEmail, a.note, a.status,
+              a.created_at AS createdAt, a.updated_at AS updatedAt
+         FROM todogreen_client_assignments a
+         JOIN todogreen_clients c ON c.id = a.client_id AND c.tenant_id = a.tenant_id
+        WHERE a.tenant_id = ? AND a.status = 'active'
+        ORDER BY c.name, a.seller_email`,
+    ).bind(TENANT_ID).all().catch(() => ({ results: [] }));
+    return response({ atribuicoes: rows.results || [] });
+  }
+
+  if (request.method === "PUT") {
+    const body = await request.json().catch(() => ({}));
+    const clientId = clean(body.clientId ?? body.clienteId, 60);
+    const sellerEmail = normalizeEmail(body.sellerEmail ?? body.vendedorEmail);
+    if (!clientId) return response({ error: "Informe o cliente." }, 400);
+    if (!isValidEmail(sellerEmail))
+      return response({ error: "Informe o e-mail do vendedor." }, 400);
+    const client = await env.DB.prepare(
+      "SELECT id FROM todogreen_clients WHERE tenant_id = ? AND id = ? AND archived_at IS NULL",
+    ).bind(TENANT_ID, clientId).first();
+    if (!client) return response({ error: "Cliente não encontrado." }, 404);
+    const now = new Date().toISOString();
+    await env.DB.prepare(
+      `INSERT INTO todogreen_client_assignments
+         (id, tenant_id, client_id, seller_email, status, note, assigned_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?)
+       ON CONFLICT(tenant_id, client_id, seller_email) DO UPDATE SET
+         status = 'active', note = excluded.note, assigned_by = excluded.assigned_by,
+         updated_at = excluded.updated_at`,
+    ).bind(
+      crypto.randomUUID(), TENANT_ID, clientId, sellerEmail,
+      clean(body.note ?? body.observacao, 240), user.id, now, now,
+    ).run();
+    return response({ ok: true, clientId, sellerEmail });
+  }
+
+  if (request.method === "DELETE") {
+    const clientId = clean(url.searchParams.get("clientId"), 60);
+    const sellerEmail = normalizeEmail(url.searchParams.get("sellerEmail"));
+    if (!clientId || !sellerEmail)
+      return response({ error: "Informe o cliente e o vendedor." }, 400);
+    await env.DB.prepare(
+      `UPDATE todogreen_client_assignments SET status = 'inactive', updated_at = ?
+        WHERE tenant_id = ? AND client_id = ? AND lower(seller_email) = ?`,
+    ).bind(new Date().toISOString(), TENANT_ID, clientId, sellerEmail).run();
     return response({ ok: true });
   }
 

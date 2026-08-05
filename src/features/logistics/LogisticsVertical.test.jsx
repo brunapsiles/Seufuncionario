@@ -1,5 +1,5 @@
 /* @vitest-environment jsdom */
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import LogisticsVertical from "./LogisticsVertical.jsx";
 
@@ -77,15 +77,16 @@ describe("LogisticsVertical", () => {
     expect(screen.queryByText("Governança")).toBeNull();
   });
 
-  it("creates real CRM records instead of only showing module cards", () => {
+  it("loads the independent client page from the real CRM service", async () => {
     window.history.pushState({}, "", "/todogreen/clientes");
-    const update = vi.fn();
-    render(<LogisticsVertical db={authorizedDb} update={update} setToast={vi.fn()} />);
-    fireEvent.change(screen.getByText("Cliente").closest("label").querySelector("input"), {
-      target: { value: "Cliente real" },
-    });
-    fireEvent.click(screen.getByText("Cadastrar cliente"));
-    expect(update).toHaveBeenCalled();
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(JSON.stringify({
+      clientes: [{ id: "c1", name: "Cliente real", status: "active", vendedores: [] }],
+      acesso: { podeGerenciar: true, somenteCarteira: false },
+    }), { status: 200 })));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LogisticsVertical db={authorizedDb} update={vi.fn()} setToast={vi.fn()} authHeaders={() => ({ authorization: "Bearer teste" })} />);
+    expect((await screen.findAllByText("Cliente real")).length).toBeGreaterThan(0);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/todogreen/clients", expect.any(Object)));
   });
 
   it("filters functions while preserving real workflow navigation", async () => {
