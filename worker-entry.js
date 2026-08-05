@@ -3,6 +3,7 @@ import { handleTodoGreenWorkCenter } from "./worker/services/todogreen-work-cent
 import { handleTodoGreenFleet } from "./worker/services/todogreen-fleet.js";
 import { handleTodoGreenCustomerPortal } from "./worker/services/todogreen-customer-portal.js";
 import { handleTodoGreenEsg } from "./worker/services/todogreen-esg.js";
+import { handleTodoGreenPricingParameters } from "./worker/services/todogreen-pricing-parameters.js";
 import { handleTodoGreenClients } from "./worker/services/todogreen-customer-portal.js";
 import {
   authenticatedUser as todoGreenUser,
@@ -48,6 +49,10 @@ export default {
         console.error("To Do Green clients error", error);
         return apiError("Não foi possível carregar os clientes.");
       }
+    }
+    if (url.pathname.startsWith("/api/todogreen/pricing-parameters")) {
+      try { return await handleTodoGreenPricingParameters(request, env); }
+      catch (error) { console.error("To Do Green pricing parameters error", error); return apiError("Não foi possível carregar a régua comercial."); }
     }
     if (url.pathname.startsWith("/api/todogreen/esg")) {
       try { return await handleTodoGreenEsg(request, env); }

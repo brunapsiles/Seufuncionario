@@ -61,6 +61,7 @@ import {
 } from "./logisticsVerticalDomain.js";
 
 const EsgCenter = lazy(() => import("./EsgCenter.jsx"));
+const PricingParametersPanel = lazy(() => import("./PricingParametersPanel.jsx"));
 
 const iconMap = {
   Activity,
@@ -219,6 +220,13 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     area: "esg",
     status: "functional",
     description: "CO2 evitado, diesel não consumido, equivalências, metodologia e textos comerciais auditáveis.",
+  },
+  regua: {
+    title: "Régua comercial",
+    route: "/todogreen/regua",
+    area: "financeiro",
+    status: "functional",
+    description: "Margem mínima, margem alvo, OPEX, administrativo, impostos, risco e comissão — versionados, com justificativa e efeito no preço antes de valer.",
   },
   "central-esg": {
     title: "Central ESG",
@@ -836,10 +844,34 @@ function OpportunityPanel({ data, update, setToast }) {
 function PricingPanel({ role, update, db, authHeaders, setToast }) {
   const [productId, setProductId] = useState("middle-mile");
   const [inputs, setInputs] = useState(productDefaults["middle-mile"]);
+  // A régua comercial em vigor, administrada pelo gestor em /todogreen/regua.
+  // Sem ela carregada ainda, a calculadora usa o padrão — e diz qual régua
+  // está aplicando, porque preço sem régua identificada não se defende.
+  const [regua, setRegua] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    fetch("/api/todogreen/pricing-parameters", { headers: authHeaders?.() || {} })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (vivo && d?.atual) setRegua(d.atual);
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [authHeaders]);
   const allowed = hasTodoGreenPermission(role, "pricing:simulate");
   const blueprint = getProductPricingBlueprint(productId);
   const product = LOGISTICS_PRODUCTS.find((item) => item.id === productId);
-  const result = useMemo(() => centralPricingEngine(productId, inputs), [inputs, productId]);
+  const result = useMemo(
+    () =>
+      centralPricingEngine(
+        productId,
+        inputs,
+        regua?.parametros ? { assumptions: regua.parametros } : {},
+      ),
+    [inputs, productId, regua],
+  );
   const outputs = productSpecificOutputs(productId, result);
   const hasEnvironmentalInputs = Number(inputs.distanceKm || inputs.kmPerRoute || 0) > 0;
   const selectProduct = (nextProductId) => {
@@ -848,7 +880,14 @@ function PricingPanel({ role, update, db, authHeaders, setToast }) {
   };
   const changeInput = (key, value) => setInputs((current) => ({ ...current, [key]: value }));
   const saveScenario = () => {
-    const snapshot = createPricingScenarioSnapshot(productId, inputs, { userId: db?.user?.id || "local", tenantId: TODO_GREEN_TENANT.id, justification: "Simulação criada pela calculadora To Do Green." });
+    // A simulação salva nasce com a MESMA régua exibida na tela — snapshot e
+    // resultado mostrado nunca podem divergir.
+    const snapshot = createPricingScenarioSnapshot(
+      productId,
+      inputs,
+      { userId: db?.user?.id || "local", tenantId: TODO_GREEN_TENANT.id, justification: `Simulação criada pela calculadora To Do Green (régua ${regua?.versao || "padrão"}).` },
+      regua?.parametros ? { assumptions: regua.parametros } : {},
+    );
     update?.((current) => ({
       ...current,
       tenantAccess: { ...(current.tenantAccess || {}), todogreen: { role: role || "admin", active: true } },
@@ -865,6 +904,11 @@ function PricingPanel({ role, update, db, authHeaders, setToast }) {
   return (
     <section className="tdg-panel tdg-pricing">
       <div className="tdg-section-head"><div><span className="tdg-kicker">CALCULAR PREÇO</span><h2>{blueprint.title}</h2><p>Preencha os dados da operação. O preço e a margem são atualizados automaticamente.</p></div><strong>{friendlyCommercialText(result.recommendation.decision)}</strong></div>
+      <p className="tdg-esg-nota">
+        {regua && !regua.deFabrica
+          ? `Regra de preço ${regua.versao} · margem mínima ${regua.parametros.minimumMarginPercent}% · alvo ${regua.parametros.targetMarginPercent}% · definida por ${regua.responsavel || "—"}`
+          : "Usando os valores padrão de margem e custos. Um gestor pode definir os seus em Régua comercial."}
+      </p>
       <div className="tdg-product-strip">{LOGISTICS_PRODUCTS.map((item) => <ProductCard product={item} active={item.id === productId} onSelect={selectProduct} key={item.id} />)}</div>
       <div className="tdg-calculator-workspace">
         <form className="tdg-form">
@@ -1133,6 +1177,11 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
       {page === "propostas" && <ProposalPanel data={verticalData} update={update} setToast={setToast} />}
       {page === "precificacao" && <PricingPanel role={role} update={update} db={db} authHeaders={authHeaders} setToast={setToast} />}
       {["esg", "green-score", "calculadora-ambiental", "tradutor-esg", "escopo-3"].includes(page) && <EsgPanel dashboard={dashboard} data={verticalData} />}
+      {page === "regua" && (
+        <Suspense fallback={<section className="tdg-panel">Carregando régua comercial...</section>}>
+          <PricingParametersPanel authHeaders={authHeaders} setToast={setToast} />
+        </Suspense>
+      )}
       {page === "central-esg" && (
         <Suspense fallback={<section className="tdg-panel">Carregando Central ESG...</section>}>
           <EsgCenter authHeaders={authHeaders} setToast={setToast} />
