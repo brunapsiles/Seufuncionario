@@ -58,6 +58,17 @@ describe("LogisticsVertical", () => {
     expect(screen.getByText("Sucesso entrega (%)")).toBeTruthy();
   });
 
+  it("shows pricing results in a readable decision layout", () => {
+    window.history.pushState({}, "", "/todogreen/precificacao/dedicated");
+    const { container } = render(<LogisticsVertical db={authorizedDb} update={vi.fn()} />);
+    expect(screen.getByText("Custo mensal")).toBeTruthy();
+    expect(screen.getByText("Menor preço recomendado")).toBeTruthy();
+    expect(screen.getByText("Preço recomendado")).toBeTruthy();
+    expect(screen.getByText(/Recomendação comercial/i)).toBeTruthy();
+    expect(container.querySelectorAll(".tdg-price-summary > div")).toHaveLength(4);
+    expect(screen.queryByText("Governança")).toBeNull();
+  });
+
   it("creates real CRM records instead of only showing module cards", () => {
     window.history.pushState({}, "", "/todogreen/clientes");
     const update = vi.fn();
