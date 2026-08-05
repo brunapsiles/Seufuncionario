@@ -4,7 +4,7 @@ const PERMISSION_LABELS = {
   "crm:view": "CRM",
   "opportunity:manage": "Oportunidades",
   "pricing:simulate": "Precificação",
-  "deal:review": "Deal Desk",
+  "deal:review": "Aprovação comercial",
   "proposal:create": "Propostas",
   "operation:manage": "Operações",
   "revenue:manage": "Receita",
@@ -19,11 +19,11 @@ const PERMISSION_LABELS = {
 
 const PERMISSION_GROUPS = [
   ["Comercial", ["crm:view", "opportunity:manage", "proposal:create"]],
-  ["Pricing", ["pricing:simulate", "deal:review"]],
+  ["Preços", ["pricing:simulate", "deal:review"]],
   ["Operações", ["operation:manage"]],
   ["Financeiro", ["revenue:manage", "cost:manage", "commission:manage"]],
   ["ESG", ["esg:manage", "report:export"]],
-  ["Governança", ["audit:read", "access:view", "access:manage"]],
+  ["Controle e acessos", ["audit:read", "access:view", "access:manage"]],
 ];
 
 const tokenHeaders = () => {
