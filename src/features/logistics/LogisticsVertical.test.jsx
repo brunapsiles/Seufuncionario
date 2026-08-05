@@ -90,6 +90,17 @@ describe("LogisticsVertical", () => {
     expect(screen.queryByText("Remuneração Variável")).toBeNull();
   });
 
+  it("opens a function in a new browser tab", () => {
+    const open = vi.fn();
+    vi.stubGlobal("open", open);
+    const { container } = render(<LogisticsVertical db={authorizedDb} update={vi.fn()} />);
+    const card = [...container.querySelectorAll(".tdg-module-card")].find((item) =>
+      item.textContent.includes("Clientes"),
+    );
+    fireEvent.click(card);
+    expect(open).toHaveBeenCalledWith("/todogreen/clientes", "_blank", "noopener,noreferrer");
+  });
+
   it("shows the access panel for admins", async () => {
     window.history.pushState({}, "", "/todogreen/acessos");
     const fetchMock = vi.fn(() =>
