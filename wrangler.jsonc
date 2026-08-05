@@ -33,6 +33,10 @@
   ],
   "vars": {
     "GEMINI_MODEL": "gemini-flash-lite-latest",
-    "XAI_MODEL": "grok-4.3"
+    "XAI_MODEL": "grok-4.3",
+    // A dona da plataforma entra na vertical To Do Green sem precisar de
+    // negócio com nome certo nem convite — a regra do cliente vale para o
+    // cliente, não para quem opera o produto.
+    "TODOGREEN_ADMIN_EMAILS": "brunapsiles@icloud.com,brunapsiles@gmail.com"
   }
 }
