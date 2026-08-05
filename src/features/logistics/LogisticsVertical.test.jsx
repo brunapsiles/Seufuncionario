@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TODO_GREEN_FEATURE_COUNT } from "./logisticsVerticalDomain.js";
 import LogisticsVertical from "./LogisticsVertical.jsx";
 
@@ -17,6 +17,10 @@ const authorizedDb = {
 };
 
 describe("LogisticsVertical", () => {
+  beforeEach(() => {
+    window.history.pushState({}, "", "/todogreen");
+  });
+
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
@@ -48,10 +52,12 @@ describe("LogisticsVertical", () => {
 
   it("renders product-specific pricing fields instead of one generic form", () => {
     window.history.pushState({}, "", "/todogreen/precificacao");
-    render(<LogisticsVertical db={authorizedDb} update={vi.fn()} />);
+    const { container } = render(<LogisticsVertical db={authorizedDb} update={vi.fn()} />);
     expect(screen.getByText("Middle Mile enterprise")).toBeTruthy();
     expect(screen.getByText("Origem *")).toBeTruthy();
     expect(screen.getByText("Pedágio por viagem R$")).toBeTruthy();
+    expect(container.querySelectorAll(".tdg-section")).toHaveLength(0);
+    expect(screen.queryByText("Calculadoras reais disponíveis")).toBeNull();
     fireEvent.click(screen.getAllByText("Last Mile")[0]);
     expect(screen.getByText("Last Mile e-commerce")).toBeTruthy();
     expect(screen.getByText("Pacotes *")).toBeTruthy();
