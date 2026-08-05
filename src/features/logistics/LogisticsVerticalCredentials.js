@@ -2,6 +2,8 @@ import "./LogisticsVerticalCredentials.css";
 
 const AUTH_TOKEN_KEY = "seu-funcionario-auth-token";
 const ACTIVE_USER_KEY = "seu-funcionario-active-user";
+let observer;
+let retryTimer;
 
 const setStatus = (root, message, type = "error") => {
   const status = root.querySelector(".tdg-login-status");
@@ -26,6 +28,9 @@ const saveSession = (payload) => {
   localStorage.setItem(AUTH_TOKEN_KEY, payload.token);
   localStorage.setItem(ACTIVE_USER_KEY, payload.user.email);
 };
+
+const isTodoGreenRoute = () =>
+  typeof window !== "undefined" && /(^|\/)todogreen(\/|$)/i.test(window.location.pathname);
 
 const loginHtml = () => `
   <section class="tdg-login-box" aria-label="Acesso To Do Green">
@@ -77,7 +82,7 @@ const bindLogin = (card) => {
       const payload = await postJson("/api/auth/login", { email, password });
       saveSession(payload);
       setStatus(card, "Acesso validado. Carregando ambiente...", "ok");
-      setTimeout(() => window.location.reload(), 350);
+      setTimeout(() => window.location.reload(), 250);
     } catch (error) {
       setStatus(card, error.message || "E-mail ou senha inválidos.", "error");
     }
@@ -113,7 +118,7 @@ const bindReset = (card) => {
       const payload = await postJson("/api/auth/reset", { email: resetEmail, code, password });
       saveSession(payload);
       setStatus(card, "Senha alterada. Carregando ambiente...", "ok");
-      setTimeout(() => window.location.reload(), 350);
+      setTimeout(() => window.location.reload(), 250);
     } catch (error) {
       setStatus(card, error.message || "Não foi possível alterar a senha.", "error");
     }
@@ -136,20 +141,38 @@ const renderReset = (card) => {
 };
 
 const ensureCredentialsLogin = () => {
+  if (!isTodoGreenRoute()) return false;
   const card = document.querySelector(".tdg-denied-card");
-  if (!card || card.querySelector(".tdg-login-box")) return;
+  if (!card) return false;
   const title = card.querySelector("h1");
   if (title) title.textContent = "Acesso To Do Green";
   const kicker = card.querySelector(".tdg-kicker");
   if (kicker) kicker.textContent = "LOGIN PRIVADO";
-  renderLogin(card);
+  if (!card.querySelector(".tdg-login-box")) renderLogin(card);
+  else bindLogin(card);
+  return true;
+};
+
+const scheduleEnsure = () => {
+  window.clearTimeout(retryTimer);
+  retryTimer = window.setTimeout(() => {
+    if (!ensureCredentialsLogin() && isTodoGreenRoute()) scheduleEnsure();
+  }, 120);
 };
 
 if (typeof window !== "undefined") {
   const start = () => {
     ensureCredentialsLogin();
-    const observer = new MutationObserver(() => ensureCredentialsLogin());
+    observer?.disconnect();
+    observer = new MutationObserver(() => ensureCredentialsLogin());
     observer.observe(document.body, { childList: true, subtree: true });
+    ["pageshow", "focus", "popstate", "hashchange"].forEach((eventName) =>
+      window.addEventListener(eventName, scheduleEnsure),
+    );
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) scheduleEnsure();
+    });
+    scheduleEnsure();
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true });
   else start();
