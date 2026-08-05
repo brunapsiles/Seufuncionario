@@ -4,6 +4,7 @@ import App from "./App";
 import "./styles.css";
 import "./features/logistics/LogisticsVertical.css";
 import "./features/logistics/LogisticsVerticalPolish.js";
+import "./features/logistics/LogisticsVerticalSalesPerformance.js";
 
 const reportError = (message, stack, componentStack) => {
   try {
