@@ -107,6 +107,33 @@ const iconMap = {
 const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
 
+const outputLabels = {
+  custoTotal: "Custo mensal da operação",
+  precoMinimo: "Menor preço recomendado",
+  precoRecomendado: "Preço recomendado",
+  margem: "Margem estimada",
+  resultadoMensal: "Resultado mensal estimado",
+  resultadoAnual: "Resultado anual estimado",
+  impactoAmbiental: "CO₂ evitado",
+  custoPorVeiculo: "Custo mensal por veículo",
+  custoPorDia: "Custo por dia",
+  impactoVeiculoReserva: "Custo do veículo reserva",
+};
+
+const formatOutputValue = (key, value) => {
+  if (typeof value !== "number") return value;
+  if (["margem", "ocupacao", "ocupacaoMinima", "produtividadeMinima"].includes(key)) return `${number.format(value)}%`;
+  if (key === "impactoAmbiental") return `${number.format(value / 1000)} t`;
+  return BRL.format(value);
+};
+
+const friendlyCommercialText = (value) =>
+  String(value || "")
+    .replace(/Encaminhar ao Deal Desk/gi, "Enviar para aprovação comercial")
+    .replace(/Deal Desk/gi, "aprovação comercial")
+    .replace(/target/gi, "valor esperado pelo cliente")
+    .replace(/parâmetros/gi, "dados da operação");
+
 const IMPLEMENTED_MODULE_IDS = new Set([
   "dashboard-esg",
   "green-score",
@@ -180,14 +207,14 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     description: "Geração de proposta textual com preço, premissas, ROI ambiental, ressalvas e aprovações necessárias.",
   },
   precificacao: {
-    title: "Precificação e Deal Desk",
+    title: "Precificação e aprovação comercial",
     route: "/todogreen/precificacao",
     area: "comercial",
     status: "functional",
     description: "Calculadoras por produto, margem, custo, target, gatilhos de aprovação e evidências obrigatórias.",
   },
   esg: {
-    title: "ESG, Green Score e Escopo 3",
+    title: "ESG, Green Score e emissões da cadeia logística",
     route: "/todogreen/esg",
     area: "esg",
     status: "functional",
@@ -215,7 +242,7 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     description: "Entradas financeiras por cliente/produto, forecast, faturamento, recebimento e comissão prevista.",
   },
   custos: {
-    title: "Custos, OPEX e margem",
+    title: "Custos, despesas e margem",
     route: "/todogreen/custos",
     area: "financeiro",
     status: "functional",
@@ -308,13 +335,17 @@ const fieldLabels = {
   trainingCost: "Treinamento R$",
   tripsPerMonth: "Viagens/mês",
   unloadingHours: "Horas descarga",
+  vehicles: "Quantidade de veículos",
+  returnsRate: "Devoluções (%)",
+  cleaningCost: "Limpeza e higienização R$",
+  quantity: "Quantidade",
   vehicleType: "Tipo de veículo",
   visitsPerMonth: "Visitas/mês",
   volumeM3: "Volume m³",
   waitingHours: "Horas de espera",
   weeklyFrequency: "Frequência semanal",
   weightKg: "Peso kg",
-  dataQuality: "Qualidade dos dados (%)",
+  dataQuality: "Quanto podemos confiar nos dados (%)",
 };
 
 const textFields = new Set([
@@ -810,6 +841,7 @@ function PricingPanel({ role, update, db, authHeaders, setToast }) {
   const product = LOGISTICS_PRODUCTS.find((item) => item.id === productId);
   const result = useMemo(() => centralPricingEngine(productId, inputs), [inputs, productId]);
   const outputs = productSpecificOutputs(productId, result);
+  const hasEnvironmentalInputs = Number(inputs.distanceKm || inputs.kmPerRoute || 0) > 0;
   const selectProduct = (nextProductId) => {
     setProductId(nextProductId);
     setInputs(productDefaults[nextProductId] || { client: "", distanceKm: 100, frequencyPerMonth: 1, customerTargetPrice: 0, dataQuality: 70 });
@@ -832,27 +864,42 @@ function PricingPanel({ role, update, db, authHeaders, setToast }) {
   if (!allowed) return <section className="tdg-panel"><h2>Sem permissão para simular</h2><p>Seu papel pode visualizar dados, mas não alterar premissas comerciais.</p></section>;
   return (
     <section className="tdg-panel tdg-pricing">
-      <div className="tdg-section-head"><div><span className="tdg-kicker">PRECIFICAÇÃO LOGÍSTICA</span><h2>{blueprint.title}</h2><p>{blueprint.pricingUnit}</p></div><strong>{result.recommendation.decision}</strong></div>
+      <div className="tdg-section-head"><div><span className="tdg-kicker">CALCULAR PREÇO</span><h2>{blueprint.title}</h2><p>Preencha os dados da operação. O preço e a margem são atualizados automaticamente.</p></div><strong>{friendlyCommercialText(result.recommendation.decision)}</strong></div>
       <div className="tdg-product-strip">{LOGISTICS_PRODUCTS.map((item) => <ProductCard product={item} active={item.id === productId} onSelect={selectProduct} key={item.id} />)}</div>
-      <div className="tdg-calculator-grid">
+      <div className="tdg-calculator-workspace">
         <form className="tdg-form">
           {blueprint.inputGroups.map(([group, fields]) => (
             <fieldset key={group}><legend>{group}</legend>{fields.map((field) => <FieldInput key={field} name={field} value={inputs[field]} required={product?.requiredFields?.includes(field)} onChange={changeInput} />)}</fieldset>
           ))}
-          <fieldset><legend>Governança</legend><FieldInput name="dataQuality" value={inputs.dataQuality} onChange={changeInput} /><FieldInput name="occupancyPercent" value={inputs.occupancyPercent} onChange={changeInput} /></fieldset>
+          <fieldset><legend>Dados usados no cálculo</legend><FieldInput name="dataQuality" value={inputs.dataQuality} onChange={changeInput} /><FieldInput name="occupancyPercent" value={inputs.occupancyPercent} onChange={changeInput} /></fieldset>
         </form>
-        <div className="tdg-result">
-          <MetricCard label="Preço mínimo" value={BRL.format(result.minimumPrice)} detail="piso com margem mínima" />
-          <MetricCard label="Preço recomendado" value={BRL.format(result.recommendedPrice)} detail="margem alvo e riscos" tone="good" />
-          <MetricCard label="Margem" value={`${number.format(result.marginPercent)}%`} detail={BRL.format(result.marginValue)} tone={result.marginPercent < 18 ? "risk" : "good"} />
-          <MetricCard label="CO2 evitado" value={`${number.format(result.impact.co2AvoidedKg / 1000)} t`} detail={`${number.format(result.impact.reductionPercent)}% redução`} />
+        <div className="tdg-price-summary" aria-label="Resultado da precificação">
+          <div><span>Custo mensal</span><strong>{BRL.format(result.loadedCost)}</strong><small>custo estimado da operação</small></div>
+          <div><span>Menor preço recomendado</span><strong>{BRL.format(result.minimumPrice)}</strong><small>abaixo deste valor, revise a operação</small></div>
+          <div className="featured"><span>Preço recomendado</span><strong>{BRL.format(result.recommendedPrice)}</strong><small>considera margem e riscos</small></div>
+          <div className={result.marginPercent < 18 ? "risk" : "good"}><span>Margem estimada</span><strong>{number.format(result.marginPercent)}%</strong><small>{BRL.format(result.marginValue)} por mês</small></div>
         </div>
       </div>
-      <div className="tdg-output-grid">{Object.entries(outputs).map(([key, value]) => <span key={key}><small>{key.replace(/[A-Z]/g, " $&").toLowerCase()}</small><strong>{typeof value === "number" ? number.format(value) : value}</strong></span>)}</div>
-      <div className="tdg-method"><strong>Evidências exigidas</strong><p>{blueprint.requiredEvidence.join(" · ")}</p><small>Saídas executivas: {blueprint.executiveOutputs.join(" · ")}</small></div>
-      {result.approval.required && <div className="tdg-alert"><AlertTriangle size={18} /><span>Deal Desk obrigatório: {result.approval.triggers.join(", ")}.</span></div>}
-      <ul className="tdg-reasons">{result.recommendation.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
-      <button className="tdg-action" type="button" onClick={saveScenario}><Plus size={17} />Salvar simulação auditável</button>
+      <div className="tdg-price-details">
+        {Object.entries(outputs)
+          .filter(([key]) => !["custoTotal", "precoMinimo", "precoRecomendado", "margem"].includes(key))
+          .map(([key, value]) => <span key={key}><small>{outputLabels[key] || key.replace(/[A-Z]/g, " $&").toLowerCase()}</small><strong>{formatOutputValue(key, value)}</strong></span>)}
+      </div>
+      <section className="tdg-price-guidance">
+        <div>
+          <span className="tdg-kicker">RECOMENDAÇÃO COMERCIAL</span>
+          <h3>{friendlyCommercialText(result.recommendation.decision)}</h3>
+          <p>O preço recomendado para esta operação é <strong>{BRL.format(result.recommendedPrice)}</strong>. Abaixo de <strong>{BRL.format(result.minimumPrice)}</strong>, revise custos, serviços ou margem antes de apresentar a proposta.</p>
+          {result.recommendation.reasons.length > 0 && <ul>{result.recommendation.reasons.map((reason) => <li key={reason}>{friendlyCommercialText(reason)}</li>)}</ul>}
+        </div>
+        <div className="tdg-environmental-summary">
+          <span>Impacto ambiental estimado</span>
+          {hasEnvironmentalInputs ? <><strong>{number.format(result.impact.co2AvoidedKg / 1000)} t de CO₂ evitadas</strong><small>{number.format(result.impact.reductionPercent)}% de redução em relação à referência informada</small></> : <><strong>Aguardando dados da rota</strong><small>Informe a quilometragem e o veículo de referência para calcular a redução de emissões.</small></>}
+        </div>
+      </section>
+      <details className="tdg-calculation-details"><summary>Ver documentos necessários e detalhes do cálculo</summary><div className="tdg-method"><strong>Documentos necessários</strong><p>{blueprint.requiredEvidence.join(" · ")}</p><small>Relatórios disponíveis: {blueprint.executiveOutputs.join(" · ")}</small></div></details>
+      {result.approval.required && <div className="tdg-alert"><AlertTriangle size={18} /><span>Esta condição precisa de aprovação comercial: {result.approval.triggers.join(", ")}.</span></div>}
+      <div className="tdg-pricing-actions"><button className="tdg-action" type="button" onClick={saveScenario}><Plus size={17} />Salvar simulação</button></div>
     </section>
   );
 }
@@ -871,7 +918,7 @@ function ProposalPanel({ data, update, setToast }) {
   };
   return (
     <section className="tdg-panel"><div className="tdg-section-head"><div><span className="tdg-kicker">PROPOSTAS</span><h2>Proposta comercial com preço, operação e ROI ambiental</h2></div><strong>{data.proposals.length} proposta(s)</strong></div>
-      <form className="tdg-access-form" onSubmit={save}>{[["client", "Cliente"], ["title", "Título"], ["scope", "Escopo operacional"], ["commercialTerms", "Condições comerciais"], ["risks", "Riscos e ressalvas"]].map(([key, label]) => <label key={key}><span>{label}</span><input value={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} /></label>)}<button className="tdg-action" type="submit"><Plus size={17} />Salvar proposta</button></form>
+      <form className="tdg-access-form" onSubmit={save}>{[["client", "Cliente"], ["title", "Título"], ["scope", "O que está incluído na operação"], ["commercialTerms", "Condições comerciais"], ["risks", "Riscos e ressalvas"]].map(([key, label]) => <label key={key}><span>{label}</span><input value={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} /></label>)}<button className="tdg-action" type="submit"><Plus size={17} />Salvar proposta</button></form>
       <div className="tdg-method"><strong>Texto gerado</strong><p>{proposalText}</p><small>{translated.disclaimer}</small></div>
       <div className="tdg-access-list">{data.proposals.map((item) => <div className="tdg-access-row" key={item.id}><span><strong>{item.title}</strong><small>{item.client || "cliente não informado"}</small></span><span>{item.scenarioId ? "com simulação" : "rascunho"}</span></div>)}</div>
     </section>
@@ -883,7 +930,7 @@ function EsgPanel({ dashboard, data }) {
   const latest = data.pricingScenarios[0]?.result?.impact;
   return (
     <section className="tdg-panel tdg-esg">
-      <div className="tdg-section-head"><div><span className="tdg-kicker">INTELIGÊNCIA ESG</span><h2>Green Score, calculadora ambiental, Escopo 3 e tradutor ESG</h2></div><strong>{number.format(dashboard.greenScore)} / 100</strong></div>
+      <div className="tdg-section-head"><div><span className="tdg-kicker">IMPACTO AMBIENTAL</span><h2>Green Score e emissões evitadas nas operações dos clientes</h2><p>Consulte os resultados ambientais em linguagem clara. Os termos técnicos permanecem disponíveis nos relatórios.</p></div><strong>{number.format(dashboard.greenScore)} / 100</strong></div>
       <div className="tdg-result">
         <MetricCard label="CO2 evitado" value={`${number.format(dashboard.co2Evitado / 1000)} t`} detail="estimativa auditável" tone="good" />
         <MetricCard label="Diesel não consumido" value={`${number.format(dashboard.dieselNaoConsumido)} L`} detail="referência diesel" />
@@ -917,7 +964,7 @@ function OperationsPanel({ data, update, setToast }) {
 
 function FinancePanel({ type, data, update, setToast }) {
   const key = type === "cost" ? "todoGreenCostEntries" : "todoGreenRevenueEntries";
-  const title = type === "cost" ? "Custos, OPEX e margem" : "Receita, forecast e faturamento";
+  const title = type === "cost" ? "Custos, despesas e margem" : "Receita prevista, faturamento e recebimentos";
   const [form, setForm] = useState({ clientId: "", productId: "middle-mile", category: type === "cost" ? "energia" : "faturamento", amount: 0, status: "previsto", note: "" });
   const entries = type === "cost" ? data.costEntries : data.revenueEntries;
   const save = (event) => {
@@ -940,7 +987,7 @@ function ReportsPanel({ dashboard, data }) {
     `Receita prevista/contratada: ${BRL.format(dashboard.receitaPrevista)}.`,
     `Margem operacional estimada: ${number.format(dashboard.margemOperacionalPercent)}%.`,
     `CO2 evitado estimado: ${number.format(dashboard.co2Evitado / 1000)} tCO2e.`,
-    `Aprovações pendentes no Deal Desk: ${dashboard.aprovacoesPendentes}.`,
+    `Aprovações comerciais pendentes: ${dashboard.aprovacoesPendentes}.`,
   ].join("\n");
   return <section className="tdg-panel"><div className="tdg-section-head"><div><span className="tdg-kicker">RELATÓRIOS</span><h2>Resumo executivo consolidado</h2></div><strong>copiável</strong></div><textarea className="tdg-report-text" readOnly value={report} aria-label="Relatório executivo To Do Green" /></section>;
 }
@@ -957,8 +1004,8 @@ function MethodologyPanel() {
 
 function GovernancePanel({ role }) {
   return (
-    <section className="tdg-panel"><div className="tdg-section-head"><div><span className="tdg-kicker">GOVERNANÇA</span><h2>Permissões por papel, auditoria e campos bloqueados</h2></div><strong>{role || "sem papel"}</strong></div>
-      <div className="tdg-governance-grid">{[["Custos oficiais", "Bloqueado para vendedores", "cost:manage"], ["Margem mínima", "Alteração exige Pricing ou Financeiro", "pricing:manage"], ["Fatores ambientais", "Sustentabilidade mantém versões", "esg:manage"], ["Aprovação Deal Desk", "Fluxo com justificativa e decisão", "deal:approve"], ["Auditoria", "Logs de cálculo, exportação e aprovação", "audit:read"]].map(([title, detail, permission]) => <div className="tdg-rule" key={title}><ShieldCheck size={18} /><strong>{title}</strong><span>{detail}</span><small>{hasTodoGreenPermission(role, permission) ? "permitido" : "sem permissão direta"}</small></div>)}</div>
+    <section className="tdg-panel"><div className="tdg-section-head"><div><span className="tdg-kicker">CONTROLE E ACESSOS</span><h2>Quem pode consultar, alterar e aprovar cada informação</h2></div><strong>{role || "sem papel"}</strong></div>
+      <div className="tdg-governance-grid">{[["Custos oficiais", "Bloqueado para vendedores", "cost:manage"], ["Margem mínima", "Alteração exige área de preços ou Financeiro", "pricing:manage"], ["Fatores ambientais", "Sustentabilidade mantém as versões", "esg:manage"], ["Aprovação comercial", "Decisão registrada com justificativa", "deal:approve"], ["Histórico de alterações", "Cálculos, exportações e aprovações", "audit:read"]].map(([title, detail, permission]) => <div className="tdg-rule" key={title}><ShieldCheck size={18} /><strong>{title}</strong><span>{detail}</span><small>{hasTodoGreenPermission(role, permission) ? "permitido" : "sem permissão direta"}</small></div>)}</div>
     </section>
   );
 }
@@ -1075,7 +1122,7 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
         <MetricCard label="Receita contratada" value={BRL.format(dashboard.receitaPrevista || dashboard.receitaRealizada)} detail="simulações e lançamentos" />
         <MetricCard label="Margem operacional" value={`${number.format(dashboard.margemOperacionalPercent)}%`} detail={BRL.format(dashboard.margemContribuicao)} tone={dashboard.margemOperacionalPercent < 18 ? "risk" : "good"} />
         <MetricCard label="CO2 evitado" value={`${number.format(dashboard.co2Evitado / 1000)} t`} detail={`${number.format(dashboard.reducaoEmissoesPercent)}% redução`} tone="good" />
-        <MetricCard label="Aprovações pendentes" value={number.format(dashboard.aprovacoesPendentes)} detail="Deal Desk" tone={dashboard.aprovacoesPendentes ? "warn" : "good"} />
+        <MetricCard label="Aprovações pendentes" value={number.format(dashboard.aprovacoesPendentes)} detail="condições comerciais" tone={dashboard.aprovacoesPendentes ? "warn" : "good"} />
         <MetricCard label="Dados" value={verticalData.demo ? "Demo" : "Real"} detail={verticalData.demo ? "rotulado" : "sem seed fake"} />
       </section>
 
