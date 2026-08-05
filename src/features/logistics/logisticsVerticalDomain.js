@@ -164,6 +164,11 @@ export const TODO_GREEN_MODULE_CATALOG = [
     description: "Declarações comerciais e materiais de apoio, sem tratar estimativa como certificação oficial.",
   }),
   module("clientes", "Clientes", "comercial", "/todogreen/clientes", { icon: "Users", order: 10 }),
+  module("solicitacoes", "Solicitações de clientes", "operacional", "/todogreen/solicitacoes", {
+    icon: "Inbox",
+    order: 40,
+    description: "Responda o que os clientes pediram pelo portal, com prazo e responsável.",
+  }),
   module("dashboards", "Criar painéis", "comercial", "/todogreen/dashboards", {
     icon: "BarChart3",
     order: 9,

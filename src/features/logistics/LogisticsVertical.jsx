@@ -66,6 +66,7 @@ const DashboardBuilderPage = lazy(() => import("./pages/DashboardBuilderPage.jsx
 const ClientsPage = lazy(() => import("./pages/ClientsPage.jsx"));
 const TrackerPage = lazy(() => import("./pages/TrackerPage.jsx"));
 const OpportunitiesPage = lazy(() => import("./pages/OpportunitiesPage.jsx"));
+const ClientRequestsPage = lazy(() => import("./pages/ClientRequestsPage.jsx"));
 
 const iconMap = {
   Activity,
@@ -1213,6 +1214,7 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
       {!verticalData.demo && dashboard.receitaPrevista === 0 && dashboard.receitaRealizada === 0 && verticalData.clients.length === 0 && page === "dashboard" && <EmptyState onCreate={openPricing} />}
       {page === "dashboard" && <DashboardPanel data={verticalData} dashboard={dashboard} />}
       {page === "dashboards" && <Suspense fallback={<section className="tdg-panel">Carregando seus painéis...</section>}><DashboardBuilderPage authHeaders={authHeaders} summary={dashboard} setToast={setToast} /></Suspense>}
+      {page === "solicitacoes" && <Suspense fallback={<section className="tdg-panel">Carregando solicitações...</section>}><ClientRequestsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "clientes" && <Suspense fallback={<section className="tdg-panel">Carregando clientes...</section>}><ClientsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "oportunidades" && <Suspense fallback={<section className="tdg-panel">Carregando oportunidades...</section>}><OpportunitiesPage opportunities={verticalData.opportunities} onCreate={(registro) => appendRecord(update, "todoGreenOpportunities", registro)} setToast={setToast} /></Suspense>}
       {page === "propostas" && <ProposalPanel data={verticalData} update={update} setToast={setToast} />}

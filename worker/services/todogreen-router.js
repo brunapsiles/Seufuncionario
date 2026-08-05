@@ -9,6 +9,7 @@ import {
 import { handleTodoGreenEsg } from "./todogreen-esg.js";
 import { handleTodoGreenPricingParameters } from "./todogreen-pricing-parameters.js";
 import { handleTodoGreenDashboards } from "./todogreen-dashboards.js";
+import { handleTodoGreenRequests } from "./todogreen-requests.js";
 
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
   status,
@@ -57,6 +58,14 @@ export async function routeTodoGreenApi(request, env) {
   if (path.startsWith("/api/todogreen/fleet"))
     return guarded("To Do Green fleet error", "Não foi possível sincronizar a frota.",
       () => handleTodoGreenFleet(request, env));
+
+  if (path.startsWith("/api/todogreen/requests")) {
+    return guarded("To Do Green requests error", "Não foi possível carregar as solicitações.", async () => {
+      const resolved = await internalAccess(request, env, url);
+      if (resolved.response) return resolved.response;
+      return handleTodoGreenRequests(request, env, resolved.access, resolved.user);
+    });
+  }
 
   if (path.startsWith("/api/todogreen/clients") || path.startsWith("/api/todogreen/client-assignments")) {
     return guarded("To Do Green clients error", "Não foi possível carregar os clientes.", async () => {

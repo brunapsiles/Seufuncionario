@@ -33,6 +33,7 @@ const MODULE_META = {
   esg: ["Inteligência ESG", "Acompanhe impacto ambiental, Green Score e informações para clientes."],
   "central-esg": ["Central ESG", "Calcule, registre e acompanhe os resultados ambientais de cada cliente."],
   operacoes: ["Operações", "Registre e acompanhe rotas, viagens, entregas, produtividade e ocorrências."],
+  solicitacoes: ["Solicitações de clientes", "Responda o que os clientes pediram pelo portal, com prazo, responsável e histórico da conversa."],
   rastreamento: ["TMS Tracker", "Configure e acompanhe a integração de posições e eventos da frota."],
   receita: ["Receitas", "Acompanhe previsão, faturamento e recebimentos por cliente e serviço."],
   custos: ["Custos e margem", "Registre custos e acompanhe a rentabilidade das operações."],
