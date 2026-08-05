@@ -3,7 +3,7 @@ import "./LogisticsVerticalRecovery.css";
 import "./LogisticsVerticalRecovery.js";
 import "./LogisticsVerticalCredentials.js";
 import "./LogisticsVerticalAccessPolicy.js";
-import "./LogisticsVerticalWorkCenter.js";
+import "./LogisticsVerticalWorkCenterV2.js";
 
 const SALES_BLOCKS = [
   ["Meta por vendedor", "Receita, margem, novos clientes, propostas enviadas, contratos recorrentes e indicadores ESG vendidos."],
@@ -38,26 +38,13 @@ const ensureSalesPerformanceBlock = () => {
     panel.textContent.includes("Faturamento"),
   );
   if (!revenuePanel || revenuePanel.querySelector(".tdg-sales-performance")) return;
-
   const section = document.createElement("section");
   section.className = "tdg-sales-performance";
   section.innerHTML = `
-    <div>
-      <span class="tdg-kicker">METAS E COMISSÕES</span>
-      <h2>Performance comercial</h2>
-      <p>O vendedor acompanha meta, carteira, pipeline, receita elegível e comissão estimada sem planilha externa. A premiação considera qualidade da venda, margem, recebimento, recorrência, produto vendido e aderência ESG.</p>
-    </div>
-    <div class="tdg-sales-grid">
-      ${SALES_BLOCKS.map(([title, text]) => `<article><span>${title}</span><strong>${title}</strong><small>${text}</small></article>`).join("")}
-    </div>
-    <div class="tdg-sales-formula">
-      <strong>Regra operacional</strong>
-      <small>Comissão = receita elegível × percentual do produto × fator de margem × fator de atingimento × aceleradores − estornos. Toda regra deve ter versão, vigência, responsável, aprovação e bloqueio de períodos fechados.</small>
-    </div>
-    <div class="tdg-sales-rules">
-      ${COMMISSION_RULES.map((item) => `<span>${item}</span>`).join("")}
-    </div>
-  `;
+    <div><span class="tdg-kicker">METAS E COMISSÕES</span><h2>Performance comercial</h2><p>O vendedor acompanha meta, carteira, pipeline, receita elegível e comissão estimada sem planilha externa. A premiação considera qualidade da venda, margem, recebimento, recorrência, produto vendido e aderência ESG.</p></div>
+    <div class="tdg-sales-grid">${SALES_BLOCKS.map(([title, text]) => `<article><span>${title}</span><strong>${title}</strong><small>${text}</small></article>`).join("")}</div>
+    <div class="tdg-sales-formula"><strong>Regra operacional</strong><small>Comissão = receita elegível × percentual do produto × fator de margem × fator de atingimento × aceleradores − estornos. Toda regra deve ter versão, vigência, responsável, aprovação e bloqueio de períodos fechados.</small></div>
+    <div class="tdg-sales-rules">${COMMISSION_RULES.map((item) => `<span>${item}</span>`).join("")}</div>`;
   revenuePanel.prepend(section);
 };
 
@@ -69,9 +56,6 @@ const appendSubfunctions = (card, items) => {
   });
 };
 
-// Gravar textContent troca o nó de texto mesmo quando o valor é idêntico, e
-// isso conta como mutação — que reacorda o observador que chamou esta função.
-// Sem comparar antes, cada passada agenda a próxima e a aba trava girando.
 const setTextIfChanged = (element, value) => {
   if (element && element.textContent !== value) element.textContent = value;
 };
@@ -80,29 +64,16 @@ const relabelExistingRoutines = () => {
   document.querySelectorAll(".tdg-routine-card").forEach((card) => {
     const text = card.textContent || "";
     if (text.includes("Financeiro")) {
-      setTextIfChanged(
-        card.querySelector("p"),
-        "Receita, custos, margem, forecast, faturamento, recebimento, metas e comissão elegível.",
-      );
+      setTextIfChanged(card.querySelector("p"), "Receita, custos, margem, forecast, faturamento, recebimento, metas e comissão elegível.");
       appendSubfunctions(card, FINANCE_SUBFUNCTIONS);
     }
-    if (text.includes("CRM") || text.includes("Oportunidades")) {
-      appendSubfunctions(card, COMMERCIAL_SUBFUNCTIONS);
-    }
+    if (text.includes("CRM") || text.includes("Oportunidades")) appendSubfunctions(card, COMMERCIAL_SUBFUNCTIONS);
   });
-
-  setTextIfChanged(
-    document.querySelector(".tdg-routine-score"),
-    "régua mínima 8/10 · 8 rotinas",
-  );
-};
-
-const removeExtraSalesRoutine = () => {
-  document.querySelectorAll(".tdg-sales-routine").forEach((card) => card.remove());
+  setTextIfChanged(document.querySelector(".tdg-routine-score"), "régua mínima 8/10 · 8 rotinas");
 };
 
 const run = () => {
-  removeExtraSalesRoutine();
+  document.querySelectorAll(".tdg-sales-routine").forEach((card) => card.remove());
   ensureSalesPerformanceBlock();
   relabelExistingRoutines();
 };
