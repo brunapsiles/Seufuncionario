@@ -1,5 +1,5 @@
 /* @vitest-environment jsdom */
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CustomerPortal from "./CustomerPortal.jsx";
 
@@ -164,5 +164,112 @@ describe("erro de ação não derruba o portal", () => {
     expect(screen.getByText("Cliente A")).toBeTruthy();
     expect(screen.queryByText(/Portal indisponível/)).toBeNull();
     expect(chamadas).toBeGreaterThan(2);
+  });
+});
+
+describe("Solicitações do cliente", () => {
+  const sessaoComSolicitacoes = {
+    ...sessaoPadrao,
+    permissoes: ["portal:read", "portal:request:create"],
+    menu: [...sessaoPadrao.menu, { id: "solicitacoes", label: "Solicitações" }],
+  };
+
+  const tipos = [
+    {
+      id: "nova_rota",
+      rotulo: "Nova rota",
+      descricao: "Incluir um trecho que ainda não faz parte do contrato.",
+      prazoHoras: 48,
+      obrigatorios: ["origem", "destino"],
+      camposRotulo: { origem: "Origem", destino: "Destino" },
+    },
+    {
+      id: "ocorrencia",
+      rotulo: "Ocorrência na entrega",
+      descricao: "Avaria, atraso, extravio ou divergência.",
+      prazoHoras: 4,
+      obrigatorios: ["referencia"],
+      camposRotulo: { referencia: "Referência da entrega" },
+    },
+  ];
+
+  const caixaVazia = { solicitacoes: [], mensagens: [], tipos, resumo: { abertas: 0, aguardandoVoce: 0, atrasadas: 0, encerradas: 0, texto: "Nenhuma solicitação em aberto." } };
+
+  const irParaSolicitacoes = async () => {
+    render(<CustomerPortal />);
+    await screen.findByText("Cliente A");
+    fireEvent.click(screen.getByRole("button", { name: /Solicitações/ }));
+  };
+
+  it("a aba não diz mais 'em breve': mostra a caixa do cliente", async () => {
+    vi.stubGlobal("fetch", montarFetch({ sessao: sessaoComSolicitacoes, resumo: resumoComDados, solicitacoes: caixaVazia }));
+    await irParaSolicitacoes();
+    expect(await screen.findByText(/Nenhuma solicitação ainda/)).toBeTruthy();
+    // A promessa que a IA do portal já fazia agora tem porta.
+    expect(screen.queryByText(/está sendo liberada/)).toBeNull();
+  });
+
+  it("os campos obrigatórios vêm do tipo escolhido, não da tela", async () => {
+    vi.stubGlobal("fetch", montarFetch({ sessao: sessaoComSolicitacoes, resumo: resumoComDados, solicitacoes: caixaVazia }));
+    await irParaSolicitacoes();
+    fireEvent.click(await screen.findByRole("button", { name: "Nova solicitação" }));
+
+    expect(screen.getByText("Origem")).toBeTruthy();
+    expect(screen.getByText("Destino")).toBeTruthy();
+    expect(screen.getByText(/Resposta em até 48h/)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText(/Tipo de pedido/), { target: { value: "ocorrencia" } });
+    expect(screen.getByText("Referência da entrega")).toBeTruthy();
+    expect(screen.queryByText("Origem")).toBeNull();
+    expect(screen.getByText(/Resposta em até 4h/)).toBeTruthy();
+  });
+
+  it("quem só lê não vê o botão de abrir solicitação", async () => {
+    vi.stubGlobal("fetch", montarFetch({
+      sessao: { ...sessaoComSolicitacoes, permissoes: ["portal:read"] },
+      resumo: resumoComDados,
+      solicitacoes: caixaVazia,
+    }));
+    await irParaSolicitacoes();
+    expect(await screen.findByText(/Seu acesso é de leitura/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Nova solicitação" })).toBeNull();
+  });
+
+  it("mostra o estado em português e de quem é a vez", async () => {
+    vi.stubGlobal("fetch", montarFetch({
+      sessao: sessaoComSolicitacoes,
+      resumo: resumoComDados,
+      solicitacoes: {
+        tipos,
+        mensagens: [],
+        resumo: { abertas: 1, aguardandoVoce: 1, atrasadas: 0, encerradas: 0, texto: "1 solicitação(ões) esperando uma resposta sua." },
+        solicitacoes: [{
+          id: "req-1",
+          tipo: "nova_rota",
+          assunto: "Incluir trecho Campinas → Ribeirão",
+          status: "aguardando_cliente",
+          campos: { origem: "Campinas" },
+          criadaEm: "2026-03-01T10:00:00.000Z",
+        }],
+      },
+    }));
+    await irParaSolicitacoes();
+    expect(await screen.findByText("Aguardando você")).toBeTruthy();
+    expect(screen.getByText(/esperando uma resposta sua/)).toBeTruthy();
+    // O cliente lê "Nova rota", não "nova_rota".
+    expect(screen.getByText(/Nova rota ·/)).toBeTruthy();
+  });
+
+  it("um erro ao carregar a caixa não derruba o portal inteiro", async () => {
+    vi.stubGlobal("fetch", vi.fn((url) => {
+      const chave = String(url).split("/portal/")[1]?.split("?")[0];
+      if (chave === "sessao") return resposta(sessaoComSolicitacoes);
+      if (chave === "resumo") return resposta(resumoComDados);
+      return resposta({ error: "Caixa indisponível." }, false);
+    }));
+    await irParaSolicitacoes();
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    expect(screen.getByText("Cliente A")).toBeTruthy();
+    expect(screen.queryByText(/Portal indisponível/)).toBeNull();
   });
 });

@@ -53,6 +53,17 @@ const pedir = async (caminho) => {
   return dados;
 };
 
+const enviar = async (caminho, corpo, metodo = "POST") => {
+  const resposta = await fetch(`/api/todogreen/portal/${caminho}`, {
+    method: metodo,
+    headers: { "content-type": "application/json", ...authHeaders() },
+    body: JSON.stringify(corpo),
+  });
+  const dados = await resposta.json().catch(() => ({}));
+  if (!resposta.ok) throw new Error(dados?.error || "Não foi possível concluir a ação.");
+  return dados;
+};
+
 function Indicador({ rotulo, valor, detalhe, tom = "neutro" }) {
   return (
     <div className={`cp-indicador ${tom}`}>
@@ -303,6 +314,317 @@ function Evidencias({ evidencias, carregando }) {
   );
 }
 
+function Carregando({ texto }) {
+  return (
+    <p className="cp-carregando">
+      <Loader2 className="girando" size={20} /> {texto}
+    </p>
+  );
+}
+
+// ===== Solicitações =====
+//
+// A porta que o portal prometia. O catálogo de tipos, os campos que cada tipo
+// exige e os prazos vêm do servidor: se a tela inventasse o seu próprio, o
+// cliente veria um prazo e a equipe trabalharia com outro.
+function Solicitacoes({ podeAbrir, setAviso }) {
+  const [dados, setDados] = useState(null);
+  const [carregando, setCarregando] = useState(true);
+  const [abertaId, setAbertaId] = useState("");
+  const [mensagens, setMensagens] = useState([]);
+  const [resposta, setResposta] = useState("");
+  const [criando, setCriando] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [form, setForm] = useState({
+    tipo: "nova_rota",
+    assunto: "",
+    descricao: "",
+    urgencia: "normal",
+    campos: {},
+  });
+
+  const carregar = useCallback(
+    async (id = "") => {
+      setCarregando(true);
+      try {
+        const d = await pedir(`solicitacoes${id ? `?id=${encodeURIComponent(id)}` : ""}`);
+        setDados(d);
+        if (id) setMensagens(d.mensagens || []);
+      } catch (erro) {
+        setAviso(erro.message);
+      } finally {
+        setCarregando(false);
+      }
+    },
+    [setAviso],
+  );
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  const tipos = dados?.tipos || [];
+  const tipoAtual = tipos.find((t) => t.id === form.tipo);
+
+  const abrir = async (id) => {
+    if (abertaId === id) {
+      setAbertaId("");
+      setMensagens([]);
+      return;
+    }
+    setAbertaId(id);
+    setMensagens([]);
+    await carregar(id);
+  };
+
+  const criar = async (evento) => {
+    evento.preventDefault();
+    setEnviando(true);
+    try {
+      await enviar("solicitacoes", form);
+      setForm({ tipo: "nova_rota", assunto: "", descricao: "", urgencia: "normal", campos: {} });
+      setCriando(false);
+      await carregar();
+    } catch (erro) {
+      setAviso(erro.message);
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  const responder = async (evento) => {
+    evento.preventDefault();
+    setEnviando(true);
+    try {
+      await enviar("solicitacoes", { solicitacaoId: abertaId, mensagem: resposta });
+      setResposta("");
+      await carregar(abertaId);
+    } catch (erro) {
+      setAviso(erro.message);
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  const mover = async (id, status) => {
+    setEnviando(true);
+    try {
+      await enviar("solicitacoes", { id, status }, "PATCH");
+      await carregar(abertaId === id ? id : "");
+    } catch (erro) {
+      setAviso(erro.message);
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  if (carregando && !dados) return <Carregando texto="Carregando suas solicitações..." />;
+
+  const lista = dados?.solicitacoes || [];
+
+  return (
+    <div className="cp-solicitacoes">
+      <div className="cp-sol-topo">
+        <div>
+          <h2>Solicitações</h2>
+          <p>{dados?.resumo?.texto}</p>
+        </div>
+        {podeAbrir && (
+          <button type="button" className="cp-botao" onClick={() => setCriando((v) => !v)}>
+            {criando ? "Cancelar" : "Nova solicitação"}
+          </button>
+        )}
+      </div>
+
+      {criando && podeAbrir && (
+        <form className="cp-sol-form" onSubmit={criar}>
+          <label>
+            <span>Tipo de pedido</span>
+            <select
+              value={form.tipo}
+              onChange={(e) => setForm({ ...form, tipo: e.target.value, campos: {} })}
+            >
+              {tipos.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.rotulo}
+                </option>
+              ))}
+            </select>
+            {tipoAtual && (
+              <small>
+                {tipoAtual.descricao} Resposta em até {tipoAtual.prazoHoras}h.
+              </small>
+            )}
+          </label>
+
+          <label>
+            <span>Assunto</span>
+            <input
+              required
+              value={form.assunto}
+              onChange={(e) => setForm({ ...form, assunto: e.target.value })}
+            />
+          </label>
+
+          {(tipoAtual?.obrigatorios || []).map((chave) => (
+            <label key={chave}>
+              <span>{tipoAtual.camposRotulo[chave] || chave}</span>
+              <input
+                required
+                value={form.campos[chave] || ""}
+                onChange={(e) =>
+                  setForm({ ...form, campos: { ...form.campos, [chave]: e.target.value } })
+                }
+              />
+            </label>
+          ))}
+
+          <label>
+            <span>Urgência</span>
+            <select
+              value={form.urgencia}
+              onChange={(e) => setForm({ ...form, urgencia: e.target.value })}
+            >
+              <option value="baixa">Baixa</option>
+              <option value="normal">Normal</option>
+              <option value="alta">Alta</option>
+            </select>
+          </label>
+
+          <label className="cp-sol-larga">
+            <span>Descreva o pedido</span>
+            <textarea
+              required
+              rows={4}
+              value={form.descricao}
+              onChange={(e) => setForm({ ...form, descricao: e.target.value })}
+            />
+          </label>
+
+          <button type="submit" className="cp-botao" disabled={enviando}>
+            {enviando ? "Enviando..." : "Enviar solicitação"}
+          </button>
+        </form>
+      )}
+
+      {lista.length === 0 && (
+        <SemDados
+          titulo="Nenhuma solicitação ainda"
+          texto={
+            podeAbrir
+              ? "Precisa de uma nova rota, um comprovante, um relatório ambiental ou quer registrar uma ocorrência? Abra uma solicitação e a equipe To Do Green responde dentro do prazo do tipo escolhido."
+              : "Seu acesso é de leitura. Peça a um gestor da sua empresa para abrir solicitações."
+          }
+        />
+      )}
+
+      <ul className="cp-sol-lista">
+        {lista.map((s) => (
+          <li key={s.id} className={abertaId === s.id ? "aberta" : ""}>
+            <button type="button" className="cp-sol-head" onClick={() => abrir(s.id)}>
+              <span className="cp-sol-nome">
+                <strong>{s.assunto}</strong>
+                <small>
+                  {ROTULO_TIPO[s.tipo] || s.tipo} · aberta em{" "}
+                  {new Date(s.criadaEm).toLocaleDateString("pt-BR")}
+                </small>
+              </span>
+              <span className={`cp-sol-status s-${s.status}`}>
+                {ROTULO_STATUS[s.status] || s.status}
+              </span>
+            </button>
+
+            {abertaId === s.id && (
+              <div className="cp-sol-corpo">
+                {Object.entries(s.campos || {}).length > 0 && (
+                  <dl className="cp-sol-campos">
+                    {Object.entries(s.campos).map(([chave, valor]) => (
+                      <div key={chave}>
+                        <dt>{chave}</dt>
+                        <dd>{valor}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+
+                <ol className="cp-sol-conversa">
+                  {mensagens.map((m) => (
+                    <li key={m.id} className={m.lado === "cliente" ? "meu" : "deles"}>
+                      <strong>{m.lado === "cliente" ? m.autor : "To Do Green"}</strong>
+                      <p>{m.texto}</p>
+                      <small>{new Date(m.criadaEm).toLocaleString("pt-BR")}</small>
+                    </li>
+                  ))}
+                </ol>
+
+                {!ENCERRADOS.includes(s.status) && podeAbrir && (
+                  <>
+                    <form className="cp-sol-resposta" onSubmit={responder}>
+                      <textarea
+                        required
+                        rows={2}
+                        placeholder="Escreva uma mensagem para a equipe"
+                        value={resposta}
+                        onChange={(e) => setResposta(e.target.value)}
+                      />
+                      <button type="submit" className="cp-botao" disabled={enviando}>
+                        Enviar
+                      </button>
+                    </form>
+                    <div className="cp-sol-acoes">
+                      {s.status === "respondida" && (
+                        <button
+                          type="button"
+                          className="cp-botao"
+                          disabled={enviando}
+                          onClick={() => mover(s.id, "concluida")}
+                        >
+                          Resolvido, pode encerrar
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="cp-botao cp-botao-secundario"
+                        disabled={enviando}
+                        onClick={() => mover(s.id, "cancelada")}
+                      >
+                        Cancelar solicitação
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// Rótulos do lado do cliente. O banco guarda a chave; o cliente lê a frase.
+const ROTULO_STATUS = {
+  aberta: "Aberta",
+  em_analise: "Em análise",
+  aguardando_cliente: "Aguardando você",
+  respondida: "Respondida",
+  concluida: "Concluída",
+  recusada: "Não atendida",
+  cancelada: "Cancelada",
+};
+
+const ROTULO_TIPO = {
+  nova_rota: "Nova rota",
+  aumento_volume: "Aumento de volume",
+  coleta_extra: "Coleta extra",
+  ocorrencia: "Ocorrência na entrega",
+  documento: "Documento ou comprovante",
+  relatorio_esg: "Relatório ambiental",
+  outro: "Outro assunto",
+};
+
+const ENCERRADOS = ["concluida", "recusada", "cancelada"];
+
 function EmBreve({ titulo }) {
   return (
     <SemDados
@@ -438,7 +760,12 @@ export default function CustomerPortal() {
         {aba === "documentos" && (
           <Evidencias evidencias={evidencias} carregando={carregandoEvidencias} />
         )}
-        {aba === "solicitacoes" && <EmBreve titulo="Solicitações" />}
+        {aba === "solicitacoes" && (
+          <Solicitacoes
+            podeAbrir={(sessao?.permissoes || []).includes("portal:request:create")}
+            setAviso={setAviso}
+          />
+        )}
         {aba === "assistente" && <EmBreve titulo="Assistente" />}
       </section>
 

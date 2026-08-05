@@ -367,3 +367,56 @@
   color: var(--cp-suave);
   overflow-wrap: anywhere;
 }
+
+/* ===== Solicitações ===== */
+.cp-solicitacoes { display: grid; gap: 18px; }
+.cp-sol-topo { align-items: flex-start; display: flex; flex-wrap: wrap; gap: 14px; justify-content: space-between; }
+.cp-sol-topo h2 { margin: 0 0 4px; font-size: clamp(1.2rem, 2.4vw, 1.6rem); }
+.cp-sol-topo p { color: var(--cp-suave); margin: 0; }
+
+.cp-botao { background: var(--cp-verde); border: 1px solid transparent; border-radius: 10px; color: #fff; cursor: pointer; font: inherit; font-weight: 700; min-height: 44px; padding: 0 16px; }
+.cp-botao:disabled { cursor: progress; opacity: .6; }
+.cp-botao-secundario { background: #fff; border-color: var(--cp-borda); color: var(--cp-suave); }
+
+.cp-sol-form { background: #fff; border: 1px solid var(--cp-borda); border-radius: 16px; display: grid; gap: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 18px; }
+.cp-sol-form label { display: grid; gap: 6px; min-width: 0; }
+.cp-sol-form label > span { color: var(--cp-suave); font-size: 13px; font-weight: 700; }
+.cp-sol-form label > small { color: var(--cp-suave); font-size: 12px; line-height: 1.45; }
+.cp-sol-form input, .cp-sol-form select, .cp-sol-form textarea { background: #fff; border: 1px solid var(--cp-borda); border-radius: 10px; color: var(--cp-tinta); font: inherit; min-height: 44px; padding: 10px 12px; width: 100%; }
+.cp-sol-form textarea { line-height: 1.5; resize: vertical; }
+.cp-sol-larga { grid-column: 1 / -1; }
+.cp-sol-form > .cp-botao { grid-column: 1 / -1; justify-self: start; }
+
+.cp-sol-lista { display: grid; gap: 10px; list-style: none; margin: 0; padding: 0; }
+.cp-sol-lista > li { background: #fff; border: 1px solid var(--cp-borda); border-radius: 14px; overflow: hidden; }
+.cp-sol-lista > li.aberta { border-color: var(--cp-verde-claro); }
+.cp-sol-head { align-items: center; background: transparent; border: 0; color: inherit; cursor: pointer; display: flex; font: inherit; gap: 12px; justify-content: space-between; padding: 14px 16px; text-align: left; width: 100%; }
+.cp-sol-nome { display: grid; gap: 3px; min-width: 0; }
+.cp-sol-nome strong { overflow-wrap: anywhere; }
+.cp-sol-nome small { color: var(--cp-suave); font-size: 12px; }
+.cp-sol-status { border-radius: 999px; background: #eef3f0; color: var(--cp-suave); font-size: 12px; font-weight: 750; padding: 6px 11px; white-space: nowrap; }
+.cp-sol-status.s-aguardando_cliente { background: #fff4e0; color: #8a5b00; }
+.cp-sol-status.s-respondida { background: #e6f5ee; color: var(--cp-verde); }
+.cp-sol-status.s-concluida { background: #e6f5ee; color: var(--cp-verde); }
+.cp-sol-status.s-recusada, .cp-sol-status.s-cancelada { background: #f6eceb; color: #8f3b2c; }
+
+.cp-sol-corpo { border-top: 1px solid var(--cp-borda); display: grid; gap: 14px; padding: 16px; }
+.cp-sol-campos { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin: 0; }
+.cp-sol-campos dt { color: var(--cp-suave); font-size: 12px; text-transform: capitalize; }
+.cp-sol-campos dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+
+.cp-sol-conversa { display: grid; gap: 10px; list-style: none; margin: 0; padding: 0; }
+.cp-sol-conversa li { background: var(--cp-fundo); border-radius: 12px; padding: 11px 13px; }
+.cp-sol-conversa li.deles { background: #e9f4ef; }
+.cp-sol-conversa p { margin: 4px 0; line-height: 1.55; overflow-wrap: anywhere; white-space: pre-wrap; }
+.cp-sol-conversa small { color: var(--cp-suave); font-size: 11.5px; }
+
+.cp-sol-resposta { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
+.cp-sol-resposta textarea { background: #fff; border: 1px solid var(--cp-borda); border-radius: 10px; color: var(--cp-tinta); font: inherit; line-height: 1.5; padding: 10px 12px; resize: vertical; width: 100%; }
+.cp-sol-acoes { display: flex; flex-wrap: wrap; gap: 8px; }
+
+@media (max-width: 700px) {
+  .cp-sol-form { grid-template-columns: minmax(0, 1fr); }
+  .cp-sol-resposta { grid-template-columns: minmax(0, 1fr); }
+  .cp-sol-head { align-items: flex-start; flex-direction: column; }
+}
