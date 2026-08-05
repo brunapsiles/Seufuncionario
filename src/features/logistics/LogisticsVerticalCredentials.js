@@ -8,7 +8,7 @@ let retryTimer;
 const setStatus = (root, message, type = "error") => {
   const status = root.querySelector(".tdg-login-status");
   if (!status) return;
-  status.textContent = message;
+  if (status.textContent !== message) status.textContent = message;
   status.className = `tdg-login-status show ${type}`;
 };
 
@@ -140,23 +140,36 @@ const renderReset = (card) => {
   bindReset(card);
 };
 
+// Gravar textContent troca o nó de texto mesmo quando o valor é idêntico, e a
+// troca conta como mutação — que reacorda o observador que chamou esta função.
+// Como ela roda a cada mutação, gravar sem comparar prende a aba num laço.
+const setTextIfChanged = (element, value) => {
+  if (element && element.textContent !== value) element.textContent = value;
+};
+
 const ensureCredentialsLogin = () => {
   if (!isTodoGreenRoute()) return false;
   const card = document.querySelector(".tdg-denied-card");
   if (!card) return false;
-  const title = card.querySelector("h1");
-  if (title) title.textContent = "Acesso To Do Green";
-  const kicker = card.querySelector(".tdg-kicker");
-  if (kicker) kicker.textContent = "LOGIN PRIVADO";
+  setTextIfChanged(card.querySelector("h1"), "Acesso To Do Green");
+  setTextIfChanged(card.querySelector(".tdg-kicker"), "LOGIN PRIVADO");
   if (!card.querySelector(".tdg-login-box")) renderLogin(card);
   else bindLogin(card);
   return true;
 };
 
-const scheduleEnsure = () => {
+// A tela de acesso pode demorar um instante para aparecer quando o app volta
+// do segundo plano, então vale insistir. Mas quem já tem acesso nunca vai ver
+// essa tela: sem um limite, a insistência viraria um temporizador eterno
+// rodando por baixo da vertical inteira. Cinco segundos cobrem a renderização
+// e param.
+const RETRY_LIMIT = 40;
+
+const scheduleEnsure = (tentativa = 0) => {
   window.clearTimeout(retryTimer);
+  if (tentativa >= RETRY_LIMIT) return;
   retryTimer = window.setTimeout(() => {
-    if (!ensureCredentialsLogin() && isTodoGreenRoute()) scheduleEnsure();
+    if (!ensureCredentialsLogin() && isTodoGreenRoute()) scheduleEnsure(tentativa + 1);
   }, 120);
 };
 
@@ -166,8 +179,10 @@ if (typeof window !== "undefined") {
     observer?.disconnect();
     observer = new MutationObserver(() => ensureCredentialsLogin());
     observer.observe(document.body, { childList: true, subtree: true });
+    // Envolvido numa função própria: ligado direto, o ouvinte passaria o objeto
+    // do evento como contador de tentativas e o limite nunca seria atingido.
     ["pageshow", "focus", "popstate", "hashchange"].forEach((eventName) =>
-      window.addEventListener(eventName, scheduleEnsure),
+      window.addEventListener(eventName, () => scheduleEnsure()),
     );
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) scheduleEnsure();

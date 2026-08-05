@@ -68,12 +68,21 @@ const appendSubfunctions = (card, items) => {
   });
 };
 
+// Gravar textContent troca o nó de texto mesmo quando o valor é idêntico, e
+// isso conta como mutação — que reacorda o observador que chamou esta função.
+// Sem comparar antes, cada passada agenda a próxima e a aba trava girando.
+const setTextIfChanged = (element, value) => {
+  if (element && element.textContent !== value) element.textContent = value;
+};
+
 const relabelExistingRoutines = () => {
   document.querySelectorAll(".tdg-routine-card").forEach((card) => {
     const text = card.textContent || "";
     if (text.includes("Financeiro")) {
-      const paragraph = card.querySelector("p");
-      if (paragraph) paragraph.textContent = "Receita, custos, margem, forecast, faturamento, recebimento, metas e comissão elegível.";
+      setTextIfChanged(
+        card.querySelector("p"),
+        "Receita, custos, margem, forecast, faturamento, recebimento, metas e comissão elegível.",
+      );
       appendSubfunctions(card, FINANCE_SUBFUNCTIONS);
     }
     if (text.includes("CRM") || text.includes("Oportunidades")) {
@@ -81,8 +90,10 @@ const relabelExistingRoutines = () => {
     }
   });
 
-  const score = document.querySelector(".tdg-routine-score");
-  if (score) score.textContent = "régua mínima 8/10 · 8 rotinas";
+  setTextIfChanged(
+    document.querySelector(".tdg-routine-score"),
+    "régua mínima 8/10 · 8 rotinas",
+  );
 };
 
 const removeExtraSalesRoutine = () => {

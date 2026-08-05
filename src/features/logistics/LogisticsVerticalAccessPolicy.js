@@ -74,13 +74,14 @@ const enhanceAccessPanel = () => {
   const canManage = /admin|owner|access:manage|gerenciar/i.test(panel.textContent || "");
   const canView = canManage || /access:view|ver acessos|sem papel/i.test(panel.textContent || "");
 
-  if (title) {
-    title.textContent = canManage
-      ? "Funcionários e permissões"
-      : canView
-        ? "Meu acesso"
-        : "Acesso não liberado";
-  }
+  // Comparar antes de gravar: `textContent` troca o nó de texto mesmo com valor
+  // idêntico, e a troca reacorda o observador que chamou esta função.
+  const tituloNovo = canManage
+    ? "Funcionários e permissões"
+    : canView
+      ? "Meu acesso"
+      : "Acesso não liberado";
+  if (title && title.textContent !== tituloNovo) title.textContent = tituloNovo;
 
   if (!canView && !canManage) {
     panel.innerHTML = `
