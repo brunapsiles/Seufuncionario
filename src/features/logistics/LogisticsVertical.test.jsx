@@ -55,7 +55,18 @@ describe("LogisticsVertical", () => {
     fireEvent.click(screen.getByText("Last Mile"));
     expect(screen.getByText("Last Mile e-commerce")).toBeTruthy();
     expect(screen.getByText("Pacotes *")).toBeTruthy();
-    expect(screen.getByText("Taxa de insucesso")).toBeTruthy();
+    expect(screen.getByText("Sucesso entrega (%)")).toBeTruthy();
+  });
+
+  it("creates real CRM records instead of only showing module cards", () => {
+    window.history.pushState({}, "", "/todogreen/clientes");
+    const update = vi.fn();
+    render(<LogisticsVertical db={authorizedDb} update={update} setToast={vi.fn()} />);
+    fireEvent.change(screen.getByText("Cliente").closest("label").querySelector("input"), {
+      target: { value: "Cliente real" },
+    });
+    fireEvent.click(screen.getByText("Cadastrar cliente"));
+    expect(update).toHaveBeenCalled();
   });
 
   it("filters functions without inventing unrelated cards", async () => {
