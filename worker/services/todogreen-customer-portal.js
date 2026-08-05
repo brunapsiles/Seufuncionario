@@ -131,6 +131,69 @@ async function ensureTables(env) {
     )`,
     `CREATE INDEX IF NOT EXISTS idx_todogreen_client_portal_events_client
        ON todogreen_client_portal_events (client_id, created_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS todogreen_client_operations (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'todogreen',
+      client_id TEXT NOT NULL,
+      workspace_owner_id TEXT NOT NULL,
+      contract_id TEXT NOT NULL DEFAULT '',
+      product_id TEXT NOT NULL DEFAULT '',
+      reference TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'planejada',
+      service_date TEXT,
+      origin TEXT NOT NULL DEFAULT '',
+      destination TEXT NOT NULL DEFAULT '',
+      fields_json TEXT NOT NULL DEFAULT '{}',
+      sla_status TEXT NOT NULL DEFAULT '',
+      incident_count INTEGER NOT NULL DEFAULT 0,
+      revision INTEGER NOT NULL DEFAULT 1,
+      created_by TEXT NOT NULL,
+      updated_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_todogreen_client_operations_scope
+       ON todogreen_client_operations (tenant_id, client_id, service_date DESC)`,
+    `CREATE TABLE IF NOT EXISTS todogreen_green_scores (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'todogreen',
+      client_id TEXT NOT NULL,
+      scope_type TEXT NOT NULL DEFAULT 'cliente',
+      scope_id TEXT NOT NULL DEFAULT '',
+      score REAL NOT NULL,
+      components_json TEXT NOT NULL DEFAULT '{}',
+      inputs_json TEXT NOT NULL DEFAULT '{}',
+      weights_version TEXT NOT NULL,
+      data_quality INTEGER NOT NULL DEFAULT 0,
+      variation_explanation TEXT NOT NULL DEFAULT '',
+      previous_score REAL,
+      calculated_by TEXT NOT NULL,
+      calculated_at TEXT NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_todogreen_green_scores_scope
+       ON todogreen_green_scores (tenant_id, client_id, scope_type, scope_id, calculated_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS todogreen_evidences (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'todogreen',
+      client_id TEXT NOT NULL,
+      workspace_owner_id TEXT NOT NULL,
+      tipo TEXT NOT NULL DEFAULT 'outro',
+      titulo TEXT NOT NULL,
+      referencia TEXT NOT NULL DEFAULT '',
+      descricao TEXT NOT NULL DEFAULT '',
+      emitido_em TEXT,
+      arquivo_url TEXT NOT NULL DEFAULT '',
+      arquivo_nome TEXT NOT NULL DEFAULT '',
+      arquivo_bytes INTEGER NOT NULL DEFAULT 0,
+      hash_conteudo TEXT NOT NULL DEFAULT '',
+      calculo_id TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'ativo',
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_todogreen_evidences_scope
+       ON todogreen_evidences (tenant_id, client_id, emitido_em DESC)`,
   ];
   for (const sql of ddl) await env.DB.prepare(sql).run().catch(() => {});
 }
@@ -330,6 +393,106 @@ export async function handleTodoGreenCustomerPortal(request, env) {
       .all()
       .catch(() => ({ results: [] }));
     return response({ eventos: linhas.results || [] });
+  }
+
+  // Dados para o relatório. O portal devolve o material bruto e a montagem do
+  // documento acontece no navegador, com o mesmo código que a tela interna usa
+  // — assim não existem duas versões do mesmo relatório.
+  if (request.method === "GET" && resource === "relatorio") {
+    if (!clientCan(escopo, "portal:report:export"))
+      return response({ error: "Seu acesso não permite exportar relatórios." }, 403);
+
+    const inicio = clean(url.searchParams.get("inicio"), 10);
+    const fim = clean(url.searchParams.get("fim"), 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(inicio) || !/^\d{4}-\d{2}-\d{2}$/.test(fim))
+      return response({ error: "Informe início e fim no formato AAAA-MM-DD." }, 400);
+
+    const { sql, params } = scopedWhere(escopo, "service_date BETWEEN ? AND ?");
+    const operacoes = await env.DB.prepare(
+      `SELECT id, reference, status, service_date, origin, destination, fields_json
+         FROM todogreen_client_operations
+        WHERE ${sql}
+        ORDER BY service_date`,
+    )
+      .bind(...params, inicio, fim)
+      .all()
+      .catch(() => ({ results: [] }));
+
+    const calculos = await env.DB.prepare(
+      `SELECT id, result_json, methodology_version, data_quality, created_at
+         FROM environmental_calculations
+        WHERE tenant_id = ? AND client_id = ?
+          AND substr(created_at, 1, 10) BETWEEN ? AND ?
+        ORDER BY created_at`,
+    )
+      .bind(escopo.tenantId, escopo.clientId, inicio, fim)
+      .all()
+      .catch(() => ({ results: [] }));
+
+    const score = await env.DB.prepare(
+      `SELECT score, weights_version, components_json, calculated_at
+         FROM todogreen_green_scores
+        WHERE tenant_id = ? AND client_id = ? AND scope_type = 'cliente'
+        ORDER BY calculated_at DESC LIMIT 1`,
+    )
+      .bind(escopo.tenantId, escopo.clientId)
+      .first()
+      .catch(() => null);
+
+    await logPortalEvent(env, escopo, user, "relatorio_gerado", `${inicio}..${fim}`);
+
+    return response({
+      cliente: { nome: escopo.clientName },
+      periodo: { inicio, fim },
+      operacoes: (operacoes.results || []).map((l) => ({
+        id: l.id,
+        referencia: l.reference,
+        data: l.service_date,
+        campos: parse(l.fields_json, {}),
+      })),
+      calculos: (calculos.results || []).map((l, i) => ({
+        ...parse(l.result_json, {}),
+        referencia: `Cálculo ${i + 1}`,
+        qualidadeDados: l.data_quality,
+        versaoFatores: l.methodology_version,
+      })),
+      greenScore: score
+        ? {
+            score: score.score,
+            versaoPesos: score.weights_version,
+            componentes: parse(score.components_json, {}),
+          }
+        : null,
+    });
+  }
+
+  // Cofre de evidências: os documentos que sustentam os números do período.
+  if (request.method === "GET" && resource === "evidencias") {
+    if (!clientCan(escopo, "portal:document:download"))
+      return response({ error: "Seu acesso não permite ver documentos." }, 403);
+    const { sql, params } = scopedWhere(escopo);
+    const linhas = await env.DB.prepare(
+      `SELECT id, titulo, tipo, referencia, emitido_em, hash_conteudo, created_at
+         FROM todogreen_evidences
+        WHERE ${sql}
+        ORDER BY emitido_em DESC, created_at DESC
+        LIMIT ?`,
+    )
+      .bind(...params, MAX_LIMIT)
+      .all()
+      .catch(() => ({ results: [] }));
+    return response({
+      evidencias: (linhas.results || []).map((l) => ({
+        id: l.id,
+        titulo: l.titulo,
+        tipo: l.tipo,
+        referencia: l.referencia,
+        emitidoEm: l.emitido_em,
+        // A impressão digital do conteúdo é o que permite provar depois que o
+        // documento não mudou desde a emissão.
+        impressaoDigital: l.hash_conteudo,
+      })),
+    });
   }
 
   // Assistente. Reusa a IA já configurada no Worker; o que muda é o contexto,

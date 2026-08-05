@@ -180,6 +180,129 @@ function Operacoes({ operacoes, carregando }) {
   );
 }
 
+// Fim do mês passado até hoje: o intervalo que quase sempre se quer, sem
+// obrigar a pessoa a preencher data antes de ver qualquer coisa.
+const periodoPadrao = () => {
+  const hoje = new Date();
+  const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+  const iso = (d) => d.toISOString().slice(0, 10);
+  return { inicio: iso(inicio), fim: iso(hoje) };
+};
+
+function Relatorios({ setAviso }) {
+  const [periodo, setPeriodo] = useState(periodoPadrao);
+  const [gerando, setGerando] = useState("");
+
+  const gerar = async (formato) => {
+    setGerando(formato.id);
+    setAviso("");
+    try {
+      const dados = await pedir(
+        `relatorio?inicio=${encodeURIComponent(periodo.inicio)}&fim=${encodeURIComponent(periodo.fim)}`,
+      );
+      // O documento é montado com o mesmo código da tela interna: não existem
+      // duas versões do mesmo relatório.
+      const [{ montarRelatorio }, { FORMATOS }] = await Promise.all([
+        import("./esgReportDomain.js"),
+        import("./esgReportFormats.js"),
+      ]);
+      const relatorio = montarRelatorio({
+        cliente: dados.cliente,
+        periodo: { tipo: "mensal", inicio: dados.periodo.inicio, fim: dados.periodo.fim },
+        escopo: "cliente",
+        calculos: dados.calculos,
+        greenScore: dados.greenScore,
+        operacoes: dados.operacoes,
+      });
+      await FORMATOS.find((f) => f.id === formato.id).baixar(relatorio);
+    } catch (causa) {
+      setAviso(causa.message);
+    } finally {
+      setGerando("");
+    }
+  };
+
+  return (
+    <section className="cp-relatorios">
+      <p>
+        O relatório sai com metodologia, premissas, fontes, qualidade dos dados
+        e a memória de cálculo completa — o suficiente para alguém refazer as
+        contas.
+      </p>
+      <div className="cp-periodo">
+        <label>
+          <span>Início</span>
+          <input
+            type="date"
+            value={periodo.inicio}
+            onChange={(e) => setPeriodo((p) => ({ ...p, inicio: e.target.value }))}
+          />
+        </label>
+        <label>
+          <span>Fim</span>
+          <input
+            type="date"
+            value={periodo.fim}
+            onChange={(e) => setPeriodo((p) => ({ ...p, fim: e.target.value }))}
+          />
+        </label>
+      </div>
+      <div className="cp-formatos">
+        {[
+          { id: "pdf", rotulo: "PDF" },
+          { id: "xlsx", rotulo: "Planilha" },
+          { id: "csv", rotulo: "CSV" },
+          { id: "pptx", rotulo: "Apresentação" },
+          { id: "html", rotulo: "HTML" },
+        ].map((formato) => (
+          <button
+            key={formato.id}
+            type="button"
+            onClick={() => gerar(formato)}
+            disabled={!!gerando}
+          >
+            {gerando === formato.id ? "Gerando..." : formato.rotulo}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function Evidencias({ evidencias, carregando }) {
+  if (carregando)
+    return (
+      <div className="cp-carregando">
+        <Loader2 className="girando" size={20} /> Carregando documentos...
+      </div>
+    );
+  if (!evidencias.length)
+    return (
+      <SemDados
+        titulo="Nenhum documento no cofre"
+        texto="Notas fiscais, telemetria, contratos e comprovantes que sustentam os números do seu contrato aparecem aqui."
+      />
+    );
+  return (
+    <ul className="cp-evidencias">
+      {evidencias.map((ev) => (
+        <li key={ev.id}>
+          <FileText size={18} />
+          <div>
+            <strong>{ev.titulo}</strong>
+            <small>
+              {ev.tipo} · emitido em {ev.emitidoEm || "—"}
+              {ev.impressaoDigital
+                ? ` · impressão digital ${ev.impressaoDigital.slice(0, 12)}`
+                : ""}
+            </small>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function EmBreve({ titulo }) {
   return (
     <SemDados
@@ -194,8 +317,15 @@ export default function CustomerPortal() {
   const [resumo, setResumo] = useState(null);
   const [operacoes, setOperacoes] = useState([]);
   const [carregandoOperacoes, setCarregandoOperacoes] = useState(false);
+  const [evidencias, setEvidencias] = useState([]);
+  const [carregandoEvidencias, setCarregandoEvidencias] = useState(false);
   const [aba, setAba] = useState("inicio");
-  const [erro, setErro] = useState("");
+  // Dois erros com pesos diferentes. `erroFatal` é não conseguir abrir o
+  // portal — aí não há o que mostrar. `aviso` é uma ação que falhou (um
+  // download, uma lista): derrubar a tela inteira por causa disso faria a
+  // pessoa perder de vista tudo o que já estava funcionando.
+  const [erroFatal, setErroFatal] = useState("");
+  const [aviso, setAviso] = useState("");
   const [pronto, setPronto] = useState(false);
 
   useEffect(() => {
@@ -206,7 +336,7 @@ export default function CustomerPortal() {
         setSessao(s);
         setResumo(r.resumo);
       })
-      .catch((causa) => vivo && setErro(causa.message))
+      .catch((causa) => vivo && setErroFatal(causa.message))
       .finally(() => vivo && setPronto(true));
     return () => {
       vivo = false;
@@ -217,13 +347,22 @@ export default function CustomerPortal() {
     setCarregandoOperacoes(true);
     pedir("operacoes")
       .then((d) => setOperacoes(d.operacoes || []))
-      .catch((causa) => setErro(causa.message))
+      .catch((causa) => setAviso(causa.message))
       .finally(() => setCarregandoOperacoes(false));
+  }, []);
+
+  const carregarEvidencias = useCallback(() => {
+    setCarregandoEvidencias(true);
+    pedir("evidencias")
+      .then((d) => setEvidencias(d.evidencias || []))
+      .catch((causa) => setAviso(causa.message))
+      .finally(() => setCarregandoEvidencias(false));
   }, []);
 
   useEffect(() => {
     if (aba === "operacoes" && !operacoes.length) carregarOperacoes();
-  }, [aba, operacoes.length, carregarOperacoes]);
+    if (aba === "documentos" && !evidencias.length) carregarEvidencias();
+  }, [aba, operacoes.length, evidencias.length, carregarOperacoes, carregarEvidencias]);
 
   const menu = useMemo(() => sessao?.menu || [], [sessao]);
 
@@ -235,13 +374,13 @@ export default function CustomerPortal() {
       </main>
     );
 
-  if (erro)
+  if (erroFatal)
     return (
       <main className="cp cp-centro">
         <div className="cp-bloqueio">
           <AlertTriangle size={26} />
           <h1>Portal indisponível</h1>
-          <p>{erro}</p>
+          <p>{erroFatal}</p>
           <p className="cp-bloqueio-dica">
             Se você é cliente da To Do Green e deveria ter acesso, peça ao seu
             contato para liberar o seu e-mail no portal.
@@ -278,6 +417,16 @@ export default function CustomerPortal() {
         })}
       </nav>
 
+      {aviso ? (
+        <div className="cp-alerta cp-alerta-acao" role="alert">
+          <AlertTriangle size={18} />
+          <span>{aviso}</span>
+          <button type="button" onClick={() => setAviso("")} aria-label="Fechar aviso">
+            ×
+          </button>
+        </div>
+      ) : null}
+
       <section className="cp-conteudo">
         {aba === "inicio" && <Inicio resumo={resumo} />}
         {aba === "operacoes" && (
@@ -285,8 +434,10 @@ export default function CustomerPortal() {
         )}
         {aba === "green-score" && <EmBreve titulo="Green Score detalhado" />}
         {aba === "esg" && <EmBreve titulo="ESG e Escopo 3" />}
-        {aba === "relatorios" && <EmBreve titulo="Relatórios" />}
-        {aba === "documentos" && <EmBreve titulo="Documentos" />}
+        {aba === "relatorios" && <Relatorios setAviso={setAviso} />}
+        {aba === "documentos" && (
+          <Evidencias evidencias={evidencias} carregando={carregandoEvidencias} />
+        )}
         {aba === "solicitacoes" && <EmBreve titulo="Solicitações" />}
         {aba === "assistente" && <EmBreve titulo="Assistente" />}
       </section>

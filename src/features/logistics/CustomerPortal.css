@@ -258,3 +258,112 @@
   color: var(--cp-suave);
   font-size: 0.85rem;
 }
+
+/* Aviso de ação que falhou. Fica acima do conteúdo sem apagar o que já estava
+   funcionando — só a falha de abrir o portal justifica trocar a tela inteira. */
+.cp-alerta-acao {
+  max-width: 1120px;
+  margin: 0 auto 14px;
+}
+
+.cp-alerta-acao button {
+  min-width: 32px;
+  min-height: 32px;
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cp-relatorios p {
+  margin: 0 0 16px;
+  color: var(--cp-suave);
+}
+
+.cp-periodo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.cp-periodo label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--cp-suave);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.cp-periodo input {
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--cp-borda);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--cp-tinta);
+  /* 16px evita que o iOS dê zoom ao focar o campo — e ele nunca desfaz. */
+  font: inherit;
+  font-size: 16px;
+}
+
+.cp-formatos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cp-formatos button {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--cp-verde);
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cp-formatos button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.cp-evidencias {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cp-evidencias li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--cp-borda);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.cp-evidencias li div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cp-evidencias li strong {
+  overflow-wrap: anywhere;
+}
+
+.cp-evidencias li small {
+  color: var(--cp-suave);
+  overflow-wrap: anywhere;
+}

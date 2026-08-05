@@ -136,3 +136,33 @@ describe("Sala do Cliente", () => {
     );
   });
 });
+
+describe("erro de ação não derruba o portal", () => {
+  it("falha ao listar documentos vira aviso, não tela de bloqueio", async () => {
+    let chamadas = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url) => {
+        chamadas += 1;
+        const chave = String(url).split("/portal/")[1]?.split("?")[0];
+        if (chave === "sessao")
+          return resposta({
+            ...sessaoPadrao,
+            menu: [...sessaoPadrao.menu, { id: "documentos", label: "Documentos" }],
+          });
+        if (chave === "resumo") return resposta(resumoComDados);
+        return resposta({ error: "Cofre indisponível." }, false);
+      }),
+    );
+    render(<CustomerPortal />);
+    await screen.findByText("Cliente A");
+
+    screen.getByRole("button", { name: /Documentos/ }).click();
+
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    // O portal continua de pé: cabeçalho e menu seguem visíveis.
+    expect(screen.getByText("Cliente A")).toBeTruthy();
+    expect(screen.queryByText(/Portal indisponível/)).toBeNull();
+    expect(chamadas).toBeGreaterThan(2);
+  });
+});

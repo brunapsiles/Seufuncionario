@@ -270,3 +270,79 @@ describe("assistente do cliente", () => {
     expect(depois.n).toBeGreaterThan(antes.n);
   });
 });
+
+describe("relatório e cofre de evidências", () => {
+  it("o relatório traz só o período e o cliente da sessão", async () => {
+    await operacao("cli-a", "OP-JULHO", 50);
+    await env.DB.prepare(
+      "UPDATE todogreen_client_operations SET service_date = '2026-07-15' WHERE reference = 'OP-JULHO'",
+    ).run();
+
+    const d = await (
+      await pedir("/api/todogreen/portal/relatorio?inicio=2026-07-01&fim=2026-07-31", {
+        token: pessoaA.token,
+      })
+    ).json();
+    expect(d.cliente.nome).toBe("Cliente A");
+    const refs = d.operacoes.map((o) => o.referencia);
+    expect(refs).toContain("OP-JULHO");
+    expect(refs).not.toContain("OP-B-1");
+  });
+
+  it("período mal formado é recusado", async () => {
+    const r = await pedir("/api/todogreen/portal/relatorio?inicio=julho&fim=agosto", {
+      token: pessoaA.token,
+    });
+    expect(r.status).toBe(400);
+  });
+
+  it("leitor não exporta relatório", async () => {
+    await criarCliente("cli-d", "Cliente D");
+    const leitor = await criarUsuario("u-d", "leitor@cliented.com.br");
+    await vincular("cli-d", leitor.email, "cliente_leitor");
+    const r = await pedir("/api/todogreen/portal/relatorio?inicio=2026-07-01&fim=2026-07-31", {
+      token: leitor.token,
+    });
+    expect(r.status).toBe(403);
+  });
+
+  it("as evidências são só as do cliente da sessão", async () => {
+    const agora = new Date().toISOString();
+    for (const [cliente, titulo] of [
+      ["cli-a", "Nota fiscal A"],
+      ["cli-b", "Nota fiscal B"],
+    ])
+      await env.DB.prepare(
+        `INSERT INTO todogreen_evidences
+           (id, tenant_id, client_id, workspace_owner_id, tipo, titulo, emitido_em,
+            hash_conteudo, created_by, created_at, updated_at)
+         VALUES (?, 'todogreen', ?, 'dono', 'nota_fiscal', ?, '2026-07-10', 'abc123', 'seed', ?, ?)`,
+      )
+        .bind(crypto.randomUUID(), cliente, titulo, agora, agora)
+        .run();
+
+    const d = await (
+      await pedir("/api/todogreen/portal/evidencias", { token: pessoaA.token })
+    ).json();
+    const titulos = d.evidencias.map((e) => e.titulo);
+    expect(titulos).toContain("Nota fiscal A");
+    expect(titulos).not.toContain("Nota fiscal B");
+  });
+
+  it("a evidência carrega a impressão digital do conteúdo", async () => {
+    const d = await (
+      await pedir("/api/todogreen/portal/evidencias", { token: pessoaA.token })
+    ).json();
+    expect(d.evidencias[0].impressaoDigital).toBe("abc123");
+  });
+
+  it("a geração de relatório fica na trilha", async () => {
+    await pedir("/api/todogreen/portal/relatorio?inicio=2026-07-01&fim=2026-07-31", {
+      token: pessoaA.token,
+    });
+    const linha = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM todogreen_client_portal_events WHERE client_id = 'cli-a' AND action = 'relatorio_gerado'",
+    ).first();
+    expect(linha.n).toBeGreaterThan(0);
+  });
+});
