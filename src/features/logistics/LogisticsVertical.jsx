@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -26,6 +26,7 @@ import {
   LockKeyhole,
   Network,
   PackageCheck,
+  Plus,
   Route,
   Search,
   Settings,
@@ -35,6 +36,7 @@ import {
   Target,
   TrendingUp,
   Truck,
+  Trash2,
   UserRound,
   Users,
   WalletCards,
@@ -474,6 +476,167 @@ function GovernancePanel({ role }) {
   );
 }
 
+function AccessPanel({ role, authHeaders, setToast }) {
+  const [emails, setEmails] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    email: "",
+    role: "admin",
+    note: "",
+  });
+  const canManage = role === "admin" || role === "owner";
+
+  const load = useCallback(() => {
+    const headers = authHeaders?.() || {};
+    if (!headers.authorization || !canManage) return;
+    fetch(`/api/todogreen/access-list?owner=${encodeURIComponent(ownerId())}`, {
+      headers,
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || "Não foi possível carregar os acessos.");
+        setEmails(payload.emails || []);
+      })
+      .catch((error) => setToast?.(error.message))
+      .finally(() => setLoading(false));
+  }, [authHeaders, canManage, setToast]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const save = async (event) => {
+    event.preventDefault();
+    const headers = authHeaders?.() || {};
+    if (!headers.authorization || !canManage) return;
+    setSaving(true);
+    try {
+      const response = await fetch(
+        `/api/todogreen/access-list?owner=${encodeURIComponent(ownerId())}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", ...headers },
+          body: JSON.stringify(form),
+        },
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Não foi possível salvar o acesso.");
+      setForm({ email: "", role: "admin", note: "" });
+      setToast?.("E-mail autorizado na To Do Green");
+      load();
+    } catch (error) {
+      setToast?.(error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (email) => {
+    const headers = authHeaders?.() || {};
+    if (!headers.authorization || !canManage) return;
+    if (!confirm(`Remover o acesso de ${email}?`)) return;
+    try {
+      const response = await fetch(
+        `/api/todogreen/access-list?owner=${encodeURIComponent(ownerId())}&email=${encodeURIComponent(email)}`,
+        { method: "DELETE", headers },
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Não foi possível remover o acesso.");
+      setEmails((current) => current.filter((item) => item.email !== email));
+      setToast?.("Acesso removido");
+    } catch (error) {
+      setToast?.(error.message);
+    }
+  };
+
+  if (!canManage) {
+    return (
+      <section className="tdg-panel">
+        <div className="tdg-section-head">
+          <div>
+            <span className="tdg-kicker">ACESSOS</span>
+            <h2>Você pode usar a vertical, mas não gerenciar usuários.</h2>
+          </div>
+          <strong>{role || "sem papel"}</strong>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="tdg-panel tdg-access-panel">
+      <div className="tdg-section-head">
+        <div>
+          <span className="tdg-kicker">ACESSOS</span>
+          <h2>Autorize e-mails externos para entrar na vertical sem novo deploy.</h2>
+        </div>
+        <strong>{loading ? "carregando" : `${emails.length} e-mail(s)`}</strong>
+      </div>
+      <form className="tdg-access-form" onSubmit={save}>
+        <label>
+          <span>E-mail autorizado</span>
+          <input
+            value={form.email}
+            type="email"
+            required
+            placeholder="nome@empresa.com.br"
+            onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+          />
+        </label>
+        <label>
+          <span>Papel</span>
+          <select
+            value={form.role}
+            onChange={(event) => setForm((current) => ({ ...current, role: event.target.value }))}
+          >
+            {TODO_GREEN_ROLES.filter((item) => item !== "owner").map((item) => (
+              <option value={item} key={item}>
+                {item.replace(/_/g, " ")}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Observação</span>
+          <input
+            value={form.note}
+            placeholder="Ex.: teste, cliente, fundador"
+            onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))}
+          />
+        </label>
+        <button className="tdg-action" type="submit" disabled={saving}>
+          <Plus size={17} />
+          {saving ? "Salvando..." : "Autorizar"}
+        </button>
+      </form>
+      <div className="tdg-access-list">
+        {emails.length === 0 && (
+          <div className="tdg-empty-access">
+            <ShieldCheck size={18} />
+            Nenhum e-mail manual autorizado ainda. O domínio @todogreen.com.br continua liberado automaticamente.
+          </div>
+        )}
+        {emails.map((item) => (
+          <div className="tdg-access-row" key={item.email}>
+            <span>
+              <strong>{item.email}</strong>
+              <small>{item.note || "sem observação"}</small>
+            </span>
+            <span>{item.role.replace(/_/g, " ")}</span>
+            <span className={item.status === "active" ? "good" : ""}>
+              {item.status === "active" ? "ativo" : "inativo"}
+            </span>
+            <button type="button" onClick={() => remove(item.email)} aria-label={`Remover ${item.email}`}>
+              <Trash2 size={17} />
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function LogisticsVertical({
   db,
   update,
@@ -588,6 +751,7 @@ export default function LogisticsVertical({
           ["esg", "ESG", "/todogreen/esg"],
           ["operacoes", "Operações", "/todogreen/operacoes"],
           ["auditoria", "Auditoria", "/todogreen/auditoria"],
+          ["acessos", "Acessos", "/todogreen/acessos"],
         ].map(([id, label, route]) => (
           <button
             type="button"
@@ -613,6 +777,9 @@ export default function LogisticsVertical({
         <EsgPanel dashboard={dashboard} />
       )}
       {["auditoria", "configuracoes"].includes(page) && <GovernancePanel role={role} />}
+      {page === "acessos" && (
+        <AccessPanel role={role} authHeaders={authHeaders} setToast={setToast} />
+      )}
       {["dashboard", "clientes", "oportunidades", "propostas", "receita", "custos", "comissoes", "operacoes", "relatorios", "metodologia"].includes(page) && (
         <section className="tdg-panel">
           <div className="tdg-section-head">

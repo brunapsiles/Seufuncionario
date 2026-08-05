@@ -210,9 +210,9 @@ export const TODO_GREEN_MODULE_CATALOG = [
     order: 66,
     permissions: ["read", "audit:read"],
   }),
-  module("usuarios", "Usuários", "gestao", "/todogreen/configuracoes", { icon: "Users", order: 67 }),
-  module("permissoes", "Permissões", "gestao", "/todogreen/configuracoes", { icon: "LockKeyhole", order: 68 }),
-  module("configuracoes", "Configurações", "gestao", "/todogreen/configuracoes", { icon: "Settings", order: 69 }),
+  module("usuarios", "Usuários", "gestao", "/todogreen/acessos", { icon: "Users", order: 67 }),
+  module("permissoes", "Permissões", "gestao", "/todogreen/acessos", { icon: "LockKeyhole", order: 68 }),
+  module("configuracoes", "Configurações", "gestao", "/todogreen/acessos", { icon: "Settings", order: 69 }),
 ];
 
 export const TODO_GREEN_FEATURE_COUNT = TODO_GREEN_MODULE_CATALOG.length;
@@ -698,4 +698,3 @@ export const esgTranslator = (co2Kg, factors = {}) => {
     formula: "equivalente = kgCO2e evitado / fator",
   };
 };
-

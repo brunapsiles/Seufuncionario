@@ -42,6 +42,7 @@ import {
 import {
   LOGISTICS_PRODUCTS,
   TODO_GREEN_MODULE_CATALOG,
+  TODO_GREEN_ROLES,
   TODO_GREEN_TENANT,
   centralPricingEngine,
   createPricingScenarioSnapshot,
@@ -7154,7 +7155,9 @@ function parseJsonSafe(value, fallback = null) {
   }
 }
 
-function emailAllowedForTodoGreen(env, email) {
+const normalizeAccessEmail = (email) => String(email || "").trim().toLowerCase();
+
+function envEmailAllowedForTodoGreen(env, email) {
   const value = String(email || "").toLowerCase();
   if (!value) return false;
   if (/@todogreen\.com\.br$/i.test(value)) return true;
@@ -7163,6 +7166,29 @@ function emailAllowedForTodoGreen(env, email) {
     .map((item) => item.trim().toLowerCase())
     .filter(Boolean);
   return list.includes(value);
+}
+
+async function emailAccessForTodoGreen(env, email) {
+  const value = normalizeAccessEmail(email);
+  if (!value) return null;
+  if (/@todogreen\.com\.br$/i.test(value))
+    return { role: "admin", permissions: ["*"], source: "domain" };
+  if (envEmailAllowedForTodoGreen(env, value))
+    return { role: "admin", permissions: ["*"], source: "env" };
+  const row = await env.DB.prepare(
+    `SELECT role, status, permissions_json FROM todogreen_access_emails
+       WHERE tenant_id = ? AND email = ?
+       LIMIT 1`,
+  )
+    .bind(TODO_GREEN_TENANT.id, value)
+    .first()
+    .catch(() => null);
+  if (row?.status !== "active") return null;
+  return {
+    role: TODO_GREEN_ROLES.includes(row.role) ? row.role : "admin",
+    permissions: parseJsonSafe(row.permissions_json, ["*"]),
+    source: "manual",
+  };
 }
 
 async function workspaceLooksLikeTodoGreen(env, ownerId) {
@@ -7196,12 +7222,20 @@ async function todoGreenAccess(env, user, ownerId) {
       workspaceRole,
       role: tenantUser.role || workspaceRole,
       permissions: parseJsonSafe(tenantUser.permissions_json, []),
+      source: "tenant_user",
     };
-  if (user.id === ownerId && emailAllowedForTodoGreen(env, user.email))
-    return { ownerId, workspaceRole, role: "admin", permissions: ["*"] };
+  const emailAccess = await emailAccessForTodoGreen(env, user.email);
+  if (emailAccess && user.id === ownerId)
+    return { ownerId, workspaceRole, ...emailAccess };
   if (user.id === ownerId && (await workspaceLooksLikeTodoGreen(env, ownerId)))
-    return { ownerId, workspaceRole, role: "admin", permissions: ["*"] };
+    return { ownerId, workspaceRole, role: "admin", permissions: ["*"], source: "workspace" };
   return null;
+}
+
+function canManageTodoGreenAccess(access) {
+  if (!access) return false;
+  if (access.role === "owner" || access.role === "admin") return true;
+  return Array.isArray(access.permissions) && access.permissions.includes("*");
 }
 
 // As tabelas da vertical nascem na migração 0027, mas a aplicação de migração
@@ -7244,6 +7278,23 @@ async function ensureTodoGreenTables(env) {
       ON tenant_users (user_id, tenant_id, status)`,
     `CREATE INDEX IF NOT EXISTS idx_tenant_users_workspace
       ON tenant_users (workspace_owner_id, tenant_id, status)`,
+    `CREATE TABLE IF NOT EXISTS todogreen_access_emails (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      email TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'admin',
+      status TEXT NOT NULL DEFAULT 'active',
+      permissions_json TEXT NOT NULL DEFAULT '["*"]',
+      note TEXT NOT NULL DEFAULT '',
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(tenant_id, email),
+      FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_todogreen_access_emails_status
+      ON todogreen_access_emails (tenant_id, status, email)`,
     `CREATE TABLE IF NOT EXISTS module_catalog (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -7465,7 +7516,76 @@ async function handleTodoGreen(request, env, user, url) {
       role: access.role,
       permissions: access.permissions,
       ownerId: access.ownerId,
+      source: access.source,
     });
+  if (resource === "access-list") {
+    if (!canManageTodoGreenAccess(access))
+      return json({ error: "Você não pode gerenciar acessos da To Do Green." }, 403);
+    await ensureTodoGreenCatalog(env);
+    if (request.method === "GET") {
+      const rows = await env.DB.prepare(
+        `SELECT email, role, status, note, created_at AS createdAt, updated_at AS updatedAt
+           FROM todogreen_access_emails
+          WHERE tenant_id = ?
+          ORDER BY status = 'active' DESC, email`,
+      )
+        .bind(TODO_GREEN_TENANT.id)
+        .all();
+      return json({ emails: rows.results || [] });
+    }
+    if (request.method === "POST") {
+      let body = {};
+      try {
+        body = await request.json();
+      } catch {
+        return json({ error: "Corpo JSON inválido." }, 400);
+      }
+      const email = normalizeAccessEmail(body.email);
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+        return json({ error: "Informe um e-mail válido." }, 400);
+      const role = TODO_GREEN_ROLES.includes(body.role) ? body.role : "admin";
+      const status = body.status === "inactive" ? "inactive" : "active";
+      const now = new Date().toISOString();
+      await env.DB.prepare(
+        `INSERT INTO todogreen_access_emails
+          (id, tenant_id, email, role, status, permissions_json, note, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(tenant_id, email) DO UPDATE SET
+           role = excluded.role,
+           status = excluded.status,
+           permissions_json = excluded.permissions_json,
+           note = excluded.note,
+           updated_at = excluded.updated_at`,
+      )
+        .bind(
+          crypto.randomUUID(),
+          TODO_GREEN_TENANT.id,
+          email,
+          role,
+          status,
+          JSON.stringify(role === "admin" || role === "owner" ? ["*"] : ["read"]),
+          String(body.note || "").trim().slice(0, 240),
+          user.id,
+          now,
+          now,
+        )
+        .run();
+      await logAudit(env, ownerId, user, "todogreen_acesso_autorizado", email, `papel: ${role}`);
+      return json({ ok: true, email, role, status }, 201);
+    }
+    if (request.method === "DELETE") {
+      const email = normalizeAccessEmail(url.searchParams.get("email"));
+      if (!email) return json({ error: "Informe o e-mail." }, 400);
+      await env.DB.prepare(
+        "DELETE FROM todogreen_access_emails WHERE tenant_id = ? AND email = ?",
+      )
+        .bind(TODO_GREEN_TENANT.id, email)
+        .run();
+      await logAudit(env, ownerId, user, "todogreen_acesso_removido", email, "");
+      return json({ ok: true });
+    }
+    return json({ error: "Método não permitido." }, 405);
+  }
   if (["catalog", "dashboard", "products"].includes(resource))
     await ensureTodoGreenCatalog(env);
   if (request.method === "GET" && resource === "catalog")

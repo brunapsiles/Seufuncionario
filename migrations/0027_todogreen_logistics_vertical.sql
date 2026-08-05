@@ -32,6 +32,25 @@ CREATE INDEX IF NOT EXISTS idx_tenant_users_user
 CREATE INDEX IF NOT EXISTS idx_tenant_users_workspace
   ON tenant_users (workspace_owner_id, tenant_id, status);
 
+CREATE TABLE IF NOT EXISTS todogreen_access_emails (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  email TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'admin',
+  status TEXT NOT NULL DEFAULT 'active',
+  permissions_json TEXT NOT NULL DEFAULT '["*"]',
+  note TEXT NOT NULL DEFAULT '',
+  created_by TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(tenant_id, email),
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_todogreen_access_emails_status
+  ON todogreen_access_emails (tenant_id, status, email);
+
 CREATE TABLE IF NOT EXISTS module_catalog (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -122,4 +141,3 @@ CREATE TABLE IF NOT EXISTS environmental_calculations (
 
 CREATE INDEX IF NOT EXISTS idx_environmental_calculations_tenant_owner
   ON environmental_calculations (tenant_id, workspace_owner_id, created_at DESC);
-

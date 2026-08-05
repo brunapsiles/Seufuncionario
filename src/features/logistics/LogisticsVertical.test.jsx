@@ -12,7 +12,11 @@ const baseDb = {
 };
 
 describe("LogisticsVertical", () => {
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    window.history.pushState({}, "", "/");
+  });
 
   it("blocks users without tenant access even when they know the URL", () => {
     render(<LogisticsVertical db={baseDb} update={vi.fn()} />);
@@ -52,5 +56,38 @@ describe("LogisticsVertical", () => {
     });
     expect(screen.getAllByText("Green Score").length).toBeGreaterThan(0);
     expect(screen.queryByText("Pipeline")).toBeNull();
+  });
+
+  it("shows the access panel for admins", async () => {
+    window.history.pushState({}, "", "/todogreen/acessos");
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            emails: [
+              {
+                email: "teste@teste.com.br",
+                role: "admin",
+                status: "active",
+                note: "Conta de teste",
+              },
+            ],
+          }),
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <LogisticsVertical
+        db={{
+          ...baseDb,
+          tenantAccess: { todogreen: { role: "admin", active: true } },
+        }}
+        update={vi.fn()}
+        authHeaders={() => ({ authorization: "Bearer token" })}
+      />,
+    );
+    expect(await screen.findByText("teste@teste.com.br")).toBeTruthy();
+    expect(screen.getByText(/sem novo deploy/i)).toBeTruthy();
   });
 });

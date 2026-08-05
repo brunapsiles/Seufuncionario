@@ -20,14 +20,14 @@ async function sha256(value) {
     .join("");
 }
 
-async function createUser(id) {
+async function createUser(id, email = `${id}@example.com`) {
   const token = `token-${id}`;
   const now = new Date().toISOString();
   await env.DB.prepare(
     `INSERT INTO users (id, name, email, password_hash, password_salt, created_at)
      VALUES (?, ?, ?, 'hash', 'salt', ?)`,
   )
-    .bind(id, `Pessoa ${id}`, `${id}@example.com`, now)
+    .bind(id, `Pessoa ${id}`, email, now)
     .run();
   await env.DB.prepare(
     `INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at)
@@ -72,6 +72,7 @@ const TABELAS_0027 = [
   "pricing_scenarios",
   "logistics_products",
   "tenant_modules",
+  "todogreen_access_emails",
   "tenant_users",
   "module_catalog",
   "tenants",
@@ -108,5 +109,42 @@ describe("vertical To Do Green num banco sem a migração 0027", () => {
     const user = await createUser(`tg-${n}-fora`);
     const r = await request("/api/todogreen/access", { user });
     expect(r.status).toBe(403);
+  });
+
+  it("permite autorizar e remover e-mail externo sem deploy", async () => {
+    const admin = await createUser(`tg-${n}-admin`);
+    await workspaceComTodoGreen(admin);
+
+    const create = await request("/api/todogreen/access-list", {
+      method: "POST",
+      user: admin,
+      body: {
+        email: "teste@teste.com.br",
+        role: "admin",
+        note: "Conta de teste",
+      },
+    });
+    expect(create.status).toBe(201);
+
+    const list = await request("/api/todogreen/access-list", { user: admin });
+    expect(list.status).toBe(200);
+    expect((await list.json()).emails).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ email: "teste@teste.com.br", role: "admin" }),
+      ]),
+    );
+
+    const external = await createUser(`tg-${n}-teste`, "teste@teste.com.br");
+    const access = await request("/api/todogreen/access", { user: external });
+    expect(access.status).toBe(200);
+    expect(await access.json()).toMatchObject({ role: "admin", source: "manual" });
+
+    const removed = await request(
+      "/api/todogreen/access-list?email=teste%40teste.com.br",
+      { method: "DELETE", user: admin },
+    );
+    expect(removed.status).toBe(200);
+    const blocked = await request("/api/todogreen/access", { user: external });
+    expect(blocked.status).toBe(403);
   });
 });
