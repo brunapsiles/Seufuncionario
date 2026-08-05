@@ -18,11 +18,11 @@ const LABELS = new Map([
   ["Logística sustentável com preço, operação e ESG no mesmo painel.", "Painel operacional"],
   ["Operação, pricing, ESG, pipeline e governança em uma experiência privada e objetiva.", "Acompanhe clientes, oportunidades, preços, operações, custos e indicadores ambientais."],
   ["A vertical agora separa módulos funcionais de backlog. Card sem fluxo real não aparece como pronto.", "Acompanhe clientes, oportunidades, preços, operações, custos e indicadores ambientais."],
-  ["funções privadas com acesso controlado", "rotinas disponíveis"],
-  ["módulos por tenant, com rota e permissão", "rotinas disponíveis"],
-  ["módulos por tenant", "rotinas"],
-  ["módulos", "rotinas"],
-  ["Módulos", "Rotinas"],
+  ["funções privadas com acesso controlado", "recursos disponíveis"],
+  ["módulos por tenant, com rota e permissão", "recursos disponíveis"],
+  ["módulos por tenant", "recursos"],
+  ["módulos", "recursos"],
+  ["Módulos", "Recursos"],
   ["funcionais", "ativas"],
   ["funcional", "ativo"],
   ["backlog", "planejado"],
@@ -123,7 +123,7 @@ const ROUTINES = [
     title: "Propostas",
     route: "/todogreen/propostas",
     score: "8.1",
-    text: "Escopo, condições, premissas, impacto ambiental e status de negociação.",
+    text: "Serviços incluídos, condições, informações do cálculo, impacto ambiental e status da negociação.",
     subs: ["Versões", "Condições", "Aprovação", "Status"],
   },
   {
@@ -144,8 +144,8 @@ const ROUTINES = [
     title: "ESG",
     route: "/todogreen/esg",
     score: "8.3",
-    text: "CO2 evitado, Green Score, Escopo 3, metodologia e evidências.",
-    subs: ["Green Score", "Escopo 3", "Evidências", "Relatórios"],
+    text: "CO₂ evitado, Green Score, emissões da cadeia logística, método de cálculo e documentos.",
+    subs: ["Green Score", "Emissões", "Documentos", "Relatórios"],
   },
 ];
 
@@ -216,9 +216,9 @@ const ensureRoutineMap = () => {
   section.innerHTML = `
     <div class="tdg-routine-head">
       <div>
-        <span class="tdg-kicker">ROTINAS PRINCIPAIS</span>
-        <h2>8 rotinas para operar a To Do Green</h2>
-        <p>Cada rotina reúne o que você precisa para tocar aquela parte da operação.</p>
+        <span class="tdg-kicker">ESCOLHA O QUE QUER FAZER</span>
+        <h2>Áreas de trabalho da To Do Green</h2>
+        <p>Abra a área que precisa usar agora.</p>
       </div>
     </div>
     <div class="tdg-routine-grid"></div>
