@@ -1,6 +1,10 @@
 import appWorker from "./worker.js";
 import { handleTodoGreenWorkCenter } from "./worker/services/todogreen-work-center.js";
 import { handleTodoGreenFleet } from "./worker/services/todogreen-fleet.js";
+import {
+  handleTodoGreenTracker,
+  runTodoGreenTrackerScheduled,
+} from "./worker/services/todogreen-tracker.js";
 import { handleTodoGreenCustomerPortal } from "./worker/services/todogreen-customer-portal.js";
 import { handleTodoGreenEsg } from "./worker/services/todogreen-esg.js";
 import { handleTodoGreenPricingParameters } from "./worker/services/todogreen-pricing-parameters.js";
@@ -58,6 +62,10 @@ export default {
       try { return await handleTodoGreenEsg(request, env); }
       catch (error) { console.error("To Do Green ESG error", error); return apiError("Não foi possível processar o cálculo ambiental."); }
     }
+    if (url.pathname.startsWith("/api/todogreen/tracker")) {
+      try { return await handleTodoGreenTracker(request, env); }
+      catch (error) { console.error("To Do Green Tracker error", error); return apiError("Não foi possível processar o rastreamento veicular."); }
+    }
     if (url.pathname.startsWith("/api/todogreen/fleet")) {
       try { return await handleTodoGreenFleet(request, env); }
       catch (error) { console.error("To Do Green fleet error", error); return apiError("Não foi possível sincronizar a Frota."); }
@@ -65,6 +73,7 @@ export default {
     return appWorker.fetch(request, env, ctx);
   },
   async scheduled(controller, env, ctx) {
+    ctx.waitUntil(runTodoGreenTrackerScheduled(env));
     if (typeof appWorker.scheduled === "function") return appWorker.scheduled(controller, env, ctx);
   },
 };
