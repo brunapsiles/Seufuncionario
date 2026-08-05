@@ -8,6 +8,8 @@ import {
   esgTranslator,
   calculateEnvironmentalImpact,
   calculateGreenScore,
+  getProductPricingBlueprint,
+  hasTodoGreenPermission,
   summarizeTodoGreenDashboard,
 } from "./logisticsVerticalDomain.js";
 
@@ -29,6 +31,25 @@ describe("logistics vertical domain", () => {
     expect(LOGISTICS_PRODUCTS.find((item) => item.id === "bulk").requiredFields).toContain("materialType");
   });
 
+  it("does not let read access imply sensitive To Do Green permissions", () => {
+    expect(hasTodoGreenPermission("vendedor", "read")).toBe(true);
+    expect(hasTodoGreenPermission("vendedor", "pricing:simulate")).toBe(true);
+    expect(hasTodoGreenPermission("vendedor", "pricing:manage")).toBe(false);
+    expect(hasTodoGreenPermission("vendedor", "cost:manage")).toBe(false);
+    expect(hasTodoGreenPermission("auditor", "audit:read")).toBe(true);
+    expect(hasTodoGreenPermission("auditor", "deal:approve")).toBe(false);
+    expect(hasTodoGreenPermission("admin", "deal:approve")).toBe(true);
+  });
+
+  it("describes professional pricing blueprints by logistics product", () => {
+    const middleMile = getProductPricingBlueprint("middle-mile");
+    const lastMile = getProductPricingBlueprint("last-mile");
+    const bulk = getProductPricingBlueprint("bulk");
+    expect(middleMile.requiredEvidence).toContain("rota validada");
+    expect(lastMile.executiveOutputs).toContain("custo por pacote");
+    expect(bulk.inputGroups.flatMap(([, fields]) => fields)).toContain("materialType");
+  });
+
   it("calculates middle mile with margin, emissions and traceability", () => {
     const result = centralPricingEngine("middle-mile", {
       distanceKm: 100,
@@ -46,6 +67,7 @@ describe("logistics vertical domain", () => {
     expect(result.impact.co2AvoidedKg).toBeGreaterThan(0);
     expect(result.greenScore.score).toBeGreaterThan(0);
     expect(result.traceability.ruleVersion).toBe("1.0.0");
+    expect(result.traceability.requiredEvidence).toContain("rota validada");
   });
 
   it("keeps last mile economics separate from middle mile inputs", () => {
@@ -134,5 +156,6 @@ describe("logistics vertical domain", () => {
     expect(summary.clientes).toBe(2);
     expect(summary.tarefasAtrasadas).toBe(1);
     expect(summary.co2Evitado).toBeGreaterThan(0);
+    expect(summary.dataPolicy).toBe("real-data-first");
   });
 });
