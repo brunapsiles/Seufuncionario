@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "seufuncionario-expo",
-  "main": "worker.js",
+  "main": "worker-entry.js",
   "compatibility_date": "2026-07-14",
   "assets": {
     "directory": "./dist",
@@ -20,7 +20,6 @@
   "ai": {
     "binding": "AI"
   },
-  // Automações a cada hora; resumo semanal toda segunda 12:00 UTC (09:00 BRT).
   "triggers": {
     "crons": ["0 * * * *", "0 12 * * 1"]
   },
@@ -34,12 +33,6 @@
   "vars": {
     "GEMINI_MODEL": "gemini-flash-lite-latest",
     "XAI_MODEL": "grok-4.3",
-    // A dona da plataforma entra na vertical To Do Green sem precisar de
-    // negócio com nome certo nem convite — a regra do cliente vale para o
-    // cliente, não para quem opera o produto.
-    // O endereço com "+todogreen" é a conta de teste para colher feedback:
-    // o código de verificação cai na caixa da titular, mas o app a trata
-    // como conta separada — dá para emprestar sem expor a conta principal.
     "TODOGREEN_ADMIN_EMAILS": "brunapsiles@icloud.com,brunapsiles@gmail.com,brunapsiles+todogreen@gmail.com"
   }
 }
