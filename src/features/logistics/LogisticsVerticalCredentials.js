@@ -1,0 +1,156 @@
+import "./LogisticsVerticalCredentials.css";
+
+const AUTH_TOKEN_KEY = "seu-funcionario-auth-token";
+const ACTIVE_USER_KEY = "seu-funcionario-active-user";
+
+const setStatus = (root, message, type = "error") => {
+  const status = root.querySelector(".tdg-login-status");
+  if (!status) return;
+  status.textContent = message;
+  status.className = `tdg-login-status show ${type}`;
+};
+
+const postJson = async (url, payload) => {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.error || "Não foi possível concluir a solicitação.");
+  return data;
+};
+
+const saveSession = (payload) => {
+  if (!payload?.token || !payload?.user?.email) throw new Error("Login sem sessão válida.");
+  localStorage.setItem(AUTH_TOKEN_KEY, payload.token);
+  localStorage.setItem(ACTIVE_USER_KEY, payload.user.email);
+};
+
+const loginHtml = () => `
+  <section class="tdg-login-box" aria-label="Acesso To Do Green">
+    <h2>Entrar</h2>
+    <p>Use o e-mail e a senha inicial recebidos. No primeiro acesso, altere a senha antes de usar a operação.</p>
+    <form class="tdg-login-form">
+      <label><span>E-mail</span><input name="email" type="email" autocomplete="username" required placeholder="nome@todogreen.com.br" /></label>
+      <label><span>Senha</span><input name="password" type="password" autocomplete="current-password" required placeholder="Senha inicial" /></label>
+      <div class="tdg-login-actions">
+        <button class="tdg-login-primary" type="submit">Entrar</button>
+        <button class="tdg-login-secondary" type="button" data-tdg-reset>Alterar senha inicial</button>
+      </div>
+    </form>
+    <div class="tdg-login-help">Os usuários recebem e-mail e senha inicial. Depois do primeiro acesso, a senha deve ser substituída por uma senha pessoal.</div>
+    <div class="tdg-login-status" role="status" aria-live="polite"></div>
+  </section>
+`;
+
+const resetHtml = () => `
+  <section class="tdg-login-box" aria-label="Alterar senha inicial">
+    <h2>Alterar senha</h2>
+    <p>Informe o e-mail recebido. Enviaremos um código para confirmar a troca da senha inicial.</p>
+    <form class="tdg-password-form" data-step="request">
+      <label><span>E-mail</span><input name="email" type="email" autocomplete="username" required /></label>
+      <button class="tdg-login-primary" type="submit">Enviar código</button>
+      <button class="tdg-login-secondary" type="button" data-tdg-back>Voltar para login</button>
+    </form>
+    <form class="tdg-password-form" data-step="confirm" hidden>
+      <label><span>Código</span><input name="code" inputmode="numeric" maxlength="6" required placeholder="000000" /></label>
+      <label><span>Nova senha</span><input name="password" type="password" autocomplete="new-password" required minlength="8" /></label>
+      <button class="tdg-login-primary" type="submit">Salvar nova senha</button>
+      <button class="tdg-login-secondary" type="button" data-tdg-back>Voltar para login</button>
+    </form>
+    <div class="tdg-login-status" role="status" aria-live="polite"></div>
+  </section>
+`;
+
+const bindLogin = (card) => {
+  const form = card.querySelector(".tdg-login-form");
+  if (!form || form.dataset.bound === "true") return;
+  form.dataset.bound = "true";
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    const email = String(data.get("email") || "").trim().toLowerCase();
+    const password = String(data.get("password") || "");
+    try {
+      setStatus(card, "Validando acesso...", "ok");
+      const payload = await postJson("/api/auth/login", { email, password });
+      saveSession(payload);
+      setStatus(card, "Acesso validado. Carregando ambiente...", "ok");
+      setTimeout(() => window.location.reload(), 350);
+    } catch (error) {
+      setStatus(card, error.message || "E-mail ou senha inválidos.", "error");
+    }
+  });
+  card.querySelector("[data-tdg-reset]")?.addEventListener("click", () => renderReset(card));
+};
+
+const bindReset = (card) => {
+  const requestForm = card.querySelector('[data-step="request"]');
+  const confirmForm = card.querySelector('[data-step="confirm"]');
+  let resetEmail = "";
+  requestForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const data = new FormData(requestForm);
+    resetEmail = String(data.get("email") || "").trim().toLowerCase();
+    try {
+      setStatus(card, "Enviando código...", "ok");
+      await postJson("/api/auth/forgot", { email: resetEmail });
+      requestForm.hidden = true;
+      confirmForm.hidden = false;
+      setStatus(card, "Código enviado. Informe o código e a nova senha.", "ok");
+    } catch (error) {
+      setStatus(card, error.message || "Não foi possível enviar o código.", "error");
+    }
+  });
+  confirmForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const data = new FormData(confirmForm);
+    const code = String(data.get("code") || "").trim();
+    const password = String(data.get("password") || "");
+    try {
+      setStatus(card, "Salvando nova senha...", "ok");
+      const payload = await postJson("/api/auth/reset", { email: resetEmail, code, password });
+      saveSession(payload);
+      setStatus(card, "Senha alterada. Carregando ambiente...", "ok");
+      setTimeout(() => window.location.reload(), 350);
+    } catch (error) {
+      setStatus(card, error.message || "Não foi possível alterar a senha.", "error");
+    }
+  });
+  card.querySelectorAll("[data-tdg-back]").forEach((button) => button.addEventListener("click", () => renderLogin(card)));
+};
+
+const renderLogin = (card) => {
+  card.dataset.tdgCredentials = "ready";
+  card.querySelector(".tdg-login-box")?.remove();
+  card.insertAdjacentHTML("beforeend", loginHtml());
+  bindLogin(card);
+};
+
+const renderReset = (card) => {
+  card.dataset.tdgCredentials = "ready";
+  card.querySelector(".tdg-login-box")?.remove();
+  card.insertAdjacentHTML("beforeend", resetHtml());
+  bindReset(card);
+};
+
+const ensureCredentialsLogin = () => {
+  const card = document.querySelector(".tdg-denied-card");
+  if (!card || card.querySelector(".tdg-login-box")) return;
+  const title = card.querySelector("h1");
+  if (title) title.textContent = "Acesso To Do Green";
+  const kicker = card.querySelector(".tdg-kicker");
+  if (kicker) kicker.textContent = "LOGIN PRIVADO";
+  renderLogin(card);
+};
+
+if (typeof window !== "undefined") {
+  const start = () => {
+    ensureCredentialsLogin();
+    const observer = new MutationObserver(() => ensureCredentialsLogin());
+    observer.observe(document.body, { childList: true, subtree: true });
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true });
+  else start();
+}
