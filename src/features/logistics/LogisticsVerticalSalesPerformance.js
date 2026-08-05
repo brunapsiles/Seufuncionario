@@ -3,6 +3,7 @@ import "./LogisticsVerticalRecovery.css";
 import "./LogisticsVerticalRecovery.js";
 import "./LogisticsVerticalCredentials.js";
 import "./LogisticsVerticalAccessPolicy.js";
+import "./LogisticsVerticalWorkCenter.js";
 
 const SALES_BLOCKS = [
   ["Meta por vendedor", "Receita, margem, novos clientes, propostas enviadas, contratos recorrentes e indicadores ESG vendidos."],
