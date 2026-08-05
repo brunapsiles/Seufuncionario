@@ -11,6 +11,11 @@ const baseDb = {
   notifications: [],
 };
 
+const authorizedDb = {
+  ...baseDb,
+  tenantAccess: { todogreen: { role: "admin", active: true } },
+};
+
 describe("LogisticsVertical", () => {
   afterEach(() => {
     cleanup();
@@ -25,15 +30,7 @@ describe("LogisticsVertical", () => {
   });
 
   it("renders the private hub for authorized To Do Green users", () => {
-    render(
-      <LogisticsVertical
-        db={{
-          ...baseDb,
-          tenantAccess: { todogreen: { role: "admin", active: true } },
-        }}
-        update={vi.fn()}
-      />,
-    );
+    render(<LogisticsVertical db={authorizedDb} update={vi.fn()} />);
     expect(screen.getByText(/Logística sustentável com preço/)).toBeTruthy();
     expect(screen.getByText(String(TODO_GREEN_FEATURE_COUNT))).toBeTruthy();
     expect(screen.getByText("Middle Mile")).toBeTruthy();
@@ -41,16 +38,28 @@ describe("LogisticsVertical", () => {
     expect(screen.getByText("Inteligência ESG")).toBeTruthy();
   });
 
+  it("does not show fake production indicators when no real data exists", () => {
+    render(<LogisticsVertical db={authorizedDb} update={vi.fn()} />);
+    expect(screen.getByText("Nenhum indicador real carregado ainda.")).toBeTruthy();
+    expect(screen.queryByText("Cliente enterprise")).toBeNull();
+    expect(screen.queryByText("Operação e-commerce")).toBeNull();
+    expect(screen.queryByText(/demonstração ativo/i)).toBeNull();
+  });
+
+  it("renders product-specific pricing fields instead of one generic form", () => {
+    window.history.pushState({}, "", "/todogreen/precificacao");
+    render(<LogisticsVertical db={authorizedDb} update={vi.fn()} />);
+    expect(screen.getByText("Middle Mile enterprise")).toBeTruthy();
+    expect(screen.getByText("Origem *")).toBeTruthy();
+    expect(screen.getByText("Pedágio por viagem R$")).toBeTruthy();
+    fireEvent.click(screen.getByText("Last Mile"));
+    expect(screen.getByText("Last Mile e-commerce")).toBeTruthy();
+    expect(screen.getByText("Pacotes *")).toBeTruthy();
+    expect(screen.getByText("Taxa de insucesso")).toBeTruthy();
+  });
+
   it("filters functions without inventing unrelated cards", async () => {
-    render(
-      <LogisticsVertical
-        db={{
-          ...baseDb,
-          tenantAccess: { todogreen: { role: "admin", active: true } },
-        }}
-        update={vi.fn()}
-      />,
-    );
+    render(<LogisticsVertical db={authorizedDb} update={vi.fn()} />);
     fireEvent.change(screen.getByLabelText("Buscar funções da vertical To Do Green"), {
       target: { value: "Green Score" },
     });
@@ -79,10 +88,7 @@ describe("LogisticsVertical", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(
       <LogisticsVertical
-        db={{
-          ...baseDb,
-          tenantAccess: { todogreen: { role: "admin", active: true } },
-        }}
+        db={authorizedDb}
         update={vi.fn()}
         authHeaders={() => ({ authorization: "Bearer token" })}
       />,
