@@ -1,0 +1,215 @@
+import { env } from "cloudflare:workers";
+import { beforeAll, describe, expect, it } from "vitest";
+import worker from "../worker-entry.js";
+
+// O teste que importa aqui não é "a tela abre". É: uma pessoa do cliente A,
+// autenticada de verdade, com sessão de verdade, consegue por algum caminho
+// enxergar um dado do cliente B? A resposta tem que ser não por construção,
+// não por filtro de tela.
+
+let n = 0;
+const nextIp = () => `203.0.113.${(++n % 240) + 1}`;
+
+async function sha256(value) {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  return [...new Uint8Array(digest)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function criarUsuario(id, email) {
+  const token = `tok-${id}`;
+  const agora = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO users (id, name, email, password_hash, password_salt, created_at)
+     VALUES (?, ?, ?, 'h', 's', ?)`,
+  )
+    .bind(id, `Pessoa ${id}`, email, agora)
+    .run();
+  await env.DB.prepare(
+    `INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at)
+     VALUES (?, ?, ?, '2099-01-01T00:00:00.000Z', ?)`,
+  )
+    .bind(`ses-${id}`, id, await sha256(token), agora)
+    .run();
+  return { id, email, token };
+}
+
+async function criarCliente(id, nome) {
+  const agora = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO todogreen_clients
+       (id, tenant_id, workspace_owner_id, name, status, portal_enabled,
+        created_by, updated_by, created_at, updated_at)
+     VALUES (?, 'todogreen', 'dono', ?, 'ativo', 1, 'seed', 'seed', ?, ?)`,
+  )
+    .bind(id, nome, agora, agora)
+    .run();
+  return id;
+}
+
+async function vincular(clientId, email, role = "cliente_gestor") {
+  const agora = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO todogreen_client_users
+       (id, tenant_id, client_id, email, role, status, permissions_json,
+        invited_by, created_at, updated_at)
+     VALUES (?, 'todogreen', ?, ?, ?, 'active', '[]', 'seed', ?, ?)`,
+  )
+    .bind(crypto.randomUUID(), clientId, email, role, agora, agora)
+    .run();
+}
+
+async function operacao(clientId, referencia, entregas) {
+  const agora = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO todogreen_client_operations
+       (id, tenant_id, client_id, workspace_owner_id, reference, status,
+        service_date, origin, destination, fields_json,
+        created_by, updated_by, created_at, updated_at)
+     VALUES (?, 'todogreen', ?, 'dono', ?, 'concluida', ?, 'CD', 'Hub', ?, 'seed', 'seed', ?, ?)`,
+  )
+    .bind(
+      crypto.randomUUID(),
+      clientId,
+      referencia,
+      "2026-08-01",
+      JSON.stringify({ deliveries: entregas, distanceKm: 100, occupancyPercent: 80 }),
+      agora,
+      agora,
+    )
+    .run();
+}
+
+const pedir = (caminho, { method = "GET", token, body } = {}) => {
+  const headers = { "cf-connecting-ip": nextIp() };
+  if (token) headers.authorization = `Bearer ${token}`;
+  if (body !== undefined) headers["content-type"] = "application/json";
+  return worker.fetch(
+    new Request(`https://app.test${caminho}`, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }),
+    env,
+    { waitUntil() {}, passThroughOnException() {} },
+  );
+};
+
+let pessoaA;
+let pessoaB;
+let semVinculo;
+
+beforeAll(async () => {
+  // As tabelas nascem na primeira chamada (o serviço garante o DDL).
+  await pedir("/api/todogreen/portal/sessao");
+
+  await criarCliente("cli-a", "Cliente A");
+  await criarCliente("cli-b", "Cliente B");
+
+  pessoaA = await criarUsuario("u-a", "pessoa@clientea.com.br");
+  pessoaB = await criarUsuario("u-b", "pessoa@clienteb.com.br");
+  semVinculo = await criarUsuario("u-x", "ninguem@fora.com.br");
+
+  await vincular("cli-a", pessoaA.email);
+  await vincular("cli-b", pessoaB.email);
+
+  await operacao("cli-a", "OP-A-1", 100);
+  await operacao("cli-a", "OP-A-2", 200);
+  await operacao("cli-b", "OP-B-1", 999);
+});
+
+describe("quem entra no portal", () => {
+  it("sem sessão, não entra", async () => {
+    expect((await pedir("/api/todogreen/portal/sessao")).status).toBe(401);
+  });
+
+  it("com sessão mas sem vínculo com cliente, não entra", async () => {
+    const r = await pedir("/api/todogreen/portal/sessao", { token: semVinculo.token });
+    expect(r.status).toBe(403);
+  });
+
+  it("com vínculo, entra e recebe só o próprio cliente", async () => {
+    const r = await pedir("/api/todogreen/portal/sessao", { token: pessoaA.token });
+    expect(r.status).toBe(200);
+    const d = await r.json();
+    expect(d.cliente.id).toBe("cli-a");
+    expect(d.cliente.nome).toBe("Cliente A");
+  });
+});
+
+describe("o cliente A nunca alcança o cliente B", () => {
+  it("as operações listadas são só as dele", async () => {
+    const r = await pedir("/api/todogreen/portal/operacoes", { token: pessoaA.token });
+    const d = await r.json();
+    const refs = d.operacoes.map((o) => o.referencia);
+    expect(refs).toContain("OP-A-1");
+    expect(refs).toContain("OP-A-2");
+    expect(refs).not.toContain("OP-B-1");
+  });
+
+  it("pedir o outro cliente na URL não muda nada — o parâmetro não existe", async () => {
+    // Este é o ataque óbvio contra portal mal feito.
+    for (const tentativa of [
+      "/api/todogreen/portal/operacoes?client=cli-b",
+      "/api/todogreen/portal/operacoes?clientId=cli-b",
+      "/api/todogreen/portal/operacoes?cliente=cli-b",
+      "/api/todogreen/portal/operacoes?tenant=todogreen&client_id=cli-b",
+      "/api/todogreen/portal/operacoes?owner=cli-b",
+    ]) {
+      const d = await (await pedir(tentativa, { token: pessoaA.token })).json();
+      const refs = d.operacoes.map((o) => o.referencia);
+      expect(refs, tentativa).not.toContain("OP-B-1");
+      expect(refs, tentativa).toContain("OP-A-1");
+    }
+  });
+
+  it("o resumo soma só as operações dele", async () => {
+    const a = await (await pedir("/api/todogreen/portal/resumo", { token: pessoaA.token })).json();
+    const b = await (await pedir("/api/todogreen/portal/resumo", { token: pessoaB.token })).json();
+    expect(a.resumo.operacoes.entregas).toBe(300); // 100 + 200
+    expect(b.resumo.operacoes.entregas).toBe(999);
+  });
+
+  it("cada um vê o próprio nome, nunca o do outro", async () => {
+    const a = await (await pedir("/api/todogreen/portal/sessao", { token: pessoaA.token })).json();
+    const b = await (await pedir("/api/todogreen/portal/sessao", { token: pessoaB.token })).json();
+    expect(a.cliente.nome).toBe("Cliente A");
+    expect(b.cliente.nome).toBe("Cliente B");
+  });
+});
+
+describe("o portal não abre porta para o lado interno", () => {
+  it("nenhuma permissão interna chega ao cliente", async () => {
+    const d = await (await pedir("/api/todogreen/portal/sessao", { token: pessoaA.token })).json();
+    for (const interna of ["crm:view", "pricing:simulate", "commission:manage", "audit:read", "*"])
+      expect(d.permissoes).not.toContain(interna);
+  });
+
+  it("o menu não oferece tela interna", async () => {
+    const d = await (await pedir("/api/todogreen/portal/sessao", { token: pessoaA.token })).json();
+    const ids = d.menu.map((i) => i.id);
+    for (const interna of ["clientes", "oportunidades", "precificacao", "receita", "comissoes", "acessos"])
+      expect(ids).not.toContain(interna);
+  });
+
+  it("rota inventada dentro do portal não vira acesso", async () => {
+    const r = await pedir("/api/todogreen/portal/receita", { token: pessoaA.token });
+    expect(r.status).toBe(404);
+  });
+});
+
+describe("cliente desligado do portal", () => {
+  it("perde o acesso na hora, sem precisar mexer no vínculo", async () => {
+    await criarCliente("cli-c", "Cliente C");
+    const pessoaC = await criarUsuario("u-c", "pessoa@clientec.com.br");
+    await vincular("cli-c", pessoaC.email);
+    expect((await pedir("/api/todogreen/portal/sessao", { token: pessoaC.token })).status).toBe(200);
+
+    await env.DB.prepare("UPDATE todogreen_clients SET portal_enabled = 0 WHERE id = 'cli-c'").run();
+    expect((await pedir("/api/todogreen/portal/sessao", { token: pessoaC.token })).status).toBe(403);
+  });
+});

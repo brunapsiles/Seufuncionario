@@ -1,6 +1,7 @@
 import appWorker from "./worker.js";
 import { handleTodoGreenWorkCenter } from "./worker/services/todogreen-work-center.js";
 import { handleTodoGreenFleet } from "./worker/services/todogreen-fleet.js";
+import { handleTodoGreenCustomerPortal } from "./worker/services/todogreen-customer-portal.js";
 
 const apiError = (message) => new Response(JSON.stringify({ error: message }), {
   status: 500,
@@ -13,6 +14,12 @@ export default {
     if (url.pathname.startsWith("/api/todogreen/work-center")) {
       try { return await handleTodoGreenWorkCenter(request, env); }
       catch (error) { console.error("To Do Green work center error", error); return apiError("Não foi possível sincronizar a Central de Trabalho."); }
+    }
+    // O portal vem antes da vertical: quem é do lado do cliente não passa pelo
+    // resolvedor de acesso interno em momento nenhum.
+    if (url.pathname.startsWith("/api/todogreen/portal")) {
+      try { return await handleTodoGreenCustomerPortal(request, env); }
+      catch (error) { console.error("To Do Green customer portal error", error); return apiError("Não foi possível abrir o portal do cliente."); }
     }
     if (url.pathname.startsWith("/api/todogreen/fleet")) {
       try { return await handleTodoGreenFleet(request, env); }
