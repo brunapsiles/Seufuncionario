@@ -65,16 +65,31 @@ const navigate = (route) => {
   window.dispatchEvent(new PopStateEvent("popstate"));
 };
 
+const directChildren = (root, selector) =>
+  Array.from(root?.children || []).filter((node) => node.matches?.(selector));
+
+const setVisible = (node, visible) => {
+  if (!node) return;
+  if (visible) {
+    node.hidden = false;
+    node.removeAttribute("aria-hidden");
+    node.classList.remove("tdg-route-hidden");
+  } else {
+    node.hidden = true;
+    node.setAttribute("aria-hidden", "true");
+    node.classList.add("tdg-route-hidden");
+  }
+};
+
 const setText = (node, value) => {
   if (node && node.textContent !== value) node.textContent = value;
 };
 
 const markProductCards = (root) => {
   root.querySelectorAll(".tdg-product-strip").forEach((strip) => {
-    [...strip.querySelectorAll(".tdg-product-card")].forEach((button, index) => {
+    Array.from(strip.querySelectorAll(".tdg-product-card")).forEach((button, index) => {
       const productId = PRODUCT_IDS[index];
-      if (productId && button.dataset.tdgProductId !== productId)
-        button.dataset.tdgProductId = productId;
+      if (productId) button.dataset.tdgProductId = productId;
     });
   });
 };
@@ -83,16 +98,15 @@ const simplifyHomeLanguage = (root) => {
   const hero = root.querySelector(".tdg-hero");
   if (hero) {
     setText(hero.querySelector(".tdg-kicker"), "TO DO GREEN");
-    setText(
-      hero.querySelector("div > p"),
-      "Escolha uma área e abra apenas o ambiente que precisa usar.",
-    );
+    setText(hero.querySelector("div > p"), "Escolha uma área e abra apenas o ambiente que precisa usar.");
     const status = hero.querySelector("aside span");
     if (status) {
-      const next = status.textContent
-        .replace(/funcionais/gi, "disponíveis")
-        .replace(/backlog/gi, "em preparação");
-      setText(status, next);
+      setText(
+        status,
+        status.textContent
+          .replace(/funcionais/gi, "disponíveis")
+          .replace(/backlog/gi, "em preparação"),
+      );
     }
     setText(hero.querySelector("aside small"), "Recursos organizados por área e perfil de acesso.");
   }
@@ -112,31 +126,45 @@ const simplifyHomeLanguage = (root) => {
   root.querySelectorAll(".tdg-backlog summary").forEach((summary) =>
     setText(summary, "Ver recursos em preparação"),
   );
-  root.querySelectorAll(".tdg-product-card small").forEach((label) => {
-    setText(label, label.textContent.replace(/obrigatórios/gi, "campos necessários"));
-  });
 };
 
-const markHomeOnlySections = (root) => {
-  root.querySelectorAll(":scope > .tdg-panel").forEach((panel) => {
-    const kicker = panel.querySelector(".tdg-kicker")?.textContent || "";
-    if (/PRODUTOS LOGÍSTICOS/i.test(kicker)) panel.dataset.tdgHomeOnly = "true";
-  });
+const isProductCatalogPanel = (panel) => {
+  if (!panel?.classList.contains("tdg-panel")) return false;
+  const kicker = panel.querySelector(".tdg-kicker")?.textContent || "";
+  return /PRODUTOS LOGÍSTICOS/i.test(kicker) || Boolean(panel.querySelector(".tdg-product-strip") && !panel.classList.contains("tdg-pricing"));
+};
+
+const applyPageVisibility = (root, route) => {
+  root.classList.toggle("tdg-module-page", !route.isHome);
+
+  const hero = directChildren(root, ".tdg-hero")[0];
+  const tabs = directChildren(root, ".tdg-tabs")[0];
+  const metrics = directChildren(root, ".tdg-metrics")[0];
+  const areaSections = directChildren(root, ".tdg-section");
+  const panels = directChildren(root, ".tdg-panel");
+
+  setVisible(hero, route.isHome);
+  setVisible(tabs, route.isHome);
+  setVisible(metrics, route.isHome);
+  areaSections.forEach((section) => setVisible(section, route.isHome));
+  panels.filter(isProductCatalogPanel).forEach((panel) => setVisible(panel, route.isHome));
+
+  panels
+    .filter((panel) => !isProductCatalogPanel(panel))
+    .forEach((panel) => setVisible(panel, true));
 };
 
 const ensurePageHeader = (root, route) => {
-  let header = root.querySelector(":scope > [data-tdg-page-header]");
+  let header = Array.from(root.children).find((node) => node.dataset?.tdgPageHeader === "true");
   const heroTitle = root.querySelector(".tdg-hero h1");
 
   if (route.isHome) {
-    root.classList.remove("tdg-module-page");
     header?.remove();
-    if (heroTitle && heroTitle.id !== "tdg-title") heroTitle.id = "tdg-title";
+    if (heroTitle) heroTitle.id = "tdg-title";
     return;
   }
 
-  root.classList.add("tdg-module-page");
-  if (heroTitle && heroTitle.id === "tdg-title") heroTitle.id = "tdg-home-title";
+  if (heroTitle) heroTitle.id = "tdg-home-title";
   if (!header) {
     header = document.createElement("section");
     header.className = "tdg-page-header";
@@ -146,7 +174,7 @@ const ensurePageHeader = (root, route) => {
 
   const productName = PRODUCT_NAMES[route.detail];
   const isPricingSelection = route.section === "precificacao" && !productName;
-  const isPricingDetail = route.section === "precificacao" && !!productName;
+  const isPricingDetail = route.section === "precificacao" && Boolean(productName);
   const [baseTitle, baseDescription] = MODULE_META[route.section] || [
     "To Do Green",
     "Ambiente de trabalho da vertical To Do Green.",
@@ -178,31 +206,31 @@ const ensurePageHeader = (root, route) => {
 const configurePricingPage = (root, route) => {
   const panel = root.querySelector(".tdg-pricing");
   if (!panel) return;
+
   const productName = PRODUCT_NAMES[route.detail];
   const selection = route.section === "precificacao" && !productName;
-  const detail = route.section === "precificacao" && !!productName;
-
+  const detail = route.section === "precificacao" && Boolean(productName);
   panel.classList.toggle("tdg-pricing-select", selection);
   panel.classList.toggle("tdg-pricing-detail", detail);
 
+  const children = Array.from(panel.children);
   if (selection) {
+    children.forEach((child) => {
+      const keep = child.classList.contains("tdg-section-head") || child.classList.contains("tdg-product-strip");
+      setVisible(child, keep);
+    });
     setText(panel.querySelector(".tdg-section-head h2"), "Qual operação deseja precificar?");
-    setText(
-      panel.querySelector(".tdg-section-head p"),
-      "Cada serviço possui premissas, custos e campos próprios.",
-    );
+    setText(panel.querySelector(".tdg-section-head p"), "Cada serviço possui premissas, custos e campos próprios.");
     setText(panel.querySelector(".tdg-section-head > strong"), "Escolha um tipo");
     panel.dataset.tdgRequestedProduct = "";
     return;
   }
 
+  children.forEach((child) => setVisible(child, !detail || !child.classList.contains("tdg-product-strip")));
+
   if (detail) {
     const target = panel.querySelector(`[data-tdg-product-id="${route.detail}"]`);
-    if (
-      target &&
-      !target.classList.contains("active") &&
-      panel.dataset.tdgRequestedProduct !== route.detail
-    ) {
+    if (target && !target.classList.contains("active") && panel.dataset.tdgRequestedProduct !== route.detail) {
       panel.dataset.tdgRequestedProduct = route.detail;
       window.setTimeout(() => target.click(), 0);
     }
@@ -213,10 +241,11 @@ const applyNavigation = () => {
   if (!window.location.pathname.startsWith("/todogreen")) return;
   const root = document.querySelector("main.tdg");
   if (!root || root.classList.contains("tdg-denied")) return;
+
   const route = parseTodoGreenRoute(window.location.pathname);
   markProductCards(root);
   simplifyHomeLanguage(root);
-  markHomeOnlySections(root);
+  applyPageVisibility(root, route);
   ensurePageHeader(root, route);
   configurePricingPage(root, route);
 };
@@ -227,34 +256,44 @@ const schedule = () => {
   scheduled = true;
   window.requestAnimationFrame(() => {
     scheduled = false;
-    applyNavigation();
+    try {
+      applyNavigation();
+    } catch (error) {
+      console.error("Falha ao organizar a navegação To Do Green", error);
+    }
   });
 };
 
 const handleClick = (event) => {
   if (!window.location.pathname.startsWith("/todogreen")) return;
+
   const home = event.target.closest("[data-tdg-page-home]");
   if (home) {
     event.preventDefault();
     navigate("/todogreen");
     return;
   }
+
   const types = event.target.closest("[data-tdg-pricing-types]");
   if (types) {
     event.preventDefault();
     navigate("/todogreen/precificacao");
     return;
   }
+
   const product = event.target.closest(".tdg-product-card");
-  if (!product || event.isTrusted === false) return;
+  if (!product) {
+    schedule();
+    return;
+  }
+
   const root = document.querySelector("main.tdg");
   if (!root?.contains(product)) return;
   markProductCards(root);
   const productId = product.dataset.tdgProductId;
   if (!productId) return;
-  event.preventDefault();
-  event.stopImmediatePropagation();
-  navigate(pricingRoute(productId));
+
+  window.setTimeout(() => navigate(pricingRoute(productId)), 0);
 };
 
 if (typeof window !== "undefined" && typeof document !== "undefined") {
@@ -262,9 +301,11 @@ if (typeof window !== "undefined" && typeof document !== "undefined") {
     const target = document.getElementById("root") || document.body;
     new MutationObserver(schedule).observe(target, { childList: true, subtree: true });
     window.addEventListener("popstate", schedule);
-    document.addEventListener("click", handleClick, true);
+    document.addEventListener("click", handleClick);
+    window.addEventListener("pageshow", schedule);
     schedule();
   };
+
   if (document.readyState === "loading")
     document.addEventListener("DOMContentLoaded", start, { once: true });
   else start();
