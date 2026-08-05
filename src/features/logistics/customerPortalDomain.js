@@ -114,7 +114,7 @@ export const CLIENT_PORTAL_MENU = [
   { id: "inicio", label: "Início", permission: "portal:read" },
   { id: "operacoes", label: "Operações", permission: "portal:read" },
   { id: "green-score", label: "Green Score", permission: "portal:read" },
-  { id: "esg", label: "ESG e Escopo 3", permission: "portal:read" },
+  { id: "esg", label: "Emissões e impacto ambiental", permission: "portal:read" },
   { id: "relatorios", label: "Relatórios", permission: "portal:report:export" },
   { id: "documentos", label: "Documentos", permission: "portal:document:download" },
   { id: "solicitacoes", label: "Solicitações", permission: "portal:request:create" },
