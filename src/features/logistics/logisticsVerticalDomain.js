@@ -41,19 +41,32 @@ export const TODO_GREEN_ROLES = [
 export const TODO_GREEN_PERMISSIONS = {
   owner: ["*"],
   admin: ["*"],
-  lideranca_comercial: ["read", "deal:approve", "pricing:simulate"],
+  lideranca_comercial: ["read", "deal:approve", "pricing:simulate", "proposal:create"],
   vendedor: ["read", "pricing:simulate", "proposal:create"],
-  pricing: ["read", "pricing:manage", "deal:review"],
-  financeiro: ["read", "cost:manage", "revenue:manage", "commission:manage"],
+  pricing: ["read", "pricing:simulate", "pricing:manage", "deal:review"],
+  financeiro: ["read", "cost:manage", "revenue:manage", "commission:manage", "deal:review"],
   operacoes: ["read", "operation:manage", "deal:review"],
-  sustentabilidade: ["read", "esg:manage", "deal:review"],
+  sustentabilidade: ["read", "esg:manage", "deal:review", "audit:read"],
   auditor: ["read", "audit:read", "export:read"],
 };
 
-export const hasTodoGreenPermission = (role, permission) => {
+export const hasTodoGreenPermission = (role, permission = "read") => {
   const grants = TODO_GREEN_PERMISSIONS[role] || [];
-  return grants.includes("*") || grants.includes(permission) || grants.includes("read");
+  const requested = Array.isArray(permission) ? permission : [permission];
+  if (grants.includes("*")) return true;
+  return requested.every((item) => grants.includes(item));
 };
+
+export const TODO_GREEN_PRODUCTION_DATA_POLICY = Object.freeze({
+  demoModeFlag: "todoGreenDemoMode",
+  source: "real-data-first",
+  rule: "Dados seed só podem aparecer quando o modo demonstração estiver explicitamente ativo.",
+  blockedInProduction: [
+    "Cliente enterprise genérico sem identificação",
+    "Receita fictícia não rotulada",
+    "Operação de exemplo usada como indicador real",
+  ],
+});
 
 export const TODO_GREEN_MODULE_AREAS = [
   {
@@ -283,6 +296,66 @@ export const LOGISTICS_PRODUCTS = [
   }),
 ];
 
+export const PRODUCT_PRICING_BLUEPRINTS = Object.freeze({
+  "middle-mile": {
+    title: "Middle Mile enterprise",
+    pricingUnit: "viagem / contrato recorrente",
+    inputGroups: [
+      ["Rota", ["origin", "destination", "distanceKm", "returnLoaded", "weeklyFrequency"]],
+      ["Carga", ["pallets", "weightKg", "volumeM3", "hazmat", "temperatureControlled"]],
+      ["Operação", ["tripsPerMonth", "waitingHours", "tollCost", "vehicleType", "driverShift"]],
+      ["Comercial", ["customerTargetPrice", "contractMonths", "sla", "strategicContract"]],
+    ],
+    requiredEvidence: ["janela de carregamento", "perfil de carga", "rota validada", "SLA esperado"],
+    executiveOutputs: ["preço por viagem", "custo por km", "margem mensal", "CO2 evitado por rota", "gatilhos Deal Desk"],
+  },
+  "last-mile": {
+    title: "Last Mile e-commerce",
+    pricingUnit: "pacote / rota / mês",
+    inputGroups: [
+      ["Território", ["city", "kmPerRoute", "routesPerDay", "daysPerMonth"]],
+      ["Entrega", ["packages", "stops", "successRate", "returnsRate", "density"]],
+      ["Frota", ["vehicleType", "drivers", "helpers", "chargingWindow"]],
+      ["Comercial", ["customerTargetPrice", "sla", "peakSeasonFactor"]],
+    ],
+    requiredEvidence: ["histórico de pacotes", "taxa de insucesso", "malha por bairro", "janela de entrega"],
+    executiveOutputs: ["custo por pacote", "custo por parada", "custo de insucesso", "volume de equilíbrio", "CO2 evitado por pacote"],
+  },
+  dedicated: {
+    title: "Operação dedicada",
+    pricingUnit: "mensalidade por estrutura",
+    inputGroups: [
+      ["Estrutura", ["vehicles", "drivers", "helpers", "reserveVehicle"]],
+      ["Jornada", ["hoursPerDay", "daysPerMonth", "driverShift"]],
+      ["Serviços", ["supervisionCost", "technologyCost", "trainingCost", "implementationCost"]],
+      ["Contrato", ["contractMonths", "customerTargetPrice", "sla"]],
+    ],
+    requiredEvidence: ["escala operacional", "SLA contratual", "frota reserva", "custos de implantação"],
+    executiveOutputs: ["mensalidade recomendada", "custo por veículo", "custo por dia", "payback de implantação"],
+  },
+  bulk: {
+    title: "Operação a granel",
+    pricingUnit: "tonelada / viagem",
+    inputGroups: [
+      ["Material", ["materialType", "tons", "lossPercent", "licenseCost"]],
+      ["Rota", ["distanceKm", "tripsPerMonth", "waitingHours"]],
+      ["Preparação", ["cleaningCost", "vehicleType", "riskManagementCost"]],
+      ["Comercial", ["customerTargetPrice", "contractMonths", "strategicContract"]],
+    ],
+    requiredEvidence: ["tipo de material", "licenças", "limpeza exigida", "tempo de espera"],
+    executiveOutputs: ["custo por tonelada", "custo de limpeza", "custo de espera", "margem por contrato"],
+  },
+});
+
+export const getProductPricingBlueprint = (productId) =>
+  PRODUCT_PRICING_BLUEPRINTS[productId] || {
+    title: "Produto logístico customizado",
+    pricingUnit: "unidade configurável",
+    inputGroups: [["Premissas", ["distanceKm", "frequencyPerMonth", "customerTargetPrice"]]],
+    requiredEvidence: ["escopo operacional", "premissas comerciais", "SLA"],
+    executiveOutputs: ["preço recomendado", "margem", "custo por unidade", "impacto ESG"],
+  };
+
 export const DEFAULT_ENVIRONMENTAL_FACTORS = {
   methodologyVersion: "tdg-env-v1",
   dieselKgCo2ePerLiter: 2.68,
@@ -320,7 +393,8 @@ export const buildCostBreakdown = (inputs = {}, assumptions = {}) => {
   const drivers = Math.max(1, n(inputs.drivers || vehicles));
   const helpers = Math.max(0, n(inputs.helpers || inputs.ajudantes || 0));
   const distanceTotal = distanceKm * trips;
-  const energy = distanceTotal * n(inputs.electricKwhPerKm || a.energyCostPerKwh ? DEFAULT_ENVIRONMENTAL_FACTORS.electricKwhPerKm : 0.22) * a.energyCostPerKwh;
+  const electricKwhPerKm = n(inputs.electricKwhPerKm || DEFAULT_ENVIRONMENTAL_FACTORS.electricKwhPerKm);
+  const energy = distanceTotal * electricKwhPerKm * a.energyCostPerKwh;
   const vehicle = vehicles * days * a.vehicleDailyCost;
   const driver = drivers * days * a.driverDailyCost;
   const helper = helpers * days * a.helperDailyCost;
@@ -407,7 +481,7 @@ export const calculateGreenScore = (impact = {}, metrics = {}, weights = {}) => 
   };
   const parts = {
     reduction: Math.min(100, n(impact.reductionPercent)),
-    lowEmissionKm: Math.min(100, n(impact.lowEmissionKm) / Math.max(1, n(metrics.lowEmissionKmTarget || 1000)) * 100),
+    lowEmissionKm: Math.min(100, (n(impact.lowEmissionKm) / Math.max(1, n(metrics.lowEmissionKmTarget || 1000))) * 100),
     cleanEnergy: Math.min(100, n(metrics.cleanEnergyPercent ?? 80)),
     efficiency: Math.min(100, (n(metrics.occupancyPercent || 75) + n(metrics.productivityPercent || 75)) / 2),
     targetEvolution: Math.min(100, n(metrics.targetEvolutionPercent || impact.reductionPercent || 0)),
@@ -454,10 +528,12 @@ export const centralPricingEngine = (productId, inputs = {}, config = {}) => {
     { marginPercent, selectedPrice, minimumPrice, targetPrice, inputs },
     productConfig,
   );
+  const blueprint = getProductPricingBlueprint(productId);
   return {
     productId,
     productName: productConfig.name,
     version: productConfig.version,
+    blueprint,
     inputs: { ...inputs },
     assumptions,
     cost,
@@ -492,6 +568,7 @@ export const centralPricingEngine = (productId, inputs = {}, config = {}) => {
       calculatedAt: new Date().toISOString(),
       ruleVersion: productConfig.version,
       methodologyVersion: impact.methodologyVersion,
+      requiredEvidence: blueprint.requiredEvidence,
     },
   };
 };
@@ -677,6 +754,8 @@ export const summarizeTodoGreenDashboard = (data = {}) => {
     aprovacoesPendentes: scenarios.filter((item) => item.result?.approval?.required).length,
     tarefasAtrasadas: tasks.filter((task) => task.due && task.due < now && task.status !== "Concluído").length,
     inboxNaoLido: n(data.inboxUnread),
+    demoData: data.demoData === true,
+    dataPolicy: TODO_GREEN_PRODUCTION_DATA_POLICY.source,
   };
 };
 
