@@ -72,12 +72,12 @@ export const TODO_GREEN_MODULE_AREAS = [
   {
     id: "esg",
     name: "Inteligência ESG",
-    description: "Impacto ambiental, Green Score, Escopo 3, relatórios e evidências.",
+    description: "Impacto ambiental, Green Score, emissões da cadeia logística, relatórios e documentos.",
   },
   {
     id: "comercial",
     name: "Comercial",
-    description: "Clientes, oportunidades, propostas, pricing, deal desk e benchmark.",
+    description: "Clientes, oportunidades, propostas, preços, aprovações comerciais e comparação de mercado.",
   },
   {
     id: "financeiro",
@@ -137,7 +137,7 @@ export const TODO_GREEN_MODULE_CATALOG = [
     order: 4,
     description: "Converte números ambientais em textos auditáveis para propostas e relatórios.",
   }),
-  module("escopo-3", "Escopo 3", "esg", "/todogreen/escopo-3", {
+  module("escopo-3", "Emissões da cadeia logística", "esg", "/todogreen/escopo-3", {
     icon: "Network",
     order: 5,
     description: "Memória de cálculo para apoiar inventários e governança da cadeia logística.",
@@ -174,7 +174,7 @@ export const TODO_GREEN_MODULE_CATALOG = [
     order: 17,
     permissions: ["read", "pricing:simulate", "pricing:manage"],
   }),
-  module("deal-desk", "Deal Desk", "comercial", "/todogreen/precificacao", {
+  module("deal-desk", "Aprovação comercial", "comercial", "/todogreen/precificacao", {
     icon: "ShieldCheck",
     order: 18,
     permissions: ["read", "deal:approve", "deal:review"],
@@ -195,7 +195,7 @@ export const TODO_GREEN_MODULE_CATALOG = [
     order: 34,
     permissions: ["read", "cost:manage"],
   }),
-  module("opex", "OPEX", "financeiro", "/todogreen/custos", { icon: "WalletCards", order: 35 }),
+  module("opex", "Despesas da operação", "financeiro", "/todogreen/custos", { icon: "WalletCards", order: 35 }),
   module("margem", "Margem", "financeiro", "/todogreen/dashboard", { icon: "Gauge", order: 36 }),
   module("rentabilidade", "Rentabilidade", "financeiro", "/todogreen/dashboard", { icon: "Activity", order: 37 }),
   module("orcamento", "Orçamento", "financeiro", "/todogreen/custos", { icon: "ListChecks", order: 38 }),
