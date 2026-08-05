@@ -40,7 +40,7 @@ const MODULE_META = {
   "green-score": ["Green Score", "Acompanhe o indicador ambiental e sua evolução."],
   "calculadora-ambiental": ["Calculadora ambiental", "Calcule o impacto ambiental de uma operação."],
   "tradutor-esg": ["Tradutor ESG", "Transforme resultados ambientais em informações claras para o cliente."],
-  "escopo-3": ["Escopo 3", "Organize as emissões relacionadas às operações logísticas do cliente."],
+  "escopo-3": ["Emissões da cadeia logística", "Organize as emissões relacionadas às operações do cliente. Nos relatórios, isso também aparece como Escopo 3."],
 };
 
 export const parseTodoGreenRoute = (pathname = "") => {
