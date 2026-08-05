@@ -679,9 +679,10 @@ function ModuleCard({ item }) {
       <span className="tdg-module-icon"><Icon size={22} /></span>
       <span>
         <strong>{item.name}</strong>
-        <small>{implemented ? item.description || "Abrir módulo" : "Backlog mapeado; ainda não exibido como funcional."}</small>
+        {implemented && item.description && <small>{item.description}</small>}
+        {!implemented && <small>Planejado. Ainda não liberado.</small>}
       </span>
-      <em>{implemented ? "funcional" : "backlog"}</em>
+      {!implemented && <em>Planejado</em>}
       {implemented && <ExternalLink size={18} aria-hidden="true" />}
     </button>
   );
