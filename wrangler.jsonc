@@ -37,6 +37,9 @@
     // A dona da plataforma entra na vertical To Do Green sem precisar de
     // negócio com nome certo nem convite — a regra do cliente vale para o
     // cliente, não para quem opera o produto.
-    "TODOGREEN_ADMIN_EMAILS": "brunapsiles@icloud.com,brunapsiles@gmail.com"
+    // O endereço com "+todogreen" é a conta de teste para colher feedback:
+    // o código de verificação cai na caixa da titular, mas o app a trata
+    // como conta separada — dá para emprestar sem expor a conta principal.
+    "TODOGREEN_ADMIN_EMAILS": "brunapsiles@icloud.com,brunapsiles@gmail.com,brunapsiles+todogreen@gmail.com"
   }
 }
