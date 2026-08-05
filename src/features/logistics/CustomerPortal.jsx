@@ -433,7 +433,7 @@ export default function CustomerPortal() {
           <Operacoes operacoes={operacoes} carregando={carregandoOperacoes} />
         )}
         {aba === "green-score" && <EmBreve titulo="Green Score detalhado" />}
-        {aba === "esg" && <EmBreve titulo="ESG e Escopo 3" />}
+        {aba === "esg" && <EmBreve titulo="Emissões da cadeia logística" />}
         {aba === "relatorios" && <Relatorios setAviso={setAviso} />}
         {aba === "documentos" && (
           <Evidencias evidencias={evidencias} carregando={carregandoEvidencias} />
