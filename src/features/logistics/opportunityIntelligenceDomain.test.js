@@ -6,6 +6,7 @@ import {
   greenScoreEsperado,
   impactoFinanceiro,
   impactoOperacional,
+  normalizarOportunidade,
   potencialAmbiental,
   potencialExpansao,
   probabilidadeDoEstagio,
@@ -381,6 +382,90 @@ describe("análise completa", () => {
     expect(analise.greenScore.componentes.qualidadeDados.valor).toBe(
       analise.ambiental.qualidadeDados,
     );
+  });
+});
+
+describe("adaptador do registro guardado", () => {
+  // O registro que o CRM já grava hoje, em inglês e sem dado operacional.
+  const registroAntigo = {
+    id: "opp-1",
+    client: "Distribuidora Norte",
+    productId: "middle-mile",
+    stage: "Diagnóstico",
+    value: 180000,
+    probability: 30,
+    lastInteractionAt: "2026-02-01T00:00:00.000Z",
+  };
+
+  it("lê o registro antigo sem exigir migração", () => {
+    const o = normalizarOportunidade(registroAntigo);
+    expect(o.cliente).toBe("Distribuidora Norte");
+    expect(o.estagio).toBe("Diagnóstico");
+    expect(o.valorContrato).toBe(180000);
+    expect(o.probabilidade).toBe(30);
+  });
+
+  it("value antigo é o contrato inteiro, não a mensalidade", () => {
+    const f = impactoFinanceiro(normalizarOportunidade(registroAntigo));
+    // Tratar 180.000 como mensalidade multiplicaria o pipeline por 12.
+    expect(f.valorContrato).toBe(180000);
+    expect(f.valorMensal).toBe(15000);
+    expect(f.baseDoValor).toBe("contrato");
+  });
+
+  it("mensalidade informada tem precedência sobre o valor herdado", () => {
+    const f = impactoFinanceiro(
+      normalizarOportunidade({ ...registroAntigo, valorMensal: 20000, mesesContrato: 24 }),
+    );
+    expect(f.baseDoValor).toBe("mensal");
+    expect(f.valorContrato).toBe(480000);
+  });
+
+  it("sem valor nenhum, diz que falta em vez de mostrar zero como se fosse dado", () => {
+    expect(impactoFinanceiro({}).baseDoValor).toBe("ausente");
+  });
+
+  it("estágio herdado do CRM não reabre negócio já fechado", () => {
+    expect(normalizarOportunidade({ stage: "Ganho" }).estagio).toBe("Fechada ganha");
+    expect(normalizarOportunidade({ stage: "Perdido" }).estagio).toBe("Fechada perdida");
+    expect(normalizarOportunidade({ stage: "Cliente ativo" }).estagio).toBe("Fechada ganha");
+    expect(normalizarOportunidade({ stage: "Prospecção" }).estagio).toBe("Mapeamento");
+  });
+
+  it("estágio escrito sem acento ou em caixa diferente é reconhecido", () => {
+    expect(estagioValido("negociacao")).toBe("Negociação");
+    expect(estagioValido("PROPOSTA")).toBe("Proposta");
+    expect(estagioValido("diagnostico")).toBe("Diagnóstico");
+  });
+
+  it("converte a última interação em dias parados", () => {
+    const agora = new Date("2026-03-01T00:00:00.000Z").getTime();
+    expect(normalizarOportunidade(registroAntigo, agora).diasSemInteracao).toBe(28);
+  });
+
+  it("data ilegível não vira 'zero dias parado'", () => {
+    const o = normalizarOportunidade({ lastInteractionAt: "ontem" });
+    expect(o.diasSemInteracao).toBe(0);
+    // Zero aqui significa "não sei", e o risco de esfriamento não dispara —
+    // melhor não alarmar do que alarmar com data inventada.
+    expect(riscosDaOportunidade(o).some((r) => r.tipo === "esfriando")).toBe(false);
+  });
+
+  it("declara quando o tipo de veículo foi presumido", () => {
+    const presumido = potencialAmbiental(
+      normalizarOportunidade({ ...registroAntigo, distanciaKm: 100, viagensMes: 20 }),
+    );
+    expect(presumido.tipoVeiculoPresumido).toBe(true);
+    const informado = potencialAmbiental(oportunidade());
+    expect(informado.tipoVeiculoPresumido).toBe(false);
+  });
+
+  it("registro cru passa pelo motor inteiro sem quebrar", () => {
+    const analise = analisarOportunidade(normalizarOportunidade(registroAntigo));
+    expect(analise.estagio).toBe("Diagnóstico");
+    expect(analise.ambiental.disponivel).toBe(false);
+    expect(analise.financeiro.valorContrato).toBe(180000);
+    expect(analise.proximaAcao.acao).toBeTruthy();
   });
 });
 

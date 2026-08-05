@@ -57,8 +57,43 @@ const arredondar = (v, casas = 1) => {
 
 const texto = (v) => String(v ?? "").trim();
 
-export const estagioValido = (valor) =>
-  ESTAGIOS_OPORTUNIDADE.includes(valor) ? valor : "Mapeamento";
+// Os nomes de estágio que já existem no CRM e nos registros antigos. Sem esta
+// tabela, uma oportunidade "Ganho" cadastrada mês passado voltaria para
+// "Mapeamento" e reapareceria no pipeline como se estivesse aberta.
+const APELIDOS_ESTAGIO = {
+  ganho: "Fechada ganha",
+  ganha: "Fechada ganha",
+  ganhou: "Fechada ganha",
+  fechado: "Fechada ganha",
+  fechada: "Fechada ganha",
+  perdido: "Fechada perdida",
+  perdida: "Fechada perdida",
+  perdeu: "Fechada perdida",
+  prospeccao: "Mapeamento",
+  prospecao: "Mapeamento",
+  qualificacao: "Diagnóstico",
+  solucao: "Construção de solução",
+  proposta: "Proposta",
+  negociacao: "Negociação",
+  implantacao: "Fechada ganha",
+  "cliente ativo": "Fechada ganha",
+};
+
+const semAcento = (valor) =>
+  String(valor ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+
+export const estagioValido = (valor) => {
+  if (ESTAGIOS_OPORTUNIDADE.includes(valor)) return valor;
+  const chave = semAcento(valor);
+  if (!chave) return "Mapeamento";
+  const canonico = ESTAGIOS_OPORTUNIDADE.find((e) => semAcento(e) === chave);
+  if (canonico) return canonico;
+  return APELIDOS_ESTAGIO[chave] || "Mapeamento";
+};
 
 export const probabilidadeDoEstagio = (estagio, informada) => {
   const n = Number(informada);
@@ -90,10 +125,14 @@ export const potencialAmbiental = (oportunidade = {}) => {
       ],
     };
 
+  // Sem tipo de veículo informado, o cálculo assume a frota elétrica que é o
+  // produto da casa — mas essa premissa é a que mais infla o número, então ela
+  // sai declarada no resultado em vez de ficar escondida no código.
+  const veiculoInformado = texto(oportunidade.tipoVeiculo);
   const resultado = calcularImpactoAmbiental({
     distanciaKm,
     viagens: viagensMes,
-    tipoVeiculo: texto(oportunidade.tipoVeiculo) || "elétrico",
+    tipoVeiculo: veiculoInformado || "elétrico",
     origens: oportunidade.origens || { distancia: "estimado" },
     calculadoEm: oportunidade.calculadoEm,
   });
@@ -111,6 +150,7 @@ export const potencialAmbiental = (oportunidade = {}) => {
     qualidadeDados: resultado.qualidadeDados,
     versaoFatores: resultado.versaoFatores,
     mesesContrato: meses,
+    tipoVeiculoPresumido: !veiculoInformado,
     // A memória vai junto: se a proposta cita o número, a conta tem que estar
     // anexada. É o que separa argumento de alegação.
     memoria: resultado.memoria,
@@ -162,16 +202,26 @@ export const greenScoreEsperado = (oportunidade = {}, ambiental = null, pesos = 
 // o que entra em comemoração — e confundir os dois é como pipeline vira
 // ficção.
 export const impactoFinanceiro = (oportunidade = {}) => {
-  const mensal = num(oportunidade.valorMensal);
   const meses = Math.max(1, num(oportunidade.mesesContrato) || 12);
+  // Duas formas de informar o mesmo negócio: mensalidade (como o comercial
+  // negocia) ou valor cheio do contrato (como o registro antigo guardava).
+  // A mensalidade manda quando as duas vêm, porque é o dado que a pessoa
+  // digitou por último.
+  const mensalInformado = num(oportunidade.valorMensal);
+  const contratoInformado = num(oportunidade.valorContrato);
+  const mensal =
+    mensalInformado > 0 ? mensalInformado : contratoInformado / meses;
+  const contrato = mensalInformado > 0 ? mensalInformado * meses : contratoInformado;
   const probabilidade = probabilidadeDoEstagio(
     oportunidade.estagio,
     oportunidade.probabilidade,
   );
-  const contrato = mensal * meses;
   return {
     valorMensal: arredondar(mensal, 2),
     valorContrato: arredondar(contrato, 2),
+    // Diz de onde veio o número, para a tela não afirmar "mensalidade" sobre um
+    // valor que a pessoa digitou como total do contrato.
+    baseDoValor: mensalInformado > 0 ? "mensal" : contratoInformado > 0 ? "contrato" : "ausente",
     mesesContrato: meses,
     probabilidade,
     valorPonderado: arredondar((contrato * probabilidade) / 100, 2),
@@ -353,6 +403,45 @@ export const proximaAcao = (oportunidade = {}, riscos = null) => {
     acao: "Registrar o desfecho e o aprendizado da oportunidade",
     porque: "Oportunidade fechada sem registro não ensina nada ao time.",
     urgencia: "baixa",
+  };
+};
+
+// ---- Adaptador do registro guardado ----
+//
+// O CRM guarda a oportunidade com nomes em inglês e herdados de versões
+// anteriores (stage, value, probability). O motor fala a língua do domínio.
+// Traduzir aqui, uma vez e testado, evita que cada tela invente sua própria
+// conversão — e é o que permite ler registro antigo sem migração destrutiva.
+export const normalizarOportunidade = (registro = {}, agora = Date.now()) => {
+  const ultima = registro.lastInteractionAt || registro.ultimaInteracaoEm;
+  let diasSemInteracao = num(registro.diasSemInteracao);
+  if (!diasSemInteracao && ultima) {
+    const t = new Date(ultima).getTime();
+    // Data ilegível não vira "0 dias parado": vira ausência de informação.
+    if (Number.isFinite(t))
+      diasSemInteracao = Math.max(0, Math.floor((agora - t) / 86400000));
+  }
+
+  return {
+    ...registro,
+    id: registro.id,
+    cliente: texto(registro.cliente || registro.client || registro.accountName),
+    estagio: estagioValido(registro.estagio ?? registro.stage),
+    probabilidade: registro.probabilidade ?? registro.probability,
+    valorMensal: num(registro.valorMensal),
+    // `value` no registro antigo é o valor cheio estimado do negócio, não a
+    // mensalidade — tratá-lo como mensal multiplicaria o pipeline por 12.
+    valorContrato: num(registro.valorContrato) || num(registro.value),
+    mesesContrato: num(registro.mesesContrato) || num(registro.contractMonths),
+    distanciaKm: num(registro.distanciaKm) || num(registro.distanceKm),
+    viagensMes: num(registro.viagensMes) || num(registro.monthlyTrips),
+    tipoVeiculo: texto(registro.tipoVeiculo || registro.vehicleType),
+    ocupacaoPrevistaPercent: num(registro.ocupacaoPrevistaPercent),
+    frotaLimpaPercent: num(registro.frotaLimpaPercent),
+    veiculosDisponiveis: num(registro.veiculosDisponiveis),
+    precoAlvoCliente: num(registro.precoAlvoCliente),
+    precoMinimo: num(registro.precoMinimo),
+    diasSemInteracao,
   };
 };
 
