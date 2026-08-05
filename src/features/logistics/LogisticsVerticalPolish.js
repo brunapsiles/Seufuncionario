@@ -208,7 +208,13 @@ const buildRoutineCard = (routine) => {
 const ensureRoutineMap = () => {
   const root = document.querySelector(".tdg");
   const hero = document.querySelector(".tdg-hero");
-  if (!root || !hero || document.querySelector(".tdg-routine-map")) return;
+  const existing = document.querySelector(".tdg-routine-map");
+  const isHome = /^\/todogreen\/?$/.test(window.location.pathname);
+  if (!isHome) {
+    existing?.remove();
+    return;
+  }
+  if (!root || !hero || existing) return;
 
   const section = document.createElement("section");
   section.className = "tdg-routine-map";
