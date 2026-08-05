@@ -18,6 +18,15 @@ import {
   scopedWhere,
 } from "../../src/features/logistics/customerPortalDomain.js";
 import {
+  STATUS_SOLICITACAO,
+  TIPOS_LISTA,
+  aplicarTransicao,
+  prazoDaSolicitacao,
+  resumoParaCliente,
+  statusValido,
+  validarSolicitacao,
+} from "../../src/features/logistics/clientRequestDomain.js";
+import {
   INSTRUCAO_ASSISTENTE,
   RESPOSTA_FORA_DE_ESCOPO,
   foraDoEscopoDoCliente,
@@ -208,6 +217,43 @@ async function ensureTables(env) {
     )`,
     `CREATE INDEX IF NOT EXISTS idx_todogreen_client_assignments_seller
        ON todogreen_client_assignments (tenant_id, seller_email, status, updated_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS todogreen_client_requests (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'todogreen',
+      client_id TEXT NOT NULL,
+      workspace_owner_id TEXT NOT NULL DEFAULT '',
+      type TEXT NOT NULL DEFAULT 'outro',
+      subject TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      urgency TEXT NOT NULL DEFAULT 'normal',
+      status TEXT NOT NULL DEFAULT 'aberta',
+      fields_json TEXT NOT NULL DEFAULT '{}',
+      due_at TEXT,
+      opened_by TEXT NOT NULL DEFAULT '',
+      assigned_to TEXT NOT NULL DEFAULT '',
+      closed_at TEXT,
+      closed_by TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_todogreen_client_requests_client
+       ON todogreen_client_requests (tenant_id, client_id, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_todogreen_client_requests_fila
+       ON todogreen_client_requests (tenant_id, status, due_at)`,
+    `CREATE TABLE IF NOT EXISTS todogreen_client_request_messages (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'todogreen',
+      client_id TEXT NOT NULL,
+      request_id TEXT NOT NULL,
+      author_side TEXT NOT NULL DEFAULT 'cliente',
+      author_email TEXT NOT NULL DEFAULT '',
+      author_name TEXT NOT NULL DEFAULT '',
+      body TEXT NOT NULL,
+      internal INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_todogreen_client_request_messages_thread
+       ON todogreen_client_request_messages (tenant_id, client_id, request_id, created_at)`,
   ];
   for (const sql of ddl) await env.DB.prepare(sql).run().catch(() => {});
 }
@@ -597,7 +643,246 @@ export async function handleTodoGreenCustomerPortal(request, env) {
     }
   }
 
+  // ----- Solicitações -----
+  //
+  // A porta que a aba prometia. O cliente da solicitação vem do escopo da
+  // sessão; não existe caminho para o corpo da requisição escolher outro.
+  if (resource === "solicitacoes") {
+    if (!clientCan(escopo, "portal:request:create") && request.method !== "GET")
+      return response({ error: "Seu acesso não permite abrir solicitações." }, 403);
+
+    if (request.method === "GET") {
+      const { sql, params } = scopedWhere(escopo);
+      const linhas = await env.DB.prepare(
+        `SELECT id, type, subject, description, urgency, status, fields_json,
+                due_at, opened_by, closed_at, created_at, updated_at
+           FROM todogreen_client_requests
+          WHERE ${sql}
+          ORDER BY created_at DESC
+          LIMIT ?`,
+      )
+        .bind(...params, MAX_LIMIT)
+        .all()
+        .catch(() => ({ results: [] }));
+
+      const solicitacoes = (linhas.results || []).map(linhaParaSolicitacao);
+      const detalhe = clean(url.searchParams.get("id"), 60);
+      let mensagens = [];
+      if (detalhe) {
+        // Mensagem interna da equipe não sai daqui. Filtrada no SQL, não na
+        // tela — esconder no navegador é entregar o dado e pedir para não olhar.
+        const conversa = await env.DB.prepare(
+          `SELECT id, author_side, author_name, body, created_at
+             FROM todogreen_client_request_messages
+            WHERE tenant_id = ? AND client_id = ? AND request_id = ? AND internal = 0
+            ORDER BY created_at`,
+        )
+          .bind(escopo.tenantId, escopo.clientId, detalhe)
+          .all()
+          .catch(() => ({ results: [] }));
+        mensagens = (conversa.results || []).map((m) => ({
+          id: m.id,
+          lado: m.author_side,
+          autor: m.author_name,
+          texto: m.body,
+          criadaEm: m.created_at,
+        }));
+      }
+
+      return response({
+        solicitacoes,
+        mensagens,
+        resumo: resumoParaCliente(solicitacoes),
+        tipos: TIPOS_LISTA.map((t) => ({
+          id: t.id,
+          rotulo: t.rotulo,
+          descricao: t.descricao,
+          prazoHoras: t.prazoHoras,
+          obrigatorios: t.obrigatorios,
+          camposRotulo: t.camposRotulo,
+        })),
+      });
+    }
+
+    if (request.method === "POST") {
+      let body = {};
+      try {
+        body = await request.json();
+      } catch {
+        return response({ error: "Corpo JSON inválido." }, 400);
+      }
+
+      // Uma nova mensagem numa solicitação existente.
+      const emResposta = clean(body.solicitacaoId, 60);
+      if (emResposta) return responderSolicitacao(env, escopo, user, emResposta, body);
+
+      const validacao = validarSolicitacao(body);
+      if (!validacao.valido)
+        return response({ error: validacao.erros[0], erros: validacao.erros }, 400);
+
+      const agora = new Date().toISOString();
+      const id = crypto.randomUUID();
+      const { tipo, assunto, descricao, urgencia, campos } = validacao.limpo;
+      await env.DB.prepare(
+        `INSERT INTO todogreen_client_requests
+           (id, tenant_id, client_id, workspace_owner_id, type, subject, description,
+            urgency, status, fields_json, due_at, opened_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'aberta', ?, ?, ?, ?, ?)`,
+      )
+        .bind(
+          id,
+          escopo.tenantId,
+          escopo.clientId,
+          escopo.workspaceOwnerId || "",
+          tipo,
+          assunto,
+          descricao,
+          urgencia,
+          JSON.stringify(campos),
+          prazoDaSolicitacao(tipo, urgencia, agora),
+          escopo.email,
+          agora,
+          agora,
+        )
+        .run();
+
+      // A descrição vira a primeira mensagem da conversa: sem isso a thread
+      // começaria no meio, sem o que foi pedido originalmente.
+      await inserirMensagem(env, escopo, id, {
+        lado: "cliente",
+        email: escopo.email,
+        nome: user?.name || escopo.email,
+        texto: descricao,
+      });
+
+      await logPortalEvent(env, escopo, user, "solicitacao_aberta", id, assunto);
+      return response({ ok: true, id }, 201);
+    }
+
+    if (request.method === "PATCH") {
+      let body = {};
+      try {
+        body = await request.json();
+      } catch {
+        return response({ error: "Corpo JSON inválido." }, 400);
+      }
+      const id = clean(body.id, 60);
+      if (!id) return response({ error: "Informe a solicitação." }, 400);
+
+      const atual = await env.DB.prepare(
+        `SELECT id, status FROM todogreen_client_requests
+          WHERE tenant_id = ? AND client_id = ? AND id = ?`,
+      )
+        .bind(escopo.tenantId, escopo.clientId, id)
+        .first();
+      if (!atual) return response({ error: "Solicitação não encontrada." }, 404);
+
+      const movimento = aplicarTransicao(atual, {
+        lado: "cliente",
+        para: clean(body.status, 30),
+        autor: escopo.email,
+      });
+      if (!movimento.ok) return response({ error: movimento.erro }, 409);
+
+      await env.DB.prepare(
+        `UPDATE todogreen_client_requests
+            SET status = ?, closed_at = ?, closed_by = ?, updated_at = ?
+          WHERE tenant_id = ? AND client_id = ? AND id = ?`,
+      )
+        .bind(
+          movimento.status,
+          movimento.encerradoEm,
+          movimento.encerradoPor,
+          new Date().toISOString(),
+          escopo.tenantId,
+          escopo.clientId,
+          id,
+        )
+        .run();
+
+      await logPortalEvent(env, escopo, user, "solicitacao_status", id, movimento.status);
+      return response({ ok: true, status: movimento.status });
+    }
+
+    return response({ error: "Método não permitido." }, 405);
+  }
+
   return response({ error: "Rota do portal não encontrada." }, 404);
+}
+
+const linhaParaSolicitacao = (linha) => ({
+  id: linha.id,
+  tipo: linha.type,
+  assunto: linha.subject,
+  descricao: linha.description,
+  urgencia: linha.urgency,
+  status: linha.status,
+  campos: parse(linha.fields_json, {}),
+  prazoEm: linha.due_at,
+  abertaPor: linha.opened_by,
+  encerradaEm: linha.closed_at,
+  criadaEm: linha.created_at,
+  atualizadaEm: linha.updated_at,
+});
+
+async function inserirMensagem(env, escopo, requestId, { lado, email, nome, texto, interna = 0 }) {
+  await env.DB.prepare(
+    `INSERT INTO todogreen_client_request_messages
+       (id, tenant_id, client_id, request_id, author_side, author_email, author_name,
+        body, internal, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      crypto.randomUUID(),
+      escopo.tenantId,
+      escopo.clientId,
+      requestId,
+      lado,
+      clean(email, 160),
+      clean(nome, 120),
+      clean(texto, 4000),
+      interna ? 1 : 0,
+      new Date().toISOString(),
+    )
+    .run();
+}
+
+async function responderSolicitacao(env, escopo, user, id, body) {
+  const texto = clean(body.mensagem ?? body.texto, 4000);
+  if (texto.length < 2) return response({ error: "Escreva a sua mensagem." }, 400);
+
+  const atual = await env.DB.prepare(
+    `SELECT id, status FROM todogreen_client_requests
+      WHERE tenant_id = ? AND client_id = ? AND id = ?`,
+  )
+    .bind(escopo.tenantId, escopo.clientId, id)
+    .first();
+  if (!atual) return response({ error: "Solicitação não encontrada." }, 404);
+  if (STATUS_SOLICITACAO[statusValido(atual.status)].encerrado)
+    return response(
+      { error: "Esta solicitação já foi encerrada. Abra uma nova para retomar o assunto." },
+      409,
+    );
+
+  await inserirMensagem(env, escopo, id, {
+    lado: "cliente",
+    email: escopo.email,
+    nome: user?.name || escopo.email,
+    texto,
+  });
+
+  // Cliente respondeu: a bola volta para a equipe e o relógio dela volta a
+  // correr. Deixar em "aguardando cliente" esconderia o pedido da fila.
+  const proximo = statusValido(atual.status) === "aguardando_cliente" ? "em_analise" : atual.status;
+  await env.DB.prepare(
+    `UPDATE todogreen_client_requests SET status = ?, updated_at = ?
+      WHERE tenant_id = ? AND client_id = ? AND id = ?`,
+  )
+    .bind(proximo, new Date().toISOString(), escopo.tenantId, escopo.clientId, id)
+    .run();
+
+  await logPortalEvent(env, escopo, user, "solicitacao_mensagem", id, texto.slice(0, 120));
+  return response({ ok: true, status: proximo });
 }
 
 // ----- Administração do portal, do lado interno -----
