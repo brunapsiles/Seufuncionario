@@ -1,52 +1,29 @@
 import "./LogisticsVerticalSalesPerformance.css";
 
-const SALES_ROUTINE = {
-  title: "Performance comercial",
-  route: "/todogreen/receita",
-  score: "8.4",
-  text: "Metas, carteira, receita elegível, comissão prevista, comissão liberada e qualidade da venda.",
-  subs: ["Metas", "Vendedores", "Comissões", "Aceleradores"],
-};
-
 const SALES_BLOCKS = [
-  ["Meta por vendedor", "Receita, margem, novos clientes, propostas enviadas e indicadores ESG vendidos."],
-  ["Comissão prevista", "Calculada por receita elegível, produto, margem mínima e status da proposta."],
-  ["Comissão liberada", "Só entra após faturamento, recebimento, margem validada e ausência de bloqueio."],
-  ["Aceleradores", "Bônus por venda estratégica, cliente enterprise, contrato recorrente e alta redução de emissões."],
+  ["Meta por vendedor", "Receita, margem, novos clientes, propostas enviadas, contratos recorrentes e indicadores ESG vendidos."],
+  ["Meta coletiva", "Receita do time, margem consolidada, carteira ativa, retenção, expansão e produtos estratégicos."],
+  ["Comissão prevista", "Calculada sobre receita elegível, produto vendido, margem mínima, status da proposta e atingimento da meta."],
+  ["Comissão liberada", "Só libera após faturamento, recebimento, margem validada, operação iniciada e ausência de bloqueios."],
+  ["Aceleradores", "Multiplicadores por cliente enterprise, contrato recorrente, expansão relevante e alta redução de emissões."],
+  ["Estornos e clawback", "Reverte comissão em inadimplência, cancelamento, margem negativa, erro de premissa ou descumprimento operacional."],
+  ["Divisão de venda", "Permite rateio entre SDR, hunter, farmer, pricing e liderança conforme regra versionada."],
+  ["Período fechado", "Alterações de regra não recalculam períodos encerrados sem fluxo formal de ajuste e aprovação."],
 ];
 
-const navigate = (route) => {
-  window.history.pushState({}, "", route);
-  window.dispatchEvent(new PopStateEvent("popstate"));
-};
+const COMMISSION_RULES = [
+  "Receita elegível por produto e cliente",
+  "Margem mínima atingida",
+  "Proposta aprovada quando houver exceção",
+  "Faturamento emitido",
+  "Recebimento confirmado",
+  "Operação iniciada",
+  "Sem pendência documental ou ESG",
+  "Regra versionada por período",
+];
 
-const createRoutineCard = () => {
-  const button = document.createElement("button");
-  button.className = "tdg-routine-card tdg-sales-routine";
-  button.type = "button";
-  button.setAttribute("aria-label", `Abrir ${SALES_ROUTINE.title}`);
-  button.innerHTML = `
-    <header><strong>${SALES_ROUTINE.title}</strong><b>nota ${SALES_ROUTINE.score}</b></header>
-    <p>${SALES_ROUTINE.text}</p>
-    <div class="tdg-routine-sub">${SALES_ROUTINE.subs.map((item) => `<span>${item}</span>`).join("")}</div>
-  `;
-  button.addEventListener("click", () => navigate(SALES_ROUTINE.route));
-  return button;
-};
-
-const ensureSalesRoutine = () => {
-  const grid = document.querySelector(".tdg-routine-grid");
-  if (!grid || document.querySelector(".tdg-sales-routine")) return;
-  const finance = [...grid.querySelectorAll(".tdg-routine-card")].find((card) =>
-    card.textContent.includes("Financeiro"),
-  );
-  const card = createRoutineCard();
-  if (finance) finance.insertAdjacentElement("beforebegin", card);
-  else grid.appendChild(card);
-
-  const score = document.querySelector(".tdg-routine-score");
-  if (score) score.textContent = "régua mínima 8/10 · 9 rotinas";
-};
+const COMMERCIAL_SUBFUNCTIONS = ["Metas", "Comissões", "Benchmark", "Deal Desk", "Carteira", "Próxima ação"];
+const FINANCE_SUBFUNCTIONS = ["Receita prevista", "Contratada", "Realizada", "Faturada", "Recebida", "Comissões", "Clawback"];
 
 const ensureSalesPerformanceBlock = () => {
   const revenuePanel = [...document.querySelectorAll(".tdg-panel")].find((panel) =>
@@ -61,37 +38,57 @@ const ensureSalesPerformanceBlock = () => {
   section.className = "tdg-sales-performance";
   section.innerHTML = `
     <div>
-      <span class="tdg-kicker">PERFORMANCE COMERCIAL</span>
-      <h2>Metas e comissionamento</h2>
-      <p>O vendedor precisa enxergar meta, carteira, pipeline, receita elegível e comissão sem depender de planilha externa. A comissão deve premiar venda boa, não apenas volume vendido.</p>
+      <span class="tdg-kicker">METAS E COMISSÕES</span>
+      <h2>Performance comercial</h2>
+      <p>O vendedor acompanha meta, carteira, pipeline, receita elegível e comissão estimada sem planilha externa. A premiação considera qualidade da venda, margem, recebimento, recorrência, produto vendido e aderência ESG.</p>
     </div>
     <div class="tdg-sales-grid">
       ${SALES_BLOCKS.map(([title, text]) => `<article><span>${title}</span><strong>${title}</strong><small>${text}</small></article>`).join("")}
     </div>
     <div class="tdg-sales-formula">
       <strong>Regra operacional</strong>
-      <small>Comissão = receita elegível × percentual do produto × fator de margem × fator de atingimento. Bloqueios: margem abaixo do mínimo, proposta sem aprovação, cliente inadimplente, operação não iniciada ou evidência pendente.</small>
+      <small>Comissão = receita elegível × percentual do produto × fator de margem × fator de atingimento × aceleradores − estornos. Toda regra deve ter versão, vigência, responsável, aprovação e bloqueio de períodos fechados.</small>
+    </div>
+    <div class="tdg-sales-rules">
+      ${COMMISSION_RULES.map((item) => `<span>${item}</span>`).join("")}
     </div>
   `;
   revenuePanel.prepend(section);
 };
 
-const relabelFinanceRoutine = () => {
-  document.querySelectorAll(".tdg-routine-card").forEach((card) => {
-    if (!card.textContent.includes("Financeiro")) return;
-    const paragraph = card.querySelector("p");
-    if (paragraph) paragraph.textContent = "Receita, custos, margem, forecast, faturamento, metas e elegibilidade de comissão.";
-    const sub = card.querySelector(".tdg-routine-sub");
-    if (sub && !sub.textContent.includes("Comissões")) {
-      sub.insertAdjacentHTML("beforeend", "<span>Comissões</span><span>Metas</span>");
-    }
+const appendSubfunctions = (card, items) => {
+  const sub = card.querySelector(".tdg-routine-sub");
+  if (!sub) return;
+  items.forEach((item) => {
+    if (!sub.textContent.includes(item)) sub.insertAdjacentHTML("beforeend", `<span>${item}</span>`);
   });
 };
 
+const relabelExistingRoutines = () => {
+  document.querySelectorAll(".tdg-routine-card").forEach((card) => {
+    const text = card.textContent || "";
+    if (text.includes("Financeiro")) {
+      const paragraph = card.querySelector("p");
+      if (paragraph) paragraph.textContent = "Receita, custos, margem, forecast, faturamento, recebimento, metas e comissão elegível.";
+      appendSubfunctions(card, FINANCE_SUBFUNCTIONS);
+    }
+    if (text.includes("CRM") || text.includes("Oportunidades")) {
+      appendSubfunctions(card, COMMERCIAL_SUBFUNCTIONS);
+    }
+  });
+
+  const score = document.querySelector(".tdg-routine-score");
+  if (score) score.textContent = "régua mínima 8/10 · 8 rotinas";
+};
+
+const removeExtraSalesRoutine = () => {
+  document.querySelectorAll(".tdg-sales-routine").forEach((card) => card.remove());
+};
+
 const run = () => {
-  ensureSalesRoutine();
+  removeExtraSalesRoutine();
   ensureSalesPerformanceBlock();
-  relabelFinanceRoutine();
+  relabelExistingRoutines();
 };
 
 if (typeof window !== "undefined") {
