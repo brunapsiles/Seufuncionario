@@ -467,3 +467,115 @@
   .tdg-product-strip { display: flex; margin: 0 -10px 16px; overflow-x: auto; padding: 0 10px; scroll-snap-type: x mandatory; }
   .tdg-product-card { flex: 0 0 76%; scroll-snap-align: start; }
 }
+
+/* Central ESG: régua, fatores e histórico com a variação explicada. */
+.tdg-esg-pesos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.tdg-esg-pesos > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(46, 128, 104, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.tdg-esg-pesos small {
+  color: var(--tdg-muted);
+  text-transform: capitalize;
+}
+
+.tdg-esg-nota {
+  margin-top: 14px;
+  color: var(--tdg-muted);
+  font-size: 0.9rem;
+}
+
+.tdg-esg-carregando {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 22px;
+  color: var(--tdg-muted);
+}
+
+.tdg-esg-historico {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tdg-esg-historico li {
+  padding: 14px 16px;
+  border: 1px solid rgba(46, 128, 104, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.tdg-esg-ponto {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.tdg-esg-ponto strong {
+  font-size: 1.4rem;
+  color: var(--tdg-ink);
+}
+
+.tdg-esg-ponto small,
+.tdg-esg-historico p {
+  color: var(--tdg-muted);
+}
+
+.tdg-esg-historico p {
+  margin: 8px 0 0;
+}
+
+/* Tabela de fatores: rola no próprio quadro, nunca a página. */
+.tdg-tabela-frame {
+  overflow-x: auto;
+  margin-top: 14px;
+  border: 1px solid rgba(46, 128, 104, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.tdg-tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.tdg-tabela th,
+.tdg-tabela td {
+  padding: 10px 13px;
+  border-bottom: 1px solid rgba(46, 128, 104, 0.14);
+  text-align: left;
+}
+
+.tdg-tabela th {
+  color: var(--tdg-muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.tdg-tabela tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.tdg-esg-ressalva {
+  border-color: rgba(181, 142, 42, 0.32);
+  background: rgba(255, 250, 235, 0.6);
+}

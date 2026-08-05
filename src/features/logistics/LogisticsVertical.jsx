@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -59,6 +59,8 @@ import {
   productSpecificOutputs,
   summarizeTodoGreenDashboard,
 } from "./logisticsVerticalDomain.js";
+
+const EsgCenter = lazy(() => import("./EsgCenter.jsx"));
 
 const iconMap = {
   Activity,
@@ -190,6 +192,13 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     area: "esg",
     status: "functional",
     description: "CO2 evitado, diesel não consumido, equivalências, metodologia e textos comerciais auditáveis.",
+  },
+  "central-esg": {
+    title: "Central ESG",
+    route: "/todogreen/central-esg",
+    area: "esg",
+    status: "functional",
+    description: "Calcula e grava o impacto com memória de cálculo, apura o Green Score com a régua em vigor e guarda a explicação de cada variação.",
   },
   operacoes: {
     title: "Operações logísticas",
@@ -1077,6 +1086,11 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
       {page === "propostas" && <ProposalPanel data={verticalData} update={update} setToast={setToast} />}
       {page === "precificacao" && <PricingPanel role={role} update={update} db={db} authHeaders={authHeaders} setToast={setToast} />}
       {["esg", "green-score", "calculadora-ambiental", "tradutor-esg", "escopo-3"].includes(page) && <EsgPanel dashboard={dashboard} data={verticalData} />}
+      {page === "central-esg" && (
+        <Suspense fallback={<section className="tdg-panel">Carregando Central ESG...</section>}>
+          <EsgCenter authHeaders={authHeaders} setToast={setToast} />
+        </Suspense>
+      )}
       {page === "operacoes" && <OperationsPanel data={verticalData} update={update} setToast={setToast} />}
       {page === "receita" && <FinancePanel type="revenue" data={verticalData} update={update} setToast={setToast} />}
       {["custos", "comissoes"].includes(page) && <FinancePanel type="cost" data={verticalData} update={update} setToast={setToast} />}
