@@ -7,6 +7,8 @@ import "./features/logistics/LogisticsVerticalNavigation.css";
 import "./features/logistics/LogisticsVerticalPolish.js";
 import "./features/logistics/LogisticsVerticalSalesPerformance.js";
 import "./features/logistics/LogisticsVerticalNavigation.js";
+import "./features/logistics/LogisticsVerticalFleet.js";
+import "./features/logistics/LogisticsVerticalTracker.js";
 
 const reportError = (message, stack, componentStack) => {
   try {
