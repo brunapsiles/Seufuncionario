@@ -59,6 +59,12 @@ import {
   productSpecificOutputs,
   summarizeTodoGreenDashboard,
 } from "./logisticsVerticalDomain.js";
+import {
+  agruparModulosPorTela,
+  grupoAtendeBusca,
+  ordenarPorRelevancia,
+  resumirAssuntos,
+} from "./moduleGroupingDomain.js";
 
 const EsgCenter = lazy(() => import("./EsgCenter.jsx"));
 const PricingParametersPanel = lazy(() => import("./PricingParametersPanel.jsx"));
@@ -334,6 +340,12 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     description: "Gestão de e-mails autorizados e papéis privados da vertical.",
   },
 });
+
+// O nome que a aba já usa para cada tela. É ele que dá nome ao cartão: se a
+// aba se chama "Operações", o cartão não pode se chamar "Rotas".
+const TITULOS_POR_TELA = Object.fromEntries(
+  Object.values(MODULE_IMPLEMENTATION).map((item) => [item.route, item.navLabel]),
+);
 
 const fieldLabels = {
   allocationPercent: "Alocação da rota (%)",
@@ -617,7 +629,6 @@ const normalize = (value) =>
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 
-const moduleMatches = (item, query) => normalize(`${item.name} ${item.area} ${item.description}`).includes(normalize(query));
 
 const navigate = (route) => {
   if (typeof window === "undefined") return;
@@ -759,15 +770,20 @@ function MetricCard({ label, value, detail, tone = "neutral" }) {
   );
 }
 
-function ModuleCard({ item }) {
-  const Icon = iconMap[item.icon] || Boxes;
-  const implemented = IMPLEMENTED_MODULE_IDS.has(item.id);
+function ModuleCard({ grupo }) {
+  const Icon = iconMap[grupo.icone] || Boxes;
+  // A tela está liberada se qualquer um dos nomes que caem nela estiver
+  // implementado: quem procurou por "motorista" não deveria precisar adivinhar
+  // que o nome liberado é "operações".
+  const implemented = grupo.ids.some((id) => IMPLEMENTED_MODULE_IDS.has(id));
+  const assuntos = resumirAssuntos(grupo.assuntos);
   return (
-    <button className={`tdg-module-card ${implemented ? "" : "disabled"}`} type="button" onClick={() => implemented && openFunctionPage(item.route)}>
+    <button className={`tdg-module-card ${implemented ? "" : "disabled"}`} type="button" onClick={() => implemented && openFunctionPage(grupo.rota)}>
       <span className="tdg-module-icon"><Icon size={22} /></span>
       <span>
-        <strong>{item.name}</strong>
-        {implemented && item.description && <small>{item.description}</small>}
+        <strong>{grupo.nome}</strong>
+        {implemented && grupo.descricao && <small>{grupo.descricao}</small>}
+        {implemented && assuntos && <small className="tdg-module-assuntos">Aqui você resolve: {assuntos}.</small>}
         {!implemented && <small>Planejado. Ainda não liberado.</small>}
       </span>
       {!implemented && <em>Planejado</em>}
@@ -776,9 +792,9 @@ function ModuleCard({ item }) {
   );
 }
 
-function AreaSection({ area, modules }) {
-  const functional = modules.filter((item) => IMPLEMENTED_MODULE_IDS.has(item.id));
-  const backlog = modules.filter((item) => !IMPLEMENTED_MODULE_IDS.has(item.id));
+function AreaSection({ area, grupos }) {
+  const liberadas = grupos.filter((g) => g.ids.some((id) => IMPLEMENTED_MODULE_IDS.has(id)));
+  const planejadas = grupos.filter((g) => !g.ids.some((id) => IMPLEMENTED_MODULE_IDS.has(id)));
   return (
     <section className="tdg-section" aria-labelledby={`area-${area.id}`}>
       <div className="tdg-section-head">
@@ -786,16 +802,16 @@ function AreaSection({ area, modules }) {
           <span className="tdg-kicker">{area.name}</span>
           <h2 id={`area-${area.id}`}>{area.description}</h2>
         </div>
-        <span>{functional.length} funcionais · {backlog.length} backlog</span>
+        <span>{liberadas.length} disponíveis · {planejadas.length} planejadas</span>
       </div>
       <div className="tdg-module-grid">
-        {functional.map((item) => <ModuleCard item={item} key={item.id} />)}
+        {liberadas.map((grupo) => <ModuleCard grupo={grupo} key={grupo.rota} />)}
       </div>
-      {backlog.length > 0 && (
+      {planejadas.length > 0 && (
         <details className="tdg-backlog">
           <summary>Ver itens planejados desta área</summary>
           <div className="tdg-module-grid">
-            {backlog.map((item) => <ModuleCard item={item} key={item.id} />)}
+            {planejadas.map((grupo) => <ModuleCard grupo={grupo} key={grupo.rota} />)}
           </div>
         </details>
       )}
@@ -1197,8 +1213,22 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
   const isHome = /^\/todogreen\/?$/.test(path);
   const verticalData = useMemo(() => defaultVerticalData(db, remoteAccess), [db, remoteAccess]);
   const dashboard = useMemo(() => summarizeTodoGreenDashboard(verticalData), [verticalData]);
-  const filteredCatalog = TODO_GREEN_MODULE_CATALOG.filter((item) => moduleMatches(item, query));
-  const modulesByArea = TODO_GREEN_MODULE_AREAS.map((area) => ({ ...area, modules: filteredCatalog.filter((item) => item.area === area.id).sort((a, b) => a.order - b.order) }));
+  // Um cartão por tela. O catálogo continua com o vocabulário todo — é ele que
+  // faz a busca por "motorista" ou "forecast" achar alguma coisa — mas a tela
+  // deixa de mostrar sete nomes que abrem o mesmo lugar.
+  const gruposDeTela = useMemo(
+    () => agruparModulosPorTela(TODO_GREEN_MODULE_CATALOG, TITULOS_POR_TELA),
+    [],
+  );
+  const modulesByArea = TODO_GREEN_MODULE_AREAS.map((area) => ({
+    ...area,
+    grupos: ordenarPorRelevancia(
+      gruposDeTela.filter(
+        (grupo) => grupo.area === area.id && grupoAtendeBusca(grupo, query),
+      ),
+      query,
+    ),
+  }));
 
   if (!allowed) return <AccessDenied db={db} />;
 
@@ -1264,7 +1294,7 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
             <div className="tdg-product-strip">{LOGISTICS_PRODUCTS.map((product) => <ProductCard product={product} active={false} onSelect={openPricing} key={product.id} />)}</div>
           </section>
 
-          {modulesByArea.map((area) => <AreaSection area={area} modules={area.modules} key={area.id} />)}
+          {modulesByArea.map((area) => <AreaSection area={area} grupos={area.grupos} key={area.id} />)}
         </>
       )}
     </main>

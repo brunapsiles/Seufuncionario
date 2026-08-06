@@ -18314,6 +18314,14 @@ body {
   line-height: 1.35;
 }
 
+/* Os assuntos que a tela cobre. Antes eram cartões separados que abriam o
+   mesmo lugar; agora ficam aqui, mais discretos que a descrição. */
+.tdg-module-card .tdg-module-assuntos {
+  margin-top: 6px;
+  opacity: 0.78;
+  font-size: 0.78rem;
+}
+
 .tdg-product-strip {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
