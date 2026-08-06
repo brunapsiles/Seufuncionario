@@ -12,14 +12,11 @@ import {
   Sparkles,
 } from "lucide-react";
 import "./CustomerPortal.css";
-
-// ===== Sala do Cliente =====
-//
-// Experiência separada, mesma infraestrutura. Esta tela nunca pede o cliente:
-// ela pergunta ao servidor quem é a sessão e recebe de volta o cliente, o
-// papel, as permissões e o menu já filtrados. Se um dia alguém acrescentar um
-// item interno ao menu do servidor, ele apareceria aqui — por isso o filtro
-// verdadeiro vive lá, e o teste do servidor é quem o guarda.
+import {
+  AssistenteCliente,
+  GreenScoreDetalhado,
+  ImpactoAmbiental,
+} from "./CustomerPortalInsights.jsx";
 
 const ICONES = {
   inicio: Home,
@@ -45,9 +42,7 @@ const authHeaders = () => {
 };
 
 const pedir = async (caminho) => {
-  const resposta = await fetch(`/api/todogreen/portal/${caminho}`, {
-    headers: authHeaders(),
-  });
+  const resposta = await fetch(`/api/todogreen/portal/${caminho}`, { headers: authHeaders() });
   const dados = await resposta.json().catch(() => ({}));
   if (!resposta.ok) throw new Error(dados?.error || "Não foi possível carregar.");
   return dados;
@@ -90,7 +85,7 @@ function Inicio({ resumo }) {
     return (
       <SemDados
         titulo="Ainda não há operação registrada"
-        texto="Assim que a To Do Green registrar as primeiras operações do seu contrato, os indicadores aparecem aqui — com a memória de cálculo por trás de cada número."
+        texto="Assim que a To Do Green registrar as primeiras operações do seu contrato, os indicadores aparecem aqui com a memória de cálculo por trás de cada número."
       />
     );
 
@@ -100,45 +95,36 @@ function Inicio({ resumo }) {
       <div className="cp-indicadores">
         <Indicador
           rotulo="Green Score"
-          valor={greenScore ? numero.format(greenScore.valor) : "—"}
-          detalhe={
-            greenScore
-              ? `pesos ${greenScore.versaoPesos} · indicador proprietário, não é certificação`
-              : "ainda não calculado"
-          }
+          valor={greenScore ? numero.format(greenScore.valor ?? greenScore.score) : "—"}
+          detalhe={greenScore ? `pesos ${greenScore.versaoPesos || greenScore.weightsVersion || "—"} · indicador proprietário` : "ainda não calculado"}
           tom={greenScore ? "bom" : "neutro"}
         />
         <Indicador
           rotulo="CO₂ evitado"
-          valor={`${numero.format(ambiental.co2EvitadoKg / 1000)} t`}
-          detalhe={`${numero.format(ambiental.reducaoPercent)}% de redução`}
+          valor={`${numero.format((ambiental?.co2EvitadoKg || 0) / 1000)} t`}
+          detalhe={`${numero.format(ambiental?.reducaoPercent || 0)}% de redução`}
           tom="bom"
         />
         <Indicador
           rotulo="Diesel não consumido"
-          valor={`${inteiro.format(ambiental.dieselEvitadoL)} L`}
-          detalhe={`${ambiental.calculos} cálculo(s) auditável(is)`}
+          valor={`${inteiro.format(ambiental?.dieselEvitadoL || 0)} L`}
+          detalhe={`${ambiental?.calculos || 0} cálculo(s) auditável(is)`}
         />
         <Indicador
           rotulo="Operações"
-          valor={inteiro.format(operacoes.total)}
-          detalhe={`${inteiro.format(operacoes.entregas)} entregas`}
+          valor={inteiro.format(operacoes?.total || 0)}
+          detalhe={`${inteiro.format(operacoes?.entregas || 0)} entregas`}
         />
         <Indicador
           rotulo="Distância"
-          valor={`${inteiro.format(operacoes.distanciaKm)} km`}
-          detalhe={`ocupação média ${numero.format(operacoes.ocupacaoMedia)}%`}
+          valor={`${inteiro.format(operacoes?.distanciaKm || 0)} km`}
+          detalhe={`ocupação média ${numero.format(operacoes?.ocupacaoMedia || 0)}%`}
         />
       </div>
-      {ambiental.qualidadeDados > 0 && ambiental.qualidadeDados < 70 ? (
+      {ambiental?.qualidadeDados > 0 && ambiental.qualidadeDados < 70 ? (
         <div className="cp-alerta">
           <AlertTriangle size={18} />
-          <span>
-            A qualidade dos dados destes cálculos está em{" "}
-            {numero.format(ambiental.qualidadeDados)}%. Números com qualidade
-            baixa servem para acompanhar tendência, não para relatório
-            regulatório.
-          </span>
+          <span>A qualidade dos dados está em {numero.format(ambiental.qualidadeDados)}%. Os números servem para acompanhar tendência, mas exigem cautela para uso regulatório.</span>
         </div>
       ) : null}
     </>
@@ -147,41 +133,18 @@ function Inicio({ resumo }) {
 
 function Operacoes({ operacoes, carregando }) {
   if (carregando)
-    return (
-      <div className="cp-carregando">
-        <Loader2 className="girando" size={20} /> Carregando operações...
-      </div>
-    );
+    return <div className="cp-carregando"><Loader2 className="girando" size={20} /> Carregando operações...</div>;
   if (!operacoes.length)
-    return (
-      <SemDados
-        titulo="Nenhuma operação no período"
-        texto="As viagens, coletas e entregas executadas para o seu contrato aparecem aqui, com origem, destino, data e situação."
-      />
-    );
+    return <SemDados titulo="Nenhuma operação no período" texto="As viagens, coletas e entregas executadas para o seu contrato aparecem aqui." />;
   return (
     <div className="cp-tabela-frame">
       <table className="cp-tabela">
-        <thead>
-          <tr>
-            <th>Referência</th>
-            <th>Data</th>
-            <th>Origem</th>
-            <th>Destino</th>
-            <th>Situação</th>
-            <th>Entregas</th>
-          </tr>
-        </thead>
+        <thead><tr><th>Referência</th><th>Data</th><th>Origem</th><th>Destino</th><th>Situação</th><th>Entregas</th></tr></thead>
         <tbody>
           {operacoes.map((op) => (
             <tr key={op.id}>
-              <td>{op.referencia || "—"}</td>
-              <td>{op.data || "—"}</td>
-              <td>{op.origem || "—"}</td>
-              <td>{op.destino || "—"}</td>
-              <td>
-                <span className={`cp-situacao ${op.status}`}>{op.status}</span>
-              </td>
+              <td>{op.referencia || "—"}</td><td>{op.data || "—"}</td><td>{op.origem || "—"}</td><td>{op.destino || "—"}</td>
+              <td><span className={`cp-situacao ${op.status}`}>{op.status}</span></td>
               <td>{inteiro.format(op.campos?.deliveries || 0)}</td>
             </tr>
           ))}
@@ -191,12 +154,10 @@ function Operacoes({ operacoes, carregando }) {
   );
 }
 
-// Fim do mês passado até hoje: o intervalo que quase sempre se quer, sem
-// obrigar a pessoa a preencher data antes de ver qualquer coisa.
 const periodoPadrao = () => {
   const hoje = new Date();
   const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-  const iso = (d) => d.toISOString().slice(0, 10);
+  const iso = (data) => data.toISOString().slice(0, 10);
   return { inicio: iso(inicio), fim: iso(hoje) };
 };
 
@@ -208,11 +169,7 @@ function Relatorios({ setAviso }) {
     setGerando(formato.id);
     setAviso("");
     try {
-      const dados = await pedir(
-        `relatorio?inicio=${encodeURIComponent(periodo.inicio)}&fim=${encodeURIComponent(periodo.fim)}`,
-      );
-      // O documento é montado com o mesmo código da tela interna: não existem
-      // duas versões do mesmo relatório.
+      const dados = await pedir(`relatorio?inicio=${encodeURIComponent(periodo.inicio)}&fim=${encodeURIComponent(periodo.fim)}`);
       const [{ montarRelatorio }, { FORMATOS }] = await Promise.all([
         import("./esgReportDomain.js"),
         import("./esgReportFormats.js"),
@@ -225,9 +182,11 @@ function Relatorios({ setAviso }) {
         greenScore: dados.greenScore,
         operacoes: dados.operacoes,
       });
-      await FORMATOS.find((f) => f.id === formato.id).baixar(relatorio);
-    } catch (causa) {
-      setAviso(causa.message);
+      const exportador = FORMATOS.find((item) => item.id === formato.id);
+      if (!exportador) throw new Error("Formato indisponível.");
+      await exportador.baixar(relatorio);
+    } catch (erro) {
+      setAviso(erro.message);
     } finally {
       setGerando("");
     }
@@ -235,45 +194,14 @@ function Relatorios({ setAviso }) {
 
   return (
     <section className="cp-relatorios">
-      <p>
-        O relatório sai com metodologia, premissas, fontes, qualidade dos dados
-        e a memória de cálculo completa — o suficiente para alguém refazer as
-        contas.
-      </p>
+      <p>O relatório inclui metodologia, premissas, fontes, qualidade dos dados e memória de cálculo.</p>
       <div className="cp-periodo">
-        <label>
-          <span>Início</span>
-          <input
-            type="date"
-            value={periodo.inicio}
-            onChange={(e) => setPeriodo((p) => ({ ...p, inicio: e.target.value }))}
-          />
-        </label>
-        <label>
-          <span>Fim</span>
-          <input
-            type="date"
-            value={periodo.fim}
-            onChange={(e) => setPeriodo((p) => ({ ...p, fim: e.target.value }))}
-          />
-        </label>
+        <label><span>Início</span><input type="date" value={periodo.inicio} onChange={(e) => setPeriodo((atual) => ({ ...atual, inicio: e.target.value }))} /></label>
+        <label><span>Fim</span><input type="date" value={periodo.fim} onChange={(e) => setPeriodo((atual) => ({ ...atual, fim: e.target.value }))} /></label>
       </div>
       <div className="cp-formatos">
-        {[
-          { id: "pdf", rotulo: "PDF" },
-          { id: "xlsx", rotulo: "Planilha" },
-          { id: "csv", rotulo: "CSV" },
-          { id: "pptx", rotulo: "Apresentação" },
-          { id: "html", rotulo: "HTML" },
-        ].map((formato) => (
-          <button
-            key={formato.id}
-            type="button"
-            onClick={() => gerar(formato)}
-            disabled={!!gerando}
-          >
-            {gerando === formato.id ? "Gerando..." : formato.rotulo}
-          </button>
+        {[{ id: "pdf", rotulo: "PDF" }, { id: "xlsx", rotulo: "Planilha" }, { id: "csv", rotulo: "CSV" }, { id: "pptx", rotulo: "Apresentação" }, { id: "html", rotulo: "HTML" }].map((formato) => (
+          <button key={formato.id} type="button" onClick={() => gerar(formato)} disabled={!!gerando}>{gerando === formato.id ? "Gerando..." : formato.rotulo}</button>
         ))}
       </div>
     </section>
@@ -281,52 +209,21 @@ function Relatorios({ setAviso }) {
 }
 
 function Evidencias({ evidencias, carregando }) {
-  if (carregando)
-    return (
-      <div className="cp-carregando">
-        <Loader2 className="girando" size={20} /> Carregando documentos...
-      </div>
-    );
-  if (!evidencias.length)
-    return (
-      <SemDados
-        titulo="Nenhum documento no cofre"
-        texto="Notas fiscais, telemetria, contratos e comprovantes que sustentam os números do seu contrato aparecem aqui."
-      />
-    );
+  if (carregando) return <div className="cp-carregando"><Loader2 className="girando" size={20} /> Carregando documentos...</div>;
+  if (!evidencias.length) return <SemDados titulo="Nenhum documento no cofre" texto="Notas fiscais, telemetria, contratos e comprovantes que sustentam os números do seu contrato aparecem aqui." />;
   return (
     <ul className="cp-evidencias">
-      {evidencias.map((ev) => (
-        <li key={ev.id}>
-          <FileText size={18} />
-          <div>
-            <strong>{ev.titulo}</strong>
-            <small>
-              {ev.tipo} · emitido em {ev.emitidoEm || "—"}
-              {ev.impressaoDigital
-                ? ` · impressão digital ${ev.impressaoDigital.slice(0, 12)}`
-                : ""}
-            </small>
-          </div>
-        </li>
+      {evidencias.map((evidencia) => (
+        <li key={evidencia.id}><FileText size={18} /><div><strong>{evidencia.titulo}</strong><small>{evidencia.tipo} · emitido em {evidencia.emitidoEm || "—"}{evidencia.impressaoDigital ? ` · impressão digital ${evidencia.impressaoDigital.slice(0, 12)}` : ""}</small></div></li>
       ))}
     </ul>
   );
 }
 
-function Carregando({ texto }) {
-  return (
-    <p className="cp-carregando">
-      <Loader2 className="girando" size={20} /> {texto}
-    </p>
-  );
-}
+const ROTULO_STATUS = { aberta: "Aberta", em_analise: "Em análise", aguardando_cliente: "Aguardando você", respondida: "Respondida", concluida: "Concluída", recusada: "Não atendida", cancelada: "Cancelada" };
+const ROTULO_TIPO = { nova_rota: "Nova rota", aumento_volume: "Aumento de volume", coleta_extra: "Coleta extra", ocorrencia: "Ocorrência na entrega", documento: "Documento ou comprovante", relatorio_esg: "Relatório ambiental", outro: "Outro assunto" };
+const ENCERRADOS = ["concluida", "recusada", "cancelada"];
 
-// ===== Solicitações =====
-//
-// A porta que o portal prometia. O catálogo de tipos, os campos que cada tipo
-// exige e os prazos vêm do servidor: se a tela inventasse o seu próprio, o
-// cliente veria um prazo e a equipe trabalharia com outro.
 function Solicitacoes({ podeAbrir, setAviso }) {
   const [dados, setDados] = useState(null);
   const [carregando, setCarregando] = useState(true);
@@ -335,302 +232,84 @@ function Solicitacoes({ podeAbrir, setAviso }) {
   const [resposta, setResposta] = useState("");
   const [criando, setCriando] = useState(false);
   const [enviando, setEnviando] = useState(false);
-  const [form, setForm] = useState({
-    tipo: "nova_rota",
-    assunto: "",
-    descricao: "",
-    urgencia: "normal",
-    campos: {},
-  });
+  const [form, setForm] = useState({ tipo: "nova_rota", assunto: "", descricao: "", urgencia: "normal", campos: {} });
 
-  const carregar = useCallback(
-    async (id = "") => {
-      setCarregando(true);
-      try {
-        const d = await pedir(`solicitacoes${id ? `?id=${encodeURIComponent(id)}` : ""}`);
-        setDados(d);
-        if (id) setMensagens(d.mensagens || []);
-      } catch (erro) {
-        setAviso(erro.message);
-      } finally {
-        setCarregando(false);
-      }
-    },
-    [setAviso],
-  );
+  const carregar = useCallback(async (id = "") => {
+    setCarregando(true);
+    try {
+      const resultado = await pedir(`solicitacoes${id ? `?id=${encodeURIComponent(id)}` : ""}`);
+      setDados(resultado);
+      if (id) setMensagens(resultado.mensagens || []);
+    } catch (erro) {
+      setAviso(erro.message);
+    } finally {
+      setCarregando(false);
+    }
+  }, [setAviso]);
 
-  useEffect(() => {
-    carregar();
-  }, [carregar]);
+  useEffect(() => { carregar(); }, [carregar]);
 
   const tipos = dados?.tipos || [];
-  const tipoAtual = tipos.find((t) => t.id === form.tipo);
+  const tipoAtual = tipos.find((item) => item.id === form.tipo);
 
   const abrir = async (id) => {
-    if (abertaId === id) {
-      setAbertaId("");
-      setMensagens([]);
-      return;
-    }
-    setAbertaId(id);
-    setMensagens([]);
-    await carregar(id);
+    if (abertaId === id) { setAbertaId(""); setMensagens([]); return; }
+    setAbertaId(id); setMensagens([]); await carregar(id);
   };
 
   const criar = async (evento) => {
-    evento.preventDefault();
-    setEnviando(true);
+    evento.preventDefault(); setEnviando(true);
     try {
       await enviar("solicitacoes", form);
       setForm({ tipo: "nova_rota", assunto: "", descricao: "", urgencia: "normal", campos: {} });
-      setCriando(false);
-      await carregar();
-    } catch (erro) {
-      setAviso(erro.message);
-    } finally {
-      setEnviando(false);
-    }
+      setCriando(false); await carregar();
+    } catch (erro) { setAviso(erro.message); } finally { setEnviando(false); }
   };
 
   const responder = async (evento) => {
-    evento.preventDefault();
-    setEnviando(true);
-    try {
-      await enviar("solicitacoes", { solicitacaoId: abertaId, mensagem: resposta });
-      setResposta("");
-      await carregar(abertaId);
-    } catch (erro) {
-      setAviso(erro.message);
-    } finally {
-      setEnviando(false);
-    }
+    evento.preventDefault(); setEnviando(true);
+    try { await enviar("solicitacoes", { solicitacaoId: abertaId, mensagem: resposta }); setResposta(""); await carregar(abertaId); }
+    catch (erro) { setAviso(erro.message); } finally { setEnviando(false); }
   };
 
   const mover = async (id, status) => {
     setEnviando(true);
-    try {
-      await enviar("solicitacoes", { id, status }, "PATCH");
-      await carregar(abertaId === id ? id : "");
-    } catch (erro) {
-      setAviso(erro.message);
-    } finally {
-      setEnviando(false);
-    }
+    try { await enviar("solicitacoes", { id, status }, "PATCH"); await carregar(abertaId === id ? id : ""); }
+    catch (erro) { setAviso(erro.message); } finally { setEnviando(false); }
   };
 
-  if (carregando && !dados) return <Carregando texto="Carregando suas solicitações..." />;
-
+  if (carregando && !dados) return <p className="cp-carregando"><Loader2 className="girando" size={20} /> Carregando suas solicitações...</p>;
   const lista = dados?.solicitacoes || [];
 
   return (
     <div className="cp-solicitacoes">
-      <div className="cp-sol-topo">
-        <div>
-          <h2>Solicitações</h2>
-          <p>{dados?.resumo?.texto}</p>
-        </div>
-        {podeAbrir && (
-          <button type="button" className="cp-botao" onClick={() => setCriando((v) => !v)}>
-            {criando ? "Cancelar" : "Nova solicitação"}
-          </button>
-        )}
-      </div>
-
+      <div className="cp-sol-topo"><div><h2>Solicitações</h2><p>{dados?.resumo?.texto}</p></div>{podeAbrir && <button type="button" className="cp-botao" onClick={() => setCriando((valor) => !valor)}>{criando ? "Cancelar" : "Nova solicitação"}</button>}</div>
       {criando && podeAbrir && (
         <form className="cp-sol-form" onSubmit={criar}>
-          <label>
-            <span>Tipo de pedido</span>
-            <select
-              value={form.tipo}
-              onChange={(e) => setForm({ ...form, tipo: e.target.value, campos: {} })}
-            >
-              {tipos.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.rotulo}
-                </option>
-              ))}
-            </select>
-            {tipoAtual && (
-              <small>
-                {tipoAtual.descricao} Resposta em até {tipoAtual.prazoHoras}h.
-              </small>
-            )}
-          </label>
-
-          <label>
-            <span>Assunto</span>
-            <input
-              required
-              value={form.assunto}
-              onChange={(e) => setForm({ ...form, assunto: e.target.value })}
-            />
-          </label>
-
-          {(tipoAtual?.obrigatorios || []).map((chave) => (
-            <label key={chave}>
-              <span>{tipoAtual.camposRotulo[chave] || chave}</span>
-              <input
-                required
-                value={form.campos[chave] || ""}
-                onChange={(e) =>
-                  setForm({ ...form, campos: { ...form.campos, [chave]: e.target.value } })
-                }
-              />
-            </label>
-          ))}
-
-          <label>
-            <span>Urgência</span>
-            <select
-              value={form.urgencia}
-              onChange={(e) => setForm({ ...form, urgencia: e.target.value })}
-            >
-              <option value="baixa">Baixa</option>
-              <option value="normal">Normal</option>
-              <option value="alta">Alta</option>
-            </select>
-          </label>
-
-          <label className="cp-sol-larga">
-            <span>Descreva o pedido</span>
-            <textarea
-              required
-              rows={4}
-              value={form.descricao}
-              onChange={(e) => setForm({ ...form, descricao: e.target.value })}
-            />
-          </label>
-
-          <button type="submit" className="cp-botao" disabled={enviando}>
-            {enviando ? "Enviando..." : "Enviar solicitação"}
-          </button>
+          <label><span>Tipo de pedido</span><select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value, campos: {} })}>{tipos.map((tipo) => <option key={tipo.id} value={tipo.id}>{tipo.rotulo}</option>)}</select>{tipoAtual && <small>{tipoAtual.descricao} Resposta em até {tipoAtual.prazoHoras}h.</small>}</label>
+          <label><span>Assunto</span><input required value={form.assunto} onChange={(e) => setForm({ ...form, assunto: e.target.value })} /></label>
+          {(tipoAtual?.obrigatorios || []).map((chave) => <label key={chave}><span>{tipoAtual.camposRotulo[chave] || chave}</span><input required value={form.campos[chave] || ""} onChange={(e) => setForm({ ...form, campos: { ...form.campos, [chave]: e.target.value } })} /></label>)}
+          <label><span>Urgência</span><select value={form.urgencia} onChange={(e) => setForm({ ...form, urgencia: e.target.value })}><option value="baixa">Baixa</option><option value="normal">Normal</option><option value="alta">Alta</option></select></label>
+          <label className="cp-sol-larga"><span>Descreva o pedido</span><textarea required rows={4} value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} /></label>
+          <button type="submit" className="cp-botao" disabled={enviando}>{enviando ? "Enviando..." : "Enviar solicitação"}</button>
         </form>
       )}
-
-      {lista.length === 0 && (
-        <SemDados
-          titulo="Nenhuma solicitação ainda"
-          texto={
-            podeAbrir
-              ? "Precisa de uma nova rota, um comprovante, um relatório ambiental ou quer registrar uma ocorrência? Abra uma solicitação e a equipe To Do Green responde dentro do prazo do tipo escolhido."
-              : "Seu acesso é de leitura. Peça a um gestor da sua empresa para abrir solicitações."
-          }
-        />
-      )}
-
+      {!lista.length && <SemDados titulo="Nenhuma solicitação ainda" texto={podeAbrir ? "Abra uma solicitação para nova rota, comprovante, relatório ambiental ou ocorrência." : "Seu acesso é de leitura."} />}
       <ul className="cp-sol-lista">
-        {lista.map((s) => (
-          <li key={s.id} className={abertaId === s.id ? "aberta" : ""}>
-            <button type="button" className="cp-sol-head" onClick={() => abrir(s.id)}>
-              <span className="cp-sol-nome">
-                <strong>{s.assunto}</strong>
-                <small>
-                  {ROTULO_TIPO[s.tipo] || s.tipo} · aberta em{" "}
-                  {new Date(s.criadaEm).toLocaleDateString("pt-BR")}
-                </small>
-              </span>
-              <span className={`cp-sol-status s-${s.status}`}>
-                {ROTULO_STATUS[s.status] || s.status}
-              </span>
-            </button>
-
-            {abertaId === s.id && (
+        {lista.map((solicitacao) => (
+          <li key={solicitacao.id} className={abertaId === solicitacao.id ? "aberta" : ""}>
+            <button type="button" className="cp-sol-head" onClick={() => abrir(solicitacao.id)}><span className="cp-sol-nome"><strong>{solicitacao.assunto}</strong><small>{ROTULO_TIPO[solicitacao.tipo] || solicitacao.tipo} · aberta em {new Date(solicitacao.criadaEm).toLocaleDateString("pt-BR")}</small></span><span className={`cp-sol-status s-${solicitacao.status}`}>{ROTULO_STATUS[solicitacao.status] || solicitacao.status}</span></button>
+            {abertaId === solicitacao.id && (
               <div className="cp-sol-corpo">
-                {Object.entries(s.campos || {}).length > 0 && (
-                  <dl className="cp-sol-campos">
-                    {Object.entries(s.campos).map(([chave, valor]) => (
-                      <div key={chave}>
-                        <dt>{chave}</dt>
-                        <dd>{valor}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                )}
-
-                <ol className="cp-sol-conversa">
-                  {mensagens.map((m) => (
-                    <li key={m.id} className={m.lado === "cliente" ? "meu" : "deles"}>
-                      <strong>{m.lado === "cliente" ? m.autor : "To Do Green"}</strong>
-                      <p>{m.texto}</p>
-                      <small>{new Date(m.criadaEm).toLocaleString("pt-BR")}</small>
-                    </li>
-                  ))}
-                </ol>
-
-                {!ENCERRADOS.includes(s.status) && podeAbrir && (
-                  <>
-                    <form className="cp-sol-resposta" onSubmit={responder}>
-                      <textarea
-                        required
-                        rows={2}
-                        placeholder="Escreva uma mensagem para a equipe"
-                        value={resposta}
-                        onChange={(e) => setResposta(e.target.value)}
-                      />
-                      <button type="submit" className="cp-botao" disabled={enviando}>
-                        Enviar
-                      </button>
-                    </form>
-                    <div className="cp-sol-acoes">
-                      {s.status === "respondida" && (
-                        <button
-                          type="button"
-                          className="cp-botao"
-                          disabled={enviando}
-                          onClick={() => mover(s.id, "concluida")}
-                        >
-                          Resolvido, pode encerrar
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        className="cp-botao cp-botao-secundario"
-                        disabled={enviando}
-                        onClick={() => mover(s.id, "cancelada")}
-                      >
-                        Cancelar solicitação
-                      </button>
-                    </div>
-                  </>
-                )}
+                {Object.keys(solicitacao.campos || {}).length > 0 && <dl className="cp-sol-campos">{Object.entries(solicitacao.campos).map(([chave, valor]) => <div key={chave}><dt>{chave}</dt><dd>{valor}</dd></div>)}</dl>}
+                <ol className="cp-sol-conversa">{mensagens.map((mensagem) => <li key={mensagem.id} className={mensagem.lado === "cliente" ? "meu" : "deles"}><strong>{mensagem.lado === "cliente" ? mensagem.autor : "To Do Green"}</strong><p>{mensagem.texto}</p><small>{new Date(mensagem.criadaEm).toLocaleString("pt-BR")}</small></li>)}</ol>
+                {!ENCERRADOS.includes(solicitacao.status) && podeAbrir && <><form className="cp-sol-resposta" onSubmit={responder}><textarea required rows={2} placeholder="Escreva uma mensagem para a equipe" value={resposta} onChange={(e) => setResposta(e.target.value)} /><button type="submit" className="cp-botao" disabled={enviando}>Enviar</button></form><div className="cp-sol-acoes">{solicitacao.status === "respondida" && <button type="button" className="cp-botao" disabled={enviando} onClick={() => mover(solicitacao.id, "concluida")}>Resolvido, pode encerrar</button>}<button type="button" className="cp-botao cp-botao-secundario" disabled={enviando} onClick={() => mover(solicitacao.id, "cancelada")}>Cancelar solicitação</button></div></>}
               </div>
             )}
           </li>
         ))}
       </ul>
     </div>
-  );
-}
-
-// Rótulos do lado do cliente. O banco guarda a chave; o cliente lê a frase.
-const ROTULO_STATUS = {
-  aberta: "Aberta",
-  em_analise: "Em análise",
-  aguardando_cliente: "Aguardando você",
-  respondida: "Respondida",
-  concluida: "Concluída",
-  recusada: "Não atendida",
-  cancelada: "Cancelada",
-};
-
-const ROTULO_TIPO = {
-  nova_rota: "Nova rota",
-  aumento_volume: "Aumento de volume",
-  coleta_extra: "Coleta extra",
-  ocorrencia: "Ocorrência na entrega",
-  documento: "Documento ou comprovante",
-  relatorio_esg: "Relatório ambiental",
-  outro: "Outro assunto",
-};
-
-const ENCERRADOS = ["concluida", "recusada", "cancelada"];
-
-function EmBreve({ titulo }) {
-  return (
-    <SemDados
-      titulo={titulo}
-      texto="Esta área do seu portal está sendo liberada. Enquanto isso, fale com o seu contato na To Do Green pelas Solicitações."
-    />
   );
 }
 
@@ -642,43 +321,27 @@ export default function CustomerPortal() {
   const [evidencias, setEvidencias] = useState([]);
   const [carregandoEvidencias, setCarregandoEvidencias] = useState(false);
   const [aba, setAba] = useState("inicio");
-  // Dois erros com pesos diferentes. `erroFatal` é não conseguir abrir o
-  // portal — aí não há o que mostrar. `aviso` é uma ação que falhou (um
-  // download, uma lista): derrubar a tela inteira por causa disso faria a
-  // pessoa perder de vista tudo o que já estava funcionando.
   const [erroFatal, setErroFatal] = useState("");
   const [aviso, setAviso] = useState("");
   const [pronto, setPronto] = useState(false);
 
   useEffect(() => {
-    let vivo = true;
+    let ativo = true;
     Promise.all([pedir("sessao"), pedir("resumo")])
-      .then(([s, r]) => {
-        if (!vivo) return;
-        setSessao(s);
-        setResumo(r.resumo);
-      })
-      .catch((causa) => vivo && setErroFatal(causa.message))
-      .finally(() => vivo && setPronto(true));
-    return () => {
-      vivo = false;
-    };
+      .then(([dadosSessao, dadosResumo]) => { if (ativo) { setSessao(dadosSessao); setResumo(dadosResumo.resumo); } })
+      .catch((erro) => { if (ativo) setErroFatal(erro.message); })
+      .finally(() => { if (ativo) setPronto(true); });
+    return () => { ativo = false; };
   }, []);
 
   const carregarOperacoes = useCallback(() => {
     setCarregandoOperacoes(true);
-    pedir("operacoes")
-      .then((d) => setOperacoes(d.operacoes || []))
-      .catch((causa) => setAviso(causa.message))
-      .finally(() => setCarregandoOperacoes(false));
+    pedir("operacoes").then((dados) => setOperacoes(dados.operacoes || [])).catch((erro) => setAviso(erro.message)).finally(() => setCarregandoOperacoes(false));
   }, []);
 
   const carregarEvidencias = useCallback(() => {
     setCarregandoEvidencias(true);
-    pedir("evidencias")
-      .then((d) => setEvidencias(d.evidencias || []))
-      .catch((causa) => setAviso(causa.message))
-      .finally(() => setCarregandoEvidencias(false));
+    pedir("evidencias").then((dados) => setEvidencias(dados.evidencias || [])).catch((erro) => setAviso(erro.message)).finally(() => setCarregandoEvidencias(false));
   }, []);
 
   useEffect(() => {
@@ -688,92 +351,25 @@ export default function CustomerPortal() {
 
   const menu = useMemo(() => sessao?.menu || [], [sessao]);
 
-  if (!pronto)
-    return (
-      <main className="cp cp-centro">
-        <Loader2 className="girando" size={28} />
-        <p>Abrindo seu portal...</p>
-      </main>
-    );
-
-  if (erroFatal)
-    return (
-      <main className="cp cp-centro">
-        <div className="cp-bloqueio">
-          <AlertTriangle size={26} />
-          <h1>Portal indisponível</h1>
-          <p>{erroFatal}</p>
-          <p className="cp-bloqueio-dica">
-            Se você é cliente da To Do Green e deveria ter acesso, peça ao seu
-            contato para liberar o seu e-mail no portal.
-          </p>
-        </div>
-      </main>
-    );
+  if (!pronto) return <main className="cp cp-centro"><Loader2 className="girando" size={28} /><p>Abrindo seu portal...</p></main>;
+  if (erroFatal) return <main className="cp cp-centro"><div className="cp-bloqueio"><AlertTriangle size={26} /><h1>Portal indisponível</h1><p>{erroFatal}</p><p className="cp-bloqueio-dica">Se você é cliente da To Do Green e deveria ter acesso, peça ao seu contato para liberar o seu e-mail no portal.</p></div></main>;
 
   return (
     <main className="cp" aria-labelledby="cp-titulo">
-      <header className="cp-topo">
-        <div>
-          <span className="cp-marca">To Do Green</span>
-          <h1 id="cp-titulo">{sessao.cliente.nome}</h1>
-          <p>Portal do cliente · {sessao.usuario.nome}</p>
-        </div>
-      </header>
-
-      <nav className="cp-menu" aria-label="Navegação do portal">
-        {menu.map((item) => {
-          const Icone = ICONES[item.id] || Home;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              className={aba === item.id ? "ativo" : ""}
-              onClick={() => setAba(item.id)}
-              aria-current={aba === item.id ? "page" : undefined}
-            >
-              <Icone size={17} />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
-
-      {aviso ? (
-        <div className="cp-alerta cp-alerta-acao" role="alert">
-          <AlertTriangle size={18} />
-          <span>{aviso}</span>
-          <button type="button" onClick={() => setAviso("")} aria-label="Fechar aviso">
-            ×
-          </button>
-        </div>
-      ) : null}
-
+      <header className="cp-topo"><div><span className="cp-marca">To Do Green</span><h1 id="cp-titulo">{sessao.cliente.nome}</h1><p>Portal do cliente · {sessao.usuario.nome}</p></div></header>
+      <nav className="cp-menu" aria-label="Navegação do portal">{menu.map((item) => { const Icone = ICONES[item.id] || Home; return <button key={item.id} type="button" className={aba === item.id ? "ativo" : ""} onClick={() => setAba(item.id)} aria-current={aba === item.id ? "page" : undefined}><Icone size={17} /><span>{item.label}</span></button>; })}</nav>
+      {aviso && <div className="cp-alerta cp-alerta-acao" role="alert"><AlertTriangle size={18} /><span>{aviso}</span><button type="button" onClick={() => setAviso("")} aria-label="Fechar aviso">×</button></div>}
       <section className="cp-conteudo">
         {aba === "inicio" && <Inicio resumo={resumo} />}
-        {aba === "operacoes" && (
-          <Operacoes operacoes={operacoes} carregando={carregandoOperacoes} />
-        )}
-        {aba === "green-score" && <EmBreve titulo="Green Score detalhado" />}
-        {aba === "esg" && <EmBreve titulo="Emissões da cadeia logística" />}
+        {aba === "operacoes" && <Operacoes operacoes={operacoes} carregando={carregandoOperacoes} />}
+        {aba === "green-score" && <GreenScoreDetalhado resumo={resumo} />}
+        {aba === "esg" && <ImpactoAmbiental resumo={resumo} />}
         {aba === "relatorios" && <Relatorios setAviso={setAviso} />}
-        {aba === "documentos" && (
-          <Evidencias evidencias={evidencias} carregando={carregandoEvidencias} />
-        )}
-        {aba === "solicitacoes" && (
-          <Solicitacoes
-            podeAbrir={(sessao?.permissoes || []).includes("portal:request:create")}
-            setAviso={setAviso}
-          />
-        )}
-        {aba === "assistente" && <EmBreve titulo="Assistente" />}
+        {aba === "documentos" && <Evidencias evidencias={evidencias} carregando={carregandoEvidencias} />}
+        {aba === "solicitacoes" && <Solicitacoes podeAbrir={(sessao?.permissoes || []).includes("portal:request:create")} setAviso={setAviso} />}
+        {aba === "assistente" && <AssistenteCliente enviar={enviar} setAviso={setAviso} />}
       </section>
-
-      <footer className="cp-rodape">
-        Green Score e indicadores ambientais são estimativas próprias da To Do
-        Green, com metodologia e memória de cálculo disponíveis nos relatórios.
-        Não constituem certificação.
-      </footer>
+      <footer className="cp-rodape">Green Score e indicadores ambientais são estimativas próprias da To Do Green, com metodologia e memória de cálculo disponíveis nos relatórios. Não constituem certificação.</footer>
     </main>
   );
 }
