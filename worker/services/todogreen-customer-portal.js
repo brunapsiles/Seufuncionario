@@ -83,180 +83,6 @@ async function authenticatedUser(request, env) {
     .catch(() => null);
 }
 
-// As tabelas nascem na migração 0032. Criá-las aqui também evita que o portal
-// devolva erro quando a migração ainda não rodou — o mesmo cinto que a vertical
-// já usa para o próprio catálogo.
-async function ensureTables(env) {
-  const ddl = [
-    `CREATE TABLE IF NOT EXISTS todogreen_clients (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL DEFAULT 'todogreen',
-      workspace_owner_id TEXT NOT NULL,
-      name TEXT NOT NULL,
-      legal_name TEXT NOT NULL DEFAULT '',
-      document TEXT NOT NULL DEFAULT '',
-      segment TEXT NOT NULL DEFAULT '',
-      status TEXT NOT NULL DEFAULT 'ativo',
-      portal_enabled INTEGER NOT NULL DEFAULT 0,
-      notes TEXT NOT NULL DEFAULT '',
-      fields_json TEXT NOT NULL DEFAULT '{}',
-      revision INTEGER NOT NULL DEFAULT 1,
-      created_by TEXT NOT NULL,
-      updated_by TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      archived_at TEXT
-    )`,
-    `CREATE INDEX IF NOT EXISTS idx_todogreen_clients_tenant
-       ON todogreen_clients (tenant_id, status, name)`,
-    `CREATE TABLE IF NOT EXISTS todogreen_client_users (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL DEFAULT 'todogreen',
-      client_id TEXT NOT NULL,
-      email TEXT NOT NULL COLLATE NOCASE,
-      user_id TEXT,
-      role TEXT NOT NULL DEFAULT 'cliente_leitor',
-      status TEXT NOT NULL DEFAULT 'active',
-      permissions_json TEXT NOT NULL DEFAULT '["portal:read"]',
-      note TEXT NOT NULL DEFAULT '',
-      invited_by TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      last_access_at TEXT,
-      UNIQUE(tenant_id, email)
-    )`,
-    `CREATE INDEX IF NOT EXISTS idx_todogreen_client_users_lookup
-       ON todogreen_client_users (tenant_id, email, status)`,
-    `CREATE TABLE IF NOT EXISTS todogreen_client_portal_events (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL DEFAULT 'todogreen',
-      client_id TEXT NOT NULL,
-      user_id TEXT,
-      email TEXT NOT NULL DEFAULT '',
-      action TEXT NOT NULL,
-      target TEXT NOT NULL DEFAULT '',
-      details TEXT NOT NULL DEFAULT '',
-      created_at TEXT NOT NULL
-    )`,
-    `CREATE INDEX IF NOT EXISTS idx_todogreen_client_portal_events_client
-       ON todogreen_client_portal_events (client_id, created_at DESC)`,
-    `CREATE TABLE IF NOT EXISTS todogreen_client_operations (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL DEFAULT 'todogreen',
-      client_id TEXT NOT NULL,
-      workspace_owner_id TEXT NOT NULL,
-      contract_id TEXT NOT NULL DEFAULT '',
-      product_id TEXT NOT NULL DEFAULT '',
-      reference TEXT NOT NULL DEFAULT '',
-      status TEXT NOT NULL DEFAULT 'planejada',
-      service_date TEXT,
-      origin TEXT NOT NULL DEFAULT '',
-      destination TEXT NOT NULL DEFAULT '',
-      fields_json TEXT NOT NULL DEFAULT '{}',
-      sla_status TEXT NOT NULL DEFAULT '',
-      incident_count INTEGER NOT NULL DEFAULT 0,
-      revision INTEGER NOT NULL DEFAULT 1,
-      created_by TEXT NOT NULL,
-      updated_by TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )`,
-    `CREATE INDEX IF NOT EXISTS idx_todogreen_client_operations_scope
-       ON todogreen_client_operations (tenant_id, client_id, service_date DESC)`,
-    `CREATE TABLE IF NOT EXISTS todogreen_green_scores (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL DEFAULT 'todogreen',
-      client_id TEXT NOT NULL,
-      scope_type TEXT NOT NULL DEFAULT 'cliente',
-      scope_id TEXT NOT NULL DEFAULT '',
-      score REAL NOT NULL,
-      components_json TEXT NOT NULL DEFAULT '{}',
-      inputs_json TEXT NOT NULL DEFAULT '{}',
-      weights_version TEXT NOT NULL,
-      data_quality INTEGER NOT NULL DEFAULT 0,
-      variation_explanation TEXT NOT NULL DEFAULT '',
-      previous_score REAL,
-      calculated_by TEXT NOT NULL,
-      calculated_at TEXT NOT NULL
-    )`,
-    `CREATE INDEX IF NOT EXISTS idx_todogreen_green_scores_scope
-       ON todogreen_green_scores (tenant_id, client_id, scope_type, scope_id, calculated_at DESC)`,
-    `CREATE TABLE IF NOT EXISTS todogreen_evidences (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL DEFAULT 'todogreen',
-      client_id TEXT NOT NULL,
-      workspace_owner_id TEXT NOT NULL,
-      tipo TEXT NOT NULL DEFAULT 'outro',
-      titulo TEXT NOT NULL,
-      referencia TEXT NOT NULL DEFAULT '',
-      descricao TEXT NOT NULL DEFAULT '',
-      emitido_em TEXT,
-      arquivo_url TEXT NOT NULL DEFAULT '',
-      arquivo_nome TEXT NOT NULL DEFAULT '',
-      arquivo_bytes INTEGER NOT NULL DEFAULT 0,
-      hash_conteudo TEXT NOT NULL DEFAULT '',
-      calculo_id TEXT NOT NULL DEFAULT '',
-      status TEXT NOT NULL DEFAULT 'ativo',
-      created_by TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )`,
-    `CREATE INDEX IF NOT EXISTS idx_todogreen_evidences_scope
-       ON todogreen_evidences (tenant_id, client_id, emitido_em DESC)`,
-    `CREATE TABLE IF NOT EXISTS todogreen_client_assignments (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL DEFAULT 'todogreen',
-      client_id TEXT NOT NULL,
-      seller_email TEXT NOT NULL COLLATE NOCASE,
-      status TEXT NOT NULL DEFAULT 'active',
-      note TEXT NOT NULL DEFAULT '',
-      assigned_by TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      UNIQUE (tenant_id, client_id, seller_email)
-    )`,
-    `CREATE INDEX IF NOT EXISTS idx_todogreen_client_assignments_seller
-       ON todogreen_client_assignments (tenant_id, seller_email, status, updated_at DESC)`,
-    `CREATE TABLE IF NOT EXISTS todogreen_client_requests (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL DEFAULT 'todogreen',
-      client_id TEXT NOT NULL,
-      workspace_owner_id TEXT NOT NULL DEFAULT '',
-      type TEXT NOT NULL DEFAULT 'outro',
-      subject TEXT NOT NULL,
-      description TEXT NOT NULL DEFAULT '',
-      urgency TEXT NOT NULL DEFAULT 'normal',
-      status TEXT NOT NULL DEFAULT 'aberta',
-      fields_json TEXT NOT NULL DEFAULT '{}',
-      due_at TEXT,
-      opened_by TEXT NOT NULL DEFAULT '',
-      assigned_to TEXT NOT NULL DEFAULT '',
-      closed_at TEXT,
-      closed_by TEXT NOT NULL DEFAULT '',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )`,
-    `CREATE INDEX IF NOT EXISTS idx_todogreen_client_requests_client
-       ON todogreen_client_requests (tenant_id, client_id, created_at DESC)`,
-    `CREATE INDEX IF NOT EXISTS idx_todogreen_client_requests_fila
-       ON todogreen_client_requests (tenant_id, status, due_at)`,
-    `CREATE TABLE IF NOT EXISTS todogreen_client_request_messages (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL DEFAULT 'todogreen',
-      client_id TEXT NOT NULL,
-      request_id TEXT NOT NULL,
-      author_side TEXT NOT NULL DEFAULT 'cliente',
-      author_email TEXT NOT NULL DEFAULT '',
-      author_name TEXT NOT NULL DEFAULT '',
-      body TEXT NOT NULL,
-      internal INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL
-    )`,
-    `CREATE INDEX IF NOT EXISTS idx_todogreen_client_request_messages_thread
-       ON todogreen_client_request_messages (tenant_id, client_id, request_id, created_at)`,
-  ];
-  for (const sql of ddl) await env.DB.prepare(sql).run().catch(() => {});
-}
 
 // O ponto onde o isolamento acontece. Uma consulta, pelo e-mail da sessão.
 // O resultado carrega o cliente; nada além dele é alcançável depois.
@@ -381,8 +207,6 @@ export async function handleTodoGreenCustomerPortal(request, env) {
 
   const user = await authenticatedUser(request, env);
   if (!user) return response({ error: "Sessão inválida." }, 401);
-
-  await ensureTables(env);
 
   const escopo = await clientScopeForSession(env, user);
   if (!escopo)
@@ -891,7 +715,6 @@ async function responderSolicitacao(env, escopo, user, id, body) {
 // é a To Do Green cadastrando clientes e liberando quem entra em cada sala.
 export async function handleTodoGreenClients(request, env, access, user) {
   if (!env.DB) return response({ error: "Banco indisponível." }, 503);
-  await ensureTables(env);
   const url = new URL(request.url);
   const agora = new Date().toISOString();
   const podeGerenciar = ["owner", "admin"].includes(access?.role) ||
@@ -1060,7 +883,6 @@ export async function handleTodoGreenClients(request, env, access, user) {
 
 export async function handleTodoGreenClientAssignments(request, env, access, user) {
   if (!env.DB) return response({ error: "Banco indisponível." }, 503);
-  await ensureTables(env);
   const podeAtribuir = ["owner", "admin"].includes(access?.role) ||
     access?.permissions?.includes("*") ||
     access?.permissions?.includes("clients:assign");

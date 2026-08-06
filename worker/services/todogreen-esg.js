@@ -60,42 +60,6 @@ const podeGerenciarEsg = (access) =>
 // muda a régua de todo mundo.
 const podeLerEsg = (access) => !!access;
 
-async function ensureTables(env) {
-  const ddl = [
-    `CREATE TABLE IF NOT EXISTS todogreen_score_weights (
-      version TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL DEFAULT 'todogreen',
-      weights_json TEXT NOT NULL,
-      methodology TEXT NOT NULL DEFAULT '',
-      source TEXT NOT NULL DEFAULT '',
-      responsible TEXT NOT NULL DEFAULT '',
-      effective_from TEXT NOT NULL,
-      effective_to TEXT,
-      status TEXT NOT NULL DEFAULT 'active',
-      created_by TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    )`,
-    `CREATE TABLE IF NOT EXISTS todogreen_green_scores (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL DEFAULT 'todogreen',
-      client_id TEXT NOT NULL,
-      scope_type TEXT NOT NULL DEFAULT 'cliente',
-      scope_id TEXT NOT NULL DEFAULT '',
-      score REAL NOT NULL,
-      components_json TEXT NOT NULL DEFAULT '{}',
-      inputs_json TEXT NOT NULL DEFAULT '{}',
-      weights_version TEXT NOT NULL,
-      data_quality INTEGER NOT NULL DEFAULT 0,
-      variation_explanation TEXT NOT NULL DEFAULT '',
-      previous_score REAL,
-      calculated_by TEXT NOT NULL,
-      calculated_at TEXT NOT NULL
-    )`,
-    `CREATE INDEX IF NOT EXISTS idx_todogreen_green_scores_scope
-       ON todogreen_green_scores (tenant_id, client_id, scope_type, scope_id, calculated_at DESC)`,
-  ];
-  for (const sql of ddl) await env.DB.prepare(sql).run().catch(() => {});
-}
 
 // O conjunto de pesos em vigor. Se ninguém cadastrou nenhum, usa o padrão do
 // código — mas devolve a versão dele, para o score gravado saber com que régua
@@ -142,8 +106,6 @@ export async function handleTodoGreenEsg(request, env) {
   const porta = await exigirAcessoTodoGreen(request, env);
   if (porta.response) return porta.response;
   const { user, access } = porta;
-
-  await ensureTables(env);
 
   // ---- Fatores em uso ----
   if (request.method === "GET" && recurso === "fatores") {

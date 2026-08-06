@@ -35,28 +35,6 @@ const canManageTeam = (access) =>
   access?.permissions?.includes("*") ||
   access?.permissions?.includes("dashboard:manage");
 
-async function ensureTable(env) {
-  await env.DB.prepare(
-    `CREATE TABLE IF NOT EXISTS todogreen_dashboards (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL DEFAULT 'todogreen',
-      workspace_owner_id TEXT NOT NULL,
-      name TEXT NOT NULL,
-      description TEXT NOT NULL DEFAULT '',
-      visibility TEXT NOT NULL DEFAULT 'personal',
-      filters_json TEXT NOT NULL DEFAULT '{}',
-      widgets_json TEXT NOT NULL DEFAULT '[]',
-      layout_json TEXT NOT NULL DEFAULT '{}',
-      status TEXT NOT NULL DEFAULT 'active',
-      revision INTEGER NOT NULL DEFAULT 1,
-      created_by TEXT NOT NULL,
-      updated_by TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      archived_at TEXT
-    )`,
-  ).run();
-}
 
 function normalizeWidgets(input) {
   if (!Array.isArray(input)) throw new Error("Inclua ao menos um indicador no painel.");
@@ -100,7 +78,6 @@ export async function handleTodoGreenDashboards(request, env) {
   const url = new URL(request.url);
   const access = await resolveAccess(env, user, url.searchParams.get("owner"));
   if (!access) return response({ error: "Você não tem acesso à To Do Green." }, 403);
-  await ensureTable(env);
 
   const parts = url.pathname.split("/").filter(Boolean);
   const dashboardId = clean(parts[3], 80);

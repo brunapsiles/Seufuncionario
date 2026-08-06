@@ -43,25 +43,6 @@ const podeGerirPreco = (access) =>
   access.permissions.includes("*") ||
   access.permissions.includes("pricing:manage");
 
-async function ensureTable(env) {
-  await env.DB.prepare(
-    `CREATE TABLE IF NOT EXISTS todogreen_pricing_parameters (
-      version TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL DEFAULT 'todogreen',
-      parameters_json TEXT NOT NULL,
-      change_summary TEXT NOT NULL DEFAULT '',
-      justification TEXT NOT NULL DEFAULT '',
-      responsible TEXT NOT NULL DEFAULT '',
-      effective_from TEXT NOT NULL,
-      effective_to TEXT,
-      status TEXT NOT NULL DEFAULT 'active',
-      created_by TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    )`,
-  )
-    .run()
-    .catch(() => {});
-}
 
 // A régua em vigor. Sem nenhuma cadastrada, valem os padrões do código — e a
 // resposta diz isso, para a tela não fingir que existe uma decisão de gestor
@@ -107,8 +88,6 @@ export async function handleTodoGreenPricingParameters(request, env) {
   const porta = await exigirAcessoTodoGreen(request, env);
   if (porta.response) return porta.response;
   const { user, access } = porta;
-
-  await ensureTable(env);
 
   if (request.method === "GET") {
     const atual = await reguaEmVigor(env);
