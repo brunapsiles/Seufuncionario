@@ -17,7 +17,6 @@ const OBSERVADORES = [
   "LogisticsVerticalPolish.js",
   "LogisticsVerticalSalesPerformance.js",
   "LogisticsVerticalCredentials.js",
-  "LogisticsVerticalAccessPolicy.js",
 ];
 
 describe("gravar o mesmo texto realimenta o observador", () => {

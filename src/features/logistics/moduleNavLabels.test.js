@@ -54,3 +54,21 @@ describe("rótulos da navegação da vertical", () => {
     expect(fonte).not.toContain('item.title.split(" ")[0]');
   });
 });
+
+describe("permissão não sai do texto da tela", () => {
+  it("a aba de Acessos exige a permissão de gerenciar acessos", () => {
+    // Antes, um script lia o texto do painel e decidia:
+    //   /admin|owner|access:manage|gerenciar/i.test(panel.textContent)
+    // Bastava um e-mail como "admin@cliente.com" aparecer na lista para a tela
+    // liberar a gestão. A permissão agora vem do papel do vínculo.
+    expect(blocoDosModulos).toMatch(/permission: "access:manage"/);
+  });
+
+  it("a barra filtra por permissão antes de desenhar a aba", () => {
+    expect(fonte).toMatch(/hasTodoGreenPermission\(role, item\.permission\)/);
+  });
+
+  it("nenhum módulo de tela decide acesso lendo textContent", () => {
+    expect(fonte).not.toMatch(/textContent[^\n]*\b(admin|owner|gerenciar)\b/);
+  });
+});

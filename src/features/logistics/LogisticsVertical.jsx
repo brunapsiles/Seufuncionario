@@ -337,6 +337,9 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     route: "/todogreen/acessos",
     area: "gestao",
     status: "functional",
+    // Quem não gerencia acessos não vê a aba. A checagem é o papel do vínculo,
+    // não a presença da palavra "admin" em algum lugar da tela.
+    permission: "access:manage",
     description: "Gestão de e-mails autorizados e papéis privados da vertical.",
   },
 });
@@ -1246,7 +1249,9 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
       </section>
 
       <nav className="tdg-tabs" aria-label="Navegação To Do Green">
-        {Object.entries(MODULE_IMPLEMENTATION).map(([id, item]) => <button type="button" className={page === id ? "active" : ""} onClick={() => navigate(item.route)} key={id}>{item.navLabel}</button>)}
+        {Object.entries(MODULE_IMPLEMENTATION)
+          .filter(([, item]) => !item.permission || hasTodoGreenPermission(role, item.permission))
+          .map(([id, item]) => <button type="button" className={page === id ? "active" : ""} onClick={() => navigate(item.route)} key={id}>{item.navLabel}</button>)}
       </nav>
 
       <section className="tdg-metrics" aria-label="Indicadores executivos">
