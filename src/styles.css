@@ -255,7 +255,7 @@ h3,
   grid-template-columns: 1.08fr 0.92fr;
 }
 .auth-art {
-  padding: 48px 8%;
+  padding: 48px 6%;
   color: #fff;
   background:
     radial-gradient(
@@ -292,21 +292,30 @@ h3,
   font-size: 19px;
 }
 .auth-art h1 {
-  font-size: clamp(2.8rem, 5vw, 5.7rem);
-  line-height: 1.02;
-  max-width: 850px;
-  letter-spacing: -0.05em;
-  margin: 18px 0 24px;
+  /* 5.7rem dava 72px numa tela de 900px de altura: quatro linhas de manchete e
+     um vão morto embaixo. O teto agora acompanha a altura da janela. */
+  font-size: clamp(2.3rem, 2.6vw + 0.5rem, 3.2rem);
+  line-height: 1.1;
+  max-width: 19ch;
+  letter-spacing: -0.03em;
+  margin: 0 0 20px;
 }
 .auth-art h1 em {
   font-style: normal;
   color: #87f7dc;
 }
 .auth-art p {
-  font-size: 18px;
-  max-width: 580px;
+  font-size: 17px;
+  max-width: 46ch;
   color: #cce9e4;
   line-height: 1.6;
+}
+/* O bloco do meio se centra na coluna: antes o texto encostava no topo e
+   sobrava um vão de mais de 200px acima dos chips. */
+.auth-art > div:not(.logo):not(.auth-chips) {
+  margin: auto 0;
+  position: relative;
+  z-index: 1;
 }
 .auth-chips {
   display: flex;
@@ -333,8 +342,18 @@ h3,
   padding: 40px;
   background: var(--bg);
 }
+/* Isto era uma div sem estilo nenhum: sem fundo, sem borda, sem sombra e sem
+   respiro. Os campos flutuavam sobre a página e a tela não parecia um produto.
+   A superfície é o que transforma um formulário solto em um cartão de acesso. */
 .auth-card {
-  width: min(440px, 100%);
+  width: min(456px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 34px 32px;
+  box-shadow:
+    0 1px 2px rgba(16, 36, 33, 0.04),
+    0 18px 40px -22px rgba(16, 36, 33, 0.28);
 }
 .auth-card h2 {
   font-size: 2rem;
@@ -351,10 +370,12 @@ h3,
 }
 .privacy {
   font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
   display: flex;
   gap: 8px;
   align-items: flex-start;
-  margin-top: 22px;
+  margin-top: 18px;
 }
 .privacy svg {
   min-width: 18px;
@@ -370,7 +391,7 @@ h3,
   border: 1px solid var(--line);
   border-radius: 13px;
   padding: 4px;
-  margin-bottom: 28px;
+  margin-bottom: 22px;
 }
 .auth-tabs button {
   border: 0;
@@ -18621,5 +18642,92 @@ body {
 
   .tdg-section-head {
     display: grid;
+  }
+}
+
+/* ----- Acabamento da tela de acesso ----- */
+
+/* Senha com olho: sem isto a pessoa erra a senha e não tem como conferir o que
+   digitou — a causa mais comum de "não consigo entrar". */
+.auth-password {
+  position: relative;
+}
+.auth-password input {
+  padding-right: 46px;
+}
+.auth-password button {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.auth-password button:hover {
+  background: var(--surface2);
+  color: var(--text);
+}
+.auth-password button svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Os dois links de apoio ficavam numa frase só, quebrando em duas linhas
+   desalinhadas. Separados, cada um vira uma ação legível. */
+.auth-switch {
+  /* Em 456px de cartão os dois links não cabem lado a lado: o space-between
+     empurrava um para a linha de baixo, desalinhado. Empilhados ficam legíveis
+     e previsíveis. */
+  display: grid;
+  gap: 7px;
+  justify-items: start;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.auth-switch button {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--primary);
+  cursor: pointer;
+}
+.auth-switch button:hover {
+  text-decoration: underline;
+}
+.auth-legal {
+  margin-top: 14px;
+  font-size: 12px;
+  text-align: center;
+}
+.auth-legal button {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .auth-card {
+    padding: 26px 20px;
+    border-radius: 18px;
+  }
+  .auth-switch {
+    justify-content: flex-start;
   }
 }

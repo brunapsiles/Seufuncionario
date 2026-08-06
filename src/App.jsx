@@ -224,6 +224,7 @@ import {
   ListTodo,
   TrendingUp,
   Globe2,
+  ArrowRight,
   ArrowUpRight,
   BriefcaseBusiness,
   MessageSquareText,
@@ -231,6 +232,7 @@ import {
   DollarSign,
   Save,
   Eye,
+  EyeOff,
   Smartphone,
   Tablet,
   Monitor,
@@ -2999,6 +3001,7 @@ function Login({ update }) {
   const [busy, setBusy] = useState(false);
   const [googleId, setGoogleId] = useState("");
   const [showLegal, setShowLegal] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const googleRef = useRef(null);
   useEffect(() => {
     fetch("/api/config")
@@ -3436,17 +3439,28 @@ function Login({ update }) {
               label="Senha"
               hint={mode === "register" ? "Mínimo de 8 caracteres" : undefined}
             >
-              <input
-                required
-                minLength="8"
-                autoComplete={
-                  mode === "login" ? "current-password" : "new-password"
-                }
-                type="password"
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                placeholder="••••••••"
-              />
+              {/* Sem o olho, quem erra a senha não tem como conferir o que
+                  digitou — a causa mais comum de "não consigo entrar". */}
+              <span className="auth-password">
+                <input
+                  required
+                  minLength="8"
+                  autoComplete={
+                    mode === "login" ? "current-password" : "new-password"
+                  }
+                  type={showPassword ? "text" : "password"}
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                >
+                  {showPassword ? <EyeOff /> : <Eye />}
+                </button>
+              </span>
             </Field>
             {error && (
               <div className="auth-error" role="alert">
@@ -3457,7 +3471,7 @@ function Login({ update }) {
             <Button
               className="full"
               type="submit"
-              icon={ArrowUpRight}
+              icon={ArrowRight}
               disabled={busy}
             >
               {busy
@@ -3467,40 +3481,33 @@ function Login({ update }) {
                   : "Criar minha conta"}
             </Button>
           </form>
-          <p className="auth-switch">
-            {mode === "login"
-              ? "Ainda não tem uma conta?"
-              : "Já possui uma conta?"}{" "}
-            <button
-              type="button"
-              onClick={() =>
-                changeMode(mode === "login" ? "register" : "login")
-              }
-            >
-              {mode === "login" ? "Criar conta gratuitamente" : "Entrar agora"}
-            </button>
+          <div className="auth-switch">
+            <span>
+              {mode === "login"
+                ? "Ainda não tem uma conta?"
+                : "Já possui uma conta?"}{" "}
+              <button
+                type="button"
+                onClick={() =>
+                  changeMode(mode === "login" ? "register" : "login")
+                }
+              >
+                {mode === "login" ? "Criar conta" : "Entrar"}
+              </button>
+            </span>
             {mode === "login" && (
-              <>
-                {" "}
-                ·{" "}
-                <button type="button" onClick={forgot} disabled={busy}>
-                  Esqueci minha senha
-                </button>
-              </>
+              <button type="button" onClick={forgot} disabled={busy}>
+                Esqueci minha senha
+              </button>
             )}
-          </p>
+          </div>
           <p className="privacy">
             <ShieldCheck />
-            Sua senha é protegida com criptografia e seus projetos ficam
-            sincronizados com a sua conta — entre de qualquer dispositivo e
-            continue de onde parou.
+            Senha protegida com criptografia. Seus dados ficam na sua conta e
+            acompanham você em qualquer dispositivo.
           </p>
-          <p className="privacy">
-            <button
-              type="button"
-              className="link-button"
-              onClick={() => setShowLegal(true)}
-            >
+          <p className="auth-legal">
+            <button type="button" onClick={() => setShowLegal(true)}>
               Termos de Uso e Política de Privacidade
             </button>
           </p>
