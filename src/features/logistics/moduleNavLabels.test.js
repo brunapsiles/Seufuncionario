@@ -1,0 +1,56 @@
+import fs from "node:fs";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+
+// A barra de navegação da vertical derivava o rótulo de cada aba com
+// `title.split(" ")[0]` — a primeira palavra do título completo. Isso produzia
+// "ESG," com a vírgula grudada, "Receita," e "Custos,", e cortava "TMS Tracker"
+// em "TMS". O rótulo curto agora é declarado por módulo.
+//
+// Este teste lê o arquivo como texto porque LogisticsVertical.jsx é um
+// componente pesado: importá-lo só para conferir rótulos arrastaria a árvore
+// inteira de dependências para dentro do teste.
+
+const arquivo = path.join(
+  path.dirname(new URL(import.meta.url).pathname),
+  "LogisticsVertical.jsx",
+);
+const fonte = fs.readFileSync(arquivo, "utf8");
+
+const blocoDosModulos = fonte.slice(
+  fonte.indexOf("const MODULE_IMPLEMENTATION"),
+  fonte.indexOf("const fieldLabels"),
+);
+
+const modulos = [...blocoDosModulos.matchAll(/^ {2}"?([a-z-]+)"?: \{/gm)].map((m) => m[1]);
+const rotulos = [...blocoDosModulos.matchAll(/navLabel: "([^"]+)"/g)].map((m) => m[1]);
+
+describe("rótulos da navegação da vertical", () => {
+  it("todo módulo declara o próprio rótulo curto", () => {
+    expect(modulos.length).toBeGreaterThan(0);
+    expect(rotulos).toHaveLength(modulos.length);
+  });
+
+  it("nenhum rótulo termina em pontuação solta", () => {
+    // Era exatamente isto que aparecia na tela: "ESG,", "Receita,", "Custos,".
+    const quebrados = rotulos.filter((rotulo) => /[,;:.]$/.test(rotulo));
+    expect(quebrados).toEqual([]);
+  });
+
+  it("nenhum rótulo está vazio ou com espaço sobrando", () => {
+    for (const rotulo of rotulos) {
+      expect(rotulo.trim()).toBe(rotulo);
+      expect(rotulo.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("dois módulos não disputam o mesmo rótulo", () => {
+    // Duas abas escritas igual são duas abas que o usuário não sabe distinguir.
+    expect(new Set(rotulos).size).toBe(rotulos.length);
+  });
+
+  it("a barra usa o rótulo declarado, não a primeira palavra do título", () => {
+    expect(fonte).toContain("{item.navLabel}");
+    expect(fonte).not.toContain('item.title.split(" ")[0]');
+  });
+});

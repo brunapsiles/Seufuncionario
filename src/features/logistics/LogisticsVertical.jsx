@@ -183,11 +183,13 @@ const IMPLEMENTED_MODULE_IDS = new Set([
   "configuracoes",
   "dashboards",
   "rastreamento",
+  "solicitacoes",
 ]);
 
 const MODULE_IMPLEMENTATION = Object.freeze({
   dashboard: {
     title: "Painel de Gerenciamento",
+    navLabel: "Painel",
     route: "/todogreen/dashboard",
     area: "gestao",
     status: "functional",
@@ -195,6 +197,7 @@ const MODULE_IMPLEMENTATION = Object.freeze({
   },
   dashboards: {
     title: "Painéis personalizados",
+    navLabel: "Meus painéis",
     route: "/todogreen/dashboards",
     area: "gestao",
     status: "functional",
@@ -202,6 +205,7 @@ const MODULE_IMPLEMENTATION = Object.freeze({
   },
   clientes: {
     title: "Clientes e contatos",
+    navLabel: "Clientes",
     route: "/todogreen/clientes",
     area: "comercial",
     status: "functional",
@@ -209,6 +213,7 @@ const MODULE_IMPLEMENTATION = Object.freeze({
   },
   oportunidades: {
     title: "Oportunidades e pipeline",
+    navLabel: "Oportunidades",
     route: "/todogreen/oportunidades",
     area: "comercial",
     status: "functional",
@@ -216,6 +221,7 @@ const MODULE_IMPLEMENTATION = Object.freeze({
   },
   propostas: {
     title: "Propostas e contratos",
+    navLabel: "Propostas",
     route: "/todogreen/propostas",
     area: "comercial",
     status: "functional",
@@ -223,6 +229,7 @@ const MODULE_IMPLEMENTATION = Object.freeze({
   },
   precificacao: {
     title: "Precificação e aprovação comercial",
+    navLabel: "Precificação",
     route: "/todogreen/precificacao",
     area: "comercial",
     status: "functional",
@@ -230,6 +237,7 @@ const MODULE_IMPLEMENTATION = Object.freeze({
   },
   esg: {
     title: "ESG, Green Score e emissões da cadeia logística",
+    navLabel: "ESG",
     route: "/todogreen/esg",
     area: "esg",
     status: "functional",
@@ -237,6 +245,7 @@ const MODULE_IMPLEMENTATION = Object.freeze({
   },
   regua: {
     title: "Régua comercial",
+    navLabel: "Régua comercial",
     route: "/todogreen/regua",
     area: "financeiro",
     status: "functional",
@@ -244,13 +253,23 @@ const MODULE_IMPLEMENTATION = Object.freeze({
   },
   "central-esg": {
     title: "Central ESG",
+    navLabel: "Central ESG",
     route: "/todogreen/central-esg",
     area: "esg",
     status: "functional",
     description: "Calcula e grava o impacto com memória de cálculo, apura o Green Score com a régua em vigor e guarda a explicação de cada variação.",
   },
+  solicitacoes: {
+    title: "Solicitações de clientes",
+    navLabel: "Solicitações",
+    route: "/todogreen/solicitacoes",
+    area: "operacional",
+    status: "functional",
+    description: "Fila do que os clientes pediram pelo portal, ordenada por prazo, com responsável, conversa e histórico.",
+  },
   operacoes: {
     title: "Operações logísticas",
+    navLabel: "Operações",
     route: "/todogreen/operacoes",
     area: "operacional",
     status: "functional",
@@ -258,6 +277,7 @@ const MODULE_IMPLEMENTATION = Object.freeze({
   },
   rastreamento: {
     title: "TMS Tracker",
+    navLabel: "TMS Tracker",
     route: "/todogreen/rastreamento",
     area: "operacional",
     status: "functional",
@@ -265,6 +285,7 @@ const MODULE_IMPLEMENTATION = Object.freeze({
   },
   receita: {
     title: "Receita, forecast e faturamento",
+    navLabel: "Receita",
     route: "/todogreen/receita",
     area: "financeiro",
     status: "functional",
@@ -272,6 +293,7 @@ const MODULE_IMPLEMENTATION = Object.freeze({
   },
   custos: {
     title: "Custos, despesas e margem",
+    navLabel: "Custos",
     route: "/todogreen/custos",
     area: "financeiro",
     status: "functional",
@@ -279,6 +301,7 @@ const MODULE_IMPLEMENTATION = Object.freeze({
   },
   relatorios: {
     title: "Relatórios executivos",
+    navLabel: "Relatórios",
     route: "/todogreen/relatorios",
     area: "gestao",
     status: "functional",
@@ -286,6 +309,7 @@ const MODULE_IMPLEMENTATION = Object.freeze({
   },
   metodologia: {
     title: "Metodologia e premissas",
+    navLabel: "Metodologia",
     route: "/todogreen/metodologia",
     area: "esg",
     status: "functional",
@@ -293,6 +317,7 @@ const MODULE_IMPLEMENTATION = Object.freeze({
   },
   auditoria: {
     title: "Auditoria e governança",
+    navLabel: "Auditoria",
     route: "/todogreen/auditoria",
     area: "gestao",
     status: "functional",
@@ -300,6 +325,7 @@ const MODULE_IMPLEMENTATION = Object.freeze({
   },
   acessos: {
     title: "Acessos",
+    navLabel: "Acessos",
     route: "/todogreen/acessos",
     area: "gestao",
     status: "functional",
@@ -1200,7 +1226,7 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
       </section>
 
       <nav className="tdg-tabs" aria-label="Navegação To Do Green">
-        {Object.entries(MODULE_IMPLEMENTATION).map(([id, item]) => <button type="button" className={page === id ? "active" : ""} onClick={() => navigate(item.route)} key={id}>{item.title.split(" ")[0]}</button>)}
+        {Object.entries(MODULE_IMPLEMENTATION).map(([id, item]) => <button type="button" className={page === id ? "active" : ""} onClick={() => navigate(item.route)} key={id}>{item.navLabel}</button>)}
       </nav>
 
       <section className="tdg-metrics" aria-label="Indicadores executivos">
