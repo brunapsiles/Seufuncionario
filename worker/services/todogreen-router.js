@@ -1,4 +1,5 @@
-import { handleTodoGreenWorkCenter, authenticatedUser, resolveAccess } from "./todogreen-work-center.js";
+import { handleTodoGreenWorkCenter } from "./todogreen-work-center.js";
+import { exigirAcessoTodoGreen } from "./todogreen-access.js";
 import { handleTodoGreenFleet } from "./todogreen-fleet.js";
 import { handleTodoGreenTracker } from "./todogreen-tracker.js";
 import {
@@ -24,13 +25,10 @@ const guarded = async (label, message, handler) => {
   }
 };
 
-const internalAccess = async (request, env, url) => {
-  const user = await authenticatedUser(request, env);
-  if (!user) return { response: json({ error: "Sessão inválida." }, 401) };
-  const access = await resolveAccess(env, user, url.searchParams.get("owner"));
-  if (!access) return { response: json({ error: "Você não tem acesso à To Do Green." }, 403) };
-  return { user, access };
-};
+// A porta é uma só, em todogreen-access.js. Antes cada serviço repetia estes
+// dois passos — e a repetição é o que deixou passar o acesso por domínio e o
+// espaço de trabalho vindo da query string.
+const internalAccess = (request, env) => exigirAcessoTodoGreen(request, env);
 
 export async function routeTodoGreenApi(request, env) {
   const url = new URL(request.url);
@@ -61,7 +59,7 @@ export async function routeTodoGreenApi(request, env) {
 
   if (path.startsWith("/api/todogreen/requests")) {
     return guarded("To Do Green requests error", "Não foi possível carregar as solicitações.", async () => {
-      const resolved = await internalAccess(request, env, url);
+      const resolved = await internalAccess(request, env);
       if (resolved.response) return resolved.response;
       return handleTodoGreenRequests(request, env, resolved.access, resolved.user);
     });
@@ -69,7 +67,7 @@ export async function routeTodoGreenApi(request, env) {
 
   if (path.startsWith("/api/todogreen/clients") || path.startsWith("/api/todogreen/client-assignments")) {
     return guarded("To Do Green clients error", "Não foi possível carregar os clientes.", async () => {
-      const resolved = await internalAccess(request, env, url);
+      const resolved = await internalAccess(request, env);
       if (resolved.response) return resolved.response;
       return path.startsWith("/api/todogreen/client-assignments")
         ? handleTodoGreenClientAssignments(request, env, resolved.access, resolved.user)

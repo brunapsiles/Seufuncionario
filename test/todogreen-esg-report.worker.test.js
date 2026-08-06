@@ -46,6 +46,18 @@ const CLI_OUTRO = "rel-cli-outro";
 let gestor;
 let vendedor;
 
+// Acesso à vertical vem de vínculo explícito. Antes estes testes passavam por
+// causa da regra de domínio "@todogreen.com.br", que foi removida por ser um
+// caminho aberto para qualquer conta criada com um e-mail daquele domínio.
+async function autorizar(env, email, criadoPor, role = "auditor", permissoes = "[]") {
+  const agora = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO todogreen_access_emails
+       (id, tenant_id, email, role, status, permissions_json, note, created_by, created_at, updated_at)
+     VALUES (?, 'todogreen', ?, ?, 'active', ?, '', ?, ?, ?)`,
+  ).bind(crypto.randomUUID(), email, role, permissoes, criadoPor, agora, agora).run();
+}
+
 beforeAll(async () => {
   await pedir("/api/todogreen/portal/sessao");
 
@@ -73,6 +85,8 @@ beforeAll(async () => {
        (id, tenant_id, client_id, seller_email, status, note, assigned_by, created_at, updated_at)
      VALUES (?, 'todogreen', ?, ?, 'active', '', ?, ?, ?)`,
   ).bind(crypto.randomUUID(), CLI_MEU, vendedor.email, gestor.id, agora, agora).run();
+
+  await autorizar(env, vendedor.email, gestor.id);
 
   await env.DB.prepare(
     `INSERT INTO todogreen_client_operations

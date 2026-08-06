@@ -76,8 +76,8 @@ beforeAll(async () => {
   )
     .bind(agora, agora)
     .run();
-  // Gestor com pricing:manage; vendedor entra só pelo domínio (papel auditor,
-  // sem permissão de gestão).
+  // Gestor com pricing:manage; vendedor liberado como auditor, sem permissão
+  // de gestão. Os dois precisam de vínculo explícito.
   await env.DB.prepare(
     `INSERT INTO todogreen_access_emails
        (id, tenant_id, email, role, status, permissions_json, note, created_by, created_at, updated_at)
@@ -85,6 +85,15 @@ beforeAll(async () => {
   )
     .bind(crypto.randomUUID(), gestor.email, gestor.id, agora, agora)
     .run();
+
+  // Acesso é vínculo explícito: a regra de domínio "@todogreen.com.br" foi
+  // removida por abrir a vertical para qualquer conta criada nesse domínio.
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO todogreen_access_emails
+       (id, tenant_id, email, role, status, permissions_json, note, created_by, created_at, updated_at)
+     VALUES (?, 'todogreen', ?, 'auditor', 'active', '[]', '', ?, ?, ?)`,
+  ).bind(crypto.randomUUID(), vendedor.email, gestor.id, agora, agora).run();
+
 });
 
 describe("ler a régua", () => {

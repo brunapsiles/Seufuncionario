@@ -75,6 +75,18 @@ async function seedSolicitacao(id, clientId, assunto, extra = {}) {
     .run();
 }
 
+// Acesso à vertical vem de vínculo explícito. Antes estes testes passavam por
+// causa da regra de domínio "@todogreen.com.br", que foi removida por ser um
+// caminho aberto para qualquer conta criada com um e-mail daquele domínio.
+async function autorizar(env, email, criadoPor, role = "auditor", permissoes = "[]") {
+  const agora = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO todogreen_access_emails
+       (id, tenant_id, email, role, status, permissions_json, note, created_by, created_at, updated_at)
+     VALUES (?, 'todogreen', ?, ?, 'active', ?, '', ?, ?, ?)`,
+  ).bind(crypto.randomUUID(), email, role, permissoes, criadoPor, agora, agora).run();
+}
+
 beforeAll(async () => {
   // Garante o DDL das tabelas do portal.
   await pedir("/api/todogreen/portal/sessao");
@@ -117,6 +129,8 @@ beforeAll(async () => {
         invited_by, created_at, updated_at)
      VALUES (?, 'todogreen', ?, ?, 'cliente_gestor', 'active', '[]', 'seed', ?, ?)`,
   ).bind(crypto.randomUUID(), CLI_MEU, clienteDoPortal.email, agora, agora).run();
+
+  await autorizar(env, vendedor.email, gestor.id);
 
   await seedSolicitacao(REQ_MEU, CLI_MEU, "Pedido da minha carteira");
   await seedSolicitacao(REQ_OUTRO, CLI_OUTRO, "Pedido de outra carteira");

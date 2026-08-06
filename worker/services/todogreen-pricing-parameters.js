@@ -8,10 +8,7 @@
 // governa). Escrever é de quem gere preço: mudar a régua muda a proposta de
 // todo mundo daqui para frente.
 
-import {
-  authenticatedUser,
-  resolveAccess,
-} from "./todogreen-work-center.js";
+import { exigirAcessoTodoGreen } from "./todogreen-access.js";
 import {
   explicarMudanca,
   simularEfeito,
@@ -107,13 +104,9 @@ export async function reguaEmVigor(env) {
 export async function handleTodoGreenPricingParameters(request, env) {
   if (!env.DB) return response({ error: "Banco indisponível." }, 503);
 
-  const url = new URL(request.url);
-  const user = await authenticatedUser(request, env);
-  if (!user) return response({ error: "Sessão inválida." }, 401);
-
-  const access = await resolveAccess(env, user, url.searchParams.get("owner"));
-  if (!access)
-    return response({ error: "Você não tem acesso à To Do Green." }, 403);
+  const porta = await exigirAcessoTodoGreen(request, env);
+  if (porta.response) return porta.response;
+  const { user, access } = porta;
 
   await ensureTable(env);
 

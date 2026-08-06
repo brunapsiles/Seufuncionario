@@ -1,3 +1,8 @@
+import {
+  authenticatedUser,
+  resolveTodoGreenAccess,
+} from "./todogreen-access.js";
+
 const TENANT_ID = "todogreen";
 const MAX_LIMIT = 200;
 
@@ -19,67 +24,17 @@ const parse = (value, fallback) => {
     return fallback;
   }
 };
-const sha256 = async (value) => {
-  const bytes = new TextEncoder().encode(value);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-};
+// Autenticação e autorização moram em todogreen-access.js. Reexportadas aqui
+// só para não quebrar quem já importava deste módulo — a decisão acontece num
+// lugar só.
+export { authenticatedUser };
 
-// Exportado para o servico de ESG usar as MESMAS regras de sessao. Uma
-// segunda copia divergiria no primeiro ajuste.
-export async function authenticatedUser(request, env) {
-  const auth = request.headers.get("authorization") || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-  if (!token || !env.DB) return null;
-  return env.DB.prepare(
-    `SELECT u.id, u.name, u.email
-       FROM sessions s
-       JOIN users u ON u.id = s.user_id
-      WHERE s.token_hash = ? AND s.expires_at > ?`,
-  )
-    .bind(await sha256(token), new Date().toISOString())
-    .first();
-}
-
-// Exportado pelo mesmo motivo: quem pode operar a vertical e decidido em um
-// lugar so.
+// Assinatura preservada: devolve o acesso ou null. O endurecimento — sem
+// acesso por domínio, sem espaço de trabalho vindo da query string — está na
+// implementação central.
 export async function resolveAccess(env, user, requestedOwnerId) {
-  const adminEmails = String(env.TODOGREEN_ADMIN_EMAILS || "")
-    .split(",")
-    .map((item) => item.trim().toLowerCase())
-    .filter(Boolean);
-  const email = String(user.email || "").toLowerCase();
-  const manual = await env.DB.prepare(
-    `SELECT role, permissions_json
-       FROM todogreen_access_emails
-      WHERE tenant_id = ? AND lower(email) = ? AND status = 'active'`,
-  )
-    .bind(TENANT_ID, email)
-    .first()
-    .catch(() => null);
-  const membership = await env.DB.prepare(
-    `SELECT role, permissions_json, workspace_owner_id
-       FROM tenant_users
-      WHERE tenant_id = ? AND user_id = ? AND status = 'active'`,
-  )
-    .bind(TENANT_ID, user.id)
-    .first()
-    .catch(() => null);
-  const allowed =
-    adminEmails.includes(email) ||
-    email.endsWith("@todogreen.com.br") ||
-    !!manual ||
-    !!membership;
-  if (!allowed) return null;
-  const role = adminEmails.includes(email)
-    ? "admin"
-    : manual?.role || membership?.role || "auditor";
-  const permissions = adminEmails.includes(email)
-    ? ["*"]
-    : parse(manual?.permissions_json || membership?.permissions_json, []);
-  const ownerId =
-    clean(requestedOwnerId, 100) || membership?.workspace_owner_id || user.id;
-  return { ownerId, role, permissions };
+  const { access } = await resolveTodoGreenAccess(env, user, requestedOwnerId);
+  return access;
 }
 
 const canWrite = (access) =>

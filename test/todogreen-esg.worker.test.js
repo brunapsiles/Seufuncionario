@@ -78,8 +78,7 @@ beforeAll(async () => {
     .bind(new Date().toISOString(), new Date().toISOString())
     .run();
 
-  // Entrar pelo domínio corporativo dá acesso de leitura, mas não de gestão.
-  // Para calcular e mudar régua, a pessoa precisa estar liberada como admin.
+  // Estar liberado dá leitura; calcular e mudar régua exige papel de gestão.
   await env.DB.prepare(
     `INSERT INTO todogreen_access_emails
        (id, tenant_id, email, role, status, permissions_json, note, created_by, created_at, updated_at)
@@ -102,6 +101,15 @@ beforeAll(async () => {
       .bind(id, nome, agora, agora)
       .run()
       .catch(() => {});
+
+  // Acesso é vínculo explícito: a regra de domínio "@todogreen.com.br" foi
+  // removida por abrir a vertical para qualquer conta criada nesse domínio.
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO todogreen_access_emails
+       (id, tenant_id, email, role, status, permissions_json, note, created_by, created_at, updated_at)
+     VALUES (?, 'todogreen', ?, 'auditor', 'active', '[]', '', ?, ?, ?)`,
+  ).bind(crypto.randomUUID(), auditor.email, admin.id, new Date().toISOString(), new Date().toISOString()).run();
+
 });
 
 describe("quem pode calcular", () => {

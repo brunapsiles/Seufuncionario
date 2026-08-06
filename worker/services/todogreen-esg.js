@@ -8,10 +8,7 @@
 // ambiental gravado sem entradas, sem versão de fator e sem passos não é
 // auditável — e um relatório construído sobre ele não se defende.
 
-import {
-  authenticatedUser,
-  resolveAccess,
-} from "./todogreen-work-center.js";
+import { exigirAcessoTodoGreen } from "./todogreen-access.js";
 import {
   FATORES_PADRAO,
   calcularImpactoAmbiental,
@@ -142,12 +139,9 @@ export async function handleTodoGreenEsg(request, env) {
     .replace(/^\/api\/todogreen\/esg\/?/, "")
     .split("/")[0];
 
-  const user = await authenticatedUser(request, env);
-  if (!user) return response({ error: "Sessão inválida." }, 401);
-
-  const access = await resolveAccess(env, user, url.searchParams.get("owner"));
-  if (!access)
-    return response({ error: "Você não tem acesso à To Do Green." }, 403);
+  const porta = await exigirAcessoTodoGreen(request, env);
+  if (porta.response) return porta.response;
+  const { user, access } = porta;
 
   await ensureTables(env);
 
