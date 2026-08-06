@@ -68,6 +68,7 @@ const TrackerPage = lazy(() => import("./pages/TrackerPage.jsx"));
 const OpportunitiesPage = lazy(() => import("./pages/OpportunitiesPage.jsx"));
 const ClientRequestsPage = lazy(() => import("./pages/ClientRequestsPage.jsx"));
 const ReportsPage = lazy(() => import("./pages/ReportsPage.jsx"));
+const TripViabilityPage = lazy(() => import("./pages/TripViabilityPage.jsx"));
 
 const iconMap = {
   Activity,
@@ -293,8 +294,8 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     description: "Entradas financeiras por cliente/produto, forecast, faturamento, recebimento e comissão prevista.",
   },
   custos: {
-    title: "Custos, despesas e margem",
-    navLabel: "Custos",
+    title: "Custo, margem e decisão de aceite",
+    navLabel: "Custo e margem",
     route: "/todogreen/custos",
     area: "financeiro",
     status: "functional",
@@ -1248,7 +1249,8 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
       {page === "operacoes" && <OperationsPanel data={verticalData} update={update} setToast={setToast} />}
       {page === "rastreamento" && <Suspense fallback={<section className="tdg-panel">Carregando TMS Tracker...</section>}><TrackerPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "receita" && <FinancePanel type="revenue" data={verticalData} update={update} setToast={setToast} />}
-      {["custos", "comissoes"].includes(page) && <FinancePanel type="cost" data={verticalData} update={update} setToast={setToast} />}
+      {page === "custos" && <Suspense fallback={<section className="tdg-panel">Carregando custos e margem...</section>}><TripViabilityPage authHeaders={authHeaders} /></Suspense>}
+      {page === "comissoes" && <FinancePanel type="cost" data={verticalData} update={update} setToast={setToast} />}
       {page === "relatorios" && <Suspense fallback={<section className="tdg-panel">Carregando relatórios...</section>}><ReportsPage dashboard={dashboard} data={verticalData} authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "metodologia" && <MethodologyPanel />}
       {page === "auditoria" && <GovernancePanel role={role} />}

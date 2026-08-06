@@ -1,0 +1,365 @@
+import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, CheckCircle2, Plus, Trash2, XCircle } from "lucide-react";
+import {
+  MODALIDADES,
+  RECOMENDACOES,
+  REGUA_PADRAO,
+  RUBRICAS_SUGERIDAS,
+  UNIDADES_CUSTO,
+  avaliarViagem,
+} from "../tripViabilityDomain.js";
+import "./TodoGreenPages.css";
+
+// ===== Aceito esta viagem? =====
+//
+// O custo é digitado por quem conhece a operação; a margem e a recomendação
+// saem da conta. O contrário — margem digitada — é margem desejada, e margem
+// desejada não paga diesel.
+
+const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+const NUM = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
+
+const VIAGEM_INICIAL = {
+  modalidade: "spot",
+  kmPorViagem: "",
+  kmRetornoVazio: "",
+  horasPorViagem: "",
+  freteOferecido: "",
+  viagens: "1",
+  viagensPorMes: "",
+  meses: "12",
+  prazoPagamentoDias: "",
+  veiculosDisponiveis: "",
+};
+
+const rubricasIniciais = () =>
+  RUBRICAS_SUGERIDAS.map((r) => ({
+    id: r.id,
+    rotulo: r.rotulo,
+    unidade: r.unidade,
+    valor: "",
+    essencial: r.essencial,
+  }));
+
+const SELO = {
+  [RECOMENDACOES.aceitar]: { rotulo: "Aceitar", icone: CheckCircle2, classe: "aceitar" },
+  [RECOMENDACOES.ressalva]: { rotulo: "Aceitar com ressalva", icone: AlertTriangle, classe: "ressalva" },
+  [RECOMENDACOES.recusar]: { rotulo: "Não aceitar", icone: XCircle, classe: "recusar" },
+  [RECOMENDACOES.semDados]: { rotulo: "Faltam dados", icone: AlertTriangle, classe: "sem-dados" },
+};
+
+export default function TripViabilityPage({ authHeaders }) {
+  const [viagem, setViagem] = useState(VIAGEM_INICIAL);
+  const [rubricas, setRubricas] = useState(rubricasIniciais);
+  const [regua, setRegua] = useState(null);
+
+  // A régua em vigor é a mesma que precifica. Se a avaliação de aceite usasse
+  // outra, a empresa recusaria frete que ela própria cotaria.
+  useEffect(() => {
+    let vivo = true;
+    fetch("/api/todogreen/pricing-parameters", { headers: authHeaders?.() || {} })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (vivo && d?.atual)
+          setRegua({ ...d.atual.parametros, versao: d.atual.versao });
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [authHeaders]);
+
+  const reguaEmUso = regua || REGUA_PADRAO;
+
+  const numeros = (obj) =>
+    Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, v === "" ? 0 : Number(v)]));
+
+  const avaliacao = useMemo(
+    () =>
+      avaliarViagem(
+        { ...numeros(viagem), modalidade: viagem.modalidade },
+        rubricas.map((r) => ({ ...r, valor: r.valor === "" ? 0 : Number(r.valor) })),
+        reguaEmUso,
+      ),
+    [viagem, rubricas, reguaEmUso],
+  );
+
+  const campo = (chave) => (e) => setViagem((a) => ({ ...a, [chave]: e.target.value }));
+
+  const mudarRubrica = (indice, chave, valor) =>
+    setRubricas((atual) =>
+      atual.map((r, i) => (i === indice ? { ...r, [chave]: valor } : r)),
+    );
+
+  const adicionarRubrica = () =>
+    setRubricas((atual) => [
+      ...atual,
+      { id: `extra-${atual.length}`, rotulo: "", unidade: "por_viagem", valor: "" },
+    ]);
+
+  const removerRubrica = (indice) =>
+    setRubricas((atual) => atual.filter((_, i) => i !== indice));
+
+  const selo = SELO[avaliacao.recomendacao];
+  const Icone = selo.icone;
+  const recorrente = viagem.modalidade === "recorrente";
+
+  return (
+    <section className="tdg-panel tdg-page tdg-via-page">
+      <header className="tdg-page-title">
+        <div>
+          <span>CUSTO, MARGEM E DECISÃO</span>
+          <h2>Aceito esta viagem?</h2>
+          <p>
+            Lance os custos da sua operação — o sistema calcula a margem que sobra e
+            recomenda aceitar ou não, usando a régua comercial em vigor. Enquanto faltar
+            custo essencial, a recomendação fica suspensa: margem calculada sem combustível
+            e sem motorista fica alta demais e não representa a viagem.
+          </p>
+        </div>
+      </header>
+
+      <div className="tdg-via-layout">
+        <div className="tdg-via-entrada">
+          <fieldset className="tdg-via-bloco">
+            <legend>A viagem</legend>
+            <div className="tdg-via-modalidade" role="group" aria-label="Modalidade">
+              {Object.values(MODALIDADES).map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  className={viagem.modalidade === m.id ? "ativo" : ""}
+                  onClick={() => setViagem((a) => ({ ...a, modalidade: m.id }))}
+                >
+                  <strong>{m.rotulo}</strong>
+                  <small>{m.descricao}</small>
+                </button>
+              ))}
+            </div>
+
+            <div className="tdg-via-campos">
+              <label>
+                <span>Frete oferecido por viagem (R$)</span>
+                <input type="number" value={viagem.freteOferecido} onChange={campo("freteOferecido")} />
+              </label>
+              <label>
+                <span>Km com carga (ida)</span>
+                <input type="number" value={viagem.kmPorViagem} onChange={campo("kmPorViagem")} />
+              </label>
+              <label>
+                <span>Km de retorno vazio</span>
+                <input type="number" value={viagem.kmRetornoVazio} onChange={campo("kmRetornoVazio")} />
+              </label>
+              <label>
+                <span>Horas por viagem</span>
+                <input type="number" value={viagem.horasPorViagem} onChange={campo("horasPorViagem")} />
+              </label>
+              {recorrente ? (
+                <>
+                  <label>
+                    <span>Viagens por mês</span>
+                    <input type="number" value={viagem.viagensPorMes} onChange={campo("viagensPorMes")} />
+                  </label>
+                  <label>
+                    <span>Meses de contrato</span>
+                    <input type="number" value={viagem.meses} onChange={campo("meses")} />
+                  </label>
+                  <label>
+                    <span>Veículos disponíveis</span>
+                    <input
+                      type="number"
+                      value={viagem.veiculosDisponiveis}
+                      onChange={campo("veiculosDisponiveis")}
+                    />
+                  </label>
+                </>
+              ) : (
+                <label>
+                  <span>Quantas viagens</span>
+                  <input type="number" value={viagem.viagens} onChange={campo("viagens")} />
+                </label>
+              )}
+              <label>
+                <span>Prazo de pagamento (dias)</span>
+                <input
+                  type="number"
+                  value={viagem.prazoPagamentoDias}
+                  onChange={campo("prazoPagamentoDias")}
+                />
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset className="tdg-via-bloco">
+            <legend>Os seus custos</legend>
+            <p className="tdg-via-ressalva">
+              Cada transportadora tem o seu custo. A unidade é o que faz a conta fechar: km
+              rodado inclui o retorno vazio, km com carga não.
+            </p>
+            <ul className="tdg-via-rubricas">
+              {rubricas.map((rubrica, indice) => (
+                <li key={rubrica.id}>
+                  <input
+                    aria-label={`Nome do custo ${indice + 1}`}
+                    value={rubrica.rotulo}
+                    placeholder="Nome do custo"
+                    onChange={(e) => mudarRubrica(indice, "rotulo", e.target.value)}
+                  />
+                  <input
+                    type="number"
+                    aria-label={`Valor de ${rubrica.rotulo || `custo ${indice + 1}`}`}
+                    value={rubrica.valor}
+                    placeholder="0,00"
+                    onChange={(e) => mudarRubrica(indice, "valor", e.target.value)}
+                  />
+                  <select
+                    aria-label={`Unidade de ${rubrica.rotulo || `custo ${indice + 1}`}`}
+                    value={rubrica.unidade}
+                    onChange={(e) => mudarRubrica(indice, "unidade", e.target.value)}
+                  >
+                    {Object.values(UNIDADES_CUSTO).map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.rotulo}
+                      </option>
+                    ))}
+                  </select>
+                  {rubrica.essencial ? (
+                    <span className="tdg-via-essencial" title="Sem este custo não há recomendação">
+                      essencial
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      aria-label={`Remover ${rubrica.rotulo || `custo ${indice + 1}`}`}
+                      onClick={() => removerRubrica(indice)}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+            <button type="button" className="tdg-action" onClick={adicionarRubrica}>
+              <Plus size={15} />
+              Acrescentar custo
+            </button>
+          </fieldset>
+        </div>
+
+        <div className="tdg-via-saida">
+          <div className={`tdg-via-veredito ${selo.classe}`}>
+            <Icone size={22} />
+            <div>
+              <strong>{selo.rotulo}</strong>
+              <p>{avaliacao.motivo}</p>
+              <small>{avaliacao.acao}</small>
+            </div>
+          </div>
+
+          {avaliacao.custosFaltando.length > 0 && (
+            <ul className="tdg-via-faltando">
+              {avaliacao.custosFaltando.map((c) => (
+                <li key={c.id}>Falta lançar: {c.rotulo}</li>
+              ))}
+            </ul>
+          )}
+
+          <div className="tdg-via-numeros">
+            <article>
+              <small>Margem</small>
+              <strong>{NUM.format(avaliacao.economia.margemPercent)}%</strong>
+              <span>
+                piso {reguaEmUso.minimumMarginPercent}% · alvo {reguaEmUso.targetMarginPercent}%
+              </span>
+            </article>
+            <article>
+              <small>Resultado</small>
+              <strong>{BRL.format(avaliacao.economia.resultado)}</strong>
+              <span>depois de custo e comissão</span>
+            </article>
+            <article>
+              <small>Frete no piso</small>
+              <strong>{BRL.format(avaliacao.economia.precoMinimo)}</strong>
+              <span>
+                {avaliacao.volume.viagens > 1
+                  ? `${BRL.format(avaliacao.economia.precoMinimoPorViagem)} por viagem`
+                  : "para não ir abaixo da margem mínima"}
+              </span>
+            </article>
+            <article>
+              <small>Frete no alvo</small>
+              <strong>{BRL.format(avaliacao.economia.precoAlvo)}</strong>
+              <span>
+                {avaliacao.volume.viagens > 1
+                  ? `${BRL.format(avaliacao.economia.precoAlvoPorViagem)} por viagem`
+                  : "para atingir a margem alvo"}
+              </span>
+            </article>
+          </div>
+
+          <div className="tdg-via-bloco">
+            <h3>Como a margem foi calculada</h3>
+            <dl className="tdg-via-conta">
+              <div>
+                <dt>Frete</dt>
+                <dd>{BRL.format(avaliacao.economia.receitaBruta)}</dd>
+              </div>
+              <div>
+                <dt>Custo direto</dt>
+                <dd>− {BRL.format(avaliacao.economia.custoDireto)}</dd>
+              </div>
+              <div>
+                <dt>OPEX, administrativo, imposto e risco</dt>
+                <dd>− {BRL.format(avaliacao.economia.encargos.total)}</dd>
+              </div>
+              <div>
+                <dt>Comissão</dt>
+                <dd>− {BRL.format(avaliacao.economia.comissao)}</dd>
+              </div>
+              <div className="tdg-via-total">
+                <dt>Sobra</dt>
+                <dd>{BRL.format(avaliacao.economia.resultado)}</dd>
+              </div>
+            </dl>
+            <p className="tdg-via-ressalva">
+              Régua {avaliacao.economia.versaoRegua || "padrão"} · custo de{" "}
+              {BRL.format(avaliacao.economia.custoPorKm)} por km rodado ·{" "}
+              {NUM.format(avaliacao.volume.kmTotal)} km no total
+              {avaliacao.volume.percentVazio > 0
+                ? `, sendo ${NUM.format(avaliacao.volume.percentVazio)}% vazio`
+                : ""}
+              .
+            </p>
+          </div>
+
+          {avaliacao.custo.itens.length > 0 && (
+            <div className="tdg-via-bloco">
+              <h3>Onde o dinheiro vai</h3>
+              <ul className="tdg-via-itens">
+                {avaliacao.custo.itens.map((item) => (
+                  <li key={item.id}>
+                    <span>
+                      <strong>{item.rotulo}</strong>
+                      <small>{item.memoria}</small>
+                    </span>
+                    <b>{BRL.format(item.subtotal)}</b>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {avaliacao.ressalvas.length > 0 && (
+            <ul className="tdg-via-ressalvas">
+              {avaliacao.ressalvas.map((r) => (
+                <li key={r.texto} className={`g-${r.gravidade}`}>
+                  {r.texto}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
