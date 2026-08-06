@@ -67,6 +67,7 @@ const ClientsPage = lazy(() => import("./pages/ClientsPage.jsx"));
 const TrackerPage = lazy(() => import("./pages/TrackerPage.jsx"));
 const OpportunitiesPage = lazy(() => import("./pages/OpportunitiesPage.jsx"));
 const ClientRequestsPage = lazy(() => import("./pages/ClientRequestsPage.jsx"));
+const ReportsPage = lazy(() => import("./pages/ReportsPage.jsx"));
 
 const iconMap = {
   Activity,
@@ -1092,18 +1093,6 @@ function FinancePanel({ type, data, update, setToast }) {
   );
 }
 
-function ReportsPanel({ dashboard, data }) {
-  const report = [
-    `Clientes cadastrados: ${data.clients.length}.`,
-    `Oportunidades abertas: ${data.opportunities.length}.`,
-    `Receita prevista/contratada: ${BRL.format(dashboard.receitaPrevista)}.`,
-    `Margem operacional estimada: ${number.format(dashboard.margemOperacionalPercent)}%.`,
-    `CO2 evitado estimado: ${number.format(dashboard.co2Evitado / 1000)} tCO2e.`,
-    `Aprovações comerciais pendentes: ${dashboard.aprovacoesPendentes}.`,
-  ].join("\n");
-  return <section className="tdg-panel"><div className="tdg-section-head"><div><span className="tdg-kicker">RELATÓRIOS</span><h2>Resumo executivo consolidado</h2></div><strong>copiável</strong></div><textarea className="tdg-report-text" readOnly value={report} aria-label="Relatório executivo To Do Green" /></section>;
-}
-
 function MethodologyPanel() {
   const rows = LOGISTICS_PRODUCTS.map((product) => ({ product, blueprint: getProductPricingBlueprint(product.id) }));
   return (
@@ -1260,7 +1249,7 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
       {page === "rastreamento" && <Suspense fallback={<section className="tdg-panel">Carregando TMS Tracker...</section>}><TrackerPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "receita" && <FinancePanel type="revenue" data={verticalData} update={update} setToast={setToast} />}
       {["custos", "comissoes"].includes(page) && <FinancePanel type="cost" data={verticalData} update={update} setToast={setToast} />}
-      {page === "relatorios" && <ReportsPanel dashboard={dashboard} data={verticalData} />}
+      {page === "relatorios" && <Suspense fallback={<section className="tdg-panel">Carregando relatórios...</section>}><ReportsPage dashboard={dashboard} data={verticalData} authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "metodologia" && <MethodologyPanel />}
       {page === "auditoria" && <GovernancePanel role={role} />}
       {page === "acessos" && <AccessPanel role={role} authHeaders={authHeaders} setToast={setToast} />}

@@ -447,5 +447,146 @@ export async function handleTodoGreenEsg(request, env) {
     });
   }
 
+  // ---- Material bruto do relatório, lado interno ----
+  //
+  // Mesma consulta que o portal faz para o cliente. O documento continua sendo
+  // montado no navegador com `montarRelatorio`, então o relatório que a equipe
+  // gera e o que o cliente baixa saem do mesmo código — não existem duas
+  // versões do mesmo número.
+  //
+  // A diferença é o alcance: aqui o cliente vem do parâmetro, e por isso passa
+  // pelo recorte de carteira antes de virar consulta.
+  if (request.method === "GET" && recurso === "relatorio") {
+    if (!podeLerEsg(access))
+      return response({ error: "Sem permissão para gerar relatórios." }, 403);
+
+    const clientId = clean(url.searchParams.get("cliente"), 60);
+    const inicio = clean(url.searchParams.get("inicio"), 10);
+    const fim = clean(url.searchParams.get("fim"), 10);
+    if (!clientId) return response({ error: "Informe o cliente." }, 400);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(inicio) || !/^\d{4}-\d{2}-\d{2}$/.test(fim))
+      return response({ error: "Informe início e fim no formato AAAA-MM-DD." }, 400);
+    if (inicio > fim)
+      return response({ error: "O início do período não pode ser depois do fim." }, 400);
+
+    const cliente = await clienteNoAlcance(env, access, user, clientId);
+    // 404 e não 403: dizer "existe mas não é sua carteira" já entrega que o
+    // cliente existe.
+    if (!cliente) return response({ error: "Cliente não encontrado." }, 404);
+
+    const operacoes = await env.DB.prepare(
+      `SELECT id, reference, service_date, fields_json
+         FROM todogreen_client_operations
+        WHERE tenant_id = ? AND client_id = ? AND service_date BETWEEN ? AND ?
+        ORDER BY service_date`,
+    )
+      .bind(TENANT_ID, clientId, inicio, fim)
+      .all()
+      .catch(() => ({ results: [] }));
+
+    const calculos = await env.DB.prepare(
+      `SELECT id, result_json, methodology_version, data_quality, created_at
+         FROM environmental_calculations
+        WHERE tenant_id = ? AND client_id = ?
+          AND substr(created_at, 1, 10) BETWEEN ? AND ?
+        ORDER BY created_at`,
+    )
+      .bind(TENANT_ID, clientId, inicio, fim)
+      .all()
+      .catch(() => ({ results: [] }));
+
+    const score = await env.DB.prepare(
+      `SELECT score, weights_version, components_json, calculated_at
+         FROM todogreen_green_scores
+        WHERE tenant_id = ? AND client_id = ? AND scope_type = 'cliente'
+        ORDER BY calculated_at DESC LIMIT 1`,
+    )
+      .bind(TENANT_ID, clientId)
+      .first()
+      .catch(() => null);
+
+    return response({
+      cliente: { nome: cliente.name, documento: cliente.document || "" },
+      periodo: { inicio, fim },
+      operacoes: (operacoes.results || []).map((l) => ({
+        id: l.id,
+        referencia: l.reference,
+        data: l.service_date,
+        campos: parse(l.fields_json, {}),
+      })),
+      calculos: (calculos.results || []).map((l, i) => ({
+        ...parse(l.result_json, {}),
+        referencia: `Cálculo ${i + 1}`,
+        qualidadeDados: l.data_quality,
+        versaoFatores: l.methodology_version,
+      })),
+      greenScore: score
+        ? {
+            score: score.score,
+            versaoPesos: score.weights_version,
+            componentes: parse(score.components_json, {}),
+          }
+        : null,
+      geradoPor: user?.email || "",
+    });
+  }
+
+  // ---- Clientes que esta pessoa pode relatar ----
+  if (request.method === "GET" && recurso === "clientes-relatorio") {
+    if (!podeLerEsg(access))
+      return response({ error: "Sem permissão para gerar relatórios." }, 403);
+    const recorte = recorteDaCarteira(access, user);
+    const linhas = await env.DB.prepare(
+      `SELECT c.id, c.name, c.document
+         FROM todogreen_clients c
+        WHERE c.tenant_id = ? AND c.archived_at IS NULL AND c.status = 'ativo'
+          ${recorte.sql}
+        ORDER BY c.name`,
+    )
+      .bind(TENANT_ID, ...recorte.params)
+      .all()
+      .catch(() => ({ results: [] }));
+    return response({
+      clientes: (linhas.results || []).map((l) => ({
+        id: l.id,
+        nome: l.name,
+        documento: l.document || "",
+      })),
+      carteiraCompleta: recorte.sql === "",
+    });
+  }
+
   return response({ error: "Rota do ESG não encontrada." }, 404);
+}
+
+// Quem gere a operação relata qualquer cliente; o vendedor relata só a própria
+// carteira. O corte acontece no SQL, não na tela.
+const podeVerTodosOsClientes = (access) =>
+  ["owner", "admin"].includes(access?.role) ||
+  access?.permissions?.includes("*") ||
+  access?.permissions?.includes("clients:manage") ||
+  access?.permissions?.includes("clients:assign");
+
+const recorteDaCarteira = (access, user) => {
+  if (podeVerTodosOsClientes(access)) return { sql: "", params: [] };
+  return {
+    sql: `AND EXISTS (
+            SELECT 1 FROM todogreen_client_assignments a
+             WHERE a.tenant_id = c.tenant_id AND a.client_id = c.id
+               AND a.status = 'active' AND lower(a.seller_email) = ?
+          )`,
+    params: [String(user?.email || "").trim().toLowerCase()],
+  };
+};
+
+async function clienteNoAlcance(env, access, user, clientId) {
+  const recorte = recorteDaCarteira(access, user);
+  return env.DB.prepare(
+    `SELECT c.id, c.name, c.document
+       FROM todogreen_clients c
+      WHERE c.tenant_id = ? AND c.id = ? AND c.archived_at IS NULL ${recorte.sql}`,
+  )
+    .bind(TENANT_ID, clientId, ...recorte.params)
+    .first()
+    .catch(() => null);
 }

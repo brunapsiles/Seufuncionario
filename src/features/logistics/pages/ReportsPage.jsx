@@ -1,0 +1,257 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Download, FileText } from "lucide-react";
+import { ESCOPOS_RELATORIO, PERIODOS } from "../esgReportDomain.js";
+import "./TodoGreenPages.css";
+
+// ===== Relatórios, lado interno =====
+//
+// Esta tela era um `<textarea>` somente-leitura com seis frases, enquanto o
+// cliente no portal já baixava PDF, planilha, CSV, apresentação e HTML com
+// metodologia e memória de cálculo. A equipe tinha menos que o cliente.
+//
+// O documento é montado com `montarRelatorio` — o mesmo código do portal. Se
+// fossem dois montadores, o número que a To Do Green apresenta em comitê e o
+// que o cliente recebe divergiriam sem ninguém perceber.
+
+const BRL = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+  maximumFractionDigits: 0,
+});
+const NUM = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
+
+const api = async (caminho, authHeaders) => {
+  const resultado = await fetch(`/api/todogreen/${caminho}`, {
+    headers: { "content-type": "application/json", ...(authHeaders?.() || {}) },
+  });
+  const payload = await resultado.json().catch(() => ({}));
+  if (!resultado.ok) throw new Error(payload.error || "Não foi possível concluir a ação.");
+  return payload;
+};
+
+// Do primeiro dia do mês até hoje: o intervalo que quase sempre se quer, sem
+// obrigar ninguém a preencher data antes de ver qualquer coisa.
+const periodoPadrao = () => {
+  const hoje = new Date();
+  const iso = (data) => data.toISOString().slice(0, 10);
+  return {
+    inicio: iso(new Date(hoje.getFullYear(), hoje.getMonth(), 1)),
+    fim: iso(hoje),
+    tipo: "mensal",
+  };
+};
+
+const FORMATOS_OFERECIDOS = [
+  { id: "pdf", rotulo: "PDF" },
+  { id: "xlsx", rotulo: "Planilha" },
+  { id: "csv", rotulo: "CSV" },
+  { id: "pptx", rotulo: "Apresentação" },
+  { id: "html", rotulo: "HTML" },
+];
+
+export default function ReportsPage({ dashboard, data, authHeaders, setToast }) {
+  const [clientes, setClientes] = useState([]);
+  const [carteiraCompleta, setCarteiraCompleta] = useState(true);
+  const [clienteId, setClienteId] = useState("");
+  const [periodo, setPeriodo] = useState(periodoPadrao);
+  const [escopo, setEscopo] = useState("cliente");
+  const [gerando, setGerando] = useState("");
+  const [erro, setErro] = useState("");
+  const [carregando, setCarregando] = useState(true);
+
+  const carregar = useCallback(async () => {
+    setCarregando(true);
+    try {
+      const d = await api("esg/clientes-relatorio", authHeaders);
+      setClientes(d.clientes || []);
+      setCarteiraCompleta(d.carteiraCompleta !== false);
+      if ((d.clientes || []).length === 1) setClienteId(d.clientes[0].id);
+    } catch (razao) {
+      setErro(razao.message);
+    } finally {
+      setCarregando(false);
+    }
+  }, [authHeaders]);
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  const periodoInvalido = periodo.inicio > periodo.fim;
+
+  const gerar = async (formatoId) => {
+    setErro("");
+    setGerando(formatoId);
+    try {
+      const bruto = await api(
+        `esg/relatorio?cliente=${encodeURIComponent(clienteId)}&inicio=${encodeURIComponent(periodo.inicio)}&fim=${encodeURIComponent(periodo.fim)}`,
+        authHeaders,
+      );
+      // Mesmo montador e mesmos exportadores do portal do cliente.
+      const [{ montarRelatorio }, { FORMATOS }] = await Promise.all([
+        import("../esgReportDomain.js"),
+        import("../esgReportFormats.js"),
+      ]);
+      const relatorio = montarRelatorio({
+        cliente: bruto.cliente,
+        periodo: { tipo: periodo.tipo, inicio: bruto.periodo.inicio, fim: bruto.periodo.fim },
+        escopo,
+        calculos: bruto.calculos,
+        greenScore: bruto.greenScore,
+        operacoes: bruto.operacoes,
+        geradoPor: bruto.geradoPor,
+      });
+      const exportador = FORMATOS.find((f) => f.id === formatoId);
+      if (!exportador) throw new Error("Formato indisponível.");
+      await exportador.baixar(relatorio);
+      setToast?.("Relatório gerado.");
+    } catch (razao) {
+      setErro(razao.message);
+    } finally {
+      setGerando("");
+    }
+  };
+
+  const podeGerar = Boolean(clienteId) && !periodoInvalido && !gerando;
+
+  const consolidado = useMemo(
+    () => [
+      { rotulo: "Clientes cadastrados", valor: String(data.clients.length) },
+      { rotulo: "Oportunidades abertas", valor: String(data.opportunities.length) },
+      { rotulo: "Receita prevista", valor: BRL.format(dashboard.receitaPrevista) },
+      {
+        rotulo: "Margem operacional",
+        valor: `${NUM.format(dashboard.margemOperacionalPercent)}%`,
+      },
+      { rotulo: "CO2 evitado", valor: `${NUM.format(dashboard.co2Evitado / 1000)} t` },
+      { rotulo: "Aprovações pendentes", valor: String(dashboard.aprovacoesPendentes) },
+    ],
+    [dashboard, data],
+  );
+
+  return (
+    <section className="tdg-panel tdg-page tdg-rel-page">
+      <header className="tdg-page-title">
+        <div>
+          <span>RELATÓRIOS</span>
+          <h2>Relatório por cliente e período</h2>
+          <p>
+            O documento sai com metodologia, premissas, fontes dos fatores, qualidade dos
+            dados e memória de cálculo — o mesmo conteúdo que o cliente recebe pelo portal,
+            montado pelo mesmo código.
+            {carteiraCompleta ? "" : " Você gera relatórios dos clientes da sua carteira."}
+          </p>
+        </div>
+      </header>
+
+      {erro && <div className="tdg-page-error">{erro}</div>}
+
+      <div className="tdg-rel-form">
+        <label>
+          <span>Cliente</span>
+          <select value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
+            <option value="">Selecione o cliente</option>
+            {clientes.map((cliente) => (
+              <option key={cliente.id} value={cliente.id}>
+                {cliente.nome}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Início</span>
+          <input
+            type="date"
+            value={periodo.inicio}
+            onChange={(e) => setPeriodo((atual) => ({ ...atual, inicio: e.target.value }))}
+          />
+        </label>
+        <label>
+          <span>Fim</span>
+          <input
+            type="date"
+            value={periodo.fim}
+            onChange={(e) => setPeriodo((atual) => ({ ...atual, fim: e.target.value }))}
+          />
+        </label>
+        <label>
+          <span>Periodicidade</span>
+          <select
+            value={periodo.tipo}
+            onChange={(e) => setPeriodo((atual) => ({ ...atual, tipo: e.target.value }))}
+          >
+            {PERIODOS.map((tipo) => (
+              <option key={tipo} value={tipo}>
+                {tipo}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Escopo</span>
+          <select value={escopo} onChange={(e) => setEscopo(e.target.value)}>
+            {ESCOPOS_RELATORIO.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {periodoInvalido && (
+        <p className="tdg-rel-aviso">
+          <AlertTriangle size={16} />O início do período está depois do fim.
+        </p>
+      )}
+
+      {!carregando && clientes.length === 0 && (
+        <p className="tdg-rel-aviso">
+          <AlertTriangle size={16} />
+          Nenhum cliente disponível para relatório. Cadastre um cliente antes de gerar o
+          documento.
+        </p>
+      )}
+
+      <div className="tdg-rel-formatos">
+        {FORMATOS_OFERECIDOS.map((formato) => (
+          <button
+            key={formato.id}
+            type="button"
+            className="tdg-action"
+            disabled={!podeGerar}
+            onClick={() => gerar(formato.id)}
+          >
+            <Download size={15} />
+            {gerando === formato.id ? "Gerando..." : formato.rotulo}
+          </button>
+        ))}
+      </div>
+      {!clienteId && !carregando && clientes.length > 0 && (
+        <p className="tdg-rel-ressalva">
+          Escolha o cliente para liberar a geração. O relatório é sempre de um cliente e um
+          período — número sem dono não se defende em auditoria.
+        </p>
+      )}
+
+      <div className="tdg-rel-consolidado">
+        <h3>
+          <FileText size={16} />
+          Posição consolidada da operação
+        </h3>
+        <p className="tdg-rel-ressalva">
+          Visão da carteira inteira, para leitura rápida. Não substitui o relatório por
+          cliente, que é o documento com memória de cálculo.
+        </p>
+        <div className="tdg-rel-numeros">
+          {consolidado.map((item) => (
+            <article key={item.rotulo}>
+              <small>{item.rotulo}</small>
+              <strong>{item.valor}</strong>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
