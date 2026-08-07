@@ -1,0 +1,65 @@
+name: Integrar Metas To Do Green
+
+on:
+  push:
+    branches: [feat/todogreen-metas]
+    paths:
+      - scripts/apply-todogreen-goals.mjs
+      - .github/workflows/apply-todogreen-goals.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: integrar-metas-todogreen
+  cancel-in-progress: true
+
+jobs:
+  integrar:
+    if: ${{ !contains(github.event.head_commit.message || '', '[metas-aplicado]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Baixar a branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/todogreen-metas
+          fetch-depth: 0
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+
+      - name: Integrar Metas aos arquivos existentes
+        run: node scripts/apply-todogreen-goals.mjs
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Testes de interface e domínio
+        run: npm run test:unit
+
+      - name: Testes do worker
+        run: npm run test:worker
+
+      - name: Build
+        run: npm run build
+
+      - name: Remover instalador temporário
+        run: rm scripts/apply-todogreen-goals.mjs .github/workflows/apply-todogreen-goals.yml
+
+      - name: Gravar integração validada
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(todogreen): integrar módulo completo de metas [metas-aplicado]"
+          git push origin HEAD:feat/todogreen-metas
