@@ -8,6 +8,15 @@
 // do resto do Seu Funcionário. Isto é outra experiência, não outro sistema.
 
 import {
+  filtrarOperacoes,
+  ocorrenciasDaLinha,
+  ordenarLinhaDoTempo,
+  paginar,
+  previsaoContraCombinado,
+  resumirOperacoes,
+  slaDaOperacao,
+} from "../../src/features/logistics/operationTrackingDomain.js";
+import {
   clientCan,
   isValidEmail,
   menuForAccess,
@@ -120,6 +129,34 @@ async function clientScopeForSession(env, user, clientePedido = "") {
   // não "a que o banco devolveu primeiro".
   return vinculos[0];
 }
+
+// Uma linha da tabela vira uma operação com os nomes que o domínio entende.
+// A tradução fica num lugar só: espalhá-la faria a lista e o detalhe divergirem
+// justamente nos campos de prazo, que é onde a divergência custa caro.
+const operacaoDoBanco = (linha) => ({
+  id: linha.id,
+  referencia: linha.reference,
+  situacao: linha.status,
+  dataServico: linha.service_date,
+  origem: linha.origin,
+  destino: linha.destination,
+  prometidoEm: linha.promised_at || "",
+  entregueEm: linha.delivered_at || "",
+  previsaoEm: linha.eta_at || "",
+  placa: linha.vehicle_plate || "",
+  motorista: linha.driver_name || "",
+  distanciaKm: linha.distance_km || 0,
+  ocorrencias: Number(linha.ocorrencias || linha.incident_count || 0),
+  ultimaPosicao:
+    linha.last_position_at && linha.last_position_lat !== null
+      ? {
+          em: linha.last_position_at,
+          latitude: linha.last_position_lat,
+          longitude: linha.last_position_lng,
+        }
+      : null,
+  campos: parse(linha.fields_json, {}),
+});
 
 async function logPortalEvent(env, escopo, user, action, target = "", details = "") {
   await env.DB.prepare(
@@ -265,33 +302,108 @@ export async function handleTodoGreenCustomerPortal(request, env) {
     return response({ resumo: await clientOverview(env, escopo) });
   }
 
-  if (request.method === "GET" && resource === "operacoes") {
-    const limite = Math.min(
-      Number(url.searchParams.get("limite")) || 25,
-      MAX_LIMIT,
-    );
+  // A lista de operações. Era referência, status, data, origem e destino, sem
+  // busca, filtro, prazo, ocorrência nem paginação — e o cliente entra no
+  // portal justamente para acompanhar a carga.
+  //
+  // Busca, filtro e paginação acontecem no domínio, com o mesmo código que a
+  // tela usa: duas implementações da mesma pergunta produzem dois "atrasado"
+  // diferentes.
+  if (request.method === "GET" && resource === "operacoes" && !documentoPedido) {
     const { sql, params } = scopedWhere(escopo);
     const linhas = await env.DB.prepare(
-      `SELECT id, reference, status, service_date, origin, destination,
-              fields_json, created_at
-         FROM todogreen_client_operations
+      `SELECT o.id, o.reference, o.status, o.service_date, o.origin, o.destination,
+              o.fields_json, o.created_at, o.promised_at, o.delivered_at, o.eta_at,
+              o.vehicle_plate, o.driver_name, o.distance_km, o.proof_url, o.proof_hash,
+              o.last_position_at, o.last_position_lat, o.last_position_lng,
+              (SELECT COUNT(*) FROM todogreen_client_operation_events e
+                WHERE e.operation_id = o.id AND e.kind = 'ocorrencia') AS ocorrencias
+         FROM todogreen_client_operations o
         WHERE ${sql}
-        ORDER BY service_date DESC, created_at DESC
+        ORDER BY o.service_date DESC, o.created_at DESC
         LIMIT ?`,
     )
-      .bind(...params, limite)
+      .bind(...params, MAX_LIMIT)
       .all()
       .catch(() => ({ results: [] }));
+
+    const todas = (linhas.results || []).map(operacaoDoBanco);
+    const filtradas = filtrarOperacoes(todas, {
+      busca: url.searchParams.get("busca") || "",
+      situacao: url.searchParams.get("situacao") || "",
+      de: url.searchParams.get("de") || "",
+      ate: url.searchParams.get("ate") || "",
+    });
+    const pagina = paginar(filtradas, {
+      pagina: Number(url.searchParams.get("pagina")) || 1,
+      porPagina: Math.min(Number(url.searchParams.get("porPagina")) || 20, 100),
+    });
+
     return response({
-      operacoes: (linhas.results || []).map((linha) => ({
-        id: linha.id,
-        referencia: linha.reference,
-        status: linha.status,
-        data: linha.service_date,
-        origem: linha.origin,
-        destino: linha.destination,
-        campos: parse(linha.fields_json, {}),
+      // O SLA vai junto de cada linha: calcular de novo na tela seria uma
+      // segunda implementação da mesma pergunta, e duas implementações
+      // produzem dois "atrasado" diferentes.
+      operacoes: pagina.itens.map((operacao) => ({ ...operacao, sla: slaDaOperacao(operacao) })),
+      paginacao: {
+        pagina: pagina.pagina,
+        paginas: pagina.paginas,
+        total: pagina.total,
+        primeiro: pagina.primeiro,
+        ultimo: pagina.ultimo,
+      },
+      // O resumo é da seleção filtrada, não da carteira inteira: um filtro que
+      // muda a lista e não muda o indicador faz a tela contar duas histórias.
+      resumo: (({ lista, ...resto }) => resto)(resumirOperacoes(filtradas)),
+    });
+  }
+
+  // O detalhe de uma operação: linha do tempo, ocorrências, prazo prometido
+  // contra realizado, veículo, última posição e comprovante de entrega.
+  if (request.method === "GET" && resource === "operacoes" && documentoPedido) {
+    const { sql, params } = scopedWhere(escopo);
+    const linha = await env.DB.prepare(
+      `SELECT * FROM todogreen_client_operations WHERE ${sql} AND id = ? LIMIT 1`,
+    )
+      .bind(...params, documentoPedido)
+      .first()
+      .catch(() => null);
+    if (!linha) return response({ error: "Operação não encontrada." }, 404);
+
+    const eventos = await env.DB.prepare(
+      `SELECT id, kind, titulo, descricao, local, ocorrido_em, created_at
+         FROM todogreen_client_operation_events
+        WHERE operation_id = ? AND tenant_id = ? AND client_id = ?
+        ORDER BY ocorrido_em ASC
+        LIMIT 300`,
+    )
+      .bind(documentoPedido, escopo.tenantId, escopo.clientId)
+      .all()
+      .catch(() => ({ results: [] }));
+
+    const linhaDoTempo = ordenarLinhaDoTempo(
+      (eventos.results || []).map((e) => ({
+        id: e.id,
+        tipo: e.kind,
+        titulo: e.titulo,
+        descricao: e.descricao,
+        local: e.local,
+        ocorridoEm: e.ocorrido_em,
+        registradoEm: e.created_at,
       })),
+    );
+
+    const operacao = operacaoDoBanco(linha);
+    return response({
+      operacao,
+      sla: slaDaOperacao(operacao),
+      previsao: previsaoContraCombinado(operacao),
+      linhaDoTempo,
+      ocorrencias: ocorrenciasDaLinha(linhaDoTempo),
+      // O comprovante sai pelo mesmo link temporário dos documentos: endereço
+      // de origem não chega ao navegador do cliente.
+      comprovante: linha.proof_url
+        ? { disponivel: true, impressaoDigital: linha.proof_hash }
+        : { disponivel: false, motivo: "O comprovante ainda não foi anexado a esta entrega." },
     });
   }
 
@@ -410,6 +522,36 @@ export async function handleTodoGreenCustomerPortal(request, env) {
         impressaoDigital: l.hash_conteudo,
       })),
     });
+  }
+
+  // O comprovante de entrega sai pelo mesmo mecanismo dos documentos: link
+  // temporário, endereço de origem escondido, cada abertura registrada.
+  if (request.method === "POST" && resource === "operacoes" && subresource === "comprovante") {
+    const { sql, params } = scopedWhere(escopo);
+    const linha = await env.DB.prepare(
+      `SELECT id, client_id, proof_url FROM todogreen_client_operations
+        WHERE ${sql} AND id = ? LIMIT 1`,
+    )
+      .bind(...params, documentoPedido)
+      .first()
+      .catch(() => null);
+    if (!linha) return response({ error: "Operação não encontrada." }, 404);
+    if (!linha.proof_url)
+      return response({ error: "O comprovante ainda não foi anexado a esta entrega." }, 409);
+
+    const { emitirConcessaoDeArquivo } = await import("./todogreen-evidences.js");
+    const concessao = await emitirConcessaoDeArquivo(env, {
+      url: linha.proof_url,
+      clientId: linha.client_id,
+      ownerId: escopo.workspaceOwnerId,
+      para: user?.id || "",
+      nome: `comprovante-${linha.id}`,
+    });
+    await logPortalEvent(env, escopo, user, "comprovante_link_emitido", linha.id, "");
+    return response(
+      { url: `/api/todogreen/arquivo?t=${concessao.token}`, expiraEm: concessao.expiraEm },
+      201,
+    );
   }
 
   // O link de download. Até aqui a aba listava metadado e a permissão se

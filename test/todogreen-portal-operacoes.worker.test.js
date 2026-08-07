@@ -1,0 +1,225 @@
+import { env } from "cloudflare:workers";
+import { beforeAll, describe, expect, it } from "vitest";
+import worker from "../worker-entry.js";
+
+// A aba de operações era uma tabela de cinco colunas. Estes testes cobrem o que
+// ela nunca teve: busca, filtro, paginação com os números à vista, prazo
+// prometido contra realizado, ocorrências e linha do tempo.
+
+let n = 0;
+const nextIp = () => `198.23.0.${(++n % 240) + 1}`;
+
+async function sha256(valor) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(valor));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function criarUsuario(id, email) {
+  const token = `tok-${id}`;
+  const agora = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO users (id, name, email, password_hash, password_salt, created_at)
+     VALUES (?, ?, ?, 'h', 's', ?)`,
+  ).bind(id, `Pessoa ${id}`, email, agora).run();
+  await env.DB.prepare(
+    `INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at)
+     VALUES (?, ?, ?, '2099-01-01T00:00:00.000Z', ?)`,
+  ).bind(`ses-${id}`, id, await sha256(token), agora).run();
+  return { id, email, token };
+}
+
+const pedir = (caminho, token, metodo = "GET") =>
+  worker.fetch(
+    new Request(`https://app.test${caminho}`, {
+      method: metodo,
+      headers: token
+        ? { authorization: `Bearer ${token}`, "cf-connecting-ip": nextIp(), "content-type": "application/json" }
+        : { "cf-connecting-ip": nextIp() },
+      body: metodo === "POST" ? "{}" : undefined,
+    }),
+    env,
+    { waitUntil() {}, passThroughOnException() {} },
+  );
+
+const h = (n) => new Date(Date.now() + n * 3600 * 1000).toISOString();
+
+let dona;
+let cliente;
+let clienteId;
+let comAtraso;
+let comOcorrencia;
+
+async function criarOperacao(campos = {}) {
+  const id = crypto.randomUUID();
+  const agora = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO todogreen_client_operations
+       (id, tenant_id, client_id, workspace_owner_id, reference, status, service_date,
+        origin, destination, promised_at, delivered_at, eta_at, vehicle_plate, driver_name,
+        distance_km, proof_url, proof_hash, created_by, updated_by, created_at, updated_at)
+     VALUES (?, 'todogreen', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      id, clienteId, dona.id,
+      campos.referencia || "OP-X", campos.situacao || "entregue",
+      (campos.dataServico || agora).slice(0, 10),
+      campos.origem || "São Paulo", campos.destino || "Campinas",
+      campos.prometidoEm || null, campos.entregueEm || null, campos.previsaoEm || null,
+      campos.placa || "", campos.motorista || "", campos.distanciaKm || 0,
+      campos.comprovanteUrl || "", campos.comprovanteHash || "",
+      dona.id, dona.id, agora, agora,
+    )
+    .run();
+  return id;
+}
+
+async function registrarEvento(operacaoId, tipo, titulo, quando) {
+  await env.DB.prepare(
+    `INSERT INTO todogreen_client_operation_events
+       (id, tenant_id, operation_id, client_id, workspace_owner_id, kind, titulo, descricao,
+        local, ocorrido_em, registrado_por, created_at)
+     VALUES (?, 'todogreen', ?, ?, ?, ?, ?, '', '', ?, ?, ?)`,
+  )
+    .bind(crypto.randomUUID(), operacaoId, clienteId, dona.id, tipo, titulo, quando, dona.id, new Date().toISOString())
+    .run();
+}
+
+beforeAll(async () => {
+  const agora = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO tenants (id, slug, name, segment, status, theme_json, created_at, updated_at)
+     VALUES ('todogreen', 'todogreen', 'To Do Green', 'logistica', 'active', '{}', ?, ?)`,
+  ).bind(agora, agora).run();
+
+  dona = await criarUsuario("op-dona", "dona@op.com.br");
+  clienteId = crypto.randomUUID();
+  await env.DB.prepare(
+    `INSERT INTO todogreen_clients
+       (id, tenant_id, workspace_owner_id, name, legal_name, document, segment, status,
+        portal_enabled, created_by, updated_by, created_at, updated_at)
+     VALUES (?, 'todogreen', ?, 'Alfa', 'Alfa LTDA', '', 'varejo', 'ativo', 1, ?, ?, ?, ?)`,
+  ).bind(clienteId, dona.id, dona.id, dona.id, agora, agora).run();
+
+  cliente = await criarUsuario("op-cliente", "contato@op.com.br");
+  await env.DB.prepare(
+    `INSERT INTO todogreen_client_users
+       (id, tenant_id, client_id, email, role, status, permissions_json, invited_by, created_at, updated_at)
+     VALUES (?, 'todogreen', ?, ?, 'cliente_admin', 'active', '["*"]', ?, ?, ?)`,
+  ).bind(crypto.randomUUID(), clienteId, cliente.email, dona.id, agora, agora).run();
+
+  await criarOperacao({ referencia: "OP-NOPRAZO", prometidoEm: h(-20), entregueEm: h(-22), origem: "Santos" });
+  comAtraso = await criarOperacao({
+    referencia: "OP-ATRASO",
+    prometidoEm: h(-30),
+    entregueEm: h(-25),
+    placa: "ABC1D23",
+    motorista: "Joana",
+    comprovanteUrl: "https://arquivos.exemplo.com/pod.pdf",
+    comprovanteHash: "abc123",
+  });
+  comOcorrencia = await criarOperacao({ referencia: "OP-OCORR", prometidoEm: h(10), situacao: "em_transito" });
+
+  await registrarEvento(comOcorrencia, "coleta", "Coletado no CD", h(-4));
+  await registrarEvento(comOcorrencia, "ocorrencia", "Bloqueio na rodovia", h(-2));
+  // Registrado por último, mas aconteceu antes: a ordem é a da viagem.
+  await registrarEvento(comOcorrencia, "transito", "Saiu do hub", h(-3));
+});
+
+describe("a lista deixou de ser cinco colunas", () => {
+  it("traz prazo, ocorrências e resumo da seleção", async () => {
+    const r = await pedir("/api/todogreen/portal/operacoes", cliente.token);
+    expect(r.status).toBe(200);
+    const corpo = await r.json();
+    expect(corpo.paginacao.total).toBe(3);
+    expect(corpo.resumo.pontualidadePercent).toBe(50);
+    const atrasada = corpo.operacoes.find((o) => o.referencia === "OP-ATRASO");
+    expect(atrasada.sla.situacao).toBe("atrasado");
+    expect(atrasada.sla.atrasoHoras).toBe(5);
+    expect(atrasada.placa).toBe("ABC1D23");
+  });
+
+  it("busca por origem, ignorando acento", async () => {
+    const corpo = await (await pedir("/api/todogreen/portal/operacoes?busca=santos", cliente.token)).json();
+    expect(corpo.operacoes.map((o) => o.referencia)).toEqual(["OP-NOPRAZO"]);
+  });
+
+  it("busca por placa e por motorista", async () => {
+    const porPlaca = await (await pedir("/api/todogreen/portal/operacoes?busca=ABC1D23", cliente.token)).json();
+    expect(porPlaca.operacoes).toHaveLength(1);
+    const porMotorista = await (await pedir("/api/todogreen/portal/operacoes?busca=joana", cliente.token)).json();
+    expect(porMotorista.operacoes).toHaveLength(1);
+  });
+
+  it("filtra atrasadas e com ocorrência", async () => {
+    const atrasadas = await (await pedir("/api/todogreen/portal/operacoes?situacao=atrasadas", cliente.token)).json();
+    expect(atrasadas.operacoes.map((o) => o.referencia)).toEqual(["OP-ATRASO"]);
+    const comOcorr = await (
+      await pedir("/api/todogreen/portal/operacoes?situacao=com_ocorrencia", cliente.token)
+    ).json();
+    expect(comOcorr.operacoes.map((o) => o.referencia)).toEqual(["OP-OCORR"]);
+  });
+
+  it("o resumo acompanha o filtro, não a carteira inteira", async () => {
+    // Um filtro que muda a lista e não muda o indicador faz a tela contar duas
+    // histórias ao mesmo tempo.
+    const corpo = await (await pedir("/api/todogreen/portal/operacoes?situacao=atrasadas", cliente.token)).json();
+    expect(corpo.resumo.total).toBe(1);
+  });
+
+  it("a paginação diz de quantos até quantos", async () => {
+    const corpo = await (
+      await pedir("/api/todogreen/portal/operacoes?porPagina=2&pagina=2", cliente.token)
+    ).json();
+    expect(corpo.paginacao.primeiro).toBe(3);
+    expect(corpo.paginacao.ultimo).toBe(3);
+    expect(corpo.paginacao.total).toBe(3);
+    expect(corpo.paginacao.paginas).toBe(2);
+  });
+});
+
+describe("o detalhe", () => {
+  it("traz a linha do tempo na ordem em que aconteceu", async () => {
+    const r = await pedir(`/api/todogreen/portal/operacoes/${comOcorrencia}`, cliente.token);
+    expect(r.status).toBe(200);
+    const corpo = await r.json();
+    // O "Saiu do hub" foi registrado por último e aconteceu no meio.
+    expect(corpo.linhaDoTempo.map((e) => e.titulo)).toEqual([
+      "Coletado no CD",
+      "Saiu do hub",
+      "Bloqueio na rodovia",
+    ]);
+    expect(corpo.ocorrencias).toHaveLength(1);
+  });
+
+  it("diz quando o comprovante ainda não existe, em vez de oferecer botão morto", async () => {
+    const corpo = await (await pedir(`/api/todogreen/portal/operacoes/${comOcorrencia}`, cliente.token)).json();
+    expect(corpo.comprovante.disponivel).toBe(false);
+    expect(corpo.comprovante.motivo).toMatch(/ainda não foi anexado/);
+  });
+
+  it("com comprovante, o link temporário é emitido", async () => {
+    const detalhe = await (await pedir(`/api/todogreen/portal/operacoes/${comAtraso}`, cliente.token)).json();
+    expect(detalhe.comprovante.disponivel).toBe(true);
+
+    const r = await pedir(`/api/todogreen/portal/operacoes/${comAtraso}/comprovante`, cliente.token, "POST");
+    expect(r.status).toBe(201);
+    const { url } = await r.json();
+    expect(url).toMatch(/^\/api\/todogreen\/arquivo\?t=/);
+    // O endereço de origem não chega ao navegador do cliente.
+    expect(url).not.toContain("arquivos.exemplo.com");
+  });
+
+  it("sem comprovante, o pedido de link é recusado com motivo", async () => {
+    const r = await pedir(`/api/todogreen/portal/operacoes/${comOcorrencia}/comprovante`, cliente.token, "POST");
+    expect(r.status).toBe(409);
+  });
+
+  it("operação de outro cliente responde 404", async () => {
+    const r = await pedir("/api/todogreen/portal/operacoes/nao-existe", cliente.token);
+    expect(r.status).toBe(404);
+  });
+
+  it("sem sessão, nada", async () => {
+    expect((await pedir("/api/todogreen/portal/operacoes")).status).toBe(401);
+  });
+});

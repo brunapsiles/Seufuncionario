@@ -156,31 +156,63 @@ async function cadastrar(env, access, user, corpo) {
 
 // Emite a concessão temporária. Devolve o token só aqui — o banco guarda o
 // hash, e a partir deste ponto nem o servidor consegue reconstruir o link.
-export async function emitirConcessao(env, { evidenceId, clientId, ownerId, para }) {
+export async function emitirConcessao(env, { evidenceId = null, arquivoUrl = "", arquivoNome = "", clientId, ownerId, para }) {
   const token = `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, "");
   const agora = new Date().toISOString();
   const expira = validadeDoLink(agora);
   await env.DB.prepare(
     `INSERT INTO todogreen_document_grants
-       (id, token_hash, tenant_id, evidence_id, client_id, workspace_owner_id, issued_to,
-        expires_at, revoked_at, downloads, last_used_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, NULL, ?)`,
+       (id, token_hash, tenant_id, evidence_id, arquivo_url, arquivo_nome, client_id,
+        workspace_owner_id, issued_to, expires_at, revoked_at, downloads, last_used_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, NULL, ?)`,
   )
-    .bind(crypto.randomUUID(), await sha256Hex(token), TENANT_ID, evidenceId, clientId, ownerId, texto(para, 120), expira, agora)
+    .bind(
+      crypto.randomUUID(),
+      await sha256Hex(token),
+      TENANT_ID,
+      evidenceId || null,
+      texto(arquivoUrl, 2000),
+      texto(arquivoNome, 240),
+      clientId,
+      ownerId,
+      texto(para, 120),
+      expira,
+      agora,
+    )
     .run();
   return { token, expiraEm: expira };
 }
+
+// O comprovante de entrega não é linha do cofre — é arquivo da própria
+// operação. Mesma concessão, mesma validade, mesma contagem de aberturas: um
+// segundo caminho de download seria uma segunda regra de expiração para alguém
+// esquecer de manter.
+export const emitirConcessaoDeArquivo = (env, { url, clientId, ownerId, para, nome }) => {
+  const endereco = enderecoAceito(url);
+  if (!endereco.ok) throw new Error(endereco.motivo);
+  return emitirConcessao(env, {
+    arquivoUrl: endereco.url,
+    arquivoNome: texto(nome, 240) || endereco.url.split("/").pop() || "comprovante",
+    clientId,
+    ownerId,
+    para,
+  });
+};
 
 // Entrega o arquivo. O escopo verificado é o gravado na concessão, não o que a
 // requisição afirma — o link foi emitido para um cliente e um espaço, e é para
 // eles que continua valendo.
 export async function entregarArquivo(env, token) {
+  // LEFT JOIN porque a concessão vale para documento do cofre OU para arquivo
+  // direto. O COALESCE resolve qual endereço usar sem duplicar a consulta.
   const linha = await env.DB
     .prepare(
       `SELECT g.id AS grant_id, g.expires_at, g.revoked_at, g.evidence_id, g.client_id,
-              g.workspace_owner_id, e.arquivo_url, e.arquivo_nome, e.hash_conteudo, e.titulo
+              COALESCE(NULLIF(e.arquivo_url, ''), g.arquivo_url) AS arquivo_url,
+              COALESCE(NULLIF(e.arquivo_nome, ''), g.arquivo_nome) AS arquivo_nome,
+              COALESCE(e.hash_conteudo, '') AS hash_conteudo
          FROM todogreen_document_grants g
-         JOIN todogreen_evidences e
+         LEFT JOIN todogreen_evidences e
            ON e.id = g.evidence_id
           AND e.client_id = g.client_id
           AND e.workspace_owner_id = g.workspace_owner_id
@@ -192,7 +224,11 @@ export async function entregarArquivo(env, token) {
 
   // Token desconhecido e token vencido respondem igual: distinguir os dois
   // contaria a quem está tentando adivinhar que ele acertou o formato.
-  if (!linha || linkExpirado({ expiraEm: linha.expires_at, revogadoEm: linha.revoked_at }))
+  if (
+    !linha ||
+    !linha.arquivo_url ||
+    linkExpirado({ expiraEm: linha.expires_at, revogadoEm: linha.revoked_at })
+  )
     return json({ error: "Este link de download expirou. Peça um novo na tela de documentos." }, 410);
 
   let origem;

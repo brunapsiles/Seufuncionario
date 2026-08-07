@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import "./CustomerPortal.css";
 import { tamanhoLegivel } from "./documentVaultDomain.js";
+import Operacoes from "./CustomerPortalOperations.jsx";
 import {
   AssistenteCliente,
   GreenScoreDetalhado,
@@ -162,28 +163,6 @@ function Inicio({ resumo }) {
   );
 }
 
-function Operacoes({ operacoes, carregando }) {
-  if (carregando)
-    return <div className="cp-carregando"><Loader2 className="girando" size={20} /> Carregando operações...</div>;
-  if (!operacoes.length)
-    return <SemDados titulo="Nenhuma operação no período" texto="As viagens, coletas e entregas executadas para o seu contrato aparecem aqui." />;
-  return (
-    <div className="cp-tabela-frame">
-      <table className="cp-tabela">
-        <thead><tr><th>Referência</th><th>Data</th><th>Origem</th><th>Destino</th><th>Situação</th><th>Entregas</th></tr></thead>
-        <tbody>
-          {operacoes.map((op) => (
-            <tr key={op.id}>
-              <td>{op.referencia || "—"}</td><td>{op.data || "—"}</td><td>{op.origem || "—"}</td><td>{op.destino || "—"}</td>
-              <td><span className={`cp-situacao ${op.status}`}>{op.status}</span></td>
-              <td>{inteiro.format(op.campos?.deliveries || 0)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
 
 const periodoPadrao = () => {
   const hoje = new Date();
@@ -384,8 +363,6 @@ function Solicitacoes({ podeAbrir, setAviso }) {
 export default function CustomerPortal() {
   const [sessao, setSessao] = useState(null);
   const [resumo, setResumo] = useState(null);
-  const [operacoes, setOperacoes] = useState([]);
-  const [carregandoOperacoes, setCarregandoOperacoes] = useState(false);
   const [evidencias, setEvidencias] = useState([]);
   const [carregandoEvidencias, setCarregandoEvidencias] = useState(false);
   const [aba, setAba] = useState("inicio");
@@ -402,20 +379,16 @@ export default function CustomerPortal() {
     return () => { ativo = false; };
   }, []);
 
-  const carregarOperacoes = useCallback(() => {
-    setCarregandoOperacoes(true);
-    pedir("operacoes").then((dados) => setOperacoes(dados.operacoes || [])).catch((erro) => setAviso(erro.message)).finally(() => setCarregandoOperacoes(false));
-  }, []);
-
   const carregarEvidencias = useCallback(() => {
     setCarregandoEvidencias(true);
     pedir("evidencias").then((dados) => setEvidencias(dados.evidencias || [])).catch((erro) => setAviso(erro.message)).finally(() => setCarregandoEvidencias(false));
   }, []);
 
   useEffect(() => {
-    if (aba === "operacoes" && !operacoes.length) carregarOperacoes();
+    // A aba de operações carrega sozinha: ela tem filtros e paginação próprios,
+    // e buscar aqui obrigaria esta tela a conhecer o estado deles.
     if (aba === "documentos" && !evidencias.length) carregarEvidencias();
-  }, [aba, operacoes.length, evidencias.length, carregarOperacoes, carregarEvidencias]);
+  }, [aba, evidencias.length, carregarEvidencias]);
 
   const menu = useMemo(() => sessao?.menu || [], [sessao]);
 
@@ -460,7 +433,7 @@ export default function CustomerPortal() {
       {aviso && <div className="cp-alerta cp-alerta-acao" role="alert"><AlertTriangle size={18} /><span>{aviso}</span><button type="button" onClick={() => setAviso("")} aria-label="Fechar aviso">×</button></div>}
       <section className="cp-conteudo">
         {aba === "inicio" && <Inicio resumo={resumo} />}
-        {aba === "operacoes" && <Operacoes operacoes={operacoes} carregando={carregandoOperacoes} />}
+        {aba === "operacoes" && <Operacoes pedir={pedir} enviar={enviar} setAviso={setAviso} />}
         {aba === "green-score" && <GreenScoreDetalhado resumo={resumo} />}
         {aba === "esg" && <ImpactoAmbiental resumo={resumo} />}
         {aba === "relatorios" && <Relatorios setAviso={setAviso} />}
