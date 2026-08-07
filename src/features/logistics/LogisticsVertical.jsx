@@ -84,6 +84,7 @@ const ClientRequestsPage = lazy(() => import("./pages/ClientRequestsPage.jsx"));
 const ReportsPage = lazy(() => import("./pages/ReportsPage.jsx"));
 const TripViabilityPage = lazy(() => import("./pages/TripViabilityPage.jsx"));
 const DealDeskPage = lazy(() => import("./pages/DealDeskPage.jsx"));
+const DocumentVaultPage = lazy(() => import("./pages/DocumentVaultPage.jsx"));
 
 const iconMap = {
   Activity,
@@ -331,6 +332,15 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     area: "esg",
     status: "functional",
     description: "Fatores ambientais, fórmulas, versão, governança, disclaimer e evidências exigidas por produto.",
+  },
+  documentos: {
+    title: "Cofre de documentos",
+    navLabel: "Documentos",
+    route: "/todogreen/documentos",
+    area: "esg",
+    status: "functional",
+    description:
+      "Notas, telemetria, contratos, comprovantes e laudos que sustentam os números. Cada arquivo entra com impressão digital do conteúdo e sai por link temporário.",
   },
   "deal-desk": {
     title: "Deal Desk — aprovação de condição comercial",
@@ -640,7 +650,6 @@ const TODO_GREEN_PAGE_ALIASES = Object.freeze({
   energia: "esg",
   ocorrencias: "operacoes",
   tarefas: "dashboard",
-  documentos: "relatorios",
   notificacoes: "dashboard",
   inbox: "dashboard",
   exportacoes: "relatorios",
@@ -1680,6 +1689,11 @@ export default function LogisticsVertical({ db, setToast, access = {}, authHeade
       {page === "comissoes" && <FinancePanel type="commission" data={verticalData} criar={criar} setToast={setToast} />}
       {page === "relatorios" && <Suspense fallback={<section className="tdg-panel">Carregando relatórios...</section>}><ReportsPage dashboard={dashboard} data={verticalData} authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "metodologia" && <MethodologyPanel />}
+      {page === "documentos" && (
+        <Suspense fallback={<section className="tdg-panel">Carregando os documentos...</section>}>
+          <DocumentVaultPage authHeaders={authHeaders} clientes={clientes} setToast={setToast} />
+        </Suspense>
+      )}
       {page === "deal-desk" && (
         <Suspense fallback={<section className="tdg-panel">Carregando o Deal Desk...</section>}>
           <DealDeskPage

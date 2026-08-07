@@ -201,9 +201,14 @@ export async function handleTodoGreenCustomerPortal(request, env) {
   if (!env.DB) return response({ error: "Banco indisponível." }, 503);
 
   const url = new URL(request.url);
-  const resource = url.pathname
+  const caminho = url.pathname
     .replace(/^\/api\/todogreen\/portal\/?/, "")
-    .split("/")[0];
+    .split("/")
+    .filter(Boolean);
+  const resource = caminho[0] || "";
+  // /portal/evidencias/<id>/link
+  const documentoPedido = String(caminho[1] || "").slice(0, 120);
+  const subresource = String(caminho[2] || "").slice(0, 40);
 
   const user = await authenticatedUser(request, env);
   if (!user) return response({ error: "Sessão inválida." }, 401);
@@ -372,11 +377,53 @@ export async function handleTodoGreenCustomerPortal(request, env) {
         tipo: l.tipo,
         referencia: l.referencia,
         emitidoEm: l.emitido_em,
+        arquivoNome: l.arquivo_nome,
+        arquivoBytes: l.arquivo_bytes,
         // A impressão digital do conteúdo é o que permite provar depois que o
         // documento não mudou desde a emissão.
         impressaoDigital: l.hash_conteudo,
       })),
     });
+  }
+
+  // O link de download. Até aqui a aba listava metadado e a permissão se
+  // chamava `portal:document:download` — prometia um arquivo e entregava uma
+  // linha de tabela.
+  //
+  // O link é temporário porque link de documento é credencial: quem tem, abre.
+  // Um endereço permanente sobrevive em histórico, em print e em e-mail
+  // encaminhado, e continua valendo.
+  if (request.method === "POST" && resource === "evidencias" && subresource === "link") {
+    if (!clientCan(escopo, "portal:document:download"))
+      return response({ error: "Seu acesso não permite baixar documentos." }, 403);
+    const { sql, params } = scopedWhere(escopo);
+    const doc = await env.DB.prepare(
+      `SELECT id, client_id, arquivo_url FROM todogreen_evidences
+        WHERE ${sql} AND id = ? LIMIT 1`,
+    )
+      .bind(...params, documentoPedido)
+      .first()
+      .catch(() => null);
+    // 404 e não 403: o escopo já respondeu que não é dele.
+    if (!doc) return response({ error: "Documento não encontrado." }, 404);
+    if (!doc.arquivo_url)
+      return response(
+        { error: "Este documento está catalogado, mas o arquivo ainda não foi anexado pela equipe." },
+        409,
+      );
+
+    const { emitirConcessao } = await import("./todogreen-evidences.js");
+    const concessao = await emitirConcessao(env, {
+      evidenceId: doc.id,
+      clientId: doc.client_id,
+      ownerId: escopo.workspaceOwnerId,
+      para: user?.id || "",
+    });
+    await logPortalEvent(env, escopo, user, "documento_link_emitido", doc.id, "");
+    return response(
+      { url: `/api/todogreen/arquivo?t=${concessao.token}`, expiraEm: concessao.expiraEm },
+      201,
+    );
   }
 
   // Assistente. Reusa a IA já configurada no Worker; o que muda é o contexto,

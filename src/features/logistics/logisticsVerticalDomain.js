@@ -45,8 +45,8 @@ export const TODO_GREEN_PERMISSIONS = {
   vendedor: ["read", "pricing:simulate", "proposal:create"],
   pricing: ["read", "pricing:simulate", "pricing:manage", "deal:review"],
   financeiro: ["read", "cost:manage", "revenue:manage", "commission:manage", "deal:review"],
-  operacoes: ["read", "operation:manage", "deal:review"],
-  sustentabilidade: ["read", "esg:manage", "deal:review", "audit:read"],
+  operacoes: ["read", "operation:manage", "deal:review", "evidence:manage"],
+  sustentabilidade: ["read", "esg:manage", "deal:review", "audit:read", "evidence:manage"],
   auditor: ["read", "audit:read", "export:read"],
 };
 
@@ -153,7 +153,7 @@ export const TODO_GREEN_MODULE_CATALOG = [
     order: 7,
     description: "Fatores, fontes, premissas e versões de metodologia ambiental.",
   }),
-  module("cofre-evidencias", "Cofre de Evidências", "esg", "/todogreen/auditoria", {
+  module("cofre-evidencias", "Cofre de Evidências", "esg", "/todogreen/documentos", {
     icon: "Archive",
     order: 8,
     description: "Documentos, fatores, comprovantes, aprovações e histórico de evidências.",

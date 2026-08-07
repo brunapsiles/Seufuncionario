@@ -420,3 +420,26 @@
   .cp-sol-resposta { grid-template-columns: minmax(0, 1fr); }
   .cp-sol-head { align-items: flex-start; flex-direction: column; }
 }
+
+/* O botão que a aba de documentos não tinha. */
+.cp-evidencias li { align-items: center; }
+.cp-evidencias li > div { flex: 1; }
+.cp-baixar {
+  align-items: center;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 0.9rem;
+  gap: 7px;
+  padding: 7px 14px;
+  white-space: nowrap;
+}
+.cp-baixar[disabled] { cursor: progress; opacity: 0.6; }
+
+.tdg-doc-filtro { margin: 18px 0 10px; max-width: 320px; }
+.tdg-doc-filtro label { display: grid; gap: 5px; }
+.tdg-doc-aviso { color: #b45309; grid-column: 1 / -1; line-height: 1.5; }
+.tdg-doc-row span[title] { align-items: center; display: inline-flex; font-family: ui-monospace, monospace; gap: 6px; }

@@ -13,6 +13,7 @@ import { handleTodoGreenDashboards } from "./todogreen-dashboards.js";
 import { handleTodoGreenRequests } from "./todogreen-requests.js";
 import { handleTodoGreenVerticalRecords } from "./todogreen-vertical-records.js";
 import { handleTodoGreenDealDesk } from "./todogreen-deal-desk.js";
+import { entregarArquivo, handleTodoGreenEvidences } from "./todogreen-evidences.js";
 
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
   status,
@@ -36,6 +37,24 @@ export async function routeTodoGreenApi(request, env) {
   const url = new URL(request.url);
   const path = url.pathname;
   if (!path.startsWith("/api/todogreen/")) return null;
+
+  // O download em si não passa pela porta de sessão: quem autoriza é a
+  // concessão temporária, que já carrega o cliente e o espaço para os quais foi
+  // emitida. Exigir sessão aqui quebraria o link aberto em outra aba ou num
+  // gerenciador de download, sem ganhar segurança — o token é a credencial.
+  if (path === "/api/todogreen/arquivo") {
+    return guarded("To Do Green document error", "Não foi possível entregar o documento.", () =>
+      entregarArquivo(env, url.searchParams.get("t") || ""),
+    );
+  }
+
+  if (path.startsWith("/api/todogreen/evidencias")) {
+    return guarded("To Do Green evidences error", "Não foi possível carregar os documentos.", async () => {
+      const resolved = await internalAccess(request, env);
+      if (resolved.response) return resolved.response;
+      return handleTodoGreenEvidences(request, env, resolved.access, resolved.user);
+    });
+  }
 
   if (path.startsWith("/api/todogreen/portal"))
     return guarded("To Do Green customer portal error", "Não foi possível abrir o portal do cliente.",

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  Download,
   FileText,
   Gauge,
   Home,
@@ -12,6 +13,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import "./CustomerPortal.css";
+import { tamanhoLegivel } from "./documentVaultDomain.js";
 import {
   AssistenteCliente,
   GreenScoreDetalhado,
@@ -208,13 +210,50 @@ function Relatorios({ setAviso }) {
   );
 }
 
-function Evidencias({ evidencias, carregando }) {
+function Evidencias({ evidencias, carregando, aoAvisar }) {
+  const [baixando, setBaixando] = useState("");
+
+  // O download passa por um link temporário: o endereço de origem do arquivo
+  // nunca chega até aqui. Antes esta lista era só metadado, e a permissão que a
+  // habilitava chamava-se `portal:document:download`.
+  const baixar = async (evidencia) => {
+    setBaixando(evidencia.id);
+    try {
+      const { url } = await enviar(`evidencias/${encodeURIComponent(evidencia.id)}/link`, {});
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (erro) {
+      aoAvisar?.(erro.message);
+    } finally {
+      setBaixando("");
+    }
+  };
+
   if (carregando) return <div className="cp-carregando"><Loader2 className="girando" size={20} /> Carregando documentos...</div>;
   if (!evidencias.length) return <SemDados titulo="Nenhum documento no cofre" texto="Notas fiscais, telemetria, contratos e comprovantes que sustentam os números do seu contrato aparecem aqui." />;
   return (
     <ul className="cp-evidencias">
       {evidencias.map((evidencia) => (
-        <li key={evidencia.id}><FileText size={18} /><div><strong>{evidencia.titulo}</strong><small>{evidencia.tipo} · emitido em {evidencia.emitidoEm || "—"}{evidencia.impressaoDigital ? ` · impressão digital ${evidencia.impressaoDigital.slice(0, 12)}` : ""}</small></div></li>
+        <li key={evidencia.id}>
+          <FileText size={18} />
+          <div>
+            <strong>{evidencia.titulo}</strong>
+            <small>
+              {evidencia.tipo} · emitido em {evidencia.emitidoEm || "—"}
+              {evidencia.arquivoBytes ? ` · ${tamanhoLegivel(evidencia.arquivoBytes)}` : ""}
+              {evidencia.impressaoDigital ? ` · impressão digital ${evidencia.impressaoDigital.slice(0, 12)}` : ""}
+            </small>
+          </div>
+          <button
+            type="button"
+            className="cp-baixar"
+            disabled={baixando === evidencia.id}
+            onClick={() => baixar(evidencia)}
+            aria-label={`Baixar ${evidencia.titulo}`}
+          >
+            <Download size={17} />
+            {baixando === evidencia.id ? "Gerando link..." : "Baixar"}
+          </button>
+        </li>
       ))}
     </ul>
   );
@@ -365,7 +404,7 @@ export default function CustomerPortal() {
         {aba === "green-score" && <GreenScoreDetalhado resumo={resumo} />}
         {aba === "esg" && <ImpactoAmbiental resumo={resumo} />}
         {aba === "relatorios" && <Relatorios setAviso={setAviso} />}
-        {aba === "documentos" && <Evidencias evidencias={evidencias} carregando={carregandoEvidencias} />}
+        {aba === "documentos" && <Evidencias evidencias={evidencias} carregando={carregandoEvidencias} aoAvisar={setAviso} />}
         {aba === "solicitacoes" && <Solicitacoes podeAbrir={(sessao?.permissoes || []).includes("portal:request:create")} setAviso={setAviso} />}
         {aba === "assistente" && <AssistenteCliente enviar={enviar} setAviso={setAviso} />}
       </section>
