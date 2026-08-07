@@ -77,6 +77,7 @@ import {
 const EsgCenter = lazy(() => import("./EsgCenter.jsx"));
 const PricingParametersPanel = lazy(() => import("./PricingParametersPanel.jsx"));
 const DashboardBuilderPage = lazy(() => import("./pages/DashboardBuilderPage.jsx"));
+const GoalsPage = lazy(() => import("./pages/GoalsPage.jsx"));
 const ClientsPage = lazy(() => import("./pages/ClientsPage.jsx"));
 const TrackerPage = lazy(() => import("./pages/TrackerPage.jsx"));
 const OpportunitiesPage = lazy(() => import("./pages/OpportunitiesPage.jsx"));
@@ -200,6 +201,7 @@ const IMPLEMENTED_MODULE_IDS = new Set([
   "permissoes",
   "configuracoes",
   "dashboards",
+  "metas",
   "rastreamento",
   "solicitacoes",
 ]);
@@ -220,6 +222,14 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     area: "gestao",
     status: "functional",
     description: "Criação de painéis pessoais ou compartilhados com indicadores escolhidos por cada usuário.",
+  },
+  metas: {
+    title: "Metas e acompanhamento",
+    navLabel: "Metas",
+    route: "/todogreen/metas",
+    area: "comercial",
+    status: "functional",
+    description: "Metas com fonte de medição, responsável, período, ritmo, projeção, check-ins, planos de ação, desdobramento e histórico.",
   },
   clientes: {
     title: "Clientes e contatos",
@@ -630,7 +640,6 @@ const TODO_GREEN_PAGE_ALIASES = Object.freeze({
   // "deal-desk" era apelido de "precificacao" porque não havia tela. Agora há.
   aprovacoes: "deal-desk",
   alcada: "deal-desk",
-  metas: "dashboards",
   remuneracao: "comissoes",
   forecast: "receita",
   faturamento: "receita",
@@ -1666,6 +1675,7 @@ export default function LogisticsVertical({ db, setToast, access = {}, authHeade
       {!verticalData.demo && dashboard.receitaPrevista === 0 && dashboard.receitaRealizada === 0 && verticalData.clients.length === 0 && page === "dashboard" && <EmptyState onCreate={openPricing} />}
       {page === "dashboard" && <DashboardPanel data={verticalData} dashboard={dashboard} />}
       {page === "dashboards" && <Suspense fallback={<section className="tdg-panel">Carregando seus painéis...</section>}><DashboardBuilderPage authHeaders={authHeaders} summary={dashboard} setToast={setToast} /></Suspense>}
+      {page === "metas" && <Suspense fallback={<section className="tdg-panel">Carregando metas...</section>}><GoalsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "solicitacoes" && <Suspense fallback={<section className="tdg-panel">Carregando solicitações...</section>}><ClientRequestsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "clientes" && <Suspense fallback={<section className="tdg-panel">Carregando clientes...</section>}><ClientsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "oportunidades" && <Suspense fallback={<section className="tdg-panel">Carregando oportunidades...</section>}><OpportunitiesPage opportunities={verticalData.opportunities} onCreate={(registro) => criar("opportunities", registro)} setToast={setToast} /></Suspense>}

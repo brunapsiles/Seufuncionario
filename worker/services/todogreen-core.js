@@ -9,6 +9,7 @@ import {
 } from "../../src/features/logistics/logisticsVerticalDomain.js";
 
 import { resolveTodoGreenAccess } from "./todogreen-access.js";
+import { handleTodoGreenGoals } from "./todogreen-goals.js";
 
 const response = (data, status = 200) => new Response(JSON.stringify(data), {
   status,
@@ -91,6 +92,8 @@ export async function handleTodoGreenCore(request, env, user, url, dependencies)
   const access = await resolveCoreAccess(env, user, ownerId);
   if (!access) return response({ error: "Você não tem acesso à To Do Green." }, 403);
   const resource = url.pathname.split("/").filter(Boolean)[2] || "access";
+
+  if (resource === "goals") return handleTodoGreenGoals(request, env, user, access, url);
 
   if (request.method === "GET" && resource === "access")
     return response({ tenant: TODO_GREEN_TENANT, role: access.role, permissions: access.permissions,

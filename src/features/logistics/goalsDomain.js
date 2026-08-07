@@ -180,7 +180,8 @@ export const validateGoalInput = (input = {}) => {
   const direction = String(input.direction || goalMetric(metricKey).direction || "increase");
   const periodStart = isoDay(input.periodStart || input.period_start);
   const periodEnd = isoDay(input.periodEnd || input.period_end);
-  const targetValue = Number(input.targetValue ?? input.target_value);
+  const rawTarget = input.targetValue ?? input.target_value;
+  const targetValue = rawTarget === "" || rawTarget == null ? Number.NaN : Number(rawTarget);
   if (title.length < 3) errors.push("Informe um título com pelo menos 3 caracteres.");
   if (!GOAL_CATEGORIES.some((item) => item.id === category)) errors.push("Selecione uma categoria válida.");
   if (!GOAL_SCOPES.some((item) => item.id === scopeType)) errors.push("Selecione um escopo válido.");
