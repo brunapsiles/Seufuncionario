@@ -1,27 +1,16 @@
-const TENANT_ID = "todogreen";
+import { TENANT_ID, podeNaVertical } from "./todogreen-access.js";
+
 const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 const clean = (value, max = 500) => String(value || "").trim().slice(0, max);
 const parse = (value, fallback) => { try { return JSON.parse(value || ""); } catch { return fallback; } };
-const sha256 = async (value) => { const bytes = new TextEncoder().encode(value); const digest = await crypto.subtle.digest("SHA-256", bytes); return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join(""); };
 
-async function userFromRequest(request, env) {
-  const auth = request.headers.get("authorization") || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-  if (!token) return null;
-  return env.DB.prepare(`SELECT u.id, u.name, u.email FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ?`)
-    .bind(await sha256(token), new Date().toISOString()).first();
-}
+// A Frota tinha a própria autenticação e a própria regra de acesso, e dentro
+// dela ainda estava `email.endsWith("@todogreen.com.br")`. Quem entrasse por
+// ali enxergava e alterava os veículos do espaço inteiro, mesmo depois de o
+// domínio ter saído dos outros serviços. Agora quem decide é a mesma porta,
+// resolvida no roteador antes de chegar aqui.
+const canWrite = (access) => podeNaVertical(access, "fleet:manage");
 
-async function accessFor(env, user) {
-  const email = String(user.email || "").toLowerCase();
-  const admins = String(env.TODOGREEN_ADMIN_EMAILS || "").split(",").map((v) => v.trim().toLowerCase()).filter(Boolean);
-  const manual = await env.DB.prepare(`SELECT role, permissions_json, workspace_owner_id FROM tenant_users WHERE tenant_id = ? AND user_id = ? AND status = 'active'`)
-    .bind(TENANT_ID, user.id).first().catch(() => null);
-  if (!admins.includes(email) && !email.endsWith("@todogreen.com.br") && !manual) return null;
-  const permissions = admins.includes(email) ? ["*"] : parse(manual?.permissions_json, []);
-  return { ownerId: manual?.workspace_owner_id || user.id, role: admins.includes(email) ? "admin" : manual?.role || "auditor", permissions };
-}
-const canWrite = (access) => ["owner", "admin"].includes(access.role) || access.permissions.includes("*") || access.permissions.includes("fleet:manage");
 const mapVehicle = (row) => ({
   id: row.id, prefix: row.prefix, plate: row.plate, manufacturer: row.manufacturer, model: row.model, modelYear: row.model_year,
   category: row.category, energyType: row.energy_type, status: row.status, operationalUnit: row.operational_unit, costCenter: row.cost_center,
@@ -35,13 +24,9 @@ const mapVehicle = (row) => ({
 });
 const num = (value) => Math.max(0, Number(value) || 0);
 
-export async function handleTodoGreenFleet(request, env) {
+export async function handleTodoGreenFleet(request, env, access, user) {
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/api/todogreen/fleet")) return null;
-  const user = await userFromRequest(request, env);
-  if (!user) return json({ error: "Sua sessão expirou. Entre novamente." }, 401);
-  const access = await accessFor(env, user);
-  if (!access) return json({ error: "Você não tem acesso à Frota da To Do Green." }, 403);
   const parts = url.pathname.split("/").filter(Boolean);
   const vehicleId = parts[3] || "";
   const subresource = parts[4] || "";

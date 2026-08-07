@@ -53,9 +53,13 @@ export async function routeTodoGreenApi(request, env) {
   if (path.startsWith("/api/todogreen/tracker"))
     return guarded("To Do Green Tracker error", "Não foi possível processar o rastreamento veicular.",
       () => handleTodoGreenTracker(request, env));
-  if (path.startsWith("/api/todogreen/fleet"))
-    return guarded("To Do Green fleet error", "Não foi possível sincronizar a frota.",
-      () => handleTodoGreenFleet(request, env));
+  if (path.startsWith("/api/todogreen/fleet")) {
+    return guarded("To Do Green fleet error", "Não foi possível sincronizar a frota.", async () => {
+      const resolved = await internalAccess(request, env);
+      if (resolved.response) return resolved.response;
+      return handleTodoGreenFleet(request, env, resolved.access, resolved.user);
+    });
+  }
 
   if (path.startsWith("/api/todogreen/requests")) {
     return guarded("To Do Green requests error", "Não foi possível carregar as solicitações.", async () => {

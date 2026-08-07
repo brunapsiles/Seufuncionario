@@ -654,22 +654,37 @@ const ownerId = () => {
 
 const demoModeEnabled = (db = {}, access = {}) => Boolean(db?.[TODO_GREEN_PRODUCTION_DATA_POLICY.demoModeFlag] || access.demoMode);
 
-const canAccessTodoGreen = (db = {}, access = {}) => {
-  if (access.allowed) return true;
-  if (db?.user?.email && /@todogreen\.com\.br$/i.test(db.user.email)) return true;
-  const tenantAccess = db?.tenantAccess?.todogreen || db?.todoGreenAccess;
-  if (tenantAccess?.active !== false && tenantAccess?.role) return true;
-  return (db?.businesses || []).some(
-    (business) => /to\s*do\s*green/i.test(business.name || "") || business.tenantSlug === TODO_GREEN_TENANT.slug,
-  );
+// ===== Quem entra na vertical =====
+//
+// Só a API responde essa pergunta. A regra anterior abria a tela por quatro
+// caminhos que o próprio navegador controla:
+//
+//   1. e-mail terminado no domínio da empresa;
+//   2. um negócio chamado "To Do Green" no espaço — nome que a própria pessoa
+//      digita no cadastro;
+//   3. `tenantAccess.todogreen` gravado no estado local;
+//   4. a chamada de acesso falhando, e o estado anterior mantendo a tela
+//      aberta.
+//
+// O quarto era o mais silencioso e o terceiro o mais grave: era a própria
+// tela de precificação que gravava `tenantAccess.todogreen` ao salvar uma
+// simulação, então o acesso se autoconcedia e sobrevivia a qualquer correção
+// feita no servidor.
+//
+// O backend já decide certo. Enquanto ele não confirmar vínculo e permissões,
+// aqui não abre — e "não respondeu ainda" não é "pode entrar".
+export const ACESSO = {
+  verificando: "verificando",
+  liberado: "liberado",
+  negado: "negado",
 };
 
-const accessRole = (db = {}, access = {}) => {
-  if (access.role) return access.role;
-  const role = db?.tenantAccess?.todogreen?.role || db?.todoGreenAccess?.role || "";
-  if (TODO_GREEN_ROLES.includes(role)) return role;
-  if (db?.user?.email && /@todogreen\.com\.br$/i.test(db.user.email)) return "admin";
-  return canAccessTodoGreen(db, access) ? "admin" : "";
+// A resposta só vale se trouxer um papel conhecido. Corpo vazio, papel
+// desconhecido ou 200 sem conteúdo não viram acesso — muito menos "admin".
+export const lerRespostaDeAcesso = (payload) => {
+  const role = String(payload?.role || "").trim();
+  if (!TODO_GREEN_ROLES.includes(role)) return null;
+  return { ...payload, role, allowed: true };
 };
 
 const seedScenario = createPricingScenarioSnapshot(
@@ -746,6 +761,22 @@ const appendRecord = (update, key, record) => {
   update?.((current) => ({ ...current, [key]: [record, ...(current[key] || [])] }));
 };
 
+// Enquanto a API não respondeu, a tela não afirma nada. Mostrar o painel e
+// depois retirá-lo seria pior do que esperar: a pessoa já teria visto números
+// que talvez não sejam dela.
+function AcessoEmVerificacao() {
+  return (
+    <main className="tdg tdg-denied" aria-labelledby="tdg-verificando-title" aria-busy="true">
+      <section className="tdg-denied-card">
+        <div className="tdg-denied-mark"><ShieldCheck /></div>
+        <span className="tdg-kicker">ACESSO PRIVADO</span>
+        <h1 id="tdg-verificando-title">Confirmando seu acesso...</h1>
+        <p>Estamos verificando seu vínculo e suas permissões com o servidor. A área abre assim que a confirmação chegar.</p>
+      </section>
+    </main>
+  );
+}
+
 function AccessDenied({ db }) {
   return (
     <main className="tdg tdg-denied" aria-labelledby="tdg-denied-title">
@@ -753,7 +784,7 @@ function AccessDenied({ db }) {
         <div className="tdg-denied-mark"><ShieldCheck /></div>
         <span className="tdg-kicker">ACESSO PRIVADO</span>
         <h1 id="tdg-denied-title">Vertical To Do Green protegida</h1>
-        <p>Esta área só abre para usuários vinculados ao workspace da To Do Green ou com permissão individual ativa. Entrar pela URL não concede acesso.</p>
+        <p>Esta área só abre depois que o servidor confirma um vínculo ativo com a To Do Green ou uma autorização individual. Domínio de e-mail, nome do negócio e dados guardados neste navegador não concedem acesso — entrar pela URL, tampouco.</p>
         <dl>
           <div><dt>Usuário atual</dt><dd>{db?.user?.email || "sessão local"}</dd></div>
           <div><dt>Tenant</dt><dd>{TODO_GREEN_TENANT.slug}</dd></div>
@@ -979,7 +1010,9 @@ function PricingPanel({ role, update, db, authHeaders, setToast }) {
     );
     update?.((current) => ({
       ...current,
-      tenantAccess: { ...(current.tenantAccess || {}), todogreen: { role: role || "admin", active: true } },
+      // Salvar simulação não é concessão de acesso. Aqui ficava
+      // `tenantAccess.todogreen = { role: role || "admin" }`, e era isso que
+      // a regra antiga lia depois para liberar a vertical.
       todoGreenPricingScenarios: [snapshot, ...(current.todoGreenPricingScenarios || []).slice(0, 20)],
     }));
     fetch(`/api/todogreen/audit?owner=${encodeURIComponent(ownerId())}`, {
@@ -1187,7 +1220,7 @@ function AccessPanel({ role, authHeaders, setToast }) {
   return (
     <section className="tdg-panel tdg-access-panel"><div className="tdg-section-head"><div><span className="tdg-kicker">ACESSOS</span><h2>Autorize e-mails externos para entrar na vertical sem novo deploy.</h2></div><strong>{loading ? "carregando" : `${emails.length} e-mail(s)`}</strong></div>
       <form className="tdg-access-form" onSubmit={save}><label><span>E-mail autorizado</span><input value={form.email} type="email" required placeholder="nome@empresa.com.br" onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} /></label><label><span>Papel</span><select value={form.role} onChange={(event) => setForm((current) => ({ ...current, role: event.target.value }))}>{TODO_GREEN_ROLES.filter((item) => item !== "owner").map((item) => <option value={item} key={item}>{item.replace(/_/g, " ")}</option>)}</select></label><label><span>Observação</span><input value={form.note} placeholder="Ex.: teste, cliente, fundador" onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))} /></label><button className="tdg-action" type="submit" disabled={saving}><Plus size={17} />{saving ? "Salvando..." : "Autorizar"}</button></form>
-      <div className="tdg-access-list">{emails.length === 0 && <div className="tdg-empty-access"><ShieldCheck size={18} />Nenhum e-mail manual autorizado ainda. O domínio @todogreen.com.br continua liberado automaticamente.</div>}{emails.map((item) => <div className="tdg-access-row" key={item.email}><span><strong>{item.email}</strong><small>{item.note || "sem observação"}</small></span><span>{item.role.replace(/_/g, " ")}</span><span className={item.status === "active" ? "good" : ""}>{item.status === "active" ? "ativo" : "inativo"}</span><button type="button" onClick={() => remove(item.email)} aria-label={`Remover ${item.email}`}><Trash2 size={17} /></button></div>)}</div>
+      <div className="tdg-access-list">{emails.length === 0 && <div className="tdg-empty-access"><ShieldCheck size={18} />Nenhum e-mail autorizado ainda. Sem autorização nesta lista — ou vínculo ativo ao tenant — ninguém entra na vertical, qualquer que seja o domínio do e-mail.</div>}{emails.map((item) => <div className="tdg-access-row" key={item.email}><span><strong>{item.email}</strong><small>{item.note || "sem observação"}</small></span><span>{item.role.replace(/_/g, " ")}</span><span className={item.status === "active" ? "good" : ""}>{item.status === "active" ? "ativo" : "inativo"}</span><button type="button" onClick={() => remove(item.email)} aria-label={`Remover ${item.email}`}><Trash2 size={17} /></button></div>)}</div>
     </section>
   );
 }
@@ -1195,7 +1228,12 @@ function AccessPanel({ role, authHeaders, setToast }) {
 export default function LogisticsVertical({ db, update, setToast, access = {}, authHeaders }) {
   const [path, setPath] = useState(todoGreenPath());
   const [query, setQuery] = useState("");
-  const [remoteAccess, setRemoteAccess] = useState(access);
+  // `access` chega vazio hoje; se um dia vier preenchido, ainda precisa passar
+  // pela mesma leitura — a origem é que decide, não o formato.
+  const [remoteAccess, setRemoteAccess] = useState(() => lerRespostaDeAcesso(access) || {});
+  const [estadoDoAcesso, setEstadoDoAcesso] = useState(() =>
+    lerRespostaDeAcesso(access) ? ACESSO.liberado : ACESSO.verificando,
+  );
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const sync = () => setPath(todoGreenPath());
@@ -1204,14 +1242,34 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
   }, []);
   useEffect(() => {
     const headers = authHeaders?.() || {};
-    if (!headers.authorization) return;
+    // Sem sessão não há o que confirmar: nega direto em vez de ficar num
+    // "verificando" que nunca termina.
+    if (!headers.authorization) {
+      setRemoteAccess({});
+      setEstadoDoAcesso(ACESSO.negado);
+      return undefined;
+    }
+    let ativo = true;
+    setEstadoDoAcesso(ACESSO.verificando);
     fetch(`/api/todogreen/access?owner=${encodeURIComponent(ownerId())}`, { headers })
       .then((response) => (response.ok ? response.json() : null))
-      .then((payload) => { if (payload?.role) setRemoteAccess({ allowed: true, ...payload }); })
-      .catch(() => {});
+      .then((payload) => {
+        if (!ativo) return;
+        const confirmado = lerRespostaDeAcesso(payload);
+        setRemoteAccess(confirmado || {});
+        setEstadoDoAcesso(confirmado ? ACESSO.liberado : ACESSO.negado);
+      })
+      // Rede fora do ar, 500, resposta ilegível: todos significam "não sei".
+      // Não saber é motivo para fechar, nunca para manter aberto.
+      .catch(() => {
+        if (!ativo) return;
+        setRemoteAccess({});
+        setEstadoDoAcesso(ACESSO.negado);
+      });
+    return () => { ativo = false; };
   }, [authHeaders]);
-  const allowed = canAccessTodoGreen(db, remoteAccess);
-  const role = accessRole(db, remoteAccess);
+  const allowed = estadoDoAcesso === ACESSO.liberado;
+  const role = allowed ? remoteAccess.role || "" : "";
   const page = todoGreenRouteToPage(path);
   const isHome = /^\/todogreen\/?$/.test(path);
   const verticalData = useMemo(() => defaultVerticalData(db, remoteAccess), [db, remoteAccess]);
@@ -1233,6 +1291,7 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
     ),
   }));
 
+  if (estadoDoAcesso === ACESSO.verificando) return <AcessoEmVerificacao />;
   if (!allowed) return <AccessDenied db={db} />;
 
   const openPricing = () => navigate("/todogreen/precificacao");

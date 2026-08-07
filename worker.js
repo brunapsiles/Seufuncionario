@@ -8178,7 +8178,6 @@ export default {
       if (url.pathname.startsWith("/api/todogreen/")) {
         try {
           return await handleTodoGreenCore(request, env, user, url, {
-            membershipRole,
             audit: logAudit,
           });
         } catch (error) {

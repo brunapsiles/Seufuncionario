@@ -62,7 +62,33 @@ const request = (path, { method = "GET", user, body } = {}) => {
   );
 };
 
-// O acesso à vertical vem de o próprio espaço ter um negócio "To Do Green".
+// Acesso vem de autorização explícita. Antes vinha de o espaço ter um negócio
+// chamado "To Do Green" — e nome de negócio é texto que a própria pessoa
+// digita no cadastro, então bastava escrevê-lo para virar administradora da
+// vertical inteira. Este helper agora faz o que a titular faria: autoriza o
+// e-mail na lista da vertical.
+const autorizar = async (email, userId, role = "admin") => {
+  const now = new Date().toISOString();
+  // O tenant é criado pelo seed do catálogo, que só roda em algumas rotas.
+  // Aqui a autorização vem antes de qualquer chamada, então ele precisa
+  // existir — a chave estrangeira cobra.
+  await env.DB.prepare(
+    `INSERT INTO tenants (id, slug, name, segment, status, theme_json, created_at, updated_at)
+     VALUES ('todogreen', 'todogreen', 'To Do Green', 'logistica', 'active', '{}', ?, ?)
+     ON CONFLICT(id) DO NOTHING`,
+  ).bind(now, now).run();
+  await env.DB.prepare(
+    `INSERT INTO todogreen_access_emails
+       (id, tenant_id, email, role, status, permissions_json, note, created_by, created_at, updated_at)
+     VALUES (?, 'todogreen', ?, ?, 'active', ?, '', ?, ?, ?)
+     ON CONFLICT(tenant_id, email) DO UPDATE SET role = excluded.role, status = 'active'`,
+  )
+    .bind(crypto.randomUUID(), email, role, JSON.stringify(["*"]), userId, now, now)
+    .run();
+};
+
+// O negócio no espaço continua existindo — só não concede mais nada. O teste
+// mantém a escrita para provar justamente isso.
 const workspaceComTodoGreen = async (user) => {
   const r = await request("/api/workspace", {
     method: "PUT",
@@ -76,9 +102,10 @@ const workspaceComTodoGreen = async (user) => {
 };
 
 describe("a vertical funciona com o banco migrado", () => {
-  it("quem tem o negócio no espaço entra e recebe o catálogo", async () => {
-    const user = await createUser(`tg-${n}-boot`);
-    await workspaceComTodoGreen(user);
+  it("quem foi autorizado entra e recebe o catálogo", async () => {
+    const email = `tg-${n}-boot@example.com`;
+    const user = await createUser(`tg-${n}-boot`, email);
+    await autorizar(email, user.id);
 
     const acesso = await request("/api/todogreen/access", { user });
     expect(acesso.status).toBe(200);
@@ -101,9 +128,25 @@ describe("a vertical funciona com o banco migrado", () => {
     expect(r.status).toBe(403);
   });
 
+  it("nome de negócio no espaço não concede acesso", async () => {
+    const user = await createUser(`tg-${n}-nome`);
+    await workspaceComTodoGreen(user);
+
+    // Escreveu "To Do Green" no cadastro do próprio negócio. Continua fora.
+    const r = await request("/api/todogreen/access", { user });
+    expect(r.status).toBe(403);
+  });
+
+  it("e-mail no domínio da empresa não concede acesso", async () => {
+    const user = await createUser(`tg-${n}-dominio`, `tg-${n}-dominio@todogreen.com.br`);
+    const r = await request("/api/todogreen/access", { user });
+    expect(r.status).toBe(403);
+  });
+
   it("permite autorizar e remover e-mail externo sem deploy", async () => {
-    const admin = await createUser(`tg-${n}-admin`);
-    await workspaceComTodoGreen(admin);
+    const email = `tg-${n}-admin@example.com`;
+    const admin = await createUser(`tg-${n}-admin`, email);
+    await autorizar(email, admin.id);
 
     const create = await request("/api/todogreen/access-list", {
       method: "POST",

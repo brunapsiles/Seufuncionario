@@ -8,6 +8,8 @@ import {
   summarizeTodoGreenDashboard,
 } from "../../src/features/logistics/logisticsVerticalDomain.js";
 
+import { resolveTodoGreenAccess } from "./todogreen-access.js";
+
 const response = (data, status = 200) => new Response(JSON.stringify(data), {
   status,
   headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
@@ -17,53 +19,24 @@ const parse = (value, fallback = null) => {
 };
 const email = (value) => String(value || "").trim().toLowerCase();
 
-const envAllows = (env, value) => {
-  const normalized = email(value);
-  return normalized.endsWith("@todogreen.com.br") || String(env.TODOGREEN_ADMIN_EMAILS || "")
-    .split(",").map(email).filter(Boolean).includes(normalized);
-};
-
-async function emailAccess(env, value) {
-  const normalized = email(value);
-  if (!normalized) return null;
-  if (envAllows(env, normalized)) return { role: "admin", permissions: ["*"], source: normalized.endsWith("@todogreen.com.br") ? "domain" : "env" };
-  const row = await env.DB.prepare(
-    "SELECT role, status, permissions_json FROM todogreen_access_emails WHERE tenant_id = ? AND email = ? LIMIT 1",
-  ).bind(TODO_GREEN_TENANT.id, normalized).first().catch(() => null);
-  if (row?.status !== "active") return null;
-  return {
-    role: TODO_GREEN_ROLES.includes(row.role) ? row.role : "admin",
-    permissions: parse(row.permissions_json, ["*"]),
-    source: "manual",
-  };
-}
-
-async function workspaceIsTodoGreen(env, ownerId) {
-  const row = await env.DB.prepare("SELECT data FROM workspaces WHERE user_id = ?").bind(ownerId).first();
-  const data = parse(row?.data, {});
-  return Array.isArray(data?.businesses) && data.businesses.some((item) =>
-    /to\s*do\s*green/i.test(String(item?.name || "")) || item?.tenantSlug === TODO_GREEN_TENANT.slug);
-}
-
-async function resolveCoreAccess(env, user, ownerId, membershipRole) {
-  const workspaceRole = await membershipRole(env, user.id, ownerId);
-  if (!workspaceRole) return null;
-  const tenantUser = await env.DB.prepare(
-    `SELECT role, status, permissions_json FROM tenant_users
-      WHERE tenant_id = ? AND user_id = ? AND workspace_owner_id = ? LIMIT 1`,
-  ).bind(TODO_GREEN_TENANT.id, user.id, ownerId).first().catch(() => null);
-  if (tenantUser?.status === "active") return {
-    ownerId,
-    workspaceRole,
-    role: tenantUser.role || workspaceRole,
-    permissions: parse(tenantUser.permissions_json, []),
-    source: "tenant_user",
-  };
-  const allowed = await emailAccess(env, user.email);
-  if (allowed && user.id === ownerId) return { ownerId, workspaceRole, ...allowed };
-  if (user.id === ownerId && await workspaceIsTodoGreen(env, ownerId))
-    return { ownerId, workspaceRole, role: "admin", permissions: ["*"], source: "workspace" };
-  return null;
+// A porta de entrada é uma só, e fica em todogreen-access.js. Este arquivo
+// mantinha a sua própria — e era por ela que os dois furos já fechados
+// continuavam abertos justamente onde mais pesa: é ele que responde
+// `/api/todogreen/access`, a pergunta que a tela faz para saber se abre.
+//
+// O que saiu daqui:
+//   • `envAllows`, que transformava qualquer conta terminada em
+//     @todogreen.com.br em administradora da vertical inteira;
+//   • `workspaceIsTodoGreen`, que dava admin a quem tivesse um negócio
+//     chamado "To Do Green" no próprio espaço — nome de negócio é texto que a
+//     própria pessoa digita, não prova de vínculo.
+//
+// Os administradores declarados em TODOGREEN_ADMIN_EMAILS continuam valendo:
+// são vínculo explícito, configurado fora do alcance de quem se cadastra.
+async function resolveCoreAccess(env, user, ownerId) {
+  const { access } = await resolveTodoGreenAccess(env, user, ownerId);
+  if (!access) return null;
+  return { ...access, source: access.viaAdministradorGlobal ? "env" : "vinculo" };
 }
 
 const canManage = (access) => ["owner", "admin"].includes(access?.role) || access?.permissions?.includes("*");
@@ -115,7 +88,7 @@ async function seedCatalog(env) {
 
 export async function handleTodoGreenCore(request, env, user, url, dependencies) {
   const ownerId = url.searchParams.get("owner") || user.id;
-  const access = await resolveCoreAccess(env, user, ownerId, dependencies.membershipRole);
+  const access = await resolveCoreAccess(env, user, ownerId);
   if (!access) return response({ error: "Você não tem acesso à To Do Green." }, 403);
   const resource = url.pathname.split("/").filter(Boolean)[2] || "access";
 

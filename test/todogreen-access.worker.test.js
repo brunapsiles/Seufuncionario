@@ -137,6 +137,14 @@ describe("a porta é a mesma em todos os serviços", () => {
     "/api/todogreen/dashboards",
     "/api/todogreen/requests",
     "/api/todogreen/clients",
+    // A Frota tinha autenticação e regra de acesso próprias, com o domínio
+    // dentro delas. Passou a usar a mesma porta.
+    "/api/todogreen/fleet",
+    // E o endpoint que a tela consulta para saber se abre. Era o que mais
+    // importava e o último a continuar com regra própria: além do domínio,
+    // dava admin a quem tivesse um negócio chamado "To Do Green" no espaço.
+    "/api/todogreen/access",
+    "/api/todogreen/catalog",
   ];
 
   it("nenhum serviço aceita o e-mail de domínio sem vínculo", async () => {
@@ -151,5 +159,51 @@ describe("a porta é a mesma em todos os serviços", () => {
       const r = await pedir(`${rota}?owner=${deFora.id}`, liberado.token);
       expect(r.status).toBe(403);
     }
+  });
+});
+
+describe("a Frota entrou na mesma porta", () => {
+  it("quem foi liberado lista a própria frota", async () => {
+    const r = await pedir("/api/todogreen/fleet", liberado.token);
+    expect(r.status).toBe(200);
+    expect(Array.isArray((await r.json()).vehicles)).toBe(true);
+  });
+
+  it("sem sessão a Frota devolve 401, não a lista", async () => {
+    expect((await pedir("/api/todogreen/fleet")).status).toBe(401);
+  });
+
+  it("a frota de outro espaço não aparece", async () => {
+    const agora = new Date().toISOString();
+    // Um veículo cadastrado no espaço de outra pessoa.
+    await env.DB.prepare(
+      `INSERT INTO todogreen_fleet_vehicles
+         (id, tenant_id, workspace_owner_id, prefix, revision, created_by, updated_by, created_at, updated_at)
+       VALUES (?, 'todogreen', ?, 'CARRETA-ALHEIA', 1, ?, ?, ?, ?)`,
+    ).bind(crypto.randomUUID(), deFora.id, deFora.id, deFora.id, agora, agora).run();
+
+    const r = await pedir("/api/todogreen/fleet", liberado.token);
+    expect(r.status).toBe(200);
+    const prefixos = (await r.json()).vehicles.map((v) => v.prefix);
+    expect(prefixos).not.toContain("CARRETA-ALHEIA");
+  });
+});
+
+describe("o endpoint que a tela consulta para saber se abre", () => {
+  it("responde o papel de quem tem vínculo", async () => {
+    const r = await pedir("/api/todogreen/access", liberado.token);
+    expect(r.status).toBe(200);
+    expect((await r.json()).role).toBe("auditor");
+  });
+
+  it("negócio chamado To Do Green no espaço não vira acesso", async () => {
+    const dono = await criarUsuario("acc-nome", "dono@empresadele.com.br");
+    const agora = new Date().toISOString();
+    await env.DB.prepare(
+      "INSERT INTO workspaces (user_id, data, revision, updated_at) VALUES (?, ?, 1, ?)",
+    ).bind(dono.id, JSON.stringify({ businesses: [{ id: "b1", name: "To Do Green" }] }), agora).run();
+
+    const r = await pedir("/api/todogreen/access", dono.token);
+    expect(r.status).toBe(403);
   });
 });
