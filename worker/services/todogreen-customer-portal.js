@@ -86,21 +86,39 @@ async function authenticatedUser(request, env) {
 
 // O ponto onde o isolamento acontece. Uma consulta, pelo e-mail da sessão.
 // O resultado carrega o cliente; nada além dele é alcançável depois.
-async function clientScopeForSession(env, user) {
-  if (!user?.email) return null;
-  const vinculo = await env.DB.prepare(
+// As empresas que este e-mail alcança. Antes a consulta terminava em `LIMIT 1`
+// porque a restrição do banco garantia que só havia uma — e era essa restrição
+// que deixava de fora grupo empresarial, consultoria, auditor e gestor de
+// subsidiárias, que são justamente quem tem várias empresas e um e-mail só.
+async function vinculosDaSessao(env, user) {
+  if (!user?.email) return [];
+  const { results } = await env.DB.prepare(
     `SELECT v.tenant_id, v.client_id, v.email, v.role, v.status,
             c.name AS client_name, c.status AS client_status,
             c.portal_enabled, c.workspace_owner_id
        FROM todogreen_client_users v
        JOIN todogreen_clients c ON c.id = v.client_id
       WHERE v.tenant_id = ? AND v.email = ?
-      LIMIT 1`,
+      ORDER BY c.name COLLATE NOCASE
+      LIMIT 50`,
   )
     .bind(TENANT_ID, normalizeEmail(user.email))
-    .first()
-    .catch(() => null);
-  return resolveClientScope(vinculo);
+    .all()
+    .catch(() => ({ results: [] }));
+  return (results || []).map(resolveClientScope).filter(Boolean);
+}
+
+// A empresa da requisição sai SEMPRE da lista que a sessão alcança. Aceitar o
+// id que veio na query string sem confrontar seria o mesmo furo do `?owner=`
+// que já foi fechado no lado interno: trocar o parâmetro e operar dado alheio.
+async function clientScopeForSession(env, user, clientePedido = "") {
+  const vinculos = await vinculosDaSessao(env, user);
+  if (!vinculos.length) return null;
+  const pedido = clean(clientePedido, 120);
+  if (pedido) return vinculos.find((v) => v.clientId === pedido) || null;
+  // Sem escolha explícita, a primeira em ordem alfabética — determinística, e
+  // não "a que o banco devolveu primeiro".
+  return vinculos[0];
 }
 
 async function logPortalEvent(env, escopo, user, action, target = "", details = "") {
@@ -213,12 +231,17 @@ export async function handleTodoGreenCustomerPortal(request, env) {
   const user = await authenticatedUser(request, env);
   if (!user) return response({ error: "Sessão inválida." }, 401);
 
-  const escopo = await clientScopeForSession(env, user);
+  const empresaPedida = url.searchParams.get("empresa") || "";
+  const empresas = await vinculosDaSessao(env, user);
+  const escopo = await clientScopeForSession(env, user, empresaPedida);
   if (!escopo)
     return response(
       {
-        error:
-          "Esta conta não está vinculada a nenhum cliente da To Do Green.",
+        error: empresas.length
+          // Mesma resposta para empresa inexistente e para empresa de outra
+          // pessoa: distinguir contaria que ela existe.
+          ? "Você não tem acesso a esta empresa."
+          : "Esta conta não está vinculada a nenhum cliente da To Do Green.",
       },
       403,
     );
@@ -232,6 +255,9 @@ export async function handleTodoGreenCustomerPortal(request, env) {
       permissoes: escopo.permissions,
       menu: menuForAccess(escopo),
       usuario: { nome: user.name, email: escopo.email },
+      // A lista vai junto na abertura: sem ela o portal não teria como oferecer
+      // a troca, e um grupo empresarial ficaria preso na primeira empresa.
+      empresas: empresas.map((v) => ({ id: v.clientId, nome: v.clientName, papel: v.role })),
     });
   }
 

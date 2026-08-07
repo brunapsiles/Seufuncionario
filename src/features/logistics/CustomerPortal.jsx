@@ -43,15 +43,44 @@ const authHeaders = () => {
   }
 };
 
+// A empresa escolhida viaja em toda chamada. Quem valida é o servidor, contra a
+// lista de vínculos da sessão — o valor guardado aqui é preferência de tela, não
+// credencial.
+const CHAVE_EMPRESA = "tdg-portal-empresa";
+
+export const empresaEscolhida = () => {
+  try {
+    return localStorage.getItem(CHAVE_EMPRESA) || "";
+  } catch {
+    return "";
+  }
+};
+
+export const escolherEmpresa = (id) => {
+  try {
+    if (id) localStorage.setItem(CHAVE_EMPRESA, id);
+    else localStorage.removeItem(CHAVE_EMPRESA);
+  } catch {
+    /* navegador sem armazenamento: segue com a empresa padrão */
+  }
+};
+
+const comEmpresa = (caminho) => {
+  const empresa = empresaEscolhida();
+  if (!empresa) return `/api/todogreen/portal/${caminho}`;
+  const separador = caminho.includes("?") ? "&" : "?";
+  return `/api/todogreen/portal/${caminho}${separador}empresa=${encodeURIComponent(empresa)}`;
+};
+
 const pedir = async (caminho) => {
-  const resposta = await fetch(`/api/todogreen/portal/${caminho}`, { headers: authHeaders() });
+  const resposta = await fetch(comEmpresa(caminho), { headers: authHeaders() });
   const dados = await resposta.json().catch(() => ({}));
   if (!resposta.ok) throw new Error(dados?.error || "Não foi possível carregar.");
   return dados;
 };
 
 const enviar = async (caminho, corpo, metodo = "POST") => {
-  const resposta = await fetch(`/api/todogreen/portal/${caminho}`, {
+  const resposta = await fetch(comEmpresa(caminho), {
     method: metodo,
     headers: { "content-type": "application/json", ...authHeaders() },
     body: JSON.stringify(corpo),
@@ -395,7 +424,38 @@ export default function CustomerPortal() {
 
   return (
     <main className="cp" aria-labelledby="cp-titulo">
-      <header className="cp-topo"><div><span className="cp-marca">To Do Green</span><h1 id="cp-titulo">{sessao.cliente.nome}</h1><p>Portal do cliente · {sessao.usuario.nome}</p></div></header>
+      <header className="cp-topo">
+        <div>
+          <span className="cp-marca">To Do Green</span>
+          <h1 id="cp-titulo">{sessao.cliente.nome}</h1>
+          <p>Portal do cliente · {sessao.usuario.nome}</p>
+        </div>
+        {/* O seletor só aparece para quem tem mais de uma empresa. Grupo
+            empresarial, consultoria, auditor e gestor de subsidiárias têm um
+            e-mail e várias empresas; até aqui a restrição do banco os deixava
+            de fora. */}
+        {(sessao.empresas || []).length > 1 && (
+          <label className="cp-empresa">
+            <span>Empresa</span>
+            <select
+              value={sessao.cliente.id}
+              onChange={(evento) => {
+                escolherEmpresa(evento.target.value);
+                // Recarrega em vez de remendar o estado: todo dado da tela é do
+                // cliente anterior, e manter qualquer pedaço seria misturar as
+                // duas empresas na mesma página.
+                window.location.reload();
+              }}
+            >
+              {sessao.empresas.map((empresa) => (
+                <option key={empresa.id} value={empresa.id}>
+                  {empresa.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </header>
       <nav className="cp-menu" aria-label="Navegação do portal">{menu.map((item) => { const Icone = ICONES[item.id] || Home; return <button key={item.id} type="button" className={aba === item.id ? "ativo" : ""} onClick={() => setAba(item.id)} aria-current={aba === item.id ? "page" : undefined}><Icone size={17} /><span>{item.label}</span></button>; })}</nav>
       {aviso && <div className="cp-alerta cp-alerta-acao" role="alert"><AlertTriangle size={18} /><span>{aviso}</span><button type="button" onClick={() => setAviso("")} aria-label="Fechar aviso">×</button></div>}
       <section className="cp-conteudo">
