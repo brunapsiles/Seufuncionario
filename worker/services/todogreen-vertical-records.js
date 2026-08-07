@@ -53,12 +53,37 @@ const objeto = (valor) => (valor && typeof valor === "object" && !Array.isArray(
 // Cada coleção declara como uma linha vira registro e como um registro vira
 // linha. Sem essa tabela, cada endpoint reescreveria o mesmo mapeamento com
 // uma diferença sutil — e a diferença sutil é o que faz o painel somar errado.
+// Campos da oportunidade que têm coluna própria. O que sobra é guardado como
+// payload em vez de descartado — é ali que estão ocupação prevista, frota de
+// baixa emissão, veículos disponíveis, meses de contrato e probabilidade, que
+// a análise de oportunidade usa e esta tabela não precisa indexar.
+const COLUNAS_DA_OPORTUNIDADE = new Set([
+  "id", "clientId", "cliente", "clientName", "estagio", "stage",
+  "valorMensal", "valorContrato", "distanciaKm", "viagensMes", "tipoVeiculo",
+  "responsavelId", "ultimaInteracaoEm", "lastInteractionAt", "campos",
+  "revision", "criadoEm", "atualizadoEm",
+]);
+
+const extrasDaOportunidade = (corpo) =>
+  Object.fromEntries(
+    Object.entries(corpo).filter(
+      ([chave, valor]) => !COLUNAS_DA_OPORTUNIDADE.has(chave) && valor !== undefined,
+    ),
+  );
+
 const COLECOES = {
   opportunities: {
     tabela: "todogreen_opportunities",
     permissao: "crm:manage",
     ordem: "updated_at DESC",
     daLinha: (row) => ({
+      // O que não tem coluna própria volta primeiro, e as colunas mandam por
+      // cima. A tela de oportunidades manda mais campos do que esta tabela
+      // indexa — ocupação prevista, frota limpa, veículos disponíveis, meses
+      // de contrato, probabilidade — e todos alimentam a análise. Descartá-los
+      // no caminho faria a oportunidade voltar do servidor mais pobre do que
+      // saiu, com a análise mudando sozinha depois de recarregar a página.
+      ...parse(row.fields_json, {}),
       id: row.id,
       clientId: row.client_id,
       cliente: row.client_name,
@@ -70,6 +95,9 @@ const COLECOES = {
       tipoVeiculo: row.vehicle_type,
       responsavelId: row.owner_user_id || "",
       ultimaInteracaoEm: row.last_interaction_at || "",
+      // O motor de oportunidade lê `lastInteractionAt`. Devolver os dois nomes
+      // evita um adaptador a mais entre a API e o domínio.
+      lastInteractionAt: row.last_interaction_at || "",
       campos: parse(row.fields_json, {}),
       revision: row.revision,
       criadoEm: row.created_at,
@@ -85,8 +113,8 @@ const COLECOES = {
       trips_per_month: numero(corpo.viagensMes),
       vehicle_type: texto(corpo.tipoVeiculo, 120),
       owner_user_id: texto(corpo.responsavelId, 120) || null,
-      last_interaction_at: texto(corpo.ultimaInteracaoEm, 40) || null,
-      fields_json: JSON.stringify(objeto(corpo.campos)),
+      last_interaction_at: texto(corpo.ultimaInteracaoEm || corpo.lastInteractionAt, 40) || null,
+      fields_json: JSON.stringify({ ...objeto(corpo.campos), ...extrasDaOportunidade(corpo) }),
     }),
     exigido: (corpo) => (texto(corpo.cliente || corpo.clientName) ? "" : "Informe o cliente da oportunidade."),
   },
@@ -209,6 +237,82 @@ const COLECOES = {
   },
 };
 
+// A simulação é um retrato, não um cadastro: ela registra o que a régua e as
+// premissas diziam no momento em que alguém calculou. Editar uma simulação
+// salva seria reescrever o passado — então ela nasce e não muda. Quem precisa
+// de outro número faz outra simulação.
+//
+// Por isso `pricing_scenarios` não tem revision nem archived_at, e por isso
+// esta coleção não passa pelo caminho genérico de atualizar e arquivar.
+const CENARIOS = {
+  daLinha: (row) => ({
+    id: row.id,
+    productId: row.product_id,
+    clientId: row.client_id,
+    opportunityId: row.opportunity_id,
+    ruleVersion: row.rule_version,
+    inputs: parse(row.inputs_json, {}),
+    result: parse(row.result_json, {}),
+    approvals: parse(row.approvals_json, {}),
+    premissas: parse(row.premises_json, {}),
+    status: row.status,
+    criadoPor: row.created_by,
+    criadoEm: row.created_at,
+  }),
+};
+
+const listarCenarios = async (env, ownerId) => {
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM pricing_scenarios
+      WHERE tenant_id = ? AND workspace_owner_id = ?
+      ORDER BY created_at DESC LIMIT 200`,
+  )
+    .bind(TENANT_ID, ownerId)
+    .all();
+  return (results || []).map(CENARIOS.daLinha);
+};
+
+const criarCenario = async (env, access, user, corpo) => {
+  const produto = texto(corpo.productId, 80);
+  if (!produto) return json({ error: "Informe o produto da simulação." }, 400);
+  const resultado = objeto(corpo.result);
+  if (!Object.keys(resultado).length)
+    return json({ error: "A simulação precisa do resultado calculado." }, 400);
+
+  const id = texto(corpo.id, 120) || crypto.randomUUID();
+  const agora = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO pricing_scenarios
+       (id, tenant_id, workspace_owner_id, product_id, client_id, opportunity_id, created_by,
+        rule_version, inputs_json, result_json, approvals_json, premises_json, status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      id,
+      TENANT_ID,
+      access.ownerId,
+      produto,
+      texto(corpo.clientId, 120),
+      texto(corpo.opportunityId, 120),
+      user.id,
+      texto(corpo.ruleVersion, 60) || "padrao",
+      JSON.stringify(objeto(corpo.inputs)),
+      JSON.stringify(resultado),
+      JSON.stringify(objeto(corpo.approvals)),
+      JSON.stringify(objeto(corpo.premissas)),
+      texto(corpo.status, 40) || "draft",
+      agora,
+    )
+    .run();
+
+  const row = await env.DB.prepare(
+    "SELECT * FROM pricing_scenarios WHERE id = ? AND workspace_owner_id = ?",
+  )
+    .bind(id, access.ownerId)
+    .first();
+  return json({ registro: CENARIOS.daLinha(row) }, 201);
+};
+
 const listar = async (env, colecao, ownerId) => {
   const { results } = await env.DB.prepare(
     `SELECT * FROM ${colecao.tabela}
@@ -322,8 +426,22 @@ export async function handleTodoGreenVerticalRecords(request, env, access, user)
   if (!nome) {
     if (request.method !== "GET") return json({ error: "Método não permitido." }, 405);
     const nomes = Object.keys(COLECOES);
-    const listas = await Promise.all(nomes.map((n) => listar(env, COLECOES[n], access.ownerId)));
-    return json(Object.fromEntries(nomes.map((n, i) => [n, listas[i]])));
+    const [listas, cenarios] = await Promise.all([
+      Promise.all(nomes.map((n) => listar(env, COLECOES[n], access.ownerId))),
+      listarCenarios(env, access.ownerId),
+    ]);
+    return json({ ...Object.fromEntries(nomes.map((n, i) => [n, listas[i]])), scenarios: cenarios });
+  }
+
+  if (nome === "scenarios") {
+    if (request.method === "GET")
+      return json({ registros: await listarCenarios(env, access.ownerId) });
+    if (request.method === "POST") {
+      if (!podeNaVertical(access, "pricing:simulate"))
+        return json({ error: "Seu papel não pode salvar simulações." }, 403);
+      return criarCenario(env, access, user, await request.json().catch(() => ({})));
+    }
+    return json({ error: "A simulação salva não muda. Faça outra simulação." }, 405);
   }
 
   const colecao = COLECOES[nome];

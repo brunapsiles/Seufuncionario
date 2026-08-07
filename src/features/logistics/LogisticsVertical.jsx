@@ -10,7 +10,6 @@ import {
   Boxes,
   Calculator,
   CheckCircle2,
-  ChevronRight,
   DollarSign,
   ExternalLink,
   FileCheck,
@@ -66,6 +65,7 @@ import {
   registroDaConfirmacao,
   situacaoDoResultado,
 } from "./pricingPremisesDomain.js";
+import { useVerticalRecords } from "./useVerticalRecords.js";
 import {
   agruparModulosPorTela,
   grupoAtendeBusca,
@@ -644,12 +644,6 @@ export const todoGreenRouteToPage = (path) => {
   return TODO_GREEN_PAGE_ALIASES[section] || section;
 };
 
-const normalize = (value) =>
-  String(value || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-
 
 const navigate = (route) => {
   if (typeof window === "undefined") return;
@@ -746,46 +740,89 @@ const seedLastMile = createPricingScenarioSnapshot(
   { userId: "demo", tenantId: TODO_GREEN_TENANT.id, justification: "Dado demonstrativo; não usar como produção." },
 );
 
-const defaultVerticalData = (db = {}, access = {}) => {
+// ===== Os dados da vertical, vindos de um lugar só =====
+//
+// Esta função montava a vertical a partir do `db` — o JSON do espaço de
+// trabalho — enquanto clientes, ESG, Tracker e portal já vinham da API. Duas
+// fontes para a mesma vertical davam painel somando coisas diferentes, portal
+// cego para o que foi escrito por dentro, e sobrescrita entre pessoas do mesmo
+// espaço.
+//
+// Agora tudo vem de `/api/todogreen/records`. Do `db` sobra só o que é do
+// produto inteiro e não da vertical: tarefas e caixa de entrada.
+//
+// A tradução de nomes acontece aqui, num lugar só. O motor de resumo fala
+// inglês desde a origem e a API fala português como o resto da vertical;
+// espalhar essa conversão pelos painéis é o que faz dois lugares somarem
+// campos diferentes com o mesmo nome.
+const financeiroDaApi = (item) => ({
+  id: item.id,
+  kind: item.tipo,
+  amount: item.valor,
+  clientId: item.clientId,
+  productId: item.produtoId,
+  category: item.categoria,
+  status: item.situacao,
+  note: item.descricao,
+  referenceMonth: item.mesReferencia,
+  revision: item.revision,
+  createdAt: item.criadoEm,
+});
+
+const operacaoDaApi = (item) => ({
+  id: item.id,
+  clientId: item.clientId,
+  productId: item.produtoId,
+  deliveries: item.entregas,
+  packages: item.pacotes,
+  trips: item.viagens,
+  distanceKm: item.distanciaKm,
+  occupancyPercent: item.ocupacaoPercent,
+  status: item.situacao,
+  route: item.campos?.route || "",
+  incidents: Number(item.campos?.incidents || 0),
+  revision: item.revision,
+  createdAt: item.criadoEm,
+});
+
+const propostaDaApi = (item) => ({
+  id: item.id,
+  client: item.cliente,
+  title: item.titulo,
+  scope: item.escopo,
+  commercialTerms: item.condicoes,
+  risks: item.riscos,
+  proposalText: item.texto,
+  scenarioId: item.cenarioId,
+  status: item.situacao,
+  revision: item.revision,
+  createdAt: item.criadoEm,
+});
+
+const montarDadosDaVertical = (registros = {}, clientes = [], db = {}, access = {}) => {
   const demo = demoModeEnabled(db, access);
   // Painel, indicadores e relatórios só somam simulação com premissa
-  // confirmada. Cenários gravados antes desta regra não trazem a procedência,
-  // então ficam de fora da conta e são contados à parte — some-los em silêncio
-  // seria trocar um número inventado por outro.
-  const salvos = db.todoGreenPricingScenarios || [];
+  // confirmada. O que ficou de fora é contado à parte — sumir com ele em
+  // silêncio seria trocar um número inventado por outro.
+  const salvos = registros.scenarios || [];
   const confirmados = salvos.filter(cenarioConfirmado);
-  const semProcedencia = salvos.length - confirmados.length;
-  const hasScenarios = confirmados.length > 0;
-  const demoRevenue = demo
-    ? [
-        { id: "demo-rev-1", amount: 138000, clientId: "demo-middle-mile", productId: "middle-mile", status: "demo" },
-        { id: "demo-rev-2", amount: 91000, clientId: "demo-last-mile", productId: "last-mile", status: "demo" },
-      ]
-    : [];
-  const demoOperations = demo
-    ? [
-        { id: "demo-op-1", clientId: "demo-last-mile", productId: "last-mile", deliveries: 8400, packages: 9600, trips: 396, distanceKm: 24552, occupancyPercent: 81, status: "demo" },
-        { id: "demo-op-2", clientId: "demo-middle-mile", productId: "middle-mile", deliveries: 0, packages: 0, trips: 44, distanceKm: 3784, occupancyPercent: 78, status: "demo" },
-      ]
-    : [];
+  const financeiro = (registros.financial || []).map(financeiroDaApi);
   return {
     demo,
-    clients: db.todoGreenClients || [],
-    opportunities: db.todoGreenOpportunities || [],
-    proposals: db.todoGreenProposals || [],
-    pricingScenarios: hasScenarios ? confirmados : demo ? [seedScenario, seedLastMile] : [],
-    simulacoesSemProcedencia: semProcedencia,
-    revenueEntries: db.todoGreenRevenueEntries || demoRevenue,
-    costEntries: db.todoGreenCostEntries || [],
-    operations: db.todoGreenOperations || demoOperations,
+    clients: clientes,
+    opportunities: registros.opportunities || [],
+    proposals: (registros.proposals || []).map(propostaDaApi),
+    pricingScenarios: confirmados.length ? confirmados : demo ? [seedScenario, seedLastMile] : [],
+    simulacoesSemProcedencia: salvos.length - confirmados.length,
+    revenueEntries: financeiro.filter((item) => item.kind === "revenue"),
+    costEntries: financeiro.filter((item) => item.kind === "cost"),
+    commissionEntries: financeiro.filter((item) => item.kind === "commission"),
+    operations: (registros.operations || []).map(operacaoDaApi),
     tasks: db.tasks || [],
     inboxUnread: (db.notifications || []).filter((item) => !item.read).length,
   };
 };
 
-const appendRecord = (update, key, record) => {
-  update?.((current) => ({ ...current, [key]: [record, ...(current[key] || [])] }));
-};
 
 // Enquanto a API não respondeu, a tela não afirma nada. Mostrar o painel e
 // depois retirá-lo seria pior do que esperar: a pessoa já teria visto números
@@ -963,47 +1000,14 @@ function DashboardPanel({ data, dashboard }) {
   );
 }
 
-function ClientPanel({ data, update, setToast }) {
-  const [form, setForm] = useState({ name: "", segment: "E-commerce", contact: "", pain: "", esgMaturity: "Média", nextStep: "" });
-  const save = (event) => {
-    event.preventDefault();
-    appendRecord(update, "todoGreenClients", { id: `client-${Date.now()}`, createdAt: new Date().toISOString(), ...form });
-    setForm({ name: "", segment: "E-commerce", contact: "", pain: "", esgMaturity: "Média", nextStep: "" });
-    setToast?.("Cliente To Do Green cadastrado");
-  };
-  return (
-    <section className="tdg-panel">
-      <div className="tdg-section-head"><div><span className="tdg-kicker">CLIENTES E CONTATOS</span><h2>CRM enxuto para grandes contas sustentáveis</h2></div><strong>{data.clients.length} cliente(s)</strong></div>
-      <form className="tdg-access-form" onSubmit={save}>
-        {[
-          ["name", "Cliente"],
-          ["segment", "Segmento"],
-          ["contact", "Contato/decisor"],
-          ["pain", "Dor logística"],
-          ["esgMaturity", "Maturidade ESG"],
-          ["nextStep", "Próximo passo"],
-        ].map(([key, label]) => (
-          <label key={key}><span>{label}</span><input value={form[key]} required={key === "name"} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} /></label>
-        ))}
-        <button className="tdg-action" type="submit"><Plus size={17} />Cadastrar cliente</button>
-      </form>
-      <div className="tdg-access-list">
-        {data.clients.length === 0 && <div className="tdg-empty-access">Nenhum cliente real cadastrado.</div>}
-        {data.clients.map((item) => (
-          <div className="tdg-access-row" key={item.id}><span><strong>{item.name}</strong><small>{item.segment} · {item.pain || "sem dor mapeada"}</small></span><span>{item.esgMaturity}</span><span>{item.nextStep || "sem próximo passo"}</span></div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function PricingPanel({ role, update, db, authHeaders, setToast }) {
+function PricingPanel({ role, criar, db, authHeaders, setToast }) {
   const [productId, setProductId] = useState("middle-mile");
   const [inputs, setInputs] = useState(productDefaults["middle-mile"]);
   // Declaração de procedência das premissas. Cai a cada mudança: confirmar um
   // cenário e depois trocar a distância deixaria a declaração valendo para um
   // cálculo que já não é o mesmo.
   const [premissasConfirmadas, setPremissasConfirmadas] = useState(false);
+  const [salvando, setSalvando] = useState(false);
   // A régua comercial em vigor, administrada pelo gestor em /todogreen/regua.
   // Sem ela carregada ainda, a calculadora usa o padrão — e diz qual régua
   // está aplicando, porque preço sem régua identificada não se defende.
@@ -1068,25 +1072,36 @@ function PricingPanel({ role, update, db, authHeaders, setToast }) {
       { userId: db?.user?.id || "local", tenantId: TODO_GREEN_TENANT.id, justification: `Simulação criada pela calculadora To Do Green (régua ${regua?.versao || "padrão"}).` },
       regua?.parametros ? { assumptions: regua.parametros } : {},
     );
-    // Quem confirmou e quando ficam gravados junto: sem isso, uma proposta
-    // antiga não tem como provar que nasceu de premissa confirmada.
-    const registrado = {
-      ...snapshot,
+    // A simulação vai para o banco, não para o JSON do espaço. Era daqui que
+    // saía a gravação genérica que sobrescrevia o trabalho de quem estivesse
+    // no mesmo espaço — e que o portal do cliente nunca enxergava.
+    //
+    // Aqui também ficava `tenantAccess.todogreen = { role: role || "admin" }`:
+    // salvar simulação concedia acesso a quem salvou.
+    setSalvando(true);
+    criar("scenarios", {
+      id: snapshot.id,
+      productId,
+      clientId: snapshot.clientId || inputs.clientId || "",
+      ruleVersion: regua?.versao || "padrao",
+      inputs,
+      result: snapshot.result,
+      approvals: snapshot.result?.approval || {},
       premissas: registroDaConfirmacao(situacao, { userId: db?.user?.id || "" }),
-    };
-    update?.((current) => ({
-      ...current,
-      // Salvar simulação não é concessão de acesso. Aqui ficava
-      // `tenantAccess.todogreen = { role: role || "admin" }`, e era isso que
-      // a regra antiga lia depois para liberar a vertical.
-      todoGreenPricingScenarios: [registrado, ...(current.todoGreenPricingScenarios || []).slice(0, 20)],
-    }));
-    fetch(`/api/todogreen/audit?owner=${encodeURIComponent(ownerId())}`, {
-      method: "POST",
-      headers: { "content-type": "application/json", ...(authHeaders?.() || {}) },
-      body: JSON.stringify({ action: "pricing_snapshot_created", target: snapshot.id, details: `Simulação ${product?.name || productId} salva.` }),
-    }).catch(() => {});
-    setToast?.("Simulação To Do Green salva");
+    })
+      .then(() => {
+        fetch(`/api/todogreen/audit?owner=${encodeURIComponent(ownerId())}`, {
+          method: "POST",
+          headers: { "content-type": "application/json", ...(authHeaders?.() || {}) },
+          body: JSON.stringify({ action: "pricing_snapshot_created", target: snapshot.id, details: `Simulação ${product?.name || productId} salva.` }),
+        }).catch(() => {});
+        setToast?.("Simulação To Do Green salva");
+      })
+      // A falha aparece. Antes a chamada ao servidor era só auditoria e o
+      // `.catch(() => {})` engolia qualquer erro — a tela dizia "salvo" mesmo
+      // quando nada tinha sido salvo.
+      .catch((razao) => setToast?.(razao.message))
+      .finally(() => setSalvando(false));
   };
   if (!allowed) return <section className="tdg-panel"><h2>Sem permissão para simular</h2><p>Seu papel pode visualizar dados, mas não alterar premissas comerciais.</p></section>;
   return (
@@ -1165,8 +1180,8 @@ function PricingPanel({ role, update, db, authHeaders, setToast }) {
       <details className="tdg-calculation-details"><summary>Ver documentos necessários e detalhes do cálculo</summary><div className="tdg-method"><strong>Documentos necessários</strong><p>{blueprint.requiredEvidence.join(" · ")}</p><small>Relatórios disponíveis: {blueprint.executiveOutputs.join(" · ")}</small></div></details>
       {result.approval.required && <div className="tdg-alert"><AlertTriangle size={18} /><span>Esta condição precisa de aprovação comercial: {result.approval.triggers.join(", ")}.</span></div>}
       <div className="tdg-pricing-actions">
-        <button className="tdg-action" type="button" onClick={saveScenario} disabled={!situacao.podeSalvar}>
-          <Plus size={17} />Salvar simulação
+        <button className="tdg-action" type="button" onClick={saveScenario} disabled={!situacao.podeSalvar || salvando}>
+          <Plus size={17} />{salvando ? "Salvando..." : "Salvar simulação"}
         </button>
         {!situacao.podeSalvar && <small>{situacao.resumo}</small>}
       </div>
@@ -1174,7 +1189,7 @@ function PricingPanel({ role, update, db, authHeaders, setToast }) {
   );
 }
 
-function ProposalPanel({ data, update, setToast }) {
+function ProposalPanel({ data, criar, setToast }) {
   // A proposta é o documento que sai da empresa. Ela só pode nascer de uma
   // simulação cujas premissas alguém declarou como vindas do cliente ou de
   // medição — não da última simulação qualquer que passou pela tela.
@@ -1190,18 +1205,35 @@ function ProposalPanel({ data, update, setToast }) {
     : existemNaoConfirmadas
       ? "As simulações existentes ainda estão como hipótese. Abra Precificação, confirme as premissas e salve — só então o preço e o ESG podem virar proposta."
       : "Crie uma simulação de precificação antes de gerar uma proposta com preço e ESG.";
-  const save = (event) => {
+  const [salvando, setSalvando] = useState(false);
+  const save = async (event) => {
     event.preventDefault();
     if (!latest) {
       setToast?.("Sem simulação com premissas confirmadas, a proposta não pode ser gerada.");
       return;
     }
-    appendRecord(update, "todoGreenProposals", { id: `proposal-${Date.now()}`, createdAt: new Date().toISOString(), ...form, scenarioId: latest.id, proposalText });
-    setToast?.("Proposta To Do Green salva");
+    setSalvando(true);
+    try {
+      await criar("proposals", {
+        cliente: form.client,
+        titulo: form.title,
+        escopo: form.scope,
+        condicoes: form.commercialTerms,
+        riscos: form.risks,
+        texto: proposalText,
+        cenarioId: latest.id,
+      });
+      setForm({ client: "", title: "Proposta logística sustentável", scope: "", commercialTerms: "", risks: "" });
+      setToast?.("Proposta To Do Green salva");
+    } catch (razao) {
+      setToast?.(razao.message);
+    } finally {
+      setSalvando(false);
+    }
   };
   return (
     <section className="tdg-panel"><div className="tdg-section-head"><div><span className="tdg-kicker">PROPOSTAS</span><h2>Proposta comercial com preço, operação e ROI ambiental</h2></div><strong>{data.proposals.length} proposta(s)</strong></div>
-      <form className="tdg-access-form" onSubmit={save}>{[["client", "Cliente"], ["title", "Título"], ["scope", "O que está incluído na operação"], ["commercialTerms", "Condições comerciais"], ["risks", "Riscos e ressalvas"]].map(([key, label]) => <label key={key}><span>{label}</span><input value={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} /></label>)}<button className="tdg-action" type="submit" disabled={!latest}><Plus size={17} />Salvar proposta</button></form>
+      <form className="tdg-access-form" onSubmit={save}>{[["client", "Cliente"], ["title", "Título"], ["scope", "O que está incluído na operação"], ["commercialTerms", "Condições comerciais"], ["risks", "Riscos e ressalvas"]].map(([key, label]) => <label key={key}><span>{label}</span><input value={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} /></label>)}<button className="tdg-action" type="submit" disabled={!latest || salvando}><Plus size={17} />{salvando ? "Salvando..." : "Salvar proposta"}</button></form>
       <div className="tdg-method"><strong>Texto gerado</strong><p>{proposalText}</p><small>{translated.disclaimer}</small></div>
       <div className="tdg-access-list">{data.proposals.map((item) => <div className="tdg-access-row" key={item.id}><span><strong>{item.title}</strong><small>{item.client || "cliente não informado"}</small></span><span>{item.scenarioId ? "com simulação" : "rascunho"}</span></div>)}</div>
     </section>
@@ -1230,34 +1262,85 @@ function EsgPanel({ dashboard, data }) {
   );
 }
 
-function OperationsPanel({ data, update, setToast }) {
-  const [form, setForm] = useState({ clientId: "", productId: "middle-mile", route: "", trips: 0, deliveries: 0, packages: 0, distanceKm: 0, occupancyPercent: 75, incidents: 0 });
-  const save = (event) => {
+function OperationsPanel({ data, criar, setToast }) {
+  // Ocupação também nasce vazia aqui: era o único campo com número de fábrica,
+  // e ocupação chutada muda o custo por entrega do painel inteiro.
+  const vazio = { clientId: "", productId: "middle-mile", route: "", trips: "", deliveries: "", packages: "", distanceKm: "", occupancyPercent: "", incidents: "" };
+  const [form, setForm] = useState(vazio);
+  const [salvando, setSalvando] = useState(false);
+  const save = async (event) => {
     event.preventDefault();
-    appendRecord(update, "todoGreenOperations", { id: `operation-${Date.now()}`, createdAt: new Date().toISOString(), ...form, trips: Number(form.trips || 0), deliveries: Number(form.deliveries || 0), packages: Number(form.packages || 0), distanceKm: Number(form.distanceKm || 0), occupancyPercent: Number(form.occupancyPercent || 0), incidents: Number(form.incidents || 0) });
-    setToast?.("Operação registrada");
+    setSalvando(true);
+    try {
+      await criar("operations", {
+        clientId: form.clientId,
+        produtoId: form.productId,
+        viagens: Number(form.trips || 0),
+        entregas: Number(form.deliveries || 0),
+        pacotes: Number(form.packages || 0),
+        distanciaKm: Number(form.distanceKm || 0),
+        ocupacaoPercent: Number(form.occupancyPercent || 0),
+        campos: { route: form.route, incidents: Number(form.incidents || 0) },
+      });
+      setForm(vazio);
+      setToast?.("Operação registrada");
+    } catch (razao) {
+      setToast?.(razao.message);
+    } finally {
+      setSalvando(false);
+    }
   };
   return (
     <section className="tdg-panel"><div className="tdg-section-head"><div><span className="tdg-kicker">OPERAÇÕES</span><h2>Controle real de rotas, viagens, entregas, frota e produtividade</h2></div><strong>{data.operations.length} registro(s)</strong></div>
-      <form className="tdg-access-form" onSubmit={save}>{[["clientId", "Cliente"], ["route", "Rota"], ["trips", "Viagens"], ["deliveries", "Entregas"], ["packages", "Pacotes"], ["distanceKm", "Km"], ["occupancyPercent", "Ocupação %"], ["incidents", "Ocorrências"]].map(([key, label]) => <label key={key}><span>{label}</span><input value={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} /></label>)}<label><span>Produto</span><select value={form.productId} onChange={(event) => setForm((current) => ({ ...current, productId: event.target.value }))}>{LOGISTICS_PRODUCTS.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><button className="tdg-action" type="submit"><Plus size={17} />Registrar operação</button></form>
+      <form className="tdg-access-form" onSubmit={save}>{[["clientId", "Cliente"], ["route", "Rota"], ["trips", "Viagens"], ["deliveries", "Entregas"], ["packages", "Pacotes"], ["distanceKm", "Km"], ["occupancyPercent", "Ocupação %"], ["incidents", "Ocorrências"]].map(([key, label]) => <label key={key}><span>{label}</span><input value={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} /></label>)}<label><span>Produto</span><select value={form.productId} onChange={(event) => setForm((current) => ({ ...current, productId: event.target.value }))}>{LOGISTICS_PRODUCTS.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><button className="tdg-action" type="submit" disabled={salvando}><Plus size={17} />{salvando ? "Salvando..." : "Registrar operação"}</button></form>
       <div className="tdg-access-list">{data.operations.length === 0 && <div className="tdg-empty-access">Nenhuma operação real registrada.</div>}{data.operations.map((item) => <div className="tdg-access-row" key={item.id}><span><strong>{item.route || item.productId}</strong><small>{item.clientId || "sem cliente"}</small></span><span>{number.format(item.trips)} viagens</span><span>{number.format(item.occupancyPercent)}%</span></div>)}</div>
     </section>
   );
 }
 
-function FinancePanel({ type, data, update, setToast }) {
-  const key = type === "cost" ? "todoGreenCostEntries" : "todoGreenRevenueEntries";
-  const title = type === "cost" ? "Custos, despesas e margem" : "Receita prevista, faturamento e recebimentos";
-  const [form, setForm] = useState({ clientId: "", productId: "middle-mile", category: type === "cost" ? "energia" : "faturamento", amount: 0, status: "previsto", note: "" });
-  const entries = type === "cost" ? data.costEntries : data.revenueEntries;
-  const save = (event) => {
+const TITULO_FINANCEIRO = {
+  revenue: "Receita prevista, faturamento e recebimentos",
+  cost: "Custos, despesas e margem",
+  commission: "Comissões da equipe comercial",
+};
+const CATEGORIA_PADRAO = { revenue: "faturamento", cost: "energia", commission: "comissão sobre contrato" };
+const AVISO_SALVO = { revenue: "Receita registrada", cost: "Custo registrado", commission: "Comissão registrada" };
+
+// Comissão deixou de reaproveitar o lançamento de custo. São o mesmo formato de
+// lançamento — por isso a mesma tabela e o mesmo componente —, mas com nome,
+// categoria e lista próprios: apresentar comissão como "custo" fazia a tela
+// dizer uma coisa e o dado dizer outra.
+function FinancePanel({ type, data, criar, setToast }) {
+  const title = TITULO_FINANCEIRO[type] || TITULO_FINANCEIRO.cost;
+  const vazio = { clientId: "", productId: "middle-mile", category: CATEGORIA_PADRAO[type] || "", amount: "", status: "previsto", note: "" };
+  const [form, setForm] = useState(vazio);
+  const [salvando, setSalvando] = useState(false);
+  const entries =
+    type === "revenue" ? data.revenueEntries : type === "commission" ? data.commissionEntries : data.costEntries;
+  const save = async (event) => {
     event.preventDefault();
-    appendRecord(update, key, { id: `${type}-${Date.now()}`, createdAt: new Date().toISOString(), ...form, amount: Number(form.amount || 0) });
-    setToast?.(type === "cost" ? "Custo registrado" : "Receita registrada");
+    setSalvando(true);
+    try {
+      await criar("financial", {
+        tipo: type,
+        clientId: form.clientId,
+        produtoId: form.productId,
+        categoria: form.category,
+        valor: Number(form.amount || 0),
+        situacao: form.status,
+        descricao: form.note,
+      });
+      setForm(vazio);
+      setToast?.(AVISO_SALVO[type] || "Lançamento registrado");
+    } catch (razao) {
+      setToast?.(razao.message);
+    } finally {
+      setSalvando(false);
+    }
   };
   return (
     <section className="tdg-panel"><div className="tdg-section-head"><div><span className="tdg-kicker">FINANCEIRO</span><h2>{title}</h2></div><strong>{BRL.format(entries.reduce((sum, item) => sum + Number(item.amount || 0), 0))}</strong></div>
-      <form className="tdg-access-form" onSubmit={save}>{[["clientId", "Cliente"], ["category", "Categoria"], ["amount", "Valor R$"], ["status", "Status"], ["note", "Observação"]].map(([field, label]) => <label key={field}><span>{label}</span><input value={form[field]} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.value }))} /></label>)}<label><span>Produto</span><select value={form.productId} onChange={(event) => setForm((current) => ({ ...current, productId: event.target.value }))}>{LOGISTICS_PRODUCTS.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><button className="tdg-action" type="submit"><Plus size={17} />Salvar lançamento</button></form>
+      <form className="tdg-access-form" onSubmit={save}>{[["clientId", "Cliente"], ["category", "Categoria"], ["amount", "Valor R$"], ["status", "Status"], ["note", "Observação"]].map(([field, label]) => <label key={field}><span>{label}</span><input value={form[field]} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.value }))} /></label>)}<label><span>Produto</span><select value={form.productId} onChange={(event) => setForm((current) => ({ ...current, productId: event.target.value }))}>{LOGISTICS_PRODUCTS.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><button className="tdg-action" type="submit" disabled={salvando}><Plus size={17} />{salvando ? "Salvando..." : "Salvar lançamento"}</button></form>
       <div className="tdg-access-list">{entries.length === 0 && <div className="tdg-empty-access">Nenhum lançamento real cadastrado.</div>}{entries.map((item) => <div className="tdg-access-row" key={item.id}><span><strong>{item.category}</strong><small>{item.clientId || "sem cliente"} · {item.productId}</small></span><span>{BRL.format(item.amount)}</span><span>{item.status}</span></div>)}</div>
     </section>
   );
@@ -1342,7 +1425,7 @@ function AccessPanel({ role, authHeaders, setToast }) {
   );
 }
 
-export default function LogisticsVertical({ db, update, setToast, access = {}, authHeaders }) {
+export default function LogisticsVertical({ db, setToast, access = {}, authHeaders }) {
   const [path, setPath] = useState(todoGreenPath());
   const [query, setQuery] = useState("");
   // `access` chega vazio hoje; se um dia vier preenchido, ainda precisa passar
@@ -1389,7 +1472,27 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
   const role = allowed ? remoteAccess.role || "" : "";
   const page = todoGreenRouteToPage(path);
   const isHome = /^\/todogreen\/?$/.test(path);
-  const verticalData = useMemo(() => defaultVerticalData(db, remoteAccess), [db, remoteAccess]);
+  // A vertical inteira numa chamada só, e só depois que o acesso foi
+  // confirmado: pedir os registros antes disso seria bater no servidor para
+  // ouvir 403.
+  const { dados: registros, erro: erroDosRegistros, criar } = useVerticalRecords(authHeaders, { ativo: allowed });
+  // Clientes continuam vindo do serviço deles: é lá que mora a regra de
+  // carteira, e reescrevê-la aqui seria criar uma segunda regra de quem
+  // enxerga quem.
+  const [clientes, setClientes] = useState([]);
+  useEffect(() => {
+    if (!allowed) return undefined;
+    let vivo = true;
+    fetch("/api/todogreen/clients", { headers: authHeaders?.() || {} })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (vivo) setClientes(d?.clientes || []); })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [allowed, authHeaders]);
+  const verticalData = useMemo(
+    () => montarDadosDaVertical(registros, clientes, db, remoteAccess),
+    [registros, clientes, db, remoteAccess],
+  );
   const dashboard = useMemo(() => summarizeTodoGreenDashboard(verticalData), [verticalData]);
   // Um cartão por tela. O catálogo continua com o vocabulário todo — é ele que
   // faz a busca por "motorista" ou "forecast" achar alguma coisa — mas a tela
@@ -1430,6 +1533,13 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
           .map(([id, item]) => <button type="button" className={page === id ? "active" : ""} onClick={() => navigate(item.route)} key={id}>{item.navLabel}</button>)}
       </nav>
 
+      {erroDosRegistros && (
+        <div className="tdg-alert" role="alert">
+          <AlertTriangle size={18} />
+          <span>{erroDosRegistros} Os indicadores abaixo estão zerados porque os dados não puderam ser lidos — não porque não existam.</span>
+        </div>
+      )}
+
       <section className="tdg-metrics" aria-label="Indicadores executivos">
         <MetricCard label="Receita contratada" value={BRL.format(dashboard.receitaPrevista || dashboard.receitaRealizada)} detail="simulações e lançamentos" />
         <MetricCard label="Margem operacional" value={`${number.format(dashboard.margemOperacionalPercent)}%`} detail={BRL.format(dashboard.margemContribuicao)} tone={dashboard.margemOperacionalPercent < 18 ? "risk" : "good"} />
@@ -1443,9 +1553,9 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
       {page === "dashboards" && <Suspense fallback={<section className="tdg-panel">Carregando seus painéis...</section>}><DashboardBuilderPage authHeaders={authHeaders} summary={dashboard} setToast={setToast} /></Suspense>}
       {page === "solicitacoes" && <Suspense fallback={<section className="tdg-panel">Carregando solicitações...</section>}><ClientRequestsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "clientes" && <Suspense fallback={<section className="tdg-panel">Carregando clientes...</section>}><ClientsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
-      {page === "oportunidades" && <Suspense fallback={<section className="tdg-panel">Carregando oportunidades...</section>}><OpportunitiesPage opportunities={verticalData.opportunities} onCreate={(registro) => appendRecord(update, "todoGreenOpportunities", registro)} setToast={setToast} /></Suspense>}
-      {page === "propostas" && <ProposalPanel data={verticalData} update={update} setToast={setToast} />}
-      {page === "precificacao" && <PricingPanel role={role} update={update} db={db} authHeaders={authHeaders} setToast={setToast} />}
+      {page === "oportunidades" && <Suspense fallback={<section className="tdg-panel">Carregando oportunidades...</section>}><OpportunitiesPage opportunities={verticalData.opportunities} onCreate={(registro) => criar("opportunities", registro)} setToast={setToast} /></Suspense>}
+      {page === "propostas" && <ProposalPanel data={verticalData} criar={criar} setToast={setToast} />}
+      {page === "precificacao" && <PricingPanel role={role} criar={criar} db={db} authHeaders={authHeaders} setToast={setToast} />}
       {["esg", "green-score", "calculadora-ambiental", "tradutor-esg", "escopo-3"].includes(page) && <EsgPanel dashboard={dashboard} data={verticalData} />}
       {page === "regua" && (
         <Suspense fallback={<section className="tdg-panel">Carregando régua comercial...</section>}>
@@ -1457,11 +1567,11 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
           <EsgCenter authHeaders={authHeaders} setToast={setToast} />
         </Suspense>
       )}
-      {page === "operacoes" && <OperationsPanel data={verticalData} update={update} setToast={setToast} />}
+      {page === "operacoes" && <OperationsPanel data={verticalData} criar={criar} setToast={setToast} />}
       {page === "rastreamento" && <Suspense fallback={<section className="tdg-panel">Carregando TMS Tracker...</section>}><TrackerPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
-      {page === "receita" && <FinancePanel type="revenue" data={verticalData} update={update} setToast={setToast} />}
+      {page === "receita" && <FinancePanel type="revenue" data={verticalData} criar={criar} setToast={setToast} />}
       {page === "custos" && <Suspense fallback={<section className="tdg-panel">Carregando custos e margem...</section>}><TripViabilityPage authHeaders={authHeaders} /></Suspense>}
-      {page === "comissoes" && <FinancePanel type="cost" data={verticalData} update={update} setToast={setToast} />}
+      {page === "comissoes" && <FinancePanel type="commission" data={verticalData} criar={criar} setToast={setToast} />}
       {page === "relatorios" && <Suspense fallback={<section className="tdg-panel">Carregando relatórios...</section>}><ReportsPage dashboard={dashboard} data={verticalData} authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "metodologia" && <MethodologyPanel />}
       {page === "auditoria" && <GovernancePanel role={role} />}

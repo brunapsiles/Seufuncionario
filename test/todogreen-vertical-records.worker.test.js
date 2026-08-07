@@ -99,6 +99,34 @@ describe("oportunidades saem do JSON do espaço", () => {
     expect(nomes).toContain("Distribuidora Alfa");
   });
 
+  it("campo sem coluna própria volta inteiro depois de recarregar", async () => {
+    const criada = await pedir("/api/todogreen/records/opportunities", {
+      metodo: "POST",
+      token: gestora.token,
+      corpo: {
+        cliente: "Alfa com detalhes",
+        // A análise de oportunidade usa estes; a tabela não os indexa.
+        ocupacaoPrevistaPercent: 82,
+        frotaLimpaPercent: 40,
+        veiculosDisponiveis: 6,
+        mesesContrato: 24,
+        probabilidade: 65,
+        productId: "middle-mile",
+      },
+    });
+    const { registro } = await criada.json();
+    expect(registro.ocupacaoPrevistaPercent).toBe(82);
+    expect(registro.probabilidade).toBe(65);
+    expect(registro.productId).toBe("middle-mile");
+
+    const lista = await pedir("/api/todogreen/records/opportunities", { token: gestora.token });
+    const voltou = (await lista.json()).registros.find((r) => r.cliente === "Alfa com detalhes");
+    expect(voltou.frotaLimpaPercent).toBe(40);
+    expect(voltou.mesesContrato).toBe(24);
+    // E o nome próprio da coluna continua mandando por cima do payload.
+    expect(voltou.cliente).toBe("Alfa com detalhes");
+  });
+
   it("oportunidade sem cliente não é aceita", async () => {
     const r = await pedir("/api/todogreen/records/opportunities", {
       metodo: "POST",
@@ -252,12 +280,69 @@ describe("arquivar em vez de apagar", () => {
   });
 });
 
+describe("a simulação é retrato, não cadastro", () => {
+  it("salva com a procedência das premissas junto", async () => {
+    const r = await pedir("/api/todogreen/records/scenarios", {
+      metodo: "POST",
+      token: gestora.token,
+      corpo: {
+        productId: "middle-mile",
+        inputs: { distanceKm: 120, tripsPerMonth: 40 },
+        result: { recommendedPrice: 90000, marginPercent: 24 },
+        premissas: { confirmadas: true, confirmadasPor: "rec-gestora", confirmadasEm: "2026-08-07T10:00:00.000Z" },
+        ruleVersion: "v3",
+      },
+    });
+    expect(r.status).toBe(201);
+    const { registro } = await r.json();
+    expect(registro.premissas.confirmadas).toBe(true);
+    expect(registro.result.recommendedPrice).toBe(90000);
+    expect(registro.ruleVersion).toBe("v3");
+  });
+
+  it("simulação sem resultado calculado não entra", async () => {
+    const r = await pedir("/api/todogreen/records/scenarios", {
+      metodo: "POST",
+      token: gestora.token,
+      corpo: { productId: "middle-mile", inputs: { distanceKm: 1 } },
+    });
+    expect(r.status).toBe(400);
+  });
+
+  it("simulação salva não pode ser editada", async () => {
+    const r = await pedir("/api/todogreen/records/scenarios/qualquer", {
+      metodo: "PATCH",
+      token: gestora.token,
+      corpo: { status: "approved", revision: 1 },
+    });
+    // Editar o retrato seria reescrever o passado.
+    expect(r.status).toBe(405);
+  });
+
+  it("a simulação de outro espaço não aparece", async () => {
+    await pedir("/api/todogreen/records/scenarios", {
+      metodo: "POST",
+      token: colega.token,
+      corpo: { productId: "last-mile", result: { recommendedPrice: 1 }, clientId: "so-do-colega" },
+    });
+    const lista = await pedir("/api/todogreen/records/scenarios", { token: gestora.token });
+    const clientes = (await lista.json()).registros.map((r) => r.clientId);
+    expect(clientes).not.toContain("so-do-colega");
+  });
+});
+
 describe("a vertical inteira numa chamada só", () => {
   it("devolve todas as coleções do próprio espaço", async () => {
     const r = await pedir("/api/todogreen/records", { token: gestora.token });
     expect(r.status).toBe(200);
     const corpo = await r.json();
-    expect(Object.keys(corpo).sort()).toEqual(["financial", "operations", "opportunities", "proposals"]);
+    expect(Object.keys(corpo).sort()).toEqual([
+      "financial",
+      "operations",
+      "opportunities",
+      "proposals",
+      "scenarios",
+    ]);
     expect(Array.isArray(corpo.opportunities)).toBe(true);
   });
 

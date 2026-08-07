@@ -26,14 +26,25 @@ const respostaDeAcesso = {
   source: "vinculo",
 };
 
-// Stub de fetch com um roteador: a chamada de acesso é sempre atendida, e
-// cada teste acrescenta o que mais precisar.
+// A vertical inteira vazia. É o que o servidor devolve num espaço novo.
+const REGISTROS = {
+  opportunities: [],
+  proposals: [],
+  operations: [],
+  financial: [],
+  scenarios: [],
+};
+
+// Stub de fetch com um roteador: acesso e registros são sempre atendidos, e
+// cada teste acrescenta o que mais precisar. As rotas mais específicas vêm
+// primeiro porque a comparação é por prefixo.
 const stubDeRede = (rotas = {}) => {
   const chamadas = vi.fn((url, opcoes) => {
     const caminho = String(url);
     if (caminho.startsWith("/api/todogreen/access?")) return jsonOk(respostaDeAcesso);
     for (const [prefixo, resposta] of Object.entries(rotas))
       if (caminho.startsWith(prefixo)) return resposta(caminho, opcoes);
+    if (caminho === "/api/todogreen/records") return jsonOk(REGISTROS);
     return jsonOk({});
   });
   vi.stubGlobal("fetch", chamadas);
@@ -248,51 +259,150 @@ describe("LogisticsVertical", () => {
     expect(screen.getByRole("button", { name: /Salvar simulação/ }).disabled).toBe(true);
   });
 
-  it("a simulação salva guarda quem confirmou as premissas", async () => {
+  it("a simulação salva vai para o servidor com quem confirmou as premissas", async () => {
     window.history.pushState({}, "", "/todogreen/precificacao");
-    const update = vi.fn();
-    await renderarAutorizada({ update });
+    const gravadas = [];
+    const fetchMock = stubDeRede({
+      "/api/todogreen/records/scenarios": (_caminho, opcoes) => {
+        gravadas.push(JSON.parse(opcoes.body));
+        return jsonOk({ registro: { id: "s1" } });
+      },
+    });
+    await renderarAutorizada();
     preencherMiddleMile();
     fireEvent.click(screen.getByLabelText(/Confirmo que estas premissas/));
     fireEvent.click(screen.getByRole("button", { name: /Salvar simulação/ }));
 
-    const proximo = update.mock.calls[0][0]({ todoGreenPricingScenarios: [] });
-    const salvo = proximo.todoGreenPricingScenarios[0];
-    expect(salvo.premissas.confirmadas).toBe(true);
-    expect(salvo.premissas.confirmadasPor).toBe("u1");
-    expect(salvo.premissas.confirmadasEm).toBeTruthy();
+    await waitFor(() => expect(gravadas.length).toBe(1));
+    expect(gravadas[0].premissas.confirmadas).toBe(true);
+    expect(gravadas[0].premissas.confirmadasPor).toBe("u1");
+    expect(gravadas[0].premissas.confirmadasEm).toBeTruthy();
+    expect(gravadas[0].productId).toBe("middle-mile");
+    expect(fetchMock).toHaveBeenCalled();
   });
 
   it("proposta não é gerada a partir de simulação não confirmada", async () => {
     window.history.pushState({}, "", "/todogreen/propostas");
-    const update = vi.fn();
-    await renderarAutorizada({
-      db: {
-        ...baseDb,
-        todoGreenPricingScenarios: [
-          { id: "s1", result: { productName: "Middle Mile", recommendedPrice: 1, marginPercent: 1, impact: { co2AvoidedKg: 1 } } },
-        ],
-      },
-      update,
+    stubDeRede({
+      "/api/todogreen/records": () =>
+        jsonOk({
+          ...REGISTROS,
+          scenarios: [
+            {
+              id: "s1",
+              premissas: { confirmadas: false },
+              result: { productName: "Middle Mile", recommendedPrice: 1, marginPercent: 1, impact: { co2AvoidedKg: 1 } },
+            },
+          ],
+        }),
     });
-    expect(screen.getByText(/ainda estão como hipótese/)).toBeTruthy();
+    await renderarAutorizada();
+    expect(await screen.findByText(/ainda estão como hipótese/)).toBeTruthy();
     expect(screen.getByRole("button", { name: /Salvar proposta/ }).disabled).toBe(true);
   });
 
-  it("salvar uma simulação não concede acesso a quem salvou", async () => {
+  it("proposta com simulação confirmada é salva no servidor", async () => {
+    window.history.pushState({}, "", "/todogreen/propostas");
+    const gravadas = [];
+    stubDeRede({
+      "/api/todogreen/records/proposals": (_caminho, opcoes) => {
+        gravadas.push(JSON.parse(opcoes.body));
+        return jsonOk({ registro: { id: "p1" } });
+      },
+      "/api/todogreen/records": () =>
+        jsonOk({
+          ...REGISTROS,
+          scenarios: [
+            {
+              id: "s1",
+              premissas: { confirmadas: true },
+              result: { productName: "Middle Mile", recommendedPrice: 1000, marginPercent: 22, impact: { co2AvoidedKg: 500 } },
+            },
+          ],
+        }),
+    });
+    await renderarAutorizada();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Salvar proposta/ }).disabled).toBe(false),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Salvar proposta/ }));
+    await waitFor(() => expect(gravadas.length).toBe(1));
+    // A proposta carrega a simulação que gerou o preço.
+    expect(gravadas[0].cenarioId).toBe("s1");
+  });
+
+  it("salvar uma simulação não grava nada no estado genérico do espaço", async () => {
     window.history.pushState({}, "", "/todogreen/precificacao");
-    const update = vi.fn();
-    await renderarAutorizada({ update });
+    const gravadas = [];
+    stubDeRede({
+      "/api/todogreen/records/scenarios": (_caminho, opcoes) => {
+        gravadas.push(JSON.parse(opcoes.body));
+        return jsonOk({ registro: { id: "s1" } });
+      },
+    });
+    await renderarAutorizada();
     preencherMiddleMile();
     fireEvent.click(screen.getByLabelText(/Confirmo que estas premissas/));
     fireEvent.click(screen.getByRole("button", { name: /Salvar simulação/ }));
-    expect(update).toHaveBeenCalled();
-    // A função de atualização recebe o estado atual e devolve o próximo. O que
-    // ela devolve não pode conter concessão de acesso: era exatamente assim
-    // que a tela se autoconcedia "admin".
-    const proximo = update.mock.calls[0][0]({ todoGreenPricingScenarios: [] });
-    expect(proximo.tenantAccess).toBeUndefined();
-    expect(JSON.stringify(proximo)).not.toMatch(/tenantAccess/);
+
+    await waitFor(() => expect(gravadas.length).toBe(1));
+    // Era daqui que saía tanto a gravação no JSON do espaço — que sobrescrevia
+    // o trabalho de quem estivesse no mesmo espaço — quanto a concessão de
+    // acesso a quem salvava.
+    expect(JSON.stringify(gravadas[0])).not.toMatch(/tenantAccess/);
+  });
+
+  // ===== Fonte única =====
+
+  it("a vertical lê os registros do servidor, não do estado do espaço", async () => {
+    const fetchMock = stubDeRede({
+      "/api/todogreen/records": () =>
+        jsonOk({
+          ...REGISTROS,
+          financial: [
+            { id: "f1", tipo: "revenue", valor: 5000, categoria: "faturamento", situacao: "previsto" },
+            { id: "f2", tipo: "commission", valor: 250, categoria: "comissão", situacao: "previsto" },
+          ],
+        }),
+    });
+    window.history.pushState({}, "", "/todogreen/comissoes");
+    await renderarAutorizada();
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith("/api/todogreen/records", expect.any(Object)),
+    );
+    // Comissão deixou de ser exibida como custo.
+    expect(await screen.findByText("Comissões da equipe comercial")).toBeTruthy();
+    expect(screen.getByText("comissão")).toBeTruthy();
+    // E a receita, que é outro tipo, não vaza para esta lista.
+    expect(screen.queryByText("faturamento")).toBeNull();
+  });
+
+  it("falha ao carregar diz que não sabe, em vez de mostrar zero como se fosse dado", async () => {
+    stubDeRede({
+      "/api/todogreen/records": () =>
+        Promise.resolve(new Response(JSON.stringify({ error: "Banco indisponível." }), { status: 500 })),
+    });
+    await renderarAutorizada();
+    const aviso = await screen.findByRole("alert");
+    expect(aviso.textContent).toMatch(/Banco indisponível/);
+    expect(aviso.textContent).toMatch(/não porque não existam/);
+  });
+
+  it("o lançamento financeiro vai para o servidor com o tipo certo", async () => {
+    const gravados = [];
+    stubDeRede({
+      "/api/todogreen/records/financial": (_caminho, opcoes) => {
+        gravados.push(JSON.parse(opcoes.body));
+        return jsonOk({ registro: { id: "f1" } });
+      },
+    });
+    window.history.pushState({}, "", "/todogreen/comissoes");
+    await renderarAutorizada();
+    fireEvent.change(screen.getByLabelText("Valor R$"), { target: { value: "900" } });
+    fireEvent.click(screen.getByRole("button", { name: /Salvar lançamento/ }));
+    await waitFor(() => expect(gravados.length).toBe(1));
+    expect(gravados[0].tipo).toBe("commission");
+    expect(gravados[0].valor).toBe(900);
   });
 
   it("loads the independent client page from the real CRM service", async () => {
