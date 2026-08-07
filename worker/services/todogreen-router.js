@@ -12,6 +12,7 @@ import { handleTodoGreenPricingParameters } from "./todogreen-pricing-parameters
 import { handleTodoGreenDashboards } from "./todogreen-dashboards.js";
 import { handleTodoGreenRequests } from "./todogreen-requests.js";
 import { handleTodoGreenVerticalRecords } from "./todogreen-vertical-records.js";
+import { handleTodoGreenDealDesk } from "./todogreen-deal-desk.js";
 
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
   status,
@@ -59,6 +60,14 @@ export async function routeTodoGreenApi(request, env) {
       const resolved = await internalAccess(request, env);
       if (resolved.response) return resolved.response;
       return handleTodoGreenFleet(request, env, resolved.access, resolved.user);
+    });
+  }
+
+  if (path.startsWith("/api/todogreen/deal-desk")) {
+    return guarded("To Do Green deal desk error", "Não foi possível processar a aprovação comercial.", async () => {
+      const resolved = await internalAccess(request, env);
+      if (resolved.response) return resolved.response;
+      return handleTodoGreenDealDesk(request, env, resolved.access, resolved.user);
     });
   }
 

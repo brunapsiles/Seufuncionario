@@ -405,6 +405,90 @@ describe("LogisticsVertical", () => {
     expect(gravados[0].valor).toBe(900);
   });
 
+  // ===== Deal Desk =====
+
+  it("proposta com premissa confirmada ainda não sai se o Deal Desk está pendente", async () => {
+    window.history.pushState({}, "", "/todogreen/propostas");
+    stubDeRede({
+      "/api/todogreen/deal-desk": () =>
+        jsonOk({
+          pedidos: [
+            {
+              id: "dd1",
+              cenarioId: "s1",
+              alcadaId: "gestao_comercial",
+              situacao: "pendente",
+              versao: 1,
+              gatilhos: [],
+              prazoEm: new Date(Date.now() + 86400000).toISOString(),
+              criadoEm: new Date().toISOString(),
+            },
+          ],
+        }),
+      "/api/todogreen/records": () =>
+        jsonOk({
+          ...REGISTROS,
+          scenarios: [
+            {
+              id: "s1",
+              premissas: { confirmadas: true },
+              result: { productName: "Middle Mile", recommendedPrice: 1000, marginPercent: 15, impact: { co2AvoidedKg: 10 } },
+            },
+          ],
+        }),
+    });
+    await renderarAutorizada();
+    // Antes o Deal Desk era só um alerta e a proposta saía do mesmo jeito.
+    expect(await screen.findByText(/Aguardando decisão do Deal Desk/)).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Salvar proposta/ }).disabled).toBe(true),
+    );
+  });
+
+  it("com o Deal Desk aprovado, a proposta sai e diz quem aprovou", async () => {
+    window.history.pushState({}, "", "/todogreen/propostas");
+    stubDeRede({
+      "/api/todogreen/deal-desk": () =>
+        jsonOk({
+          pedidos: [
+            {
+              id: "dd1",
+              cenarioId: "s1",
+              alcadaId: "gestao_comercial",
+              situacao: "aprovado",
+              versao: 2,
+              decisorNome: "Bruna",
+              gatilhos: [],
+              prazoEm: new Date(Date.now() + 86400000).toISOString(),
+              criadoEm: new Date().toISOString(),
+            },
+          ],
+        }),
+      "/api/todogreen/records": () =>
+        jsonOk({
+          ...REGISTROS,
+          scenarios: [
+            {
+              id: "s1",
+              premissas: { confirmadas: true },
+              result: { productName: "Middle Mile", recommendedPrice: 1000, marginPercent: 15, impact: { co2AvoidedKg: 10 } },
+            },
+          ],
+        }),
+    });
+    await renderarAutorizada();
+    expect(await screen.findByText(/Aprovado por Bruna na versão 2/)).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Salvar proposta/ }).disabled).toBe(false),
+    );
+  });
+
+  it("a aba do Deal Desk existe e não é apelido da precificação", async () => {
+    await renderarAutorizada();
+    const abas = screen.getByRole("navigation", { name: /Navegação To Do Green/ });
+    expect(abas.textContent).toContain("Deal Desk");
+  });
+
   it("loads the independent client page from the real CRM service", async () => {
     window.history.pushState({}, "", "/todogreen/clientes");
     const fetchMock = stubDeRede({

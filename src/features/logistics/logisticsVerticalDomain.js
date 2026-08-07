@@ -185,7 +185,7 @@ export const TODO_GREEN_MODULE_CATALOG = [
     order: 17,
     permissions: ["read", "pricing:simulate", "pricing:manage"],
   }),
-  module("deal-desk", "Aprovação comercial", "comercial", "/todogreen/precificacao", {
+  module("deal-desk", "Aprovação comercial", "comercial", "/todogreen/deal-desk", {
     icon: "ShieldCheck",
     order: 18,
     permissions: ["read", "deal:approve", "deal:review"],

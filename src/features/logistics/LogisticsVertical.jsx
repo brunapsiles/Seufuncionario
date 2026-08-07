@@ -65,6 +65,7 @@ import {
   registroDaConfirmacao,
   situacaoDoResultado,
 } from "./pricingPremisesDomain.js";
+import { liberacaoDaProposta } from "./dealDeskDomain.js";
 import { useVerticalRecords } from "./useVerticalRecords.js";
 import {
   agruparModulosPorTela,
@@ -82,6 +83,7 @@ const OpportunitiesPage = lazy(() => import("./pages/OpportunitiesPage.jsx"));
 const ClientRequestsPage = lazy(() => import("./pages/ClientRequestsPage.jsx"));
 const ReportsPage = lazy(() => import("./pages/ReportsPage.jsx"));
 const TripViabilityPage = lazy(() => import("./pages/TripViabilityPage.jsx"));
+const DealDeskPage = lazy(() => import("./pages/DealDeskPage.jsx"));
 
 const iconMap = {
   Activity,
@@ -329,6 +331,15 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     area: "esg",
     status: "functional",
     description: "Fatores ambientais, fórmulas, versão, governança, disclaimer e evidências exigidas por produto.",
+  },
+  "deal-desk": {
+    title: "Deal Desk — aprovação de condição comercial",
+    navLabel: "Deal Desk",
+    route: "/todogreen/deal-desk",
+    area: "gestao",
+    status: "functional",
+    description:
+      "Pedido, alçada, prazo, versão, comentários, decisão e histórico imutável. Enquanto pende, a proposta daquela simulação não sai.",
   },
   auditoria: {
     title: "Auditoria e governança",
@@ -606,7 +617,9 @@ const TODO_GREEN_PAGE_ALIASES = Object.freeze({
   pipeline: "oportunidades",
   contratos: "propostas",
   simulacoes: "precificacao",
-  "deal-desk": "precificacao",
+  // "deal-desk" era apelido de "precificacao" porque não havia tela. Agora há.
+  aprovacoes: "deal-desk",
+  alcada: "deal-desk",
   metas: "dashboards",
   remuneracao: "comissoes",
   forecast: "receita",
@@ -628,7 +641,6 @@ const TODO_GREEN_PAGE_ALIASES = Object.freeze({
   ocorrencias: "operacoes",
   tarefas: "dashboard",
   documentos: "relatorios",
-  aprovacoes: "precificacao",
   notificacoes: "dashboard",
   inbox: "dashboard",
   exportacoes: "relatorios",
@@ -1008,6 +1020,11 @@ function PricingPanel({ role, criar, db, authHeaders, setToast }) {
   // cálculo que já não é o mesmo.
   const [premissasConfirmadas, setPremissasConfirmadas] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  // O id da simulação que acabou de ser salva. A aprovação é sobre a condição
+  // exata; sem simulação gravada não há o que aprovar.
+  const [cenarioSalvoId, setCenarioSalvoId] = useState("");
+  const [justificativaDeAprovacao, setJustificativaDeAprovacao] = useState("");
+  const [enviandoAprovacao, setEnviandoAprovacao] = useState(false);
   // A régua comercial em vigor, administrada pelo gestor em /todogreen/regua.
   // Sem ela carregada ainda, a calculadora usa o padrão — e diz qual régua
   // está aplicando, porque preço sem régua identificada não se defende.
@@ -1046,6 +1063,33 @@ function PricingPanel({ role, criar, db, authHeaders, setToast }) {
   const changeInput = (key, value) => {
     setInputs((current) => ({ ...current, [key]: value }));
     setPremissasConfirmadas(false);
+    // Mudou a premissa, mudou a condição: o pedido de aprovação teria que ser
+    // sobre a simulação nova, não sobre a que foi salva antes.
+    setCenarioSalvoId("");
+  };
+
+  const pedirAprovacao = async () => {
+    if (!cenarioSalvoId) return;
+    setEnviandoAprovacao(true);
+    try {
+      const resposta = await fetch("/api/todogreen/deal-desk", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...(authHeaders?.() || {}) },
+        body: JSON.stringify({
+          cenarioId: cenarioSalvoId,
+          cliente: inputs.client || "",
+          justificativa: justificativaDeAprovacao,
+        }),
+      });
+      const corpo = await resposta.json().catch(() => ({}));
+      if (!resposta.ok) throw new Error(corpo.error || "Não foi possível abrir o pedido.");
+      setJustificativaDeAprovacao("");
+      setToast?.("Pedido enviado ao Deal Desk. A proposta fica bloqueada até a decisão.");
+    } catch (razao) {
+      setToast?.(razao.message);
+    } finally {
+      setEnviandoAprovacao(false);
+    }
   };
   const camposDesenhados = new Set(blueprint.inputGroups.flatMap(([, fields]) => fields));
   const obrigatoriasForaDoFormulario = (product?.requiredFields || []).filter(
@@ -1090,6 +1134,7 @@ function PricingPanel({ role, criar, db, authHeaders, setToast }) {
       premissas: registroDaConfirmacao(situacao, { userId: db?.user?.id || "" }),
     })
       .then(() => {
+        setCenarioSalvoId(snapshot.id);
         fetch(`/api/todogreen/audit?owner=${encodeURIComponent(ownerId())}`, {
           method: "POST",
           headers: { "content-type": "application/json", ...(authHeaders?.() || {}) },
@@ -1178,7 +1223,40 @@ function PricingPanel({ role, criar, db, authHeaders, setToast }) {
         </div>
       </section>
       <details className="tdg-calculation-details"><summary>Ver documentos necessários e detalhes do cálculo</summary><div className="tdg-method"><strong>Documentos necessários</strong><p>{blueprint.requiredEvidence.join(" · ")}</p><small>Relatórios disponíveis: {blueprint.executiveOutputs.join(" · ")}</small></div></details>
-      {result.approval.required && <div className="tdg-alert"><AlertTriangle size={18} /><span>Esta condição precisa de aprovação comercial: {result.approval.triggers.join(", ")}.</span></div>}
+      {result.approval.required && (
+        // Antes isto era só um aviso: a tela dizia que precisava de aprovação e
+        // a simulação era salva do mesmo jeito. Agora o aviso vem com o caminho.
+        <div className="tdg-alert" role="status">
+          <AlertTriangle size={18} />
+          <span>Esta condição precisa de aprovação comercial: {result.approval.triggers.join(", ")}.</span>
+        </div>
+      )}
+      {result.approval.required && (
+        <div className="tdg-dd-pedido">
+          <label>
+            <span>Justificativa comercial para o Deal Desk</span>
+            <input
+              value={justificativaDeAprovacao}
+              onChange={(event) => setJustificativaDeAprovacao(event.target.value)}
+              placeholder="Por que vale a pena aceitar esta condição fora da régua"
+            />
+          </label>
+          <button
+            type="button"
+            className="tdg-action"
+            disabled={!cenarioSalvoId || justificativaDeAprovacao.trim().length < 20 || Boolean(enviandoAprovacao)}
+            onClick={pedirAprovacao}
+          >
+            <ShieldCheck size={16} />
+            {enviandoAprovacao ? "Enviando..." : "Enviar ao Deal Desk"}
+          </button>
+          <small>
+            {!cenarioSalvoId
+              ? "Salve a simulação antes: a aprovação é sobre a condição exata, não sobre o cliente."
+              : "A alçada, o prazo e o desvio são calculados a partir desta simulação e da régua vigente."}
+          </small>
+        </div>
+      )}
       <div className="tdg-pricing-actions">
         <button className="tdg-action" type="button" onClick={saveScenario} disabled={!situacao.podeSalvar || salvando}>
           <Plus size={17} />{salvando ? "Salvando..." : "Salvar simulação"}
@@ -1189,7 +1267,7 @@ function PricingPanel({ role, criar, db, authHeaders, setToast }) {
   );
 }
 
-function ProposalPanel({ data, criar, setToast }) {
+function ProposalPanel({ data, criar, pedidosDeAprovacao = [], setToast }) {
   // A proposta é o documento que sai da empresa. Ela só pode nascer de uma
   // simulação cujas premissas alguém declarou como vindas do cliente ou de
   // medição — não da última simulação qualquer que passou pela tela.
@@ -1198,6 +1276,10 @@ function ProposalPanel({ data, criar, setToast }) {
   // dizer por que a proposta não sai em vez de fingir que não há simulação.
   const latest = (data.pricingScenarios || []).find(cenarioConfirmado);
   const existemNaoConfirmadas = !latest && Number(data.simulacoesSemProcedencia || 0) > 0;
+  // O Deal Desk manda por cima da confirmação de premissas: premissa
+  // confirmada com condição fora da régua ainda depende de aprovação.
+  const liberacao = liberacaoDaProposta(latest?.id, pedidosDeAprovacao);
+  const podeSalvar = Boolean(latest) && liberacao.liberada;
   const translated = esgTranslator(latest?.result?.impact?.co2AvoidedKg || 0);
   const [form, setForm] = useState({ client: "", title: "Proposta logística sustentável", scope: "", commercialTerms: "", risks: "" });
   const proposalText = latest
@@ -1210,6 +1292,12 @@ function ProposalPanel({ data, criar, setToast }) {
     event.preventDefault();
     if (!latest) {
       setToast?.("Sem simulação com premissas confirmadas, a proposta não pode ser gerada.");
+      return;
+    }
+    // Guarda no código, não só no `disabled`: era exatamente aqui que faltava
+    // impedimento — o Deal Desk avisava e a proposta saía do mesmo jeito.
+    if (!liberacao.liberada) {
+      setToast?.(liberacao.motivo);
       return;
     }
     setSalvando(true);
@@ -1233,7 +1321,13 @@ function ProposalPanel({ data, criar, setToast }) {
   };
   return (
     <section className="tdg-panel"><div className="tdg-section-head"><div><span className="tdg-kicker">PROPOSTAS</span><h2>Proposta comercial com preço, operação e ROI ambiental</h2></div><strong>{data.proposals.length} proposta(s)</strong></div>
-      <form className="tdg-access-form" onSubmit={save}>{[["client", "Cliente"], ["title", "Título"], ["scope", "O que está incluído na operação"], ["commercialTerms", "Condições comerciais"], ["risks", "Riscos e ressalvas"]].map(([key, label]) => <label key={key}><span>{label}</span><input value={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} /></label>)}<button className="tdg-action" type="submit" disabled={!latest || salvando}><Plus size={17} />{salvando ? "Salvando..." : "Salvar proposta"}</button></form>
+      <form className="tdg-access-form" onSubmit={save}>{[["client", "Cliente"], ["title", "Título"], ["scope", "O que está incluído na operação"], ["commercialTerms", "Condições comerciais"], ["risks", "Riscos e ressalvas"]].map(([key, label]) => <label key={key}><span>{label}</span><input value={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} /></label>)}<button className="tdg-action" type="submit" disabled={!podeSalvar || salvando}><Plus size={17} />{salvando ? "Salvando..." : "Salvar proposta"}</button></form>
+      {latest && !liberacao.liberada && (
+        <div className="tdg-alert" role="alert"><AlertTriangle size={18} /><span>{liberacao.motivo}</span></div>
+      )}
+      {latest && liberacao.liberada && liberacao.pedido && (
+        <p className="tdg-esg-nota">{liberacao.motivo}</p>
+      )}
       <div className="tdg-method"><strong>Texto gerado</strong><p>{proposalText}</p><small>{translated.disclaimer}</small></div>
       <div className="tdg-access-list">{data.proposals.map((item) => <div className="tdg-access-row" key={item.id}><span><strong>{item.title}</strong><small>{item.client || "cliente não informado"}</small></span><span>{item.scenarioId ? "com simulação" : "rascunho"}</span></div>)}</div>
     </section>
@@ -1476,6 +1570,18 @@ export default function LogisticsVertical({ db, setToast, access = {}, authHeade
   // confirmado: pedir os registros antes disso seria bater no servidor para
   // ouvir 403.
   const { dados: registros, erro: erroDosRegistros, criar } = useVerticalRecords(authHeaders, { ativo: allowed });
+  // Os pedidos ao Deal Desk. A proposta precisa deles para saber se sai — e a
+  // decisão de sair ou não é do servidor, não de um estado local.
+  const [pedidosDeAprovacao, setPedidosDeAprovacao] = useState([]);
+  useEffect(() => {
+    if (!allowed) return undefined;
+    let vivo = true;
+    fetch("/api/todogreen/deal-desk", { headers: authHeaders?.() || {} })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (vivo) setPedidosDeAprovacao(d?.pedidos || []); })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [allowed, authHeaders]);
   // Clientes continuam vindo do serviço deles: é lá que mora a regra de
   // carteira, e reescrevê-la aqui seria criar uma segunda regra de quem
   // enxerga quem.
@@ -1554,7 +1660,7 @@ export default function LogisticsVertical({ db, setToast, access = {}, authHeade
       {page === "solicitacoes" && <Suspense fallback={<section className="tdg-panel">Carregando solicitações...</section>}><ClientRequestsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "clientes" && <Suspense fallback={<section className="tdg-panel">Carregando clientes...</section>}><ClientsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "oportunidades" && <Suspense fallback={<section className="tdg-panel">Carregando oportunidades...</section>}><OpportunitiesPage opportunities={verticalData.opportunities} onCreate={(registro) => criar("opportunities", registro)} setToast={setToast} /></Suspense>}
-      {page === "propostas" && <ProposalPanel data={verticalData} criar={criar} setToast={setToast} />}
+      {page === "propostas" && <ProposalPanel data={verticalData} criar={criar} pedidosDeAprovacao={pedidosDeAprovacao} setToast={setToast} />}
       {page === "precificacao" && <PricingPanel role={role} criar={criar} db={db} authHeaders={authHeaders} setToast={setToast} />}
       {["esg", "green-score", "calculadora-ambiental", "tradutor-esg", "escopo-3"].includes(page) && <EsgPanel dashboard={dashboard} data={verticalData} />}
       {page === "regua" && (
@@ -1574,6 +1680,15 @@ export default function LogisticsVertical({ db, setToast, access = {}, authHeade
       {page === "comissoes" && <FinancePanel type="commission" data={verticalData} criar={criar} setToast={setToast} />}
       {page === "relatorios" && <Suspense fallback={<section className="tdg-panel">Carregando relatórios...</section>}><ReportsPage dashboard={dashboard} data={verticalData} authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "metodologia" && <MethodologyPanel />}
+      {page === "deal-desk" && (
+        <Suspense fallback={<section className="tdg-panel">Carregando o Deal Desk...</section>}>
+          <DealDeskPage
+            authHeaders={authHeaders}
+            quem={{ userId: db?.user?.id || "", role, permissions: remoteAccess.permissions || [] }}
+            setToast={setToast}
+          />
+        </Suspense>
+      )}
       {page === "auditoria" && <GovernancePanel role={role} />}
       {page === "acessos" && <AccessPanel role={role} authHeaders={authHeaders} setToast={setToast} />}
       {!Object.keys(MODULE_IMPLEMENTATION).includes(page) && !["green-score", "calculadora-ambiental", "tradutor-esg", "escopo-3", "custos", "comissoes"].includes(page) && <DashboardPanel data={verticalData} dashboard={dashboard} />}
