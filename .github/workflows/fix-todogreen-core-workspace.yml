@@ -1,0 +1,46 @@
+name: Corrigir workspace padrão To Do Green
+
+on:
+  push:
+    branches: [feat/todogreen-metas]
+    paths:
+      - scripts/fix-todogreen-core-workspace.mjs
+      - .github/workflows/fix-todogreen-core-workspace.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: corrigir-workspace-todogreen
+  cancel-in-progress: true
+
+jobs:
+  corrigir:
+    if: ${{ !contains(github.event.head_commit.message || '', '[workspace-corrigido]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Baixar branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/todogreen-metas
+          fetch-depth: 0
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Aplicar correção
+        run: |
+          node scripts/fix-todogreen-core-workspace.mjs
+          rm scripts/fix-todogreen-core-workspace.mjs .github/workflows/fix-todogreen-core-workspace.yml
+
+      - name: Gravar correção
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(todogreen): respeitar workspace definido pelo vínculo [workspace-corrigido]"
+          git push origin HEAD:feat/todogreen-metas
