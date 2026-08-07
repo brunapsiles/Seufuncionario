@@ -588,3 +588,50 @@
   border-color: rgba(181, 142, 42, 0.32);
   background: rgba(255, 250, 235, 0.6);
 }
+
+/* ===== Situação das premissas =====
+   O resultado da calculadora não pode parecer igual quando é cálculo e quando
+   é chute. A faixa diz em qual dos três estados a simulação está, e o bloco de
+   preço fica visualmente atenuado enquanto ninguém confirmou de onde vieram os
+   números. */
+.tdg-premissas {
+  border: 1px solid var(--tdg-line);
+  border-radius: 16px;
+  margin: 14px 0;
+  padding: 14px 16px;
+}
+.tdg-premissas strong { display: block; font-size: 0.95rem; }
+.tdg-premissas p { color: var(--tdg-muted); line-height: 1.5; margin: 6px 0 0; }
+.tdg-premissas .tdg-check-field { margin-top: 12px; }
+
+.tdg-premissas-incompleta {
+  background: color-mix(in srgb, #dc2626 7%, transparent);
+  border-color: color-mix(in srgb, #dc2626 38%, var(--tdg-line));
+}
+.tdg-premissas-incompleta strong { color: #b91c1c; }
+
+.tdg-premissas-hipotese {
+  background: color-mix(in srgb, #d97706 8%, transparent);
+  border-color: color-mix(in srgb, #d97706 40%, var(--tdg-line));
+}
+.tdg-premissas-hipotese strong { color: #b45309; }
+
+.tdg-premissas-confirmada {
+  background: color-mix(in srgb, var(--tdg-green) 8%, transparent);
+  border-color: color-mix(in srgb, var(--tdg-green) 40%, var(--tdg-line));
+}
+.tdg-premissas-confirmada strong { color: var(--tdg-green); }
+
+.tdg-price-summary-provisorio { opacity: 0.62; }
+
+.tdg-pricing-actions small {
+  color: var(--tdg-muted);
+  display: block;
+  line-height: 1.5;
+  margin-top: 8px;
+}
+.tdg-pricing-actions button[disabled],
+.tdg-access-form button[disabled] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}

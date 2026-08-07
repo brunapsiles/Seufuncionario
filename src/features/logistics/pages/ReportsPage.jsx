@@ -243,6 +243,16 @@ export default function ReportsPage({ dashboard, data, authHeaders, setToast }) 
           Visão da carteira inteira, para leitura rápida. Não substitui o relatório por
           cliente, que é o documento com memória de cálculo.
         </p>
+        {data.simulacoesSemProcedencia > 0 && (
+          <p className="tdg-rel-aviso">
+            <AlertTriangle size={16} />
+            {data.simulacoesSemProcedencia === 1
+              ? "1 simulação ficou fora destes números"
+              : `${data.simulacoesSemProcedencia} simulações ficaram fora destes números`}{" "}
+            porque foram salvas antes de a confirmação de premissas existir. Refaça e
+            confirme para que voltem a contar.
+          </p>
+        )}
         <div className="tdg-rel-numeros">
           {consolidado.map((item) => (
             <article key={item.rotulo}>

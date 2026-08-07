@@ -60,6 +60,13 @@ import {
   summarizeTodoGreenDashboard,
 } from "./logisticsVerticalDomain.js";
 import {
+  NIVEIS,
+  cenarioConfirmado,
+  premissasDaSimulacao,
+  registroDaConfirmacao,
+  situacaoDoResultado,
+} from "./pricingPremisesDomain.js";
+import {
   agruparModulosPorTela,
   grupoAtendeBusca,
   ordenarPorRelevancia,
@@ -444,131 +451,142 @@ const booleanFields = new Set([
   "temperatureControlled",
 ]);
 
+// Toda premissa que muda preço, margem ou CO₂ nasce vazia.
+//
+// Antes a calculadora abria com distância, frequência, ocupação, tipo de
+// veículo e confiança no dado já preenchidos. Em um segundo havia preço,
+// margem, CO₂ evitado e recomendação na tela — todos calculados sobre números
+// que ninguém informou. Um resultado assim é indistinguível de um cálculo
+// real, e foi assim que ele chegou a proposta e a relatório.
+//
+// Ficam só os campos que são de fato neutros: custo que começa em zero porque
+// pode não existir (pedágio, treinamento, implantação), opção de sim/não com
+// resposta padrão, e o alvo do cliente, que é zero enquanto ele não disser.
 const productDefaults = {
   "middle-mile": {
     client: "",
     origin: "",
     destination: "",
-    distanceKm: 120,
-    tripsPerMonth: 40,
-    vehicleType: "VUC elétrico",
-    pallets: 12,
-    weightKg: 3200,
+    distanceKm: "",
+    tripsPerMonth: "",
+    vehicleType: "",
+    pallets: "",
+    weightKg: "",
     tollCost: 0,
-    waitingHours: 1,
+    waitingHours: "",
     customerTargetPrice: 0,
-    occupancyPercent: 78,
-    dataQuality: 80,
+    occupancyPercent: "",
+    dataQuality: "",
   },
   "last-mile": {
     client: "",
-    city: "São Paulo",
-    packages: 9000,
-    routesPerDay: 18,
-    daysPerMonth: 22,
-    kmPerRoute: 62,
-    vehicleType: "Furgão elétrico",
-    stops: 7000,
-    successRate: 92,
-    returnsRate: 4,
+    city: "",
+    packages: "",
+    routesPerDay: "",
+    daysPerMonth: "",
+    kmPerRoute: "",
+    vehicleType: "",
+    stops: "",
+    successRate: "",
+    returnsRate: "",
     customerTargetPrice: 0,
-    occupancyPercent: 80,
-    dataQuality: 76,
+    occupancyPercent: "",
+    dataQuality: "",
   },
   dedicated: {
     client: "",
-    vehicles: 4,
-    vehicleType: "Frota elétrica dedicada",
-    drivers: 4,
-    helpers: 0,
-    hoursPerDay: 9,
-    daysPerMonth: 22,
+    vehicles: "",
+    vehicleType: "",
+    drivers: "",
+    helpers: "",
+    hoursPerDay: "",
+    daysPerMonth: "",
     reserveVehicle: false,
     supervisionCost: 0,
     technologyCost: 0,
     trainingCost: 0,
     implementationCost: 0,
     customerTargetPrice: 0,
-    occupancyPercent: 75,
-    dataQuality: 75,
+    occupancyPercent: "",
+    dataQuality: "",
   },
   transfer: {
     client: "",
     origin: "",
     destination: "",
-    distanceKm: 160,
-    frequencyPerMonth: 30,
-    vehicleType: "Caminhão elétrico",
-    pallets: 14,
-    weightKg: 4000,
-    waitingHours: 1,
+    distanceKm: "",
+    frequencyPerMonth: "",
+    vehicleType: "",
+    pallets: "",
+    weightKg: "",
+    waitingHours: "",
     customerTargetPrice: 0,
-    occupancyPercent: 76,
-    dataQuality: 75,
+    occupancyPercent: "",
+    dataQuality: "",
   },
   "store-replenishment": {
     client: "",
-    stores: 12,
-    visitsPerMonth: 96,
-    kmPerRoute: 70,
-    vehicleType: "Furgão elétrico",
-    helpers: 1,
-    unloadingHours: 1,
+    stores: "",
+    visitsPerMonth: "",
+    kmPerRoute: "",
+    vehicleType: "",
+    helpers: "",
+    unloadingHours: "",
     customerTargetPrice: 0,
-    occupancyPercent: 78,
-    dataQuality: 74,
+    occupancyPercent: "",
+    dataQuality: "",
   },
   "supplier-pickup": {
     client: "",
-    suppliers: 8,
-    frequencyPerMonth: 40,
-    distanceKm: 80,
-    vehicleType: "VUC elétrico",
-    waitingHours: 1,
-    consolidationPercent: 70,
-    weightKg: 2500,
-    pallets: 8,
+    suppliers: "",
+    frequencyPerMonth: "",
+    distanceKm: "",
+    vehicleType: "",
+    waitingHours: "",
+    consolidationPercent: "",
+    weightKg: "",
+    pallets: "",
     customerTargetPrice: 0,
-    occupancyPercent: 74,
-    dataQuality: 72,
+    occupancyPercent: "",
+    dataQuality: "",
   },
   "fractional-distribution": {
     client: "",
-    sharedRouteCost: 90000,
-    allocationPercent: 45,
-    deliveries: 6500,
-    distanceKm: 3200,
-    clientsOnRoute: 4,
-    occupancyPercent: 78,
-    weightKg: 6000,
+    sharedRouteCost: "",
+    allocationPercent: "",
+    deliveries: "",
+    distanceKm: "",
+    clientsOnRoute: "",
+    occupancyPercent: "",
+    weightKg: "",
     volumeM3: 36,
     customerTargetPrice: 0,
-    dataQuality: 72,
+    dataQuality: "",
   },
   bulk: {
     client: "",
     materialType: "",
-    tons: 90,
-    distanceKm: 180,
-    tripsPerMonth: 24,
-    vehicleType: "Caminhão elétrico adaptado",
+    tons: "",
+    distanceKm: "",
+    tripsPerMonth: "",
+    vehicleType: "",
     cleaningCost: 0,
-    waitingHours: 1,
+    waitingHours: "",
     lossPercent: 0,
     licenseCost: 0,
     customerTargetPrice: 0,
-    occupancyPercent: 76,
-    dataQuality: 70,
+    occupancyPercent: "",
+    dataQuality: "",
   },
   "custom-project": {
     client: "",
-    components: "Frota, operação, tecnologia, implantação",
-    contractMonths: 12,
+    components: "",
+    contractMonths: "",
     initialInvestment: 0,
-    cashFlowMonths: 12,
+    cashFlowMonths: "",
     customerTargetPrice: 0,
-    occupancyPercent: 75,
-    dataQuality: 65,
+    occupancyPercent: "",
+    dataQuality: "",
   },
 };
 
@@ -730,7 +748,14 @@ const seedLastMile = createPricingScenarioSnapshot(
 
 const defaultVerticalData = (db = {}, access = {}) => {
   const demo = demoModeEnabled(db, access);
-  const hasScenarios = db.todoGreenPricingScenarios?.length > 0;
+  // Painel, indicadores e relatórios só somam simulação com premissa
+  // confirmada. Cenários gravados antes desta regra não trazem a procedência,
+  // então ficam de fora da conta e são contados à parte — some-los em silêncio
+  // seria trocar um número inventado por outro.
+  const salvos = db.todoGreenPricingScenarios || [];
+  const confirmados = salvos.filter(cenarioConfirmado);
+  const semProcedencia = salvos.length - confirmados.length;
+  const hasScenarios = confirmados.length > 0;
   const demoRevenue = demo
     ? [
         { id: "demo-rev-1", amount: 138000, clientId: "demo-middle-mile", productId: "middle-mile", status: "demo" },
@@ -748,7 +773,8 @@ const defaultVerticalData = (db = {}, access = {}) => {
     clients: db.todoGreenClients || [],
     opportunities: db.todoGreenOpportunities || [],
     proposals: db.todoGreenProposals || [],
-    pricingScenarios: hasScenarios ? db.todoGreenPricingScenarios : demo ? [seedScenario, seedLastMile] : [],
+    pricingScenarios: hasScenarios ? confirmados : demo ? [seedScenario, seedLastMile] : [],
+    simulacoesSemProcedencia: semProcedencia,
     revenueEntries: db.todoGreenRevenueEntries || demoRevenue,
     costEntries: db.todoGreenCostEntries || [],
     operations: db.todoGreenOperations || demoOperations,
@@ -878,7 +904,17 @@ function FieldInput({ name, value, required, onChange }) {
       <input
         value={value ?? ""}
         inputMode={textFields.has(name) ? "text" : "decimal"}
-        onChange={(event) => onChange(name, textFields.has(name) ? event.target.value : Number(event.target.value) || 0)}
+        // Campo numérico apagado vira "" e não 0: zero é uma resposta, vazio é
+        // a ausência dela, e a tela precisa saber a diferença para não
+        // calcular preço em cima de premissa que ninguém informou.
+        onChange={(event) =>
+          onChange(
+            name,
+            textFields.has(name) || event.target.value === ""
+              ? event.target.value
+              : Number(event.target.value) || 0,
+          )
+        }
       />
     </label>
   );
@@ -964,6 +1000,10 @@ function ClientPanel({ data, update, setToast }) {
 function PricingPanel({ role, update, db, authHeaders, setToast }) {
   const [productId, setProductId] = useState("middle-mile");
   const [inputs, setInputs] = useState(productDefaults["middle-mile"]);
+  // Declaração de procedência das premissas. Cai a cada mudança: confirmar um
+  // cenário e depois trocar a distância deixaria a declaração valendo para um
+  // cálculo que já não é o mesmo.
+  const [premissasConfirmadas, setPremissasConfirmadas] = useState(false);
   // A régua comercial em vigor, administrada pelo gestor em /todogreen/regua.
   // Sem ela carregada ainda, a calculadora usa o padrão — e diz qual régua
   // está aplicando, porque preço sem régua identificada não se defende.
@@ -996,10 +1036,30 @@ function PricingPanel({ role, update, db, authHeaders, setToast }) {
   const hasEnvironmentalInputs = Number(inputs.distanceKm || inputs.kmPerRoute || 0) > 0;
   const selectProduct = (nextProductId) => {
     setProductId(nextProductId);
-    setInputs(productDefaults[nextProductId] || { client: "", distanceKm: 100, frequencyPerMonth: 1, customerTargetPrice: 0, dataQuality: 70 });
+    setInputs(productDefaults[nextProductId] || { client: "", distanceKm: "", frequencyPerMonth: "", customerTargetPrice: 0, dataQuality: "" });
+    setPremissasConfirmadas(false);
   };
-  const changeInput = (key, value) => setInputs((current) => ({ ...current, [key]: value }));
+  const changeInput = (key, value) => {
+    setInputs((current) => ({ ...current, [key]: value }));
+    setPremissasConfirmadas(false);
+  };
+  const camposDesenhados = new Set(blueprint.inputGroups.flatMap(([, fields]) => fields));
+  const obrigatoriasForaDoFormulario = (product?.requiredFields || []).filter(
+    (campo) => !camposDesenhados.has(campo),
+  );
+  const premissas = premissasDaSimulacao(product, inputs);
+  const situacao = situacaoDoResultado(
+    premissas,
+    premissasConfirmadas,
+    (campo) => fieldLabels[campo] || campo,
+  );
   const saveScenario = () => {
+    // Guarda no código, não só no `disabled` do botão: um atalho de teclado ou
+    // uma chamada por fora não podem salvar cenário sem procedência.
+    if (!situacao.podeSalvar) {
+      setToast?.(situacao.resumo);
+      return;
+    }
     // A simulação salva nasce com a MESMA régua exibida na tela — snapshot e
     // resultado mostrado nunca podem divergir.
     const snapshot = createPricingScenarioSnapshot(
@@ -1008,12 +1068,18 @@ function PricingPanel({ role, update, db, authHeaders, setToast }) {
       { userId: db?.user?.id || "local", tenantId: TODO_GREEN_TENANT.id, justification: `Simulação criada pela calculadora To Do Green (régua ${regua?.versao || "padrão"}).` },
       regua?.parametros ? { assumptions: regua.parametros } : {},
     );
+    // Quem confirmou e quando ficam gravados junto: sem isso, uma proposta
+    // antiga não tem como provar que nasceu de premissa confirmada.
+    const registrado = {
+      ...snapshot,
+      premissas: registroDaConfirmacao(situacao, { userId: db?.user?.id || "" }),
+    };
     update?.((current) => ({
       ...current,
       // Salvar simulação não é concessão de acesso. Aqui ficava
       // `tenantAccess.todogreen = { role: role || "admin" }`, e era isso que
       // a regra antiga lia depois para liberar a vertical.
-      todoGreenPricingScenarios: [snapshot, ...(current.todoGreenPricingScenarios || []).slice(0, 20)],
+      todoGreenPricingScenarios: [registrado, ...(current.todoGreenPricingScenarios || []).slice(0, 20)],
     }));
     fetch(`/api/todogreen/audit?owner=${encodeURIComponent(ownerId())}`, {
       method: "POST",
@@ -1032,14 +1098,47 @@ function PricingPanel({ role, update, db, authHeaders, setToast }) {
           : "Usando os valores padrão de margem e custos. Um gestor pode definir os seus em Régua comercial."}
       </p>
       <div className="tdg-product-strip">{LOGISTICS_PRODUCTS.map((item) => <ProductCard product={item} active={item.id === productId} onSelect={selectProduct} key={item.id} />)}</div>
+      <div className={`tdg-premissas tdg-premissas-${situacao.nivel}`} role="status">
+        <strong>{situacao.rotulo}</strong>
+        <p>{situacao.resumo}</p>
+        {premissas.podeConfirmar && (
+          <label className="tdg-check-field">
+            <input
+              type="checkbox"
+              checked={premissasConfirmadas}
+              onChange={(event) => setPremissasConfirmadas(event.target.checked)}
+            />
+            <span>Confirmo que estas premissas vieram do cliente ou de medição, e não de estimativa.</span>
+          </label>
+        )}
+      </div>
       <div className="tdg-calculator-workspace">
         <form className="tdg-form">
+          {/* Campo obrigatório que nenhum grupo do produto desenhou. O
+              "middle-mile", por exemplo, exige o cliente e não tinha onde
+              informá-lo — a premissa era impossível de completar, e antes
+              isso não aparecia porque nada era exigido. */}
+          {obrigatoriasForaDoFormulario.length > 0 && (
+            <fieldset>
+              <legend>Identificação</legend>
+              {obrigatoriasForaDoFormulario.map((field) => (
+                <FieldInput key={field} name={field} value={inputs[field]} required onChange={changeInput} />
+              ))}
+            </fieldset>
+          )}
           {blueprint.inputGroups.map(([group, fields]) => (
             <fieldset key={group}><legend>{group}</legend>{fields.map((field) => <FieldInput key={field} name={field} value={inputs[field]} required={product?.requiredFields?.includes(field)} onChange={changeInput} />)}</fieldset>
           ))}
           <fieldset><legend>Dados usados no cálculo</legend><FieldInput name="dataQuality" value={inputs.dataQuality} onChange={changeInput} /><FieldInput name="occupancyPercent" value={inputs.occupancyPercent} onChange={changeInput} /></fieldset>
         </form>
-        <div className="tdg-price-summary" aria-label="Resultado da precificação">
+        <div
+          className={`tdg-price-summary${situacao.nivel === NIVEIS.confirmada ? "" : " tdg-price-summary-provisorio"}`}
+          aria-label={
+            situacao.nivel === NIVEIS.confirmada
+              ? "Resultado da precificação"
+              : "Resultado provisório da precificação — premissas não confirmadas"
+          }
+        >
           <div><span>Custo mensal</span><strong>{BRL.format(result.loadedCost)}</strong><small>custo estimado da operação</small></div>
           <div><span>Menor preço recomendado</span><strong>{BRL.format(result.minimumPrice)}</strong><small>abaixo deste valor, revise a operação</small></div>
           <div className="featured"><span>Preço recomendado</span><strong>{BRL.format(result.recommendedPrice)}</strong><small>considera margem e riscos</small></div>
@@ -1065,26 +1164,44 @@ function PricingPanel({ role, update, db, authHeaders, setToast }) {
       </section>
       <details className="tdg-calculation-details"><summary>Ver documentos necessários e detalhes do cálculo</summary><div className="tdg-method"><strong>Documentos necessários</strong><p>{blueprint.requiredEvidence.join(" · ")}</p><small>Relatórios disponíveis: {blueprint.executiveOutputs.join(" · ")}</small></div></details>
       {result.approval.required && <div className="tdg-alert"><AlertTriangle size={18} /><span>Esta condição precisa de aprovação comercial: {result.approval.triggers.join(", ")}.</span></div>}
-      <div className="tdg-pricing-actions"><button className="tdg-action" type="button" onClick={saveScenario}><Plus size={17} />Salvar simulação</button></div>
+      <div className="tdg-pricing-actions">
+        <button className="tdg-action" type="button" onClick={saveScenario} disabled={!situacao.podeSalvar}>
+          <Plus size={17} />Salvar simulação
+        </button>
+        {!situacao.podeSalvar && <small>{situacao.resumo}</small>}
+      </div>
     </section>
   );
 }
 
 function ProposalPanel({ data, update, setToast }) {
-  const latest = data.pricingScenarios[0];
+  // A proposta é o documento que sai da empresa. Ela só pode nascer de uma
+  // simulação cujas premissas alguém declarou como vindas do cliente ou de
+  // medição — não da última simulação qualquer que passou pela tela.
+  // `data.pricingScenarios` já chega filtrado: só entra ali o que tem
+  // procedência. O que sobrou de fora vem contado à parte, para a tela poder
+  // dizer por que a proposta não sai em vez de fingir que não há simulação.
+  const latest = (data.pricingScenarios || []).find(cenarioConfirmado);
+  const existemNaoConfirmadas = !latest && Number(data.simulacoesSemProcedencia || 0) > 0;
   const translated = esgTranslator(latest?.result?.impact?.co2AvoidedKg || 0);
   const [form, setForm] = useState({ client: "", title: "Proposta logística sustentável", scope: "", commercialTerms: "", risks: "" });
   const proposalText = latest
     ? `Proposta ${latest.result.productName}: preço recomendado ${BRL.format(latest.result.recommendedPrice)}, margem estimada ${number.format(latest.result.marginPercent)}%, CO2 evitado estimado de ${number.format(latest.result.impact.co2AvoidedKg / 1000)} tCO2e. ${translated.proposalText}`
-    : "Crie uma simulação de precificação antes de gerar uma proposta com preço e ESG.";
+    : existemNaoConfirmadas
+      ? "As simulações existentes ainda estão como hipótese. Abra Precificação, confirme as premissas e salve — só então o preço e o ESG podem virar proposta."
+      : "Crie uma simulação de precificação antes de gerar uma proposta com preço e ESG.";
   const save = (event) => {
     event.preventDefault();
-    appendRecord(update, "todoGreenProposals", { id: `proposal-${Date.now()}`, createdAt: new Date().toISOString(), ...form, scenarioId: latest?.id || "", proposalText });
+    if (!latest) {
+      setToast?.("Sem simulação com premissas confirmadas, a proposta não pode ser gerada.");
+      return;
+    }
+    appendRecord(update, "todoGreenProposals", { id: `proposal-${Date.now()}`, createdAt: new Date().toISOString(), ...form, scenarioId: latest.id, proposalText });
     setToast?.("Proposta To Do Green salva");
   };
   return (
     <section className="tdg-panel"><div className="tdg-section-head"><div><span className="tdg-kicker">PROPOSTAS</span><h2>Proposta comercial com preço, operação e ROI ambiental</h2></div><strong>{data.proposals.length} proposta(s)</strong></div>
-      <form className="tdg-access-form" onSubmit={save}>{[["client", "Cliente"], ["title", "Título"], ["scope", "O que está incluído na operação"], ["commercialTerms", "Condições comerciais"], ["risks", "Riscos e ressalvas"]].map(([key, label]) => <label key={key}><span>{label}</span><input value={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} /></label>)}<button className="tdg-action" type="submit"><Plus size={17} />Salvar proposta</button></form>
+      <form className="tdg-access-form" onSubmit={save}>{[["client", "Cliente"], ["title", "Título"], ["scope", "O que está incluído na operação"], ["commercialTerms", "Condições comerciais"], ["risks", "Riscos e ressalvas"]].map(([key, label]) => <label key={key}><span>{label}</span><input value={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} /></label>)}<button className="tdg-action" type="submit" disabled={!latest}><Plus size={17} />Salvar proposta</button></form>
       <div className="tdg-method"><strong>Texto gerado</strong><p>{proposalText}</p><small>{translated.disclaimer}</small></div>
       <div className="tdg-access-list">{data.proposals.map((item) => <div className="tdg-access-row" key={item.id}><span><strong>{item.title}</strong><small>{item.client || "cliente não informado"}</small></span><span>{item.scenarioId ? "com simulação" : "rascunho"}</span></div>)}</div>
     </section>

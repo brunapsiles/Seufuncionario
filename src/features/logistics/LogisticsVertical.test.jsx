@@ -42,6 +42,21 @@ const stubDeRede = (rotas = {}) => {
 
 const authHeaders = () => ({ authorization: "Bearer teste" });
 
+// Preenche todas as premissas obrigatórias do Middle Mile, mais os dois campos
+// que decidem o quanto o resultado vale.
+const preencherMiddleMile = () => {
+  const digitar = (rotulo, valor) =>
+    fireEvent.change(screen.getByLabelText(rotulo), { target: { value: valor } });
+  digitar(/^Cliente/, "Distribuidora Alfa");
+  digitar(/^Origem/, "CD Guarulhos");
+  digitar(/^Destino/, "Hub Campinas");
+  digitar(/^Distância km/, "120");
+  digitar(/^Viagens\/mês/, "40");
+  digitar(/^Tipo de veículo/, "VUC elétrico");
+  digitar(/^Ocupação/, "78");
+  digitar(/^Quanto podemos confiar/, "80");
+};
+
 // Renderiza já autorizada e espera a confirmação chegar. Sem a espera, a
 // asserção cai no cartão de "Confirmando seu acesso".
 async function renderarAutorizada(props = {}) {
@@ -174,11 +189,103 @@ describe("LogisticsVertical", () => {
     expect(screen.queryByText("Governança")).toBeNull();
   });
 
-  it("salvar uma simulação não concede acesso a quem salvou", async () => {
-    window.history.pushState({}, "", "/todogreen/precificacao/dedicated");
+  // ===== Premissas =====
+  //
+  // A calculadora abria com distância, frequência, ocupação, tipo de veículo e
+  // confiança no dado preenchidos, e em um segundo mostrava preço, margem e
+  // CO₂ que ninguém informou.
+
+  it("a calculadora abre sem premissa nenhuma preenchida", async () => {
+    window.history.pushState({}, "", "/todogreen/precificacao");
+    await renderarAutorizada();
+    expect(screen.getByLabelText(/^Distância km/).value).toBe("");
+    expect(screen.getByLabelText(/^Viagens\/mês/).value).toBe("");
+    expect(screen.getByLabelText(/^Tipo de veículo/).value).toBe("");
+    expect(screen.getByLabelText(/^Ocupação/).value).toBe("");
+    expect(screen.getByLabelText(/^Quanto podemos confiar/).value).toBe("");
+  });
+
+  it("sem premissas, o resultado é rotulado e não pode ser salvo", async () => {
+    window.history.pushState({}, "", "/todogreen/precificacao");
+    await renderarAutorizada();
+    expect(screen.getByText("Premissas incompletas")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Salvar simulação/ }).disabled).toBe(true);
+    expect(screen.getByLabelText(/Resultado provisório/)).toBeTruthy();
+  });
+
+  it("campo obrigatório que nenhum grupo desenhou aparece mesmo assim", async () => {
+    window.history.pushState({}, "", "/todogreen/precificacao");
+    await renderarAutorizada();
+    // O middle-mile exige o cliente e não tinha onde informá-lo.
+    expect(screen.getByLabelText(/^Cliente/)).toBeTruthy();
+  });
+
+  it("preencher tudo ainda deixa como hipótese até alguém confirmar", async () => {
+    window.history.pushState({}, "", "/todogreen/precificacao");
+    await renderarAutorizada();
+    preencherMiddleMile();
+    expect(screen.getByText("Hipótese de trabalho")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Salvar simulação/ }).disabled).toBe(true);
+  });
+
+  it("confirmar as premissas libera salvar", async () => {
+    window.history.pushState({}, "", "/todogreen/precificacao");
+    await renderarAutorizada();
+    preencherMiddleMile();
+    fireEvent.click(screen.getByLabelText(/Confirmo que estas premissas/));
+    expect(screen.getByText("Premissas confirmadas")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Salvar simulação/ }).disabled).toBe(false);
+  });
+
+  it("mudar uma premissa depois de confirmar derruba a confirmação", async () => {
+    window.history.pushState({}, "", "/todogreen/precificacao");
+    await renderarAutorizada();
+    preencherMiddleMile();
+    fireEvent.click(screen.getByLabelText(/Confirmo que estas premissas/));
+    fireEvent.change(screen.getByLabelText(/^Distância km/), { target: { value: "300" } });
+    // A declaração valia para outro cálculo.
+    expect(screen.getByText("Hipótese de trabalho")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Salvar simulação/ }).disabled).toBe(true);
+  });
+
+  it("a simulação salva guarda quem confirmou as premissas", async () => {
+    window.history.pushState({}, "", "/todogreen/precificacao");
     const update = vi.fn();
     await renderarAutorizada({ update });
-    fireEvent.click(screen.getByText(/Salvar simulação/i));
+    preencherMiddleMile();
+    fireEvent.click(screen.getByLabelText(/Confirmo que estas premissas/));
+    fireEvent.click(screen.getByRole("button", { name: /Salvar simulação/ }));
+
+    const proximo = update.mock.calls[0][0]({ todoGreenPricingScenarios: [] });
+    const salvo = proximo.todoGreenPricingScenarios[0];
+    expect(salvo.premissas.confirmadas).toBe(true);
+    expect(salvo.premissas.confirmadasPor).toBe("u1");
+    expect(salvo.premissas.confirmadasEm).toBeTruthy();
+  });
+
+  it("proposta não é gerada a partir de simulação não confirmada", async () => {
+    window.history.pushState({}, "", "/todogreen/propostas");
+    const update = vi.fn();
+    await renderarAutorizada({
+      db: {
+        ...baseDb,
+        todoGreenPricingScenarios: [
+          { id: "s1", result: { productName: "Middle Mile", recommendedPrice: 1, marginPercent: 1, impact: { co2AvoidedKg: 1 } } },
+        ],
+      },
+      update,
+    });
+    expect(screen.getByText(/ainda estão como hipótese/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Salvar proposta/ }).disabled).toBe(true);
+  });
+
+  it("salvar uma simulação não concede acesso a quem salvou", async () => {
+    window.history.pushState({}, "", "/todogreen/precificacao");
+    const update = vi.fn();
+    await renderarAutorizada({ update });
+    preencherMiddleMile();
+    fireEvent.click(screen.getByLabelText(/Confirmo que estas premissas/));
+    fireEvent.click(screen.getByRole("button", { name: /Salvar simulação/ }));
     expect(update).toHaveBeenCalled();
     // A função de atualização recebe o estado atual e devolve o próximo. O que
     // ela devolve não pode conter concessão de acesso: era exatamente assim
