@@ -50,12 +50,25 @@ export const TODO_GREEN_PERMISSIONS = {
   auditor: ["read", "audit:read", "export:read"],
 };
 
-export const hasTodoGreenPermission = (role, permission = "read") => {
-  const grants = TODO_GREEN_PERMISSIONS[role] || [];
-  const requested = Array.isArray(permission) ? permission : [permission];
+// A regra de permissão da vertical, uma só, usada pelo front e pelo worker.
+//
+// As duas pontas partem de lugares diferentes: o front só conhece o papel (não
+// guarda permissão por usuário), enquanto o worker lê a lista explícita gravada
+// no vínculo. A diferença é `permissions == null` (front, deriva do papel) vs
+// uma lista (worker, ela é a autoridade — mesmo vazia). Ter duas cópias disso
+// era o caminho garantido para o front liberar um botão que o worker recusa.
+export const verticalPermite = (role, permissions, permissao = "read") => {
+  const requested = Array.isArray(permissao) ? permissao : [permissao];
+  const grants = permissions == null ? TODO_GREEN_PERMISSIONS[role] || [] : permissions;
   if (grants.includes("*")) return true;
+  // owner e admin passam sempre: o papel manda, mesmo que a lista venha vazia.
+  if (["owner", "admin"].includes(role)) return true;
   return requested.every((item) => grants.includes(item));
 };
+
+// Fachada do front: só tem o papel na mão.
+export const hasTodoGreenPermission = (role, permission = "read") =>
+  verticalPermite(role, null, permission);
 
 export const TODO_GREEN_PRODUCTION_DATA_POLICY = Object.freeze({
   demoModeFlag: "todoGreenDemoMode",

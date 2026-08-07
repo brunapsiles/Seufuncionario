@@ -21,6 +21,8 @@
 // A regra que orienta o arquivo: **o que a sessão pode fazer sai do banco,
 // nunca da requisição.**
 
+import { verticalPermite } from "../../src/features/logistics/logisticsVerticalDomain.js";
+
 export const TENANT_ID = "todogreen";
 
 const clean = (value, max = 500) => String(value || "").trim().slice(0, max);
@@ -176,11 +178,11 @@ export async function exigirAcessoTodoGreen(request, env) {
   return { user, access };
 }
 
-// Permissão de verdade, lida do vínculo — nunca de rótulo de tela.
+// Permissão de verdade, lida do vínculo — nunca de rótulo de tela. Delega para
+// a mesma regra que o front usa: uma divergência entre as duas seria um botão
+// liberado na tela que o servidor recusa (ou o contrário).
 export const podeNaVertical = (access, permissao) => {
   if (!access) return false;
   const concedidas = Array.isArray(access.permissions) ? access.permissions : [];
-  if (concedidas.includes("*")) return true;
-  if (concedidas.includes(permissao)) return true;
-  return ["owner", "admin"].includes(access.role);
+  return verticalPermite(access.role, concedidas, permissao);
 };

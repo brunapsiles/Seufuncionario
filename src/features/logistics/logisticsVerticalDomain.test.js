@@ -10,6 +10,7 @@ import {
   calculateGreenScore,
   getProductPricingBlueprint,
   hasTodoGreenPermission,
+  verticalPermite,
   summarizeTodoGreenDashboard,
 } from "./logisticsVerticalDomain.js";
 
@@ -39,6 +40,17 @@ describe("logistics vertical domain", () => {
     expect(hasTodoGreenPermission("auditor", "audit:read")).toBe(true);
     expect(hasTodoGreenPermission("auditor", "deal:approve")).toBe(false);
     expect(hasTodoGreenPermission("admin", "deal:approve")).toBe(true);
+  });
+
+  it("a lista explícita do vínculo manda quando existe (caminho do worker)", () => {
+    // Sem lista, deriva do papel; com lista, ela é a autoridade — mesmo mais
+    // estreita que o padrão do papel.
+    expect(verticalPermite("vendedor", null, "pricing:simulate")).toBe(true);
+    expect(verticalPermite("vendedor", ["read"], "pricing:simulate")).toBe(false);
+    expect(verticalPermite("auditor", ["*"], "deal:approve")).toBe(true);
+    // owner e admin passam mesmo com a lista vazia.
+    expect(verticalPermite("admin", [], "cost:manage")).toBe(true);
+    expect(verticalPermite("vendedor", [], "read")).toBe(false);
   });
 
   it("describes professional pricing blueprints by logistics product", () => {
