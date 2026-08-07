@@ -24,7 +24,7 @@
 //    a resposta é 409 e a tela recarrega — em vez de apagar em silêncio o que
 //    a outra pessoa acabou de escrever, que é o defeito do JSON único.
 
-import { TENANT_ID, podeNaVertical, recorteDeCarteira } from "./todogreen-access.js";
+import { TENANT_ID, paginacao, podeNaVertical, recorteDeCarteira } from "./todogreen-access.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -261,16 +261,20 @@ const CENARIOS = {
   }),
 };
 
-const listarCenarios = async (env, access, email) => {
+const listarCenarios = async (env, access, email, { clienteId = "", limit = 200, offset = 0 } = {}) => {
   const recorte = recorteDeCarteira(access, email, "pricing_scenarios");
-  const { results } = await env.DB.prepare(
-    `SELECT * FROM pricing_scenarios
-      WHERE tenant_id = ? AND workspace_owner_id = ? ${recorte.sql}
-      ORDER BY created_at DESC LIMIT 200`,
-  )
-    .bind(TENANT_ID, access.ownerId, ...recorte.params)
-    .all();
-  return (results || []).map(CENARIOS.daLinha);
+  const filtroCliente = clienteId ? "AND pricing_scenarios.client_id = ?" : "";
+  const paramsFiltro = clienteId ? [clienteId] : [];
+  const base = `FROM pricing_scenarios
+      WHERE tenant_id = ? AND workspace_owner_id = ? ${filtroCliente} ${recorte.sql}`;
+  const params = [TENANT_ID, access.ownerId, ...paramsFiltro, ...recorte.params];
+  const [{ results }, totalRow] = await Promise.all([
+    env.DB.prepare(`SELECT * ${base} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+      .bind(...params, limit, offset)
+      .all(),
+    env.DB.prepare(`SELECT COUNT(*) AS total ${base}`).bind(...params).first(),
+  ]);
+  return { registros: (results || []).map(CENARIOS.daLinha), total: totalRow?.total || 0 };
 };
 
 const criarCenario = async (env, access, user, corpo) => {
@@ -318,17 +322,24 @@ const criarCenario = async (env, access, user, corpo) => {
 // cortes diferentes: o espaço separa empresas, a carteira separa vendedores
 // dentro da mesma empresa. Sem o segundo, um vendedor lista as oportunidades
 // dos colegas.
-const listar = async (env, colecao, access, email) => {
+const listar = async (env, colecao, access, email, { clienteId = "", limit = 500, offset = 0 } = {}) => {
   const recorte = recorteDeCarteira(access, email, "t");
-  const { results } = await env.DB.prepare(
-    `SELECT t.* FROM ${colecao.tabela} t
-      WHERE t.workspace_owner_id = ? AND t.archived_at IS NULL ${recorte.sql}
-      ORDER BY ${colecao.ordem.replace(/\b(updated_at|reference_month)\b/g, "t.$1")}
-      LIMIT 500`,
-  )
-    .bind(access.ownerId, ...recorte.params)
-    .all();
-  return (results || []).map(colecao.daLinha);
+  const filtroCliente = clienteId ? "AND t.client_id = ?" : "";
+  const paramsFiltro = clienteId ? [clienteId] : [];
+  const base = `FROM ${colecao.tabela} t
+      WHERE t.workspace_owner_id = ? AND t.archived_at IS NULL ${filtroCliente} ${recorte.sql}`;
+  const params = [access.ownerId, ...paramsFiltro, ...recorte.params];
+  const [{ results }, totalRow] = await Promise.all([
+    env.DB.prepare(
+      `SELECT t.* ${base}
+        ORDER BY ${colecao.ordem.replace(/\b(updated_at|reference_month)\b/g, "t.$1")}
+        LIMIT ? OFFSET ?`,
+    )
+      .bind(...params, limit, offset)
+      .all(),
+    env.DB.prepare(`SELECT COUNT(*) AS total ${base}`).bind(...params).first(),
+  ]);
+  return { registros: (results || []).map(colecao.daLinha), total: totalRow?.total || 0 };
 };
 
 // Confirma que o registro está na carteira de quem pede, ANTES de escrever.
@@ -449,8 +460,9 @@ export async function handleTodoGreenVerticalRecords(request, env, access, user)
   const nome = partes[3] || "";
   const id = texto(partes[4], 120);
 
-  // Sem coleção na URL: a vertical inteira de uma vez. É esta chamada que
-  // substitui o `db` genérico que a tela lia antes.
+  // Sem coleção na URL: a vertical inteira de uma vez, sem filtro nem
+  // página — é a carga do painel, que precisa do total para somar, não de um
+  // recorte dele. Filtro e paginação são de quem abre UMA coleção por vez.
   if (!nome) {
     if (request.method !== "GET") return json({ error: "Método não permitido." }, 405);
     const nomes = Object.keys(COLECOES);
@@ -458,12 +470,19 @@ export async function handleTodoGreenVerticalRecords(request, env, access, user)
       Promise.all(nomes.map((n) => listar(env, COLECOES[n], access, user.email))),
       listarCenarios(env, access, user.email),
     ]);
-    return json({ ...Object.fromEntries(nomes.map((n, i) => [n, listas[i]])), scenarios: cenarios });
+    return json({
+      ...Object.fromEntries(nomes.map((n, i) => [n, listas[i].registros])),
+      scenarios: cenarios.registros,
+    });
   }
 
   if (nome === "scenarios") {
-    if (request.method === "GET")
-      return json({ registros: await listarCenarios(env, access, user.email) });
+    if (request.method === "GET") {
+      const { limit, offset } = paginacao(url);
+      const clienteId = texto(url.searchParams.get("cliente"), 120);
+      const resultado = await listarCenarios(env, access, user.email, { clienteId, limit, offset });
+      return json({ ...resultado, limit, offset });
+    }
     if (request.method === "POST") {
       if (!podeNaVertical(access, "pricing:simulate"))
         return json({ error: "Seu papel não pode salvar simulações." }, 403);
@@ -475,8 +494,12 @@ export async function handleTodoGreenVerticalRecords(request, env, access, user)
   const colecao = COLECOES[nome];
   if (!colecao) return json({ error: "Coleção desconhecida." }, 404);
 
-  if (request.method === "GET")
-    return json({ registros: await listar(env, colecao, access, user.email) });
+  if (request.method === "GET") {
+    const { limit, offset } = paginacao(url);
+    const clienteId = texto(url.searchParams.get("cliente"), 120);
+    const resultado = await listar(env, colecao, access, user.email, { clienteId, limit, offset });
+    return json({ ...resultado, limit, offset });
+  }
 
   // Leitura segue o vínculo; escrita exige permissão. Papel que só consulta
   // não altera premissa comercial.

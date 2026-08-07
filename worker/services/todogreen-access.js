@@ -25,6 +25,21 @@ import { verticalPermite } from "../../src/features/logistics/logisticsVerticalD
 
 export const TENANT_ID = "todogreen";
 
+// `limit`/`offset` da query string, com os mesmos limites em toda a
+// vertical — records e Deal Desk liam a página cada um do seu jeito antes
+// disso existir, e um limite deles fora do outro é o tipo de bug que só
+// aparece quando alguém já está depurando uma paginação quebrada.
+const MAX_LIMIT = 200;
+export const paginacao = (url) => {
+  const limitPedido = Number(url.searchParams.get("limit"));
+  const offsetPedido = Number(url.searchParams.get("offset"));
+  const limit = Number.isFinite(limitPedido) && limitPedido > 0
+    ? Math.min(Math.trunc(limitPedido), MAX_LIMIT)
+    : 100;
+  const offset = Number.isFinite(offsetPedido) && offsetPedido > 0 ? Math.trunc(offsetPedido) : 0;
+  return { limit, offset };
+};
+
 const clean = (value, max = 500) => String(value || "").trim().slice(0, max);
 
 const parse = (value, fallback) => {

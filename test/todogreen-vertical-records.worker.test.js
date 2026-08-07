@@ -148,6 +148,63 @@ describe("oportunidades saem do JSON do espaço", () => {
   });
 });
 
+describe("paginação e filtro no servidor", () => {
+  it("limit e offset recortam a página, e o total conta a lista inteira", async () => {
+    const dono = await criarUsuario("rec-pag-dono", "pag-dono@parceiro.com.br");
+    await autorizar(dono);
+    for (let i = 0; i < 5; i += 1) {
+      await pedir("/api/todogreen/records/proposals", {
+        metodo: "POST",
+        token: dono.token,
+        corpo: { cliente: `Cliente pag ${i}`, cenarioId: "cen-pag" },
+      });
+    }
+
+    const primeiraPagina = await pedir("/api/todogreen/records/proposals?limit=2&offset=0", {
+      token: dono.token,
+    });
+    const corpo1 = await primeiraPagina.json();
+    expect(corpo1.registros).toHaveLength(2);
+    expect(corpo1.total).toBe(5);
+    expect(corpo1.limit).toBe(2);
+    expect(corpo1.offset).toBe(0);
+
+    const segundaPagina = await pedir("/api/todogreen/records/proposals?limit=2&offset=2", {
+      token: dono.token,
+    });
+    const corpo2 = await segundaPagina.json();
+    expect(corpo2.registros).toHaveLength(2);
+    // Páginas diferentes não repetem registro.
+    const idsPagina1 = corpo1.registros.map((r) => r.id);
+    const idsPagina2 = corpo2.registros.map((r) => r.id);
+    expect(idsPagina1.some((id) => idsPagina2.includes(id))).toBe(false);
+  });
+
+  it("o filtro por cliente é aplicado no servidor, não recortado depois na tela", async () => {
+    const dono = await criarUsuario("rec-filtro-dono", "filtro-dono@parceiro.com.br");
+    await autorizar(dono);
+    const doCliente = await (
+      await pedir("/api/todogreen/records/operations", {
+        metodo: "POST",
+        token: dono.token,
+        corpo: { clientId: "cli-filtro-alvo", produtoId: "middle-mile" },
+      })
+    ).json();
+    await pedir("/api/todogreen/records/operations", {
+      metodo: "POST",
+      token: dono.token,
+      corpo: { clientId: "cli-filtro-outro", produtoId: "middle-mile" },
+    });
+
+    const filtrada = await pedir("/api/todogreen/records/operations?cliente=cli-filtro-alvo", {
+      token: dono.token,
+    });
+    const { registros, total } = await filtrada.json();
+    expect(registros.map((r) => r.id)).toEqual([doCliente.registro.id]);
+    expect(total).toBe(1);
+  });
+});
+
 describe("escrita concorrente não apaga o trabalho alheio", () => {
   it("a segunda gravação em cima da mesma versão é recusada", async () => {
     const { registro } = await (

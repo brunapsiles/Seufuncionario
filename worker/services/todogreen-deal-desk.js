@@ -13,7 +13,7 @@
 //     evento;
 //   • a decisão registra a versão vigente, e revisar reabre.
 
-import { TENANT_ID, podeNaVertical, podeVerTodaCarteira } from "./todogreen-access.js";
+import { TENANT_ID, paginacao, podeNaVertical, podeVerTodaCarteira } from "./todogreen-access.js";
 import {
   SITUACOES,
   alcadaPorId,
@@ -390,25 +390,40 @@ export async function handleTodoGreenDealDesk(request, env, access, user) {
     // pediu", um vendedor deixaria de ver o próprio pedido assim que ele
     // fosse de um cliente ainda não formalmente atribuído a ele.
     const podeTudo = podeVerTodaCarteira(access) || podeNaVertical(access, "deal:approve");
-    const clausula = podeTudo
+    const clausulaCarteira = podeTudo
       ? ""
       : `AND (d.requester_id = ? OR EXISTS (
               SELECT 1 FROM todogreen_client_assignments a
                WHERE a.tenant_id = s.tenant_id AND a.client_id = s.client_id
                  AND a.status = 'active' AND lower(a.seller_email) = ?
             ))`;
-    const params = podeTudo ? [] : [user.id, String(user.email || "").trim().toLowerCase()];
-    const { results } = await env.DB.prepare(
-      `SELECT d.* FROM todogreen_deal_desk_requests d
+    const paramsCarteira = podeTudo ? [] : [user.id, String(user.email || "").trim().toLowerCase()];
+
+    const situacaoPedida = texto(url.searchParams.get("status"), 20);
+    const clausulaSituacao = situacaoPedida && Object.values(SITUACOES).includes(situacaoPedida)
+      ? "AND d.status = ?"
+      : "";
+    const paramsSituacao = clausulaSituacao ? [situacaoPedida] : [];
+
+    const { limit, offset } = paginacao(url);
+    const base = `FROM todogreen_deal_desk_requests d
          JOIN pricing_scenarios s
            ON s.id = d.scenario_id AND s.tenant_id = d.tenant_id
           AND s.workspace_owner_id = d.workspace_owner_id
-        WHERE d.workspace_owner_id = ? ${clausula}
-        ORDER BY d.created_at DESC LIMIT 300`,
-    )
-      .bind(access.ownerId, ...params)
-      .all();
-    return json({ pedidos: (results || []).map(doBanco) });
+        WHERE d.workspace_owner_id = ? ${clausulaCarteira} ${clausulaSituacao}`;
+    const params = [access.ownerId, ...paramsCarteira, ...paramsSituacao];
+    const [{ results }, totalRow] = await Promise.all([
+      env.DB.prepare(`SELECT d.* ${base} ORDER BY d.created_at DESC LIMIT ? OFFSET ?`)
+        .bind(...params, limit, offset)
+        .all(),
+      env.DB.prepare(`SELECT COUNT(*) AS total ${base}`).bind(...params).first(),
+    ]);
+    return json({
+      pedidos: (results || []).map(doBanco),
+      total: totalRow?.total || 0,
+      limit,
+      offset,
+    });
   }
 
   if (request.method === "GET" && id && acao === "historico") {

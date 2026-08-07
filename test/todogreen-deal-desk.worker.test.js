@@ -437,4 +437,26 @@ describe("a fila", () => {
     const { pedidos: pedidosChefe } = await listaChefe.json();
     expect(pedidosChefe.some((p) => p.solicitanteId === colega.id)).toBe(true);
   });
+
+  it("limit/offset paginam a fila e status filtra no servidor", async () => {
+    for (let i = 0; i < 3; i += 1) {
+      const id = await cenario({ margem: 15, preco: 300000, dono: chefe });
+      await pedir("/api/todogreen/deal-desk", {
+        metodo: "POST",
+        token: chefe.token,
+        corpo: { cenarioId: id, justificativa: JUSTIFICATIVA },
+      });
+    }
+
+    const pagina = await pedir("/api/todogreen/deal-desk?limit=1&offset=0", { token: chefe.token });
+    const corpoPagina = await pagina.json();
+    expect(corpoPagina.pedidos).toHaveLength(1);
+    expect(corpoPagina.limit).toBe(1);
+    expect(corpoPagina.offset).toBe(0);
+    expect(corpoPagina.total).toBeGreaterThanOrEqual(3);
+
+    const filtrada = await pedir("/api/todogreen/deal-desk?status=pendente", { token: chefe.token });
+    const { pedidos } = await filtrada.json();
+    expect(pedidos.every((p) => p.situacao === "pendente")).toBe(true);
+  });
 });

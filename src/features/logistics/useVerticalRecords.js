@@ -8,9 +8,10 @@ import { useCallback, useEffect, useState } from "react";
 // portal do cliente cego para o que foi escrito por dentro.
 //
 // Este gancho é a fonte única. Ele carrega tudo numa chamada e devolve as
-// operações de escrita já com o recarregamento embutido: quem chama não
-// precisa lembrar de sincronizar, e é justamente esse "lembrar" que produzia
-// tela desatualizada.
+// operações de escrita já com o estado local atualizado: criar, atualizar e
+// arquivar aplicam o registro que o servidor devolveu direto na coleção em
+// memória, em vez de recarregar a vertical inteira a cada gravação — cinco
+// coleções e as simulações de novo, para uma escrita que mudou uma linha.
 
 const VAZIO = Object.freeze({
   opportunities: [],
@@ -68,10 +69,14 @@ export function useVerticalRecords(authHeaders, { ativo = true } = {}) {
   const criar = useCallback(
     async (colecao, corpo) => {
       const resposta = await pedir(`/${colecao}`, authHeaders, { method: "POST", body: corpo });
-      await recarregar();
-      return resposta.registro;
+      const registro = resposta.registro;
+      if (registro) {
+        setDados((atual) => ({ ...atual, [colecao]: [registro, ...(atual[colecao] || [])] }));
+        setErro("");
+      }
+      return registro;
     },
-    [authHeaders, recarregar],
+    [authHeaders],
   );
 
   const atualizar = useCallback(
@@ -80,18 +85,29 @@ export function useVerticalRecords(authHeaders, { ativo = true } = {}) {
         method: "PATCH",
         body: corpo,
       });
-      await recarregar();
-      return resposta.registro;
+      const registro = resposta.registro;
+      if (registro) {
+        setDados((atual) => ({
+          ...atual,
+          [colecao]: (atual[colecao] || []).map((item) => (item.id === id ? registro : item)),
+        }));
+        setErro("");
+      }
+      return registro;
     },
-    [authHeaders, recarregar],
+    [authHeaders],
   );
 
   const arquivar = useCallback(
     async (colecao, id) => {
       await pedir(`/${colecao}/${encodeURIComponent(id)}`, authHeaders, { method: "DELETE" });
-      await recarregar();
+      setDados((atual) => ({
+        ...atual,
+        [colecao]: (atual[colecao] || []).filter((item) => item.id !== id),
+      }));
+      setErro("");
     },
-    [authHeaders, recarregar],
+    [authHeaders],
   );
 
   return { dados, carregando, erro, recarregar, criar, atualizar, arquivar };
