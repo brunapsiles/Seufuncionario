@@ -129,15 +129,15 @@ export async function handleTodoGreenCore(request, env, user, url, dependencies)
           note=excluded.note,updated_at=excluded.updated_at`,
       ).bind(crypto.randomUUID(),TODO_GREEN_TENANT.id,normalized,role,body.status === "inactive" ? "inactive" : "active",
         JSON.stringify(permissions),String(body.note || "").trim().slice(0,240),user.id,now,now).run();
-      await dependencies.audit(env,ownerId,user,"todogreen_acesso_autorizado",normalized,`papel: ${role}`);
+      await dependencies.audit(env,access.ownerId,user,"todogreen_acesso_autorizado",normalized,`papel: ${role}`);
       return response({ ok:true,email:normalized,role,status:body.status === "inactive" ? "inactive" : "active",permissions },201);
     }
     if (request.method === "DELETE") {
       const normalized = email(url.searchParams.get("email"));
-      if (!normalized) return response({ error:"Informe o e-mail." },400);
+      if (!normalized) return response({ error:"Informe o e-mail."},400);
       await env.DB.prepare("DELETE FROM todogreen_access_emails WHERE tenant_id=? AND email=?")
         .bind(TODO_GREEN_TENANT.id,normalized).run();
-      await dependencies.audit(env,ownerId,user,"todogreen_acesso_removido",normalized,"");
+      await dependencies.audit(env,access.ownerId,user,"todogreen_acesso_removido",normalized,"");
       return response({ok:true});
     }
     return response({error:"Método não permitido."},405);
@@ -151,7 +151,7 @@ export async function handleTodoGreenCore(request, env, user, url, dependencies)
     const rows = await env.DB.prepare(
       `SELECT id,product_id,client_id,result_json,status,created_at FROM pricing_scenarios
        WHERE tenant_id=? AND workspace_owner_id=? ORDER BY created_at DESC LIMIT 200`,
-    ).bind(TODO_GREEN_TENANT.id,ownerId).all().catch(() => ({results:[]}));
+    ).bind(TODO_GREEN_TENANT.id,access.ownerId).all().catch(() => ({results:[]}));
     const pricingScenarios = (rows.results || []).map((row) => ({id:row.id,productId:row.product_id,
       clientId:row.client_id,status:row.status,result:parse(row.result_json,{}),createdAt:row.created_at}));
     return response({summary:summarizeTodoGreenDashboard({pricingScenarios})});
@@ -169,16 +169,16 @@ export async function handleTodoGreenCore(request, env, user, url, dependencies)
         (id,tenant_id,workspace_owner_id,product_id,client_id,opportunity_id,created_by,
          rule_version,inputs_json,result_json,approvals_json,status,created_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,'draft',?)`,
-      ).bind(scenario.id,TODO_GREEN_TENANT.id,ownerId,String(body.productId || ""),scenario.clientId,
+      ).bind(scenario.id,TODO_GREEN_TENANT.id,access.ownerId,String(body.productId || ""),scenario.clientId,
         scenario.opportunityId,user.id,scenario.ruleVersion,JSON.stringify(scenario.inputs),JSON.stringify(scenario.result),
         JSON.stringify(scenario.approvals),scenario.createdAt).run();
-      await dependencies.audit(env,ownerId,user,"todogreen_simulacao_criada",scenario.id,scenario.result.productName);
+      await dependencies.audit(env,access.ownerId,user,"todogreen_simulacao_criada",scenario.id,scenario.result.productName);
     }
     return response({scenario});
   }
   if (request.method === "POST" && resource === "audit") {
     const body = await request.json().catch(() => ({}));
-    await dependencies.audit(env,ownerId,user,String(body.action || "todogreen_event").slice(0,80),
+    await dependencies.audit(env,access.ownerId,user,String(body.action || "todogreen_event").slice(0,80),
       String(body.target || "").slice(0,160),String(body.details || "").slice(0,600));
     return response({ok:true});
   }
