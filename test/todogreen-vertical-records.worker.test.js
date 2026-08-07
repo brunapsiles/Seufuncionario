@@ -350,3 +350,60 @@ describe("a vertical inteira numa chamada só", () => {
     expect((await pedir("/api/todogreen/records")).status).toBe(401);
   });
 });
+
+describe("carteira: o vendedor nao ve a oportunidade do colega", () => {
+  it("lista so o que esta na propria carteira", async () => {
+    const agora = new Date().toISOString();
+    // Dois clientes no mesmo espaco da gestora.
+    const meu = crypto.randomUUID();
+    const doColega = crypto.randomUUID();
+    for (const [id, nome] of [[meu, "Cliente do vendedor"], [doColega, "Cliente do colega"]]) {
+      await env.DB.prepare(
+        `INSERT INTO todogreen_clients
+           (id, tenant_id, workspace_owner_id, name, legal_name, document, segment, status,
+            portal_enabled, created_by, updated_by, created_at, updated_at)
+         VALUES (?, 'todogreen', ?, ?, ?, '', 'varejo', 'ativo', 0, ?, ?, ?, ?)`,
+      ).bind(id, gestora.id, nome, nome, gestora.id, gestora.id, agora, agora).run();
+    }
+
+    // Um vendedor com carteira, no MESMO espaco da gestora — e por vinculo de
+    // tenant, nao por autorizacao de dominio, que daria a ele o proprio
+    // espaco em vez do da gestora.
+    const vendedor = await criarUsuario("rec-vendedor", "vendedor@parceiro.com.br");
+    await env.DB.prepare(
+      `INSERT INTO tenant_users
+         (id, tenant_id, workspace_owner_id, user_id, role, status, permissions_json, created_at, updated_at)
+       VALUES (?, 'todogreen', ?, ?, 'vendedor', 'active', ?, ?, ?)`,
+    )
+      .bind(crypto.randomUUID(), gestora.id, vendedor.id, JSON.stringify(["read", "crm:manage"]), agora, agora)
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO todogreen_client_assignments
+         (id, tenant_id, client_id, seller_email, status, note, assigned_by, created_at, updated_at)
+       VALUES (?, 'todogreen', ?, ?, 'active', '', ?, ?, ?)`,
+    ).bind(crypto.randomUUID(), meu, vendedor.email, gestora.id, agora, agora).run();
+
+    // A gestora registra duas oportunidades, uma para cada cliente.
+    for (const [cliente, nome] of [[meu, "Oportunidade minha"], [doColega, "Oportunidade do colega"]]) {
+      const r = await pedir("/api/todogreen/records/opportunities", {
+        metodo: "POST",
+        token: gestora.token,
+        corpo: { cliente: nome, clientId: cliente },
+      });
+      expect(r.status).toBe(201);
+    }
+
+    const lista = await pedir("/api/todogreen/records/opportunities", { token: vendedor.token });
+    expect(lista.status).toBe(200);
+    const nomes = (await lista.json()).registros.map((r) => r.cliente);
+    expect(nomes).toContain("Oportunidade minha");
+    // Mesmo espaco de trabalho, carteira diferente: nao aparece.
+    expect(nomes).not.toContain("Oportunidade do colega");
+  });
+
+  it("a gestora continua vendo a carteira inteira", async () => {
+    const lista = await pedir("/api/todogreen/records/opportunities", { token: gestora.token });
+    const nomes = (await lista.json()).registros.map((r) => r.cliente);
+    expect(nomes).toContain("Oportunidade do colega");
+  });
+});

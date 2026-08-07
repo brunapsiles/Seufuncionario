@@ -24,7 +24,7 @@
 //    a resposta é 409 e a tela recarrega — em vez de apagar em silêncio o que
 //    a outra pessoa acabou de escrever, que é o defeito do JSON único.
 
-import { TENANT_ID, podeNaVertical } from "./todogreen-access.js";
+import { TENANT_ID, podeNaVertical, recorteDeCarteira } from "./todogreen-access.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -261,13 +261,14 @@ const CENARIOS = {
   }),
 };
 
-const listarCenarios = async (env, ownerId) => {
+const listarCenarios = async (env, access, email) => {
+  const recorte = recorteDeCarteira(access, email, "pricing_scenarios");
   const { results } = await env.DB.prepare(
     `SELECT * FROM pricing_scenarios
-      WHERE tenant_id = ? AND workspace_owner_id = ?
+      WHERE tenant_id = ? AND workspace_owner_id = ? ${recorte.sql}
       ORDER BY created_at DESC LIMIT 200`,
   )
-    .bind(TENANT_ID, ownerId)
+    .bind(TENANT_ID, access.ownerId, ...recorte.params)
     .all();
   return (results || []).map(CENARIOS.daLinha);
 };
@@ -313,15 +314,37 @@ const criarCenario = async (env, access, user, corpo) => {
   return json({ registro: CENARIOS.daLinha(row) }, 201);
 };
 
-const listar = async (env, colecao, ownerId) => {
+// A leitura carrega o recorte de carteira além do escopo de espaço. São dois
+// cortes diferentes: o espaço separa empresas, a carteira separa vendedores
+// dentro da mesma empresa. Sem o segundo, um vendedor lista as oportunidades
+// dos colegas.
+const listar = async (env, colecao, access, email) => {
+  const recorte = recorteDeCarteira(access, email, "t");
   const { results } = await env.DB.prepare(
-    `SELECT * FROM ${colecao.tabela}
-      WHERE workspace_owner_id = ? AND archived_at IS NULL
-      ORDER BY ${colecao.ordem} LIMIT 500`,
+    `SELECT t.* FROM ${colecao.tabela} t
+      WHERE t.workspace_owner_id = ? AND t.archived_at IS NULL ${recorte.sql}
+      ORDER BY ${colecao.ordem.replace(/\b(updated_at|reference_month)\b/g, "t.$1")}
+      LIMIT 500`,
   )
-    .bind(ownerId)
+    .bind(access.ownerId, ...recorte.params)
     .all();
   return (results || []).map(colecao.daLinha);
+};
+
+// Confirma que o registro está na carteira de quem pede, ANTES de escrever.
+// 404 e não 403 quando está fora: dizer "existe mas não é sua" já entrega que
+// o registro existe.
+const noAlcanceDaCarteira = async (env, colecao, access, email, id) => {
+  const recorte = recorteDeCarteira(access, email, "t");
+  return env.DB
+    .prepare(
+      `SELECT t.id FROM ${colecao.tabela} t
+        WHERE t.id = ? AND t.workspace_owner_id = ? AND t.archived_at IS NULL ${recorte.sql}
+        LIMIT 1`,
+    )
+    .bind(id, access.ownerId, ...recorte.params)
+    .first()
+    .catch(() => null);
 };
 
 const criar = async (env, colecao, access, user, corpo) => {
@@ -357,8 +380,11 @@ const atualizar = async (env, colecao, access, user, id, corpo) => {
   )
     .bind(id, access.ownerId)
     .first();
-  // 404 e não 403: dizer "existe, mas não é seu" já entrega que existe.
+  // 404 e não 403: dizer "existe, mas não é seu" já entrega que existe. Vale
+  // tanto para registro de outro espaço quanto para cliente fora da carteira.
   if (!atual) return json({ error: "Registro não encontrado." }, 404);
+  if (!(await noAlcanceDaCarteira(env, colecao, access, user.email, id)))
+    return json({ error: "Registro não encontrado." }, 404);
 
   // A revisão vem de quem edita, não do banco. Se viesse do banco, o UPDATE
   // sempre casaria e a trava de concorrência não travaria nada — que é o
@@ -401,6 +427,8 @@ const atualizar = async (env, colecao, access, user, id, corpo) => {
 };
 
 const arquivar = async (env, colecao, access, user, id) => {
+  if (!(await noAlcanceDaCarteira(env, colecao, access, user.email, id)))
+    return json({ error: "Registro não encontrado." }, 404);
   const agora = new Date().toISOString();
   // Arquiva em vez de apagar: o histórico é a única defesa quando alguém
   // pergunta, meses depois, de onde veio um número.
@@ -427,15 +455,15 @@ export async function handleTodoGreenVerticalRecords(request, env, access, user)
     if (request.method !== "GET") return json({ error: "Método não permitido." }, 405);
     const nomes = Object.keys(COLECOES);
     const [listas, cenarios] = await Promise.all([
-      Promise.all(nomes.map((n) => listar(env, COLECOES[n], access.ownerId))),
-      listarCenarios(env, access.ownerId),
+      Promise.all(nomes.map((n) => listar(env, COLECOES[n], access, user.email))),
+      listarCenarios(env, access, user.email),
     ]);
     return json({ ...Object.fromEntries(nomes.map((n, i) => [n, listas[i]])), scenarios: cenarios });
   }
 
   if (nome === "scenarios") {
     if (request.method === "GET")
-      return json({ registros: await listarCenarios(env, access.ownerId) });
+      return json({ registros: await listarCenarios(env, access, user.email) });
     if (request.method === "POST") {
       if (!podeNaVertical(access, "pricing:simulate"))
         return json({ error: "Seu papel não pode salvar simulações." }, 403);
@@ -448,7 +476,7 @@ export async function handleTodoGreenVerticalRecords(request, env, access, user)
   if (!colecao) return json({ error: "Coleção desconhecida." }, 404);
 
   if (request.method === "GET")
-    return json({ registros: await listar(env, colecao, access.ownerId) });
+    return json({ registros: await listar(env, colecao, access, user.email) });
 
   // Leitura segue o vínculo; escrita exige permissão. Papel que só consulta
   // não altera premissa comercial.

@@ -16,8 +16,7 @@ import {
   situacaoDoPrazo,
   statusValido,
 } from "../../src/features/logistics/clientRequestDomain.js";
-
-const TENANT_ID = "todogreen";
+import { TENANT_ID, podeVerTodaCarteira, recorteDeCarteira } from "./todogreen-access.js";
 const MAX_LIMIT = 200;
 
 const response = (data, status = 200) =>
@@ -40,25 +39,11 @@ const parse = (value, fallback) => {
   }
 };
 
-const podeVerTudo = (access) =>
-  ["owner", "admin"].includes(access?.role) ||
-  access?.permissions?.includes("*") ||
-  access?.permissions?.includes("clients:manage") ||
-  access?.permissions?.includes("clients:assign");
-
-// O recorte da carteira. Um vendedor que não tem cliente atribuído recebe
-// lista vazia — nunca a caixa inteira "porque ainda não configuraram".
-const recorteDaCarteira = (access, email) => {
-  if (podeVerTudo(access)) return { sql: "", params: [] };
-  return {
-    sql: `AND EXISTS (
-            SELECT 1 FROM todogreen_client_assignments a
-             WHERE a.tenant_id = r.tenant_id AND a.client_id = r.client_id
-               AND a.status = 'active' AND lower(a.seller_email) = ?
-          )`,
-    params: [String(email || "").trim().toLowerCase()],
-  };
-};
+// A regra em si mora em `todogreen-access.js` — reaproveitada aqui em vez de
+// reimplementada, para que vendedor e gestora vejam a mesma carteira em toda
+// a vertical, não uma versão levemente diferente por arquivo.
+const podeVerTudo = podeVerTodaCarteira;
+const recorteDaCarteira = (access, email) => recorteDeCarteira(access, email, "r");
 
 const linhaParaSolicitacao = (linha) => ({
   id: linha.id,

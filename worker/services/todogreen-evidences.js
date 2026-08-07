@@ -21,7 +21,7 @@
 //    que busca e devolve o arquivo. Assim o link expira de verdade e cada
 //    abertura fica registrada.
 
-import { TENANT_ID, podeNaVertical } from "./todogreen-access.js";
+import { TENANT_ID, podeNaVertical, recorteDeCarteira } from "./todogreen-access.js";
 import {
   documentoValido,
   enderecoAceito,
@@ -272,13 +272,18 @@ export async function handleTodoGreenEvidences(request, env, access, user) {
 
   if (request.method === "GET" && !id) {
     const cliente = texto(url.searchParams.get("cliente"), 120);
+    // Sem este recorte, um vendedor que omitisse `?cliente=` (ou apontasse
+    // para o cliente de um colega) receberia o cofre inteiro do espaço —
+    // documento de cliente é exatamente o tipo de coisa que carteira nenhuma
+    // deveria enxergar fora da própria.
+    const recorte = recorteDeCarteira(access, user.email, "todogreen_evidences");
     const { results } = await env.DB.prepare(
       `SELECT * FROM todogreen_evidences
         WHERE workspace_owner_id = ? AND status = 'ativo'
-          AND (? = '' OR client_id = ?)
+          AND (? = '' OR client_id = ?) ${recorte.sql}
         ORDER BY emitido_em DESC, created_at DESC LIMIT 300`,
     )
-      .bind(access.ownerId, cliente, cliente)
+      .bind(access.ownerId, cliente, cliente, ...recorte.params)
       .all();
     return json({ documentos: (results || []).map(doBanco) });
   }
@@ -289,11 +294,18 @@ export async function handleTodoGreenEvidences(request, env, access, user) {
     return cadastrar(env, access, user, await request.json().catch(() => ({})));
   }
 
-  // Link temporário pedido por dentro (a equipe também baixa).
+  // Link temporário pedido por dentro (a equipe também baixa). O id vem direto
+  // na URL, então a listagem escopada não é suficiente sozinha — sem este
+  // recorte aqui, quem descobrisse (ou adivinhasse) o id de um documento fora
+  // da própria carteira ainda conseguiria emitir link para ele.
   if (request.method === "POST" && id && acao === "link") {
+    const recorte = recorteDeCarteira(access, user.email, "todogreen_evidences");
     const doc = await env.DB
-      .prepare("SELECT id, client_id FROM todogreen_evidences WHERE id = ? AND workspace_owner_id = ?")
-      .bind(id, access.ownerId)
+      .prepare(
+        `SELECT id, client_id FROM todogreen_evidences
+          WHERE id = ? AND workspace_owner_id = ? ${recorte.sql}`,
+      )
+      .bind(id, access.ownerId, ...recorte.params)
       .first();
     if (!doc) return json({ error: "Documento não encontrado." }, 404);
     const { token, expiraEm } = await emitirConcessao(env, {

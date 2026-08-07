@@ -13,7 +13,7 @@
 //     evento;
 //   • a decisão registra a versão vigente, e revisar reabre.
 
-import { TENANT_ID, podeNaVertical } from "./todogreen-access.js";
+import { TENANT_ID, podeNaVertical, podeVerTodaCarteira } from "./todogreen-access.js";
 import {
   SITUACOES,
   alcadaPorId,
@@ -128,6 +128,28 @@ const cenarioDoEspaco = (env, cenarioId, ownerId) =>
   )
     .bind(cenarioId, TENANT_ID, ownerId)
     .first();
+
+// Quem pode ENXERGAR um pedido específico por id — diferente de quem pode
+// DECIDIR sobre ele. Quem tem alçada decide fora da própria carteira de
+// propósito (a alçada é da operação, não do cliente), e essa pessoa também
+// precisa conseguir abrir o pedido para revisar. Fora isso, só quem abriu o
+// pedido ou quem tem o cliente dele na própria carteira. Sem este corte,
+// bastava digitar a URL com um id alheio para ler margem e condição
+// comercial de cliente que não é seu.
+async function pedidoVisivel(env, access, user, row) {
+  if (!row) return false;
+  if (podeVerTodaCarteira(access) || podeNaVertical(access, "deal:approve")) return true;
+  if (row.requester_id === user.id) return true;
+  const cenario = await cenarioDoEspaco(env, row.scenario_id, access.ownerId);
+  if (!cenario?.client_id) return false;
+  const atribuido = await env.DB.prepare(
+    `SELECT 1 FROM todogreen_client_assignments
+      WHERE tenant_id = ? AND client_id = ? AND status = 'active' AND lower(seller_email) = ? LIMIT 1`,
+  )
+    .bind(TENANT_ID, cenario.client_id, String(user.email || "").trim().toLowerCase())
+    .first();
+  return Boolean(atribuido);
+}
 
 async function abrir(env, access, user, corpo) {
   const cenarioId = texto(corpo.cenarioId, 120);
@@ -310,6 +332,8 @@ async function revisar(env, access, user, id, corpo) {
 async function comentar(env, access, user, id, corpo) {
   const row = await buscarPedido(env, id, access.ownerId);
   if (!row) return json({ error: "Pedido não encontrado." }, 404);
+  if (!(await pedidoVisivel(env, access, user, row)))
+    return json({ error: "Pedido não encontrado." }, 404);
   const mensagem = texto(corpo.texto, 4000);
   if (!mensagem) return json({ error: "Escreva o comentário." }, 400);
   await registrarEvento(env, {
@@ -360,18 +384,37 @@ export async function handleTodoGreenDealDesk(request, env, access, user) {
   const acao = texto(partes[4], 40);
 
   if (request.method === "GET" && !id) {
+    // Mesma regra de `pedidoVisivel`, em forma de filtro de lista: quem tem
+    // alçada (ou visão da carteira inteira) vê a fila toda; o resto vê o que
+    // pediu, mais o que é do cliente na própria carteira. Sem o "o que
+    // pediu", um vendedor deixaria de ver o próprio pedido assim que ele
+    // fosse de um cliente ainda não formalmente atribuído a ele.
+    const podeTudo = podeVerTodaCarteira(access) || podeNaVertical(access, "deal:approve");
+    const clausula = podeTudo
+      ? ""
+      : `AND (d.requester_id = ? OR EXISTS (
+              SELECT 1 FROM todogreen_client_assignments a
+               WHERE a.tenant_id = s.tenant_id AND a.client_id = s.client_id
+                 AND a.status = 'active' AND lower(a.seller_email) = ?
+            ))`;
+    const params = podeTudo ? [] : [user.id, String(user.email || "").trim().toLowerCase()];
     const { results } = await env.DB.prepare(
-      `SELECT * FROM todogreen_deal_desk_requests
-        WHERE workspace_owner_id = ? ORDER BY created_at DESC LIMIT 300`,
+      `SELECT d.* FROM todogreen_deal_desk_requests d
+         JOIN pricing_scenarios s
+           ON s.id = d.scenario_id AND s.tenant_id = d.tenant_id
+          AND s.workspace_owner_id = d.workspace_owner_id
+        WHERE d.workspace_owner_id = ? ${clausula}
+        ORDER BY d.created_at DESC LIMIT 300`,
     )
-      .bind(access.ownerId)
+      .bind(access.ownerId, ...params)
       .all();
     return json({ pedidos: (results || []).map(doBanco) });
   }
 
   if (request.method === "GET" && id && acao === "historico") {
     const pedido = await buscarPedido(env, id, access.ownerId);
-    if (!pedido) return json({ error: "Pedido não encontrado." }, 404);
+    if (!pedido || !(await pedidoVisivel(env, access, user, pedido)))
+      return json({ error: "Pedido não encontrado." }, 404);
     const { results } = await env.DB.prepare(
       `SELECT * FROM todogreen_deal_desk_events
         WHERE request_id = ? AND workspace_owner_id = ? ORDER BY created_at ASC LIMIT 500`,
@@ -383,7 +426,8 @@ export async function handleTodoGreenDealDesk(request, env, access, user) {
 
   if (request.method === "GET" && id) {
     const pedido = await buscarPedido(env, id, access.ownerId);
-    if (!pedido) return json({ error: "Pedido não encontrado." }, 404);
+    if (!pedido || !(await pedidoVisivel(env, access, user, pedido)))
+      return json({ error: "Pedido não encontrado." }, 404);
     return json({ pedido: doBanco(pedido) });
   }
 

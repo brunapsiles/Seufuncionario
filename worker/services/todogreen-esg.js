@@ -8,7 +8,10 @@
 // ambiental gravado sem entradas, sem versão de fator e sem passos não é
 // auditável — e um relatório construído sobre ele não se defende.
 
-import { exigirAcessoTodoGreen } from "./todogreen-access.js";
+import {
+  exigirAcessoTodoGreen,
+  recorteDeCarteira as recorteDeCarteiraCentral,
+} from "./todogreen-access.js";
 import {
   FATORES_PADRAO,
   calcularImpactoAmbiental,
@@ -516,24 +519,12 @@ export async function handleTodoGreenEsg(request, env) {
 }
 
 // Quem gere a operação relata qualquer cliente; o vendedor relata só a própria
-// carteira. O corte acontece no SQL, não na tela.
-const podeVerTodosOsClientes = (access) =>
-  ["owner", "admin"].includes(access?.role) ||
-  access?.permissions?.includes("*") ||
-  access?.permissions?.includes("clients:manage") ||
-  access?.permissions?.includes("clients:assign");
-
-const recorteDaCarteira = (access, user) => {
-  if (podeVerTodosOsClientes(access)) return { sql: "", params: [] };
-  return {
-    sql: `AND EXISTS (
-            SELECT 1 FROM todogreen_client_assignments a
-             WHERE a.tenant_id = c.tenant_id AND a.client_id = c.id
-               AND a.status = 'active' AND lower(a.seller_email) = ?
-          )`,
-    params: [String(user?.email || "").trim().toLowerCase()],
-  };
-};
+// carteira. O corte acontece no SQL, não na tela. A regra em si mora em
+// `todogreen-access.js` — aqui só se ajusta o alias (`c`, a própria tabela de
+// clientes) e a coluna (`id`, não `client_id`, porque a consulta já É sobre
+// `todogreen_clients`).
+const recorteDaCarteira = (access, user) =>
+  recorteDeCarteiraCentral(access, user?.email, "c", "id");
 
 async function clienteNoAlcance(env, access, user, clientId) {
   const recorte = recorteDaCarteira(access, user);

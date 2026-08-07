@@ -67,18 +67,19 @@ const JUSTIFICATIVA = "Cliente estratégico com volume garantido por 24 meses e 
 
 // Cria a simulação direto no banco: aqui o assunto é a aprovação, não o
 // caminho da calculadora, que já tem teste próprio.
-async function cenario({ margem = 15, preco = 300000, dono, espaco } = {}) {
+async function cenario({ margem = 15, preco = 300000, dono, espaco, clienteId = "cli-1" } = {}) {
   const id = crypto.randomUUID();
   const agora = new Date().toISOString();
   await env.DB.prepare(
     `INSERT INTO pricing_scenarios
        (id, tenant_id, workspace_owner_id, product_id, client_id, opportunity_id, created_by,
         rule_version, inputs_json, result_json, approvals_json, premises_json, status, created_at)
-     VALUES (?, 'todogreen', ?, 'middle-mile', 'cli-1', '', ?, 'v1', '{}', ?, '{}', '{}', 'draft', ?)`,
+     VALUES (?, 'todogreen', ?, 'middle-mile', ?, '', ?, 'v1', '{}', ?, '{}', '{}', 'draft', ?)`,
   )
     .bind(
       id,
       espaco || dona.id,
+      clienteId,
       dono.id,
       JSON.stringify({
         marginPercent: margem,
@@ -394,5 +395,46 @@ describe("a fila", () => {
     const { pedidos } = await lista.json();
     expect(pedidos.length).toBeGreaterThan(0);
     expect(pedidos.every((p) => p.solicitanteId === vendedor.id)).toBe(true);
+  });
+
+  it("vendedor sem alçada não vê pedido de cliente fora da própria carteira, mas quem tem alçada vê", async () => {
+    const colega = await criarUsuario("dd-colega", "colega@parceiro.com.br");
+    await vincular(colega, "vendedor", ["pricing:simulate"], dona.id);
+    const agora = new Date().toISOString();
+    await env.DB.prepare(
+      `INSERT INTO todogreen_clients
+         (id, tenant_id, workspace_owner_id, name, legal_name, document, segment, status,
+          portal_enabled, created_by, updated_by, created_at, updated_at)
+       VALUES ('cli-so-do-colega', 'todogreen', ?, 'Cliente do colega', 'Cliente do colega', '', 'varejo',
+               'ativo', 0, ?, ?, ?, ?)`,
+    )
+      .bind(dona.id, dona.id, dona.id, agora, agora)
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO todogreen_client_assignments
+         (id, tenant_id, client_id, seller_email, status, assigned_by, created_at, updated_at)
+       VALUES (?, 'todogreen', 'cli-so-do-colega', ?, 'active', ?, ?, ?)`,
+    )
+      .bind(crypto.randomUUID(), colega.email, dona.id, agora, agora)
+      .run();
+
+    const id = await cenario({ dono: colega, clienteId: "cli-so-do-colega" });
+    await pedir("/api/todogreen/deal-desk", {
+      metodo: "POST",
+      token: colega.token,
+      corpo: { cenarioId: id, justificativa: JUSTIFICATIVA },
+    });
+
+    // O vendedor original não tem "cli-so-do-colega" na carteira e não foi
+    // quem pediu: o pedido do colega não aparece na fila dele.
+    const listaVendedor = await pedir("/api/todogreen/deal-desk", { token: vendedor.token });
+    const { pedidos: pedidosVendedor } = await listaVendedor.json();
+    expect(pedidosVendedor.some((p) => p.solicitanteId === colega.id)).toBe(false);
+
+    // Quem tem alçada (deal:approve) vê a fila inteira, carteira à parte —
+    // é assim que aprovação funciona: por operação, não por cliente.
+    const listaChefe = await pedir("/api/todogreen/deal-desk", { token: chefe.token });
+    const { pedidos: pedidosChefe } = await listaChefe.json();
+    expect(pedidosChefe.some((p) => p.solicitanteId === colega.id)).toBe(true);
   });
 });

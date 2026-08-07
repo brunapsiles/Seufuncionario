@@ -178,6 +178,35 @@ export async function exigirAcessoTodoGreen(request, env) {
   return { user, access };
 }
 
+// Quem enxerga a carteira inteira: quem gere clientes. Um vendedor vê só os
+// clientes atribuídos a ele. É a mesma regra em requests, ESG, records e
+// evidências — tê-la num lugar só evita que uma consulta esqueça o recorte e
+// devolva a carteira alheia.
+export const podeVerTodaCarteira = (access) =>
+  ["owner", "admin"].includes(access?.role) ||
+  (Array.isArray(access?.permissions) &&
+    (access.permissions.includes("*") ||
+      access.permissions.includes("clients:manage") ||
+      access.permissions.includes("clients:assign")));
+
+// O recorte, como pedaço de SQL para juntar à consulta. `alias` é o nome da
+// tabela na query (r, o, e...) e `colunaCliente` é a coluna que guarda o
+// identificador do cliente nessa tabela — `client_id` na maioria das
+// tabelas da vertical, mas `id` quando a própria consulta já é sobre
+// `todogreen_clients`. Vendedor sem cliente atribuído recebe lista vazia —
+// nunca a caixa inteira "porque ainda não configuraram".
+export const recorteDeCarteira = (access, email, alias, colunaCliente = "client_id") => {
+  if (podeVerTodaCarteira(access)) return { sql: "", params: [] };
+  return {
+    sql: `AND EXISTS (
+            SELECT 1 FROM todogreen_client_assignments a
+             WHERE a.tenant_id = ${alias}.tenant_id AND a.client_id = ${alias}.${colunaCliente}
+               AND a.status = 'active' AND lower(a.seller_email) = ?
+          )`,
+    params: [String(email || "").trim().toLowerCase()],
+  };
+};
+
 // Permissão de verdade, lida do vínculo — nunca de rótulo de tela. Delega para
 // a mesma regra que o front usa: uma divergência entre as duas seria um botão
 // liberado na tela que o servidor recusa (ou o contrário).
