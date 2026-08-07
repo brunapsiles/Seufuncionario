@@ -21,7 +21,25 @@ async function createUser(id, email, role, permissions) {
       (id,tenant_id,email,role,status,permissions_json,note,created_by,created_at,updated_at)
      VALUES (?,'todogreen',?,?,'active',?,'',?,?,?)`,
   ).bind(crypto.randomUUID(), email, role, JSON.stringify(permissions), id, now, now).run();
-  return { id, email, token };
+  return { id, email, token, role, permissions };
+}
+
+async function linkUserToWorkspace(user, workspaceOwnerId, invitedBy) {
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO tenant_users
+      (id,tenant_id,workspace_owner_id,user_id,role,status,permissions_json,invited_by,created_at,updated_at)
+     VALUES (?,'todogreen',?,?,?,'active',?,?,?,?)`,
+  ).bind(
+    crypto.randomUUID(),
+    workspaceOwnerId,
+    user.id,
+    user.role,
+    JSON.stringify(user.permissions),
+    invitedBy,
+    now,
+    now,
+  ).run();
 }
 
 const call = (path, { method = "GET", token, body } = {}) => worker.fetch(
@@ -57,6 +75,12 @@ beforeAll(async () => {
     "vendedor",
     ["read", "goal:read", "goal:checkin"],
   );
+  // A autorização por e-mail permite entrar na vertical. O vínculo ao tenant
+  // define em qual workspace a pessoa trabalha. Sem ele cada vendedor teria
+  // um espaço próprio vazio e, corretamente, não encontraria a meta criada
+  // pela gestão no workspace da empresa.
+  await linkUserToWorkspace(seller, admin.id, admin.id);
+  await linkUserToWorkspace(otherSeller, admin.id, admin.id);
 });
 
 describe("Metas To Do Green", () => {
