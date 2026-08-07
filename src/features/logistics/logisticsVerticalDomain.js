@@ -41,13 +41,13 @@ export const TODO_GREEN_ROLES = [
 export const TODO_GREEN_PERMISSIONS = {
   owner: ["*"],
   admin: ["*"],
-  lideranca_comercial: ["read", "deal:approve", "pricing:simulate", "proposal:create"],
-  vendedor: ["read", "pricing:simulate", "proposal:create"],
-  pricing: ["read", "pricing:simulate", "pricing:manage", "deal:review"],
-  financeiro: ["read", "cost:manage", "revenue:manage", "commission:manage", "deal:review"],
-  operacoes: ["read", "operation:manage", "deal:review", "evidence:manage"],
-  sustentabilidade: ["read", "esg:manage", "deal:review", "audit:read", "evidence:manage"],
-  auditor: ["read", "audit:read", "export:read"],
+  lideranca_comercial: ["read", "deal:approve", "pricing:simulate", "proposal:create", "goal:read", "goal:create", "goal:update", "goal:checkin", "goal:approve", "goal:close", "goal:manage-team", "goal:export"],
+  vendedor: ["read", "pricing:simulate", "proposal:create", "goal:read", "goal:checkin"],
+  pricing: ["read", "pricing:simulate", "pricing:manage", "deal:review", "goal:read", "goal:checkin"],
+  financeiro: ["read", "cost:manage", "revenue:manage", "commission:manage", "deal:review", "goal:read", "goal:checkin", "goal:validate"],
+  operacoes: ["read", "operation:manage", "deal:review", "evidence:manage", "goal:read", "goal:checkin", "goal:validate"],
+  sustentabilidade: ["read", "esg:manage", "deal:review", "audit:read", "evidence:manage", "goal:read", "goal:checkin", "goal:validate"],
+  auditor: ["read", "audit:read", "export:read", "goal:read", "goal:export"],
 };
 
 // A regra de permissão da vertical, uma só, usada pelo front e pelo worker.
@@ -203,7 +203,12 @@ export const TODO_GREEN_MODULE_CATALOG = [
     order: 18,
     permissions: ["read", "deal:approve", "deal:review"],
   }),
-  module("metas", "Metas", "comercial", "/todogreen/dashboard", { icon: "Target", order: 19 }),
+  module("metas", "Metas", "comercial", "/todogreen/metas", {
+    icon: "Target",
+    order: 19,
+    description: "Metas por empresa, área, equipe, pessoa, cliente, contrato, produto ou operação, com medição, check-ins, planos de ação e histórico.",
+    permissions: ["goal:read", "goal:create", "goal:checkin", "goal:manage-team"],
+  }),
   module("remuneracao", "Remuneração Variável", "comercial", "/todogreen/comissoes", {
     icon: "WalletCards",
     order: 20,
