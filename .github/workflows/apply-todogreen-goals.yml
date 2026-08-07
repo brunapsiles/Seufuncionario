@@ -5,6 +5,7 @@ on:
     branches: [feat/todogreen-metas]
     paths:
       - scripts/apply-todogreen-goals.mjs
+      - scripts/fix-todogreen-goals.mjs
       - .github/workflows/apply-todogreen-goals.yml
   workflow_dispatch:
 
@@ -39,7 +40,10 @@ jobs:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
 
       - name: Integrar Metas aos arquivos existentes
-        run: node scripts/apply-todogreen-goals.mjs
+        run: |
+          node scripts/apply-todogreen-goals.mjs
+          node scripts/fix-todogreen-goals.mjs
+          rm scripts/apply-todogreen-goals.mjs scripts/fix-todogreen-goals.mjs
 
       - name: Lint
         run: npm run lint
@@ -53,8 +57,8 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Remover instalador temporário
-        run: rm scripts/apply-todogreen-goals.mjs .github/workflows/apply-todogreen-goals.yml
+      - name: Remover workflow temporário
+        run: rm .github/workflows/apply-todogreen-goals.yml
 
       - name: Gravar integração validada
         run: |
