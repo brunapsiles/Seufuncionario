@@ -11,6 +11,7 @@ import { handleTodoGreenEsg } from "./todogreen-esg.js";
 import { handleTodoGreenPricingParameters } from "./todogreen-pricing-parameters.js";
 import { handleTodoGreenDashboards } from "./todogreen-dashboards.js";
 import { handleTodoGreenRequests } from "./todogreen-requests.js";
+import { handleTodoGreenVerticalRecords } from "./todogreen-vertical-records.js";
 
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
   status,
@@ -58,6 +59,14 @@ export async function routeTodoGreenApi(request, env) {
       const resolved = await internalAccess(request, env);
       if (resolved.response) return resolved.response;
       return handleTodoGreenFleet(request, env, resolved.access, resolved.user);
+    });
+  }
+
+  if (path.startsWith("/api/todogreen/records")) {
+    return guarded("To Do Green records error", "Não foi possível carregar os registros da vertical.", async () => {
+      const resolved = await internalAccess(request, env);
+      if (resolved.response) return resolved.response;
+      return handleTodoGreenVerticalRecords(request, env, resolved.access, resolved.user);
     });
   }
 
