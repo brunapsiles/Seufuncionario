@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { api, contaNova, criarConta, habilitarTodoGreen } from "./apoio.js";
+import { contaNova, criarConta, habilitarTodoGreen } from "./apoio.js";
 
 // A vertical inteira, do login à tela que calcula. É o caminho que os dois
 // refactors seguintes — ligar entidades por ID e separar os arquivos
@@ -21,33 +21,13 @@ import { api, contaNova, criarConta, habilitarTodoGreen } from "./apoio.js";
 // pior estrago que uma suíte pode causar.
 //
 // Para investigar: `npx playwright test e2e/vertical.spec.js --grep <nome>`.
-
-// A barra de navegação da vertical. Os botões têm rótulo de ação ("Abrir
-// Painel"), então o nome acessível não é igual ao texto visível.
-const abas = (page) => page.getByRole("navigation", { name: /Navegação To Do Green/ });
+//
+// Os testes de CONTROLE DE ACESSO saíram daqui para `vertical-acesso.spec.js`
+// — poucos, sem formulário de produto, estáveis o bastante para travar
+// publicação. Regra de isolamento quebrada não podia esperar o resto da
+// suíte ficar estável para virar gate; o que enche tela de campo é que pode.
 
 test.describe.fixme("vertical To Do Green", () => {
-  test("quem não tem o negócio no espaço não entra na vertical", async ({ page }) => {
-    await criarConta(page, contaNova("sem-vertical"));
-
-    const acesso = await api(page, "/api/todogreen/access");
-    expect(acesso.status).toBe(403);
-
-    await page.goto("/todogreen/dashboard");
-    await expect(page.locator(".tdg-tabs")).toHaveCount(0);
-  });
-
-  test("com o negócio no espaço, a vertical abre com as abas", async ({ page }) => {
-    await criarConta(page, contaNova("com-vertical"));
-    await habilitarTodoGreen(page);
-
-    await page.goto("/todogreen/dashboard");
-    await expect(page.locator(".tdg-tabs")).toBeVisible();
-    // O rótulo acessível é "Abrir Painel": a barra descreve a ação, não só o
-    // destino.
-    await expect(abas(page).getByRole("button", { name: /Painel$/ }).first()).toBeVisible();
-  });
-
   test("nenhuma aba aparece com rótulo quebrado", async ({ page }) => {
     await criarConta(page, contaNova("abas"));
     await habilitarTodoGreen(page);
@@ -98,42 +78,5 @@ test.describe.fixme("vertical To Do Green", () => {
     await page.getByRole("button", { name: /Registrar oportunidade/ }).click();
 
     await expect(page.getByText("Distribuidora E2E")).toBeVisible();
-  });
-
-  test("a aba de Acessos não aparece para quem não gerencia acessos", async ({ page }) => {
-    await criarConta(page, contaNova("acessos"));
-    await habilitarTodoGreen(page);
-    await page.goto("/todogreen/dashboard");
-    await expect(page.locator(".tdg-tabs")).toBeVisible();
-
-    const acesso = await api(page, "/api/todogreen/access");
-    const papel = acesso.corpo?.role;
-    const aba = abas(page).getByRole("button", { name: /Acessos$/ });
-    // A visibilidade segue o papel do vínculo, não a presença da palavra
-    // "admin" em algum canto da tela.
-    if (["admin", "owner"].includes(papel)) await expect(aba).toBeVisible();
-    else await expect(aba).toHaveCount(0);
-  });
-});
-
-test.describe.fixme("espaço de trabalho de outra pessoa", () => {
-  test("trocar o parâmetro na URL não dá acesso ao espaço alheio", async ({ page, browser }) => {
-    // Uma conta cria o próprio espaço.
-    const outra = await browser.newContext();
-    const paginaOutra = await outra.newPage();
-    await criarConta(paginaOutra, contaNova("alvo"));
-    await habilitarTodoGreen(paginaOutra);
-    const idAlvo = (await api(paginaOutra, "/api/todogreen/access")).corpo?.ownerId;
-    await outra.close();
-
-    // A minha sessão tenta operar o espaço dela pela query string.
-    await criarConta(page, contaNova("curioso"));
-    await habilitarTodoGreen(page);
-
-    if (idAlvo) {
-      const r = await api(page, `/api/todogreen/pricing-parameters?owner=${idAlvo}`);
-      expect(r.status).toBe(403);
-      expect(String(r.corpo?.error)).toMatch(/não pertence à sua conta/i);
-    }
   });
 });

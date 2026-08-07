@@ -1118,18 +1118,26 @@ function useDatabase() {
     let cancelled = false;
     fetch("/api/auth/session", { headers: authHeaders() })
       .then(async (response) => ({
+        status: response.status,
         ok: response.ok,
         data: await response.json().catch(() => ({})),
       }))
-      .then(({ ok, data }) => {
+      .then(({ status, ok, data }) => {
         if (cancelled) return;
-        if (!ok) {
+        // Só 401 é o servidor dizendo "esta sessão não existe mais" — os
+        // outros erros (429 de limite de tentativas, 5xx passageiro, banco
+        // fora do ar por um instante) não provam nada sobre o token, e
+        // derrubar a sessão por causa deles tira do ar quem só teve azar de
+        // pegar o servidor num pico. Sem essa distinção, um limite de
+        // tentativas por IP compartilhado (escritório, rede móvel) já bastava
+        // para deslogar todo mundo daquele IP no minuto seguinte.
+        if (status === 401) {
           localStorage.removeItem(AUTH_TOKEN_KEY);
           localStorage.removeItem(ACTIVE_USER_KEY);
           setDb(cleanDb(null));
           return;
         }
-        if (data.user) setDb((current) => ({ ...current, user: data.user }));
+        if (ok && data.user) setDb((current) => ({ ...current, user: data.user }));
       })
       .catch(() => {});
     return () => {

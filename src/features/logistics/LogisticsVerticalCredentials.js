@@ -151,6 +151,14 @@ const ensureCredentialsLogin = () => {
   if (!isTodoGreenRoute()) return false;
   const card = document.querySelector(".tdg-denied-card");
   if (!card) return false;
+  // "Confirmando seu acesso..." usa o mesmo cartão que "acesso negado" — a
+  // diferença é só o `aria-busy` no <main> pai, ligado enquanto a checagem
+  // ainda está no ar. Sem essa distinção, QUALQUER pessoa autorizada via
+  // "Login privado" nesse instante normal de carregamento, antes do painel
+  // de verdade aparecer. Devolver falso aqui deixa `scheduleEnsure` tentar de
+  // novo — se a resposta for negação de verdade, o cartão perde o
+  // `aria-busy` e a próxima tentativa mostra o formulário.
+  if (card.closest('[aria-busy="true"]')) return false;
   setTextIfChanged(card.querySelector("h1"), "Acesso To Do Green");
   setTextIfChanged(card.querySelector(".tdg-kicker"), "LOGIN PRIVADO");
   if (!card.querySelector(".tdg-login-box")) renderLogin(card);

@@ -15,7 +15,8 @@
     "deploy": "npm run verify && npm run build && npm run deploy:cloudflare",
     "deploy:cloudflare": "npx wrangler d1 migrations apply seu-funcionario-db --remote && npx wrangler deploy",
     "db:migrate": "npx wrangler d1 migrations apply seu-funcionario-db --remote",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:acesso": "playwright test e2e/vertical-acesso.spec.js"
   },
   "dependencies": {
     "@block65/webcrypto-web-push": "^1.0.2",

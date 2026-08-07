@@ -492,8 +492,15 @@ async function handleAuth(request, env, url) {
       { error: "O serviço de contas ainda não está configurado." },
       503,
     );
-  const ip = request.headers.get("cf-connecting-ip") || "local-auth";
-  if (!allowed(`auth:${ip}`))
+  const ip = request.headers.get("cf-connecting-ip");
+  // Em produção o Cloudflare sempre carimba este cabeçalho — é a borda dele
+  // que grava, o cliente não escreve por cima. A ausência só acontece em dev
+  // local (`wrangler dev` não simula a borda), onde toda a suíte de E2E bate
+  // no mesmo processo sem IP nenhum e cairia no mesmo balde. Um limite de 8
+  // por minuto pensado para um IP de verdade travava a própria suíte de teste
+  // muito antes de travar um ataque — daí o teto bem mais largo só quando não
+  // há IP de borda para diferenciar quem está pedindo.
+  if (!allowed(`auth:${ip || "local-auth"}`, ip ? 8 : 200))
     return json(
       { error: "Muitas tentativas. Aguarde um minuto e tente novamente." },
       429,
