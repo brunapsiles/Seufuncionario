@@ -50,16 +50,20 @@ async function vincularAoPortal(email, clienteId, convidadoPor, papel = "cliente
   ).bind(crypto.randomUUID(), clienteId, email, papel, convidadoPor, agora, agora).run();
 }
 
-const pedir = (caminho, token) =>
-  worker.fetch(
+const pedir = (caminho, token, { metodo = "GET", corpo } = {}) => {
+  const headers = { "cf-connecting-ip": nextIp() };
+  if (token) headers.authorization = `Bearer ${token}`;
+  if (corpo !== undefined) headers["content-type"] = "application/json";
+  return worker.fetch(
     new Request(`https://app.test${caminho}`, {
-      headers: token
-        ? { authorization: `Bearer ${token}`, "cf-connecting-ip": nextIp() }
-        : { "cf-connecting-ip": nextIp() },
+      method: metodo,
+      headers,
+      body: corpo === undefined ? undefined : JSON.stringify(corpo),
     }),
     env,
     { waitUntil() {}, passThroughOnException() {} },
   );
+};
 
 let dona;
 let consultor;
@@ -76,6 +80,13 @@ beforeAll(async () => {
   ).bind(agora, agora).run();
 
   dona = await criarUsuario("mp-dona", "dona@todogreen.exemplo");
+  // A dona opera a vertical por dentro (cadastra clientes e libera acesso),
+  // entao precisa de vinculo admin — o portal do cliente e outra porta.
+  await env.DB.prepare(
+    `INSERT INTO todogreen_access_emails
+       (id, tenant_id, email, role, status, permissions_json, note, created_by, created_at, updated_at)
+     VALUES (?, 'todogreen', ?, 'admin', 'active', '["*"]', '', ?, ?, ?)`,
+  ).bind(crypto.randomUUID(), dona.email, dona.id, agora, agora).run();
   alfa = await criarCliente("Alfa Distribuidora", dona.id);
   beta = await criarCliente("Beta Logistica", dona.id);
   alheia = await criarCliente("Gama Alheia", dona.id);
@@ -175,4 +186,80 @@ describe("o escopo escolhido vale para os dados, não só para o cabeçalho", ()
     expect(refsAlfa).not.toContain("OP-BETA");
     expect(refsBeta).not.toContain("OP-ALFA");
   });
+
+describe("cadastrar o mesmo e-mail em mais de uma empresa", () => {
+  it("a dona cadastra um novo e-mail em duas empresas sem o INSERT quebrar", async () => {
+    const novo = "gestor@grupo.com.br";
+    // A restricao virou (tenant_id, client_id, email). Antes o ON CONFLICT
+    // ainda nomeava (tenant_id, email), que nao existe mais — o INSERT
+    // quebrava em runtime e o cadastro multiempresa simplesmente nao acontecia.
+    const emAlfa = await pedir("/api/todogreen/clients", dona.token, {
+      metodo: "PUT",
+      corpo: { clienteId: alfa, email: novo, papel: "cliente_admin" },
+    });
+    expect(emAlfa.status).toBe(200);
+    const emBeta = await pedir("/api/todogreen/clients", dona.token, {
+      metodo: "PUT",
+      corpo: { clienteId: beta, email: novo, papel: "cliente_admin" },
+    });
+    expect(emBeta.status).toBe(200);
+
+    const linhas = await env.DB.prepare(
+      "SELECT client_id FROM todogreen_client_users WHERE email = ? ORDER BY client_id",
+    ).bind(novo).all();
+    expect((linhas.results || []).map((r) => r.client_id).sort()).toEqual([alfa, beta].sort());
+  });
+
+  it("recadastrar na mesma empresa atualiza a linha, nao duplica", async () => {
+    const email = "unico@grupo.com.br";
+    await pedir("/api/todogreen/clients", dona.token, {
+      metodo: "PUT",
+      corpo: { clienteId: alfa, email, papel: "cliente_leitor" },
+    });
+    await pedir("/api/todogreen/clients", dona.token, {
+      metodo: "PUT",
+      corpo: { clienteId: alfa, email, papel: "cliente_admin" },
+    });
+    const linhas = await env.DB.prepare(
+      "SELECT role FROM todogreen_client_users WHERE email = ? AND client_id = ?",
+    ).bind(email, alfa).all();
+    expect(linhas.results).toHaveLength(1);
+    expect(linhas.results[0].role).toBe("cliente_admin");
+  });
+
+  it("remover de uma empresa nao remove das outras", async () => {
+    const email = "duasempresas@grupo.com.br";
+    await pedir("/api/todogreen/clients", dona.token, {
+      metodo: "PUT",
+      corpo: { clienteId: alfa, email, papel: "cliente_admin" },
+    });
+    await pedir("/api/todogreen/clients", dona.token, {
+      metodo: "PUT",
+      corpo: { clienteId: beta, email, papel: "cliente_admin" },
+    });
+
+    const remocao = await pedir(
+      `/api/todogreen/clients?email=${encodeURIComponent(email)}&cliente=${alfa}`,
+      dona.token,
+      { metodo: "DELETE" },
+    );
+    expect(remocao.status).toBe(200);
+
+    const restantes = await env.DB.prepare(
+      "SELECT client_id FROM todogreen_client_users WHERE email = ?",
+    ).bind(email).all();
+    // Saiu da Alfa, continua na Beta.
+    expect((restantes.results || []).map((r) => r.client_id)).toEqual([beta]);
+  });
+
+  it("remover sem dizer a empresa e recusado", async () => {
+    const r = await pedir(
+      `/api/todogreen/clients?email=${encodeURIComponent(consultor.email)}`,
+      dona.token,
+      { metodo: "DELETE" },
+    );
+    // Antes isto apagava de todas as empresas de uma vez.
+    expect(r.status).toBe(400);
+  });
+});
 });

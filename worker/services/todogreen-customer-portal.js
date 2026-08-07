@@ -1057,8 +1057,7 @@ export async function handleTodoGreenClients(request, env, access, user) {
          (id, tenant_id, client_id, email, role, status, permissions_json, note,
           invited_by, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(tenant_id, email) DO UPDATE SET
-         client_id = excluded.client_id,
+       ON CONFLICT(tenant_id, client_id, email) DO UPDATE SET
          role = excluded.role,
          status = excluded.status,
          permissions_json = excluded.permissions_json,
@@ -1084,11 +1083,13 @@ export async function handleTodoGreenClients(request, env, access, user) {
 
   if (request.method === "DELETE") {
     const email = normalizeEmail(url.searchParams.get("email"));
+    const clientId = clean(url.searchParams.get("cliente") ?? url.searchParams.get("clientId"), 60);
     if (!email) return response({ error: "Informe o e-mail." }, 400);
+    if (!clientId) return response({ error: "Informe de qual empresa remover o acesso." }, 400);
     await env.DB.prepare(
-      "DELETE FROM todogreen_client_users WHERE tenant_id = ? AND email = ?",
+      "DELETE FROM todogreen_client_users WHERE tenant_id = ? AND client_id = ? AND email = ?",
     )
-      .bind(TENANT_ID, email)
+      .bind(TENANT_ID, clientId, email)
       .run();
     return response({ ok: true });
   }
