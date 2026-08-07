@@ -88,8 +88,11 @@ async function seedCatalog(env) {
 }
 
 export async function handleTodoGreenCore(request, env, user, url, dependencies) {
-  const ownerId = url.searchParams.get("owner") || user.id;
-  const access = await resolveCoreAccess(env, user, ownerId);
+  // Ausência de `owner` significa usar o workspace definido pelo vínculo.
+  // Transformar a ausência em `user.id` fazia cada colaborador abrir um espaço
+  // próprio vazio, mesmo quando `tenant_users` o ligava ao espaço da empresa.
+  const requestedOwnerId = url.searchParams.get("owner");
+  const access = await resolveCoreAccess(env, user, requestedOwnerId);
   if (!access) return response({ error: "Você não tem acesso à To Do Green." }, 403);
   const resource = url.pathname.split("/").filter(Boolean)[2] || "access";
 
