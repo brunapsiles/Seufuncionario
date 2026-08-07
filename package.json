@@ -14,7 +14,8 @@
     "test:worker": "vitest run --config vitest.worker.config.js",
     "deploy": "npm run verify && npm run build && npm run deploy:cloudflare",
     "deploy:cloudflare": "npx wrangler d1 migrations apply seu-funcionario-db --remote && npx wrangler deploy",
-    "db:migrate": "npx wrangler d1 migrations apply seu-funcionario-db --remote"
+    "db:migrate": "npx wrangler d1 migrations apply seu-funcionario-db --remote",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@block65/webcrypto-web-push": "^1.0.2",
@@ -34,6 +35,7 @@
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.18.6",
     "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.62.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "eslint": "^9.39.5",

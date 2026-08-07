@@ -12,6 +12,13 @@ export default [
       "coverage/**",
       "video-ai/**",
       "public/pdf.worker*",
+      // Empacotamento temporário do `wrangler dev`. Sem ignorar, quem sobe o
+      // servidor local passa a ver 20 erros de lint em código que não é dele.
+      ".wrangler/**",
+      // Rastros e capturas de tela que o Playwright grava quando um teste
+      // falha.
+      "test-results/**",
+      "playwright-report/**",
     ],
   },
   js.configs.recommended,

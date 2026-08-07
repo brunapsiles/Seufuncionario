@@ -8,10 +8,20 @@ on:
 permissions:
   contents: read
 
+# Um push novo cancela a verificação do anterior. Sem isto, a fila enche de
+# runs conferindo commit que já foi substituído — e cada um deles ainda
+# concorre pelo mesmo runner com o que interessa.
+concurrency:
+  group: qualidade-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Os dois últimos runs foram cancelados em 15min01s e 15min03s: o limite
+    # anterior era exatamente 15, e a suíte cresceu além dele. O runner tem
+    # metade dos núcleos desta máquina, então o tempo daqui não serve de régua.
+    timeout-minutes: 30
     steps:
       - name: Baixar código
         uses: actions/checkout@v4
@@ -22,9 +32,17 @@ jobs:
           cache: npm
       - name: Instalar dependências
         run: npm ci
+        env:
+          # O Playwright entrou no projeto para os testes de ponta a ponta.
+          # Sem isto, toda instalação baixaria navegador que este job não usa.
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
       - name: Lint (trava em erros; avisos não bloqueiam)
         run: npm run lint
-      - name: Testar
-        run: npm test
+      # Separados para a falha dizer qual camada quebrou sem precisar abrir o
+      # log inteiro.
+      - name: Testes de interface e domínio
+        run: npm run test:unit
+      - name: Testes de worker
+        run: npm run test:worker
       - name: Construir
         run: npm run build
