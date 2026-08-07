@@ -1,0 +1,140 @@
+/* ===== Personalizar menu ===== */
+.ms-bloco {
+  margin-bottom: 26px;
+}
+.ms-bloco h3 {
+  font-size: 0.98rem;
+  margin: 0 0 6px;
+}
+.ms-bloco > p.muted {
+  margin: 0 0 10px;
+  font-size: 0.86rem;
+}
+.ms-escolhidos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ms-escolhidos li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.9rem;
+}
+.ms-nome {
+  flex: 1;
+}
+.ms-fixo {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.ms-sugestoes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ms-sugestoes li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 0.88rem;
+}
+.ms-sugestoes li > span:first-child {
+  flex: 1;
+}
+.ms-grupo {
+  margin-bottom: 14px;
+}
+.ms-grupo h4 {
+  font-size: 0.76rem;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin: 0 0 6px;
+}
+.ms-todos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 6px;
+}
+.ms-todos li {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.ms-todos li > button:first-child {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: none;
+  border: none;
+  padding: 9px 11px;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 0.87rem;
+  text-align: left;
+}
+.ms-todos li > button:first-child:hover {
+  background: var(--surface-2);
+}
+.ms-add {
+  margin-left: auto;
+  font-size: 0.74rem;
+  color: var(--accent, #3ddfcc);
+  white-space: nowrap;
+}
+.ms-abrir {
+  border: none;
+  border-left: 1px solid var(--border);
+  background: none;
+  padding: 0 10px;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+
+/* Rede de segurança contra rolagem lateral. Uma tabela larga, uma imagem sem
+   limite ou um texto sem quebra fazem a página inteira deslizar de lado, e no
+   celular isso dá a sensação de que tudo está desalinhado. O conteúdo que
+   precisa de largura deve rolar dentro do próprio quadro, não arrastar a
+   página. */
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* A barra de atalhos das Configurações usava `justify-content: center` junto
+   com `overflow-x: auto`. Essa dupla corta os itens das DUAS pontas e o começo
+   da lista fica inalcançável: não dá para rolar de volta até ele. Alinhar no
+   início é o que faz a rolagem funcionar de verdade. */
+@media (max-width: 900px) {
+  .settings-jump-nav {
+    justify-content: flex-start;
+    scroll-padding-left: 10px;
+  }
+  .settings-jump-nav button {
+    flex-shrink: 0;
+  }
+}

@@ -1,14 +1,13 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { folhaCompleta } from "./styles/folhaCompleta.js";
 import { describe, expect, it } from "vitest";
 
 // Trava de regressão para o layout no celular. Não substitui olhar a tela, mas
 // pega de graça a classe de erro que deixava o app "desengonçado" no aparelho
 // da titular: caixa que fica mais larga que a tela e some pela direita.
-const css = readFileSync(
-  fileURLToPath(new URL("./styles.css", import.meta.url)),
-  "utf8",
-);
+// A folha inteira, na ordem em que o navegador a monta.
+const css = folhaCompleta();
 
 // Extrai o corpo de cada @media (max-width: N) com N <= 980, respeitando as
 // chaves aninhadas — regex sozinha para no primeiro "}" e pega bloco errado.

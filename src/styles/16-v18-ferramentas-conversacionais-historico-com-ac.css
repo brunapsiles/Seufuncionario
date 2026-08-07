@@ -1,0 +1,5 @@
+/* ===== v18 · ferramentas conversacionais + histórico com ações ===== */
+.tool-followup{display:flex;gap:9px;padding:12px 14px;border-top:1px solid var(--line);background:var(--surface)}
+.tool-followup input{flex:1;border:1px solid var(--line);background:var(--surface2);border-radius:10px;padding:10px 13px}
+.tool-save-row{display:flex;gap:9px;padding:0 14px 13px;background:var(--surface);flex-wrap:wrap}
+.history-extra{flex-wrap:wrap;gap:8px;justify-content:flex-start;border-top:1px solid var(--line);padding-top:14px;margin-top:2px}

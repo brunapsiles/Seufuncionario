@@ -1,0 +1,208 @@
+/* ===== Editor de código ===== */
+.cs {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  margin-top: 18px;
+  align-items: start;
+}
+.cs-lista,
+.cs-editor,
+.cs-previa {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  align-content: start;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+.cs h3,
+.cs h4 {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.cs-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cs-projetos {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cs-projetos li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  border-radius: 10px;
+}
+.cs-projetos li.ativo {
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+}
+.cs-abrir {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.cs-abrir span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-editor-topo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+.cs-editor-topo .field {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.cs-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.cs-abas {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.cs-abas::-webkit-scrollbar {
+  display: none;
+}
+.cs-abas button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface2);
+  color: var(--muted);
+  font-weight: 700;
+  cursor: pointer;
+}
+.cs-abas button.active {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+  color: var(--primary);
+}
+.cs-codigo,
+.nb-consulta {
+  width: 100%;
+  min-width: 0;
+  min-height: 260px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface2);
+  color: var(--text);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  tab-size: 2;
+  resize: vertical;
+}
+.nb-consulta {
+  min-height: 96px;
+}
+.cs-avisos,
+.nb-erros {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cs-avisos li,
+.nb-erros li {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--warning, #d98324) 10%, var(--surface));
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+.nb-erros li {
+  background: color-mix(in srgb, var(--danger, #d4183d) 10%, var(--surface));
+}
+.cs-previa-topo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.cs-palco {
+  display: grid;
+  justify-items: center;
+  padding: 10px;
+  border-radius: 13px;
+  background: var(--surface2);
+}
+.cs-palco iframe {
+  width: 100%;
+  height: 420px;
+  border: 0;
+  border-radius: 10px;
+  background: #fff;
+}
+.cs-palco.estreito iframe {
+  width: min(390px, 100%);
+}
+.cs-console {
+  display: grid;
+  gap: 7px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--surface2);
+}
+.cs-console ul {
+  display: grid;
+  gap: 3px;
+  max-height: 170px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+.cs-console li {
+  padding: 4px 7px;
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+.cs-log-error {
+  background: color-mix(in srgb, var(--danger, #d4183d) 14%, transparent);
+}
+.cs-log-warn {
+  background: color-mix(in srgb, var(--warning, #d98324) 14%, transparent);
+}

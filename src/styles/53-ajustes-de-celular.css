@@ -1,0 +1,56 @@
+/* ===== Ajustes de celular ===== */
+
+@media (max-width: 900px) {
+  /* O iPhone dá zoom sozinho ao tocar num campo com fonte menor que 16px, e
+     NÃO desfaz o zoom depois. A tela fica deslocada e a pessoa acha que o app
+     quebrou. 16px em todo campo é o que evita isso — não é escolha de estética. */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  /* Alvo de toque. O dedo não tem a precisão do mouse: abaixo de 44px a pessoa
+     erra e acha que o botão não funciona. O crescimento é por dentro (padding),
+     para o desenho continuar o mesmo. */
+  .icon-button,
+  .text-button,
+  .settings-stat.as-button,
+  .user-chip,
+  select {
+    min-height: 44px;
+  }
+  .icon-button {
+    min-width: 44px;
+  }
+  .text-button {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* Rede de segurança: campo nenhum pode ser mais largo que a tela. O select é
+     o caso mais comum — ele se dimensiona pela opção mais longa da lista. */
+  input,
+  select,
+  textarea {
+    max-width: 100%;
+  }
+}
+
+/* iPhone com entalhe: sem isto o conteúdo passa por baixo do entalhe e da barra
+   de gestos, e some justamente nas bordas. Depende do viewport-fit=cover no
+   index.html. */
+@supports (padding: env(safe-area-inset-left)) {
+  .topbar {
+    padding-left: max(14px, env(safe-area-inset-left));
+    padding-right: max(14px, env(safe-area-inset-right));
+  }
+  .page {
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+  }
+  .app > aside {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}

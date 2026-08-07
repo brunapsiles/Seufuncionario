@@ -1,0 +1,43 @@
+/* ===== v6 · menu não corta + fonte premium ===== */
+.app > aside {
+  overflow: hidden;
+}
+.app > aside nav,
+nav {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.side-top {
+  flex: none;
+  gap: 8px;
+}
+.side-top .logo {
+  overflow: hidden;
+  min-width: 0;
+}
+.side-top .logo span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.side-top .desktop-collapse {
+  flex: none;
+}
+.side-bottom {
+  flex: none;
+}
+.nav-divider {
+  flex: none;
+}
+:root {
+  --font-head: "Plus Jakarta Sans", "Inter", sans-serif;
+}
+h1,
+h2,
+h3,
+h4,
+.logo {
+  letter-spacing: -0.02em;
+}

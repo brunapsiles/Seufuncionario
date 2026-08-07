@@ -1,0 +1,289 @@
+/* ===== Automações ===== */
+.automation-templates .automation-template-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 4px;
+}
+.automation-list {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.automation-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-left: 4px solid #42ddbf;
+}
+.automation-item.off {
+  opacity: 0.6;
+  border-left-color: var(--border);
+}
+.automation-info h4 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+.automation-when {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+}
+.automation-last {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 4px 0 0;
+}
+.automation-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.automation-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.automation-actions .btn.sm {
+  padding: 5px 9px;
+  font-size: 12px;
+}
+.procurement-page {
+  display: grid;
+  gap: 24px;
+}
+
+.procurement-page .page-title {
+  align-items: flex-start;
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+}
+
+.procurement-page .page-title h1 {
+  margin: 6px 0 8px;
+}
+
+.procurement-page .page-title p {
+  color: var(--muted);
+  margin: 0;
+  max-width: 760px;
+}
+
+.procurement-page .page-actions,
+.rfq-rank-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rfq-list,
+.rfq-rank-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(min(270px, 100%), 1fr));
+}
+
+.rfq-list-card,
+.rfq-rank-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  color: var(--text);
+  display: grid;
+  gap: 10px;
+  padding: 20px;
+  text-align: left;
+}
+
+.rfq-list-card {
+  cursor: pointer;
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+
+.rfq-list-card:hover {
+  border-color: var(--primary);
+  transform: translateY(-2px);
+}
+
+.rfq-list-card strong,
+.rfq-rank-card strong {
+  font-size: 1rem;
+}
+
+.rfq-list-card small,
+.rfq-rank-card small,
+.rfq-offer-line small {
+  color: var(--muted);
+  display: block;
+}
+
+.rfq-winner {
+  align-items: center;
+  color: var(--primary);
+  display: flex;
+  font-size: 0.86rem;
+  gap: 6px;
+}
+
+.rfq-winner svg,
+.rfq-rank-actions svg {
+  height: 16px;
+  width: 16px;
+}
+
+.rfq-rank-card {
+  grid-template-columns: auto 1fr auto;
+}
+
+.rfq-rank-card.winner {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 16%, transparent);
+}
+
+.rfq-rank-number {
+  align-items: center;
+  background: var(--surface);
+  border-radius: 999px;
+  display: flex;
+  font-size: 0.78rem;
+  font-weight: 800;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.rfq-rank-card > b {
+  font-size: 1.05rem;
+  white-space: nowrap;
+}
+
+.rfq-rank-actions {
+  grid-column: 1 / -1;
+}
+
+.rfq-table-wrap,
+.rfq-ranking {
+  min-width: 0;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.rfq-table {
+  border-collapse: collapse;
+  min-width: 760px;
+  width: 100%;
+}
+
+.rfq-table th,
+.rfq-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 13px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.rfq-table th {
+  color: var(--muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.rfq-best {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.rfq-file-import {
+  align-items: center;
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+  border: 1px dashed color-mix(in srgb, var(--primary) 55%, var(--border));
+  border-radius: 14px;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+}
+
+.rfq-file-import svg {
+  color: var(--primary);
+}
+
+.rfq-file-import input {
+  margin-left: auto;
+  max-width: 220px;
+}
+
+.rfq-file-import small {
+  color: var(--muted);
+  display: block;
+  margin-top: 3px;
+}
+
+.rfq-items-editor,
+.rfq-offer-editor {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 12px;
+  padding-top: 18px;
+}
+
+.rfq-item-line {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(220px, 1fr) 110px 90px auto;
+}
+
+.rfq-offer-line {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(180px, 1fr) 150px minmax(200px, 1fr);
+}
+
+.rfq-offer-line > span {
+  align-self: center;
+}
+
+@media (max-width: 760px) {
+  .procurement-page .page-title {
+    display: grid;
+  }
+
+  .rfq-rank-card {
+    grid-template-columns: auto 1fr;
+  }
+
+  .rfq-rank-card > b {
+    grid-column: 2;
+  }
+
+  .rfq-item-line,
+  .rfq-offer-line {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rfq-file-import {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .rfq-file-import input {
+    margin-left: 0;
+    max-width: 100%;
+    width: 100%;
+  }
+}

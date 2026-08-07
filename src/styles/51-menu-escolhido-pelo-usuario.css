@@ -1,0 +1,26 @@
+/* ===== Menu escolhido pelo usuário ===== */
+.nav-rest-toggle {
+  display: flex !important;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 8px 10px;
+}
+.nav-rest-toggle svg {
+  transition: transform 0.2s ease;
+}
+.nav-rest-toggle svg.aberto {
+  transform: rotate(180deg);
+}
+.nav-rest {
+  border-top: 1px solid var(--border);
+  margin-top: 6px;
+  padding-top: 4px;
+}

@@ -1,0 +1,185 @@
+/* ===== v19 · construtor de sites conversacional e multipágina ===== */
+.site-repair-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid #f0c96a;
+  border-radius: 13px;
+  background: #fff8dc;
+  color: #644b0a;
+}
+.site-repair-notice span {
+  flex: 1;
+}
+.site-page-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+.site-page-list button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 13px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-weight: 750;
+  cursor: pointer;
+}
+.site-page-list button.active {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 9%, var(--surface));
+  color: var(--primary);
+}
+.site-page-list svg {
+  width: 15px;
+}
+.site-workspace {
+  display: grid;
+  grid-template-columns: minmax(min(270px, 100%), 340px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: stretch;
+}
+.site-workspace > .site-preview {
+  min-width: 0;
+}
+.site-workspace > .code-editor {
+  min-width: 0;
+  width: 100%;
+}
+.site-chat {
+  display: flex;
+  flex-direction: column;
+  min-height: 68vh;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+.site-chat > header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.site-chat > header div {
+  display: grid;
+  gap: 2px;
+}
+.site-chat > header small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+.site-chat-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+  color: var(--primary);
+}
+.site-chat-icon svg {
+  width: 18px;
+}
+.site-chat-messages {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 9px;
+  min-height: 0;
+  max-height: calc(68vh - 150px);
+  overflow: auto;
+  padding: 14px;
+}
+.site-chat-messages > div {
+  max-width: 92%;
+  padding: 10px 12px;
+  border-radius: 13px;
+  font-size: 0.91rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+.site-chat-messages .assistant {
+  align-self: flex-start;
+  background: var(--surface2);
+}
+.site-chat-messages .user {
+  align-self: flex-end;
+  background: var(--primary);
+  color: #fff;
+}
+.site-chat-compose {
+  display: grid;
+  grid-template-columns: 1fr 42px;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+}
+.site-chat-compose textarea {
+  min-height: 74px;
+  max-height: 150px;
+  resize: vertical;
+}
+.site-chat-compose button {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  align-self: end;
+  border: 0;
+  border-radius: 12px;
+  background: var(--primary);
+  color: #fff;
+  cursor: pointer;
+}
+.site-chat-compose button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.site-chat-compose svg {
+  width: 18px;
+}
+
+@media (max-width: 980px) {
+  .site-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .site-chat {
+    min-height: 390px;
+  }
+  .site-chat-messages {
+    max-height: 260px;
+  }
+}
+
+@media (max-width: 620px) {
+  .site-repair-notice {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .site-repair-notice .button {
+    width: 100%;
+  }
+}
+
+
+.side-buttons{display:flex;gap:6px;flex:none}
+.collapsed .side-buttons{flex-direction:column}
+.desktop-close{display:grid;place-items:center;width:34px;height:34px;border:1px solid var(--line);background:var(--surface2);border-radius:10px;color:var(--muted)}
+.desktop-close:hover{color:var(--red);border-color:var(--red)}
+.desktop-open{display:grid}
+.sb-resize{position:absolute;top:0;right:-3px;width:7px;height:100%;cursor:col-resize;z-index:6;border-radius:4px}
+.sb-resize:hover{background:color-mix(in srgb,var(--primary) 30%,transparent)}
+.collapsed .sb-resize{display:none}
+.app > aside nav{scroll-behavior:smooth;padding-bottom:26px;overscroll-behavior:contain}
+.app > aside nav::-webkit-scrollbar-thumb{background:transparent}
+.app > aside nav:hover::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--muted) 32%,transparent)}
+@media(max-width:760px){.desktop-close,.desktop-open,.sb-resize,.side-buttons .desktop-collapse{display:none}}

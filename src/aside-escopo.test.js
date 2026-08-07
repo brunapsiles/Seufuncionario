@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { folhaCompleta } from "./styles/folhaCompleta.js";
 
 // O menu lateral do app é um <aside>, e por muito tempo a regra que o tornava
 // barra fixa era escrita como seletor de elemento puro:
@@ -13,7 +15,8 @@ import { readFileSync } from "node:fs";
 //
 // A regra agora é escopada em `.app > aside`. Este teste impede a volta.
 
-const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
+// A folha inteira, na ordem em que o navegador a monta.
+const css = folhaCompleta();
 
 // Seletores no começo de uma regra (ignorando indentação de media query).
 const seletores = css

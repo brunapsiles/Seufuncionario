@@ -15,9 +15,6 @@ import App, {
   businessDaysBetween,
   contactLinks,
   createGoogleCalendarEventReal,
-  documentFileKind,
-  documentTitleFromFilename,
-  extractDocumentText,
   googleCalendarUrl,
   makeSite,
   makeSitePages,
@@ -25,6 +22,11 @@ import App, {
   sendGmailReal,
   upsertContact,
 } from "./App";
+import {
+  documentFileKind,
+  documentTitleFromFilename,
+  extractDocumentText,
+} from "./components/leituraDeArquivo.js";
 
 const user = {
   id: "user-flow",

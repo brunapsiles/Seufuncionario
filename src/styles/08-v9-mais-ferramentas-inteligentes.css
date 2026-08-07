@@ -1,0 +1,27 @@
+/* ===== v9 · mais ferramentas inteligentes ===== */
+.smart-icon.g2 {
+  background: linear-gradient(135deg, #17a673, #087a83);
+}
+.smart-icon.g3 {
+  background: linear-gradient(135deg, #16b8a6, #6df7d7);
+}
+.smart-icon.g4 {
+  background: linear-gradient(135deg, #0b9f8f, #087a83);
+}
+.smart-icon.g5 {
+  background: linear-gradient(135deg, #087a83, #0b9f8f);
+}
+.translate-body {
+  padding: 14px;
+  max-height: 340px;
+  overflow: auto;
+}
+.smart-icon.g6 {
+  background: linear-gradient(135deg, #42ddbf, #16b8a6);
+}
+.smart-icon.g7 {
+  background: linear-gradient(135deg, #0b9f8f, #17a673);
+}
+.smart-icon.g8 {
+  background: linear-gradient(135deg, #087a83, #17a673);
+}

@@ -2,7 +2,13 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import App, { addAttachmentsFromFiles, buildAttachment } from "./App";
+import App from "./App";
+// Anexos deixaram de morar em App.jsx. O teste aponta para onde o código está —
+// importar do agregador esconderia justamente o que a extração arrumou.
+import {
+  addAttachmentsFromFiles,
+  buildAttachment,
+} from "./components/Anexos.jsx";
 
 class FakeImage {
   constructor() {

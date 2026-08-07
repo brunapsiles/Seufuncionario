@@ -1,0 +1,264 @@
+/* ===== Quadro visual (canvas) ===== */
+.cvs-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.cvs-head h2 {
+  margin: 0 0 4px;
+}
+.cvs-head p {
+  margin: 0;
+  color: var(--muted, #648b86);
+  font-size: 0.88rem;
+  max-width: 60ch;
+}
+.cvs-boards {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cvs-boards input {
+  min-width: 170px;
+}
+.cvs-empty {
+  text-align: center;
+  padding: 30px 18px;
+  border: 1px dashed rgba(148, 163, 184, 0.5);
+  border-radius: 16px;
+}
+.cvs-empty h3 {
+  margin: 0 0 5px;
+}
+.cvs-empty > p {
+  color: var(--muted, #648b86);
+  font-size: 0.87rem;
+  margin: 0 0 16px;
+}
+.cvs-templates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+  text-align: left;
+}
+.cvs-templates button {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 12px;
+  padding: 11px 13px;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.cvs-templates button:hover {
+  border-color: #087a83;
+}
+.cvs-templates strong {
+  font-size: 0.87rem;
+}
+.cvs-templates small {
+  font-size: 0.76rem;
+  color: var(--muted, #648b86);
+  line-height: 1.4;
+}
+.cvs-toolbar,
+.cvs-facil {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.cvs-toolbar > button {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: transparent;
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 0.79rem;
+  cursor: pointer;
+}
+.cvs-toolbar > button:hover {
+  border-color: #087a83;
+}
+.cvs-sep {
+  width: 1px;
+  height: 20px;
+  background: rgba(148, 163, 184, 0.4);
+  margin: 0 3px;
+}
+.cvs-zoom {
+  font-size: 0.76rem;
+  color: var(--muted, #648b86);
+  min-width: 42px;
+}
+.cvs-timer-end {
+  font-size: 0.79rem;
+  color: #c2410c;
+}
+.cvs-top {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 0.79rem;
+  margin-bottom: 8px;
+  color: var(--muted, #648b86);
+}
+.cvs-top span {
+  background: rgba(11, 159, 143, 0.1);
+  color: #087568;
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+.cvs-area {
+  position: relative;
+  height: min(66vh, 620px);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--card, #fff);
+  cursor: grab;
+  touch-action: none;
+}
+.cvs-bg {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(148, 163, 184, 0.35) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+.cvs-world {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+}
+.cvs-el {
+  position: absolute;
+  box-sizing: border-box;
+}
+.cvs-el.sel {
+  outline: 2px solid #087a83;
+  outline-offset: 2px;
+}
+.cvs-el textarea {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: transparent;
+  resize: none;
+  font: inherit;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  padding: 8px;
+  outline: none;
+  box-sizing: border-box;
+}
+.cvs-postit {
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.16);
+}
+.cvs-rect {
+  border: 2px solid #476964;
+  border-radius: 6px;
+}
+.cvs-ellipse {
+  border: 2px solid #476964;
+  border-radius: 50%;
+}
+.cvs-arrow {
+  background: #476964 !important;
+  height: 3px !important;
+  border-radius: 2px;
+}
+.cvs-arrow::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  top: -4px;
+  border-left: 10px solid #476964;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+}
+.cvs-frame {
+  border: 2px dashed rgba(100, 116, 139, 0.6);
+  border-radius: 10px;
+  background: rgba(148, 163, 184, 0.06);
+}
+.cvs-frame-title {
+  position: absolute;
+  top: -13px;
+  left: 10px;
+  border: none;
+  background: var(--card, #fff);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0 6px;
+  outline: none;
+  max-width: 80%;
+}
+.cvs-card {
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  border-radius: 10px;
+  background: var(--card, #fff);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.1);
+}
+.cvs-text textarea {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.cvs-vote {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.12);
+  font-size: 0.7rem;
+  padding: 2px 7px;
+  cursor: pointer;
+}
+.cvs-inspector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 9px;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+}
+.cvs-colors {
+  display: flex;
+  gap: 5px;
+}
+.cvs-colors button {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  cursor: pointer;
+}
+.cvs-ai-groups section {
+  margin-bottom: 12px;
+}
+.cvs-ai-groups h4 {
+  margin: 0 0 5px;
+  font-size: 0.87rem;
+}
+.cvs-ai-groups ul {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+.cvs-ai-text {
+  font-size: 0.88rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}

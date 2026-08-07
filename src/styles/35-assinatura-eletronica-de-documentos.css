@@ -1,0 +1,133 @@
+/* ===== Assinatura eletrônica de documentos ===== */
+.sign-explain {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--muted, #648b86);
+  background: rgba(148, 163, 184, 0.12);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin: 0 0 14px;
+}
+.sign-pad {
+  margin: 14px 0;
+}
+.sign-pad canvas {
+  width: 100%;
+  max-width: 100%;
+  height: 150px;
+  border: 1px dashed rgba(148, 163, 184, 0.65);
+  border-radius: 12px;
+  background: #fff;
+  touch-action: none;
+  cursor: crosshair;
+  display: block;
+}
+.sign-pad-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+}
+.sign-pad-actions small {
+  color: var(--muted, #648b86);
+  font-size: 0.78rem;
+}
+.sign-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  margin: 4px 0 10px;
+}
+.sign-confirm input {
+  margin-top: 3px;
+  flex: 0 0 auto;
+}
+.sign-existing {
+  font-size: 0.82rem;
+  color: var(--muted, #648b86);
+  margin: 0 0 10px;
+}
+.sign-list {
+  margin: 16px 0 4px;
+}
+.sign-list h4 {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+}
+.sign-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  margin-bottom: 8px;
+}
+.sign-item.warn {
+  border-color: rgba(234, 88, 12, 0.55);
+  background: rgba(234, 88, 12, 0.07);
+}
+.sign-item img {
+  width: 110px;
+  height: 46px;
+  object-fit: contain;
+  background: #fff;
+  border-radius: 8px;
+  flex: 0 0 auto;
+}
+.sign-item > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.sign-item small {
+  font-size: 0.78rem;
+  color: var(--muted, #648b86);
+}
+.sign-item .sign-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.04em;
+}
+.sign-item .sign-ok,
+.sign-item .sign-warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.sign-item .sign-ok {
+  color: #15803d;
+}
+.sign-item .sign-warn {
+  color: #c2410c;
+}
+.doc-sign-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 3px 9px;
+  width: fit-content;
+}
+.doc-sign-badge.assinado {
+  color: #15803d;
+  background: rgba(21, 128, 61, 0.12);
+}
+.doc-sign-badge.alterado {
+  color: #c2410c;
+  background: rgba(194, 65, 12, 0.12);
+}
+@media (max-width: 560px) {
+  .sign-item {
+    flex-wrap: wrap;
+  }
+  .sign-item img {
+    width: 84px;
+  }
+}

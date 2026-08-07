@@ -1,0 +1,30 @@
+/* ===== v10 · verificação de e-mail ===== */
+.verify-shell {
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.verify-card {
+  max-width: 440px;
+  width: 100%;
+}
+.verify-card .mobile-logo {
+  display: flex;
+  margin-bottom: 18px;
+}
+.code-input {
+  text-align: center;
+  font-size: 26px;
+  letter-spacing: 12px;
+  font-weight: 700;
+  font-family: "Plus Jakarta Sans", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.smart-icon.g9 {
+  background: linear-gradient(135deg, #0b9f8f, #17a673);
+}
+.smart-icon.g10 {
+  background: linear-gradient(135deg, #42ddbf, #16b8a6);
+}
+.smart-icon.g11 {
+  background: linear-gradient(135deg, #087a83, #42ddbf);
+}

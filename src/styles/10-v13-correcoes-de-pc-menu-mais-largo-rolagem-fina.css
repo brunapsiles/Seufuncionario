@@ -1,0 +1,67 @@
+/* ===== v13 · correções de PC: menu mais largo, rolagem fina, títulos com reticências ===== */
+.app {
+  grid-template-columns: 266px minmax(0, 1fr);
+}
+.app.collapsed {
+  grid-template-columns: 78px minmax(0, 1fr);
+}
+.app > aside {
+  width: 266px;
+}
+.app.collapsed > aside {
+  width: 78px;
+}
+.app > aside nav {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted) 30%, transparent) transparent;
+}
+.app > aside nav::-webkit-scrollbar {
+  width: 6px;
+}
+.app > aside nav::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted) 28%, transparent);
+  border-radius: 99px;
+}
+.app > aside nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+.app > aside nav::-webkit-scrollbar-button {
+  display: none;
+  height: 0;
+}
+.chat-messages,
+.translate-body,
+.page {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted) 30%, transparent) transparent;
+}
+.chat-messages::-webkit-scrollbar,
+.translate-body::-webkit-scrollbar {
+  width: 8px;
+}
+.chat-messages::-webkit-scrollbar-thumb,
+.translate-body::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted) 25%, transparent);
+  border-radius: 99px;
+}
+.app > aside nav button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.conversation-tabs button {
+  overflow: hidden;
+}
+.conversation-tabs .tab-title {
+  display: inline-block;
+  max-width: 210px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.app > aside {
+  overflow: visible;
+}
+.desktop-collapse {
+  z-index: 5;
+}

@@ -1,0 +1,105 @@
+/* ===== Calendário de conteúdo ===== */
+.content-generator .form-actions {
+  margin-top: 12px;
+}
+.content-plan-list {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.content-day-label {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: capitalize;
+  color: var(--muted);
+  margin: 0 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.content-post {
+  padding: 14px;
+  margin-bottom: 12px;
+  border-left: 4px solid var(--border);
+}
+.content-post.status-pronto {
+  border-left-color: #f59e0b;
+}
+.content-post.status-publicado {
+  border-left-color: #16a34a;
+}
+.content-post h4 {
+  margin: 8px 0 4px;
+  font-size: 15px;
+}
+.content-post-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.content-chip {
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(11, 159, 143, 0.12);
+  color: #087568;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+.content-chip.ghost {
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--muted);
+}
+.content-status-btn {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  background: transparent;
+  color: var(--muted);
+}
+.content-status-btn.s-pronto {
+  border-color: #f59e0b;
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.12);
+}
+.content-status-btn.s-publicado {
+  border-color: #16a34a;
+  color: #15803d;
+  background: rgba(22, 163, 74, 0.12);
+}
+.content-caption {
+  white-space: pre-wrap;
+  margin: 4px 0;
+  font-size: 14px;
+}
+.content-cta {
+  font-weight: 600;
+  font-size: 13px;
+  margin: 6px 0 2px;
+}
+.content-tags {
+  color: #087568;
+  font-size: 13px;
+  margin: 2px 0 0;
+  word-break: break-word;
+}
+.content-post-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.content-post-actions .btn.sm {
+  padding: 5px 9px;
+  font-size: 12px;
+}
+:root[data-theme="dark"] .content-chip {
+  color: #7dd3fc;
+}
+:root[data-theme="dark"] .content-tags {
+  color: #7dd3fc;
+}
