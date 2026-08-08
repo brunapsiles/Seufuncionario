@@ -16,6 +16,15 @@ export const slugify = (s) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
 
+export const escapeHtml = (s) =>
+  String(s || "").replace(
+    /[&<>'"]/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[
+        c
+      ],
+  );
+
 // PushManager.subscribe() exige a chave VAPID como Uint8Array, mas o
 // servidor entrega base64url — essa é a conversão padrão da MDN.
 export const urlBase64ToUint8Array = (base64) => {
