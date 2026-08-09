@@ -174,6 +174,95 @@ describe("cadastrar documento", () => {
   });
 });
 
+async function cenario({ dono, clienteId: clienteDoCenario, espaco } = {}) {
+  const id = crypto.randomUUID();
+  const agora = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO pricing_scenarios
+       (id, tenant_id, workspace_owner_id, product_id, client_id, opportunity_id, created_by,
+        rule_version, inputs_json, result_json, approvals_json, premises_json, status, created_at)
+     VALUES (?, 'todogreen', ?, 'middle-mile', ?, '', ?, 'v1', '{}', '{}', '{}', '{}', 'draft', ?)`,
+  )
+    .bind(id, espaco || dono.id, clienteDoCenario, dono.id, agora)
+    .run();
+  return id;
+}
+
+describe("vincular documento a uma simulação", () => {
+  it("aceita calculoId de simulação real do mesmo cliente", async () => {
+    const cenarioId = await cenario({ dono: gestora, clienteId });
+    const restaurar = comArquivo();
+    try {
+      const r = await pedir("/api/todogreen/evidencias", {
+        metodo: "POST",
+        token: gestora.token,
+        corpo: {
+          clientId: clienteId,
+          titulo: "NF vinculada",
+          tipo: "nota_fiscal",
+          arquivoUrl: ENDERECO,
+          calculoId: cenarioId,
+        },
+      });
+      expect(r.status).toBe(201);
+      const { documento } = await r.json();
+      expect(documento.calculoId).toBe(cenarioId);
+    } finally {
+      restaurar();
+    }
+  });
+
+  it("recusa calculoId que não existe", async () => {
+    const restaurar = comArquivo();
+    try {
+      const r = await pedir("/api/todogreen/evidencias", {
+        metodo: "POST",
+        token: gestora.token,
+        corpo: {
+          clientId: clienteId,
+          titulo: "NF com vínculo inventado",
+          tipo: "nota_fiscal",
+          arquivoUrl: ENDERECO,
+          calculoId: "simulacao-que-nao-existe",
+        },
+      });
+      expect(r.status).toBe(404);
+    } finally {
+      restaurar();
+    }
+  });
+
+  it("recusa calculoId de simulação de outro cliente", async () => {
+    const outroClienteId = crypto.randomUUID();
+    const agora = new Date().toISOString();
+    await env.DB.prepare(
+      `INSERT INTO todogreen_clients
+         (id, tenant_id, workspace_owner_id, name, legal_name, document, segment, status,
+          portal_enabled, created_by, updated_by, created_at, updated_at)
+       VALUES (?, 'todogreen', ?, 'Distribuidora Beta', 'Beta LTDA', '', 'varejo', 'ativo', 1, ?, ?, ?, ?)`,
+    ).bind(outroClienteId, gestora.id, gestora.id, gestora.id, agora, agora).run();
+    const cenarioDeOutroCliente = await cenario({ dono: gestora, clienteId: outroClienteId });
+
+    const restaurar = comArquivo();
+    try {
+      const r = await pedir("/api/todogreen/evidencias", {
+        metodo: "POST",
+        token: gestora.token,
+        corpo: {
+          clientId: clienteId,
+          titulo: "NF com vínculo cruzado",
+          tipo: "nota_fiscal",
+          arquivoUrl: ENDERECO,
+          calculoId: cenarioDeOutroCliente,
+        },
+      });
+      expect(r.status).toBe(404);
+    } finally {
+      restaurar();
+    }
+  });
+});
+
 describe("baixar pelo portal", () => {
   let documentoId;
 

@@ -112,6 +112,22 @@ async function cadastrar(env, access, user, corpo) {
     .catch(() => null);
   if (!cliente) return json({ error: "Cliente não encontrado nesta carteira." }, 404);
 
+  // Vínculo com simulação é opcional, mas se foi informado precisa apontar
+  // para uma simulação real do mesmo cliente — do contrário o gatilho de
+  // "evidência insuficiente" no Deal Desk contaria um vínculo que não existe.
+  const calculoId = texto(corpo.calculoId, 120);
+  if (calculoId) {
+    const cenario = await env.DB
+      .prepare(
+        "SELECT id FROM pricing_scenarios WHERE id = ? AND workspace_owner_id = ? AND client_id = ?",
+      )
+      .bind(calculoId, access.ownerId, texto(corpo.clientId, 120))
+      .first()
+      .catch(() => null);
+    if (!cenario)
+      return json({ error: "Simulação não encontrada para este cliente." }, 404);
+  }
+
   const conferencia = await baixarEConferir(url);
   // Sem conseguir ler o arquivo, não cadastra. Um documento sem impressão
   // digital de verdade seria uma prova que não prova nada.
@@ -140,7 +156,7 @@ async function cadastrar(env, access, user, corpo) {
       texto(corpo.arquivoNome, 240) || url.split("/").pop() || "documento",
       conferencia.bytes,
       conferencia.hash,
-      texto(corpo.calculoId, 120),
+      calculoId,
       user.id,
       agora,
       agora,

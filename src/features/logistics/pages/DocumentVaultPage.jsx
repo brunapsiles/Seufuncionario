@@ -22,6 +22,19 @@ const api = async (caminho, authHeaders, opcoes = {}) => {
   return corpo;
 };
 
+const listarCenariosDoCliente = async (clienteId, authHeaders) => {
+  if (!clienteId) return [];
+  const resposta = await fetch(
+    `/api/todogreen/records/scenarios?cliente=${encodeURIComponent(clienteId)}&limit=50`,
+    { headers: authHeaders?.() || {} },
+  );
+  const corpo = await resposta.json().catch(() => ({}));
+  return resposta.ok ? corpo.registros || [] : [];
+};
+
+const rotuloDoCenario = (cenario) =>
+  `${cenario.productId} · ${new Date(cenario.criadoEm).toLocaleDateString("pt-BR")}`;
+
 const FORMULARIO_VAZIO = {
   clientId: "",
   titulo: "",
@@ -30,6 +43,7 @@ const FORMULARIO_VAZIO = {
   emitidoEm: "",
   arquivoUrl: "",
   descricao: "",
+  calculoId: "",
 };
 
 export default function DocumentVaultPage({ authHeaders, clientes = [], setToast }) {
@@ -39,6 +53,17 @@ export default function DocumentVaultPage({ authHeaders, clientes = [], setToast
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
   const [filtroCliente, setFiltroCliente] = useState("");
+  const [cenariosDoCliente, setCenariosDoCliente] = useState([]);
+
+  useEffect(() => {
+    let cancelado = false;
+    listarCenariosDoCliente(form.clientId, authHeaders).then((registros) => {
+      if (!cancelado) setCenariosDoCliente(registros);
+    });
+    return () => {
+      cancelado = true;
+    };
+  }, [form.clientId, authHeaders]);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -91,6 +116,9 @@ export default function DocumentVaultPage({ authHeaders, clientes = [], setToast
 
   const campo = (chave) => (evento) => setForm((atual) => ({ ...atual, [chave]: evento.target.value }));
 
+  const trocarCliente = (evento) =>
+    setForm((atual) => ({ ...atual, clientId: evento.target.value, calculoId: "" }));
+
   return (
     <section className="tdg-panel tdg-page tdg-doc-page">
       <header className="tdg-page-title">
@@ -110,7 +138,7 @@ export default function DocumentVaultPage({ authHeaders, clientes = [], setToast
       <form className="tdg-access-form" onSubmit={salvar}>
         <label>
           <span>Cliente</span>
-          <select value={form.clientId} onChange={campo("clientId")}>
+          <select value={form.clientId} onChange={trocarCliente}>
             <option value="">Selecione o cliente</option>
             {clientes.map((cliente) => (
               <option key={cliente.id} value={cliente.id}>
@@ -122,6 +150,20 @@ export default function DocumentVaultPage({ authHeaders, clientes = [], setToast
         <label>
           <span>Título</span>
           <input value={form.titulo} onChange={campo("titulo")} placeholder="NF 12345 · agosto" />
+        </label>
+        <label>
+          <span>Vincular a uma simulação (opcional)</span>
+          <select value={form.calculoId} onChange={campo("calculoId")} disabled={!form.clientId}>
+            <option value="">Sem vínculo</option>
+            {cenariosDoCliente.map((cenario) => (
+              <option key={cenario.id} value={cenario.id}>
+                {rotuloDoCenario(cenario)}
+              </option>
+            ))}
+          </select>
+          {form.clientId && cenariosDoCliente.length === 0 && (
+            <small className="tdg-doc-aviso">Este cliente ainda não tem simulação salva.</small>
+          )}
         </label>
         <label>
           <span>Tipo</span>
@@ -185,6 +227,7 @@ export default function DocumentVaultPage({ authHeaders, clientes = [], setToast
               <small>
                 {documento.tipo.replace(/_/g, " ")} · {documento.referencia || "sem referência"} ·{" "}
                 {documento.emitidoEm || "sem data"}
+                {documento.calculoId ? " · vinculado a uma simulação" : ""}
               </small>
             </span>
             <span title="Impressão digital do conteúdo (SHA-256)">

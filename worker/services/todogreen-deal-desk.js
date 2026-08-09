@@ -162,7 +162,7 @@ async function abrir(env, access, user, corpo) {
   // Alçada, desvio e prazo saem do resultado gravado e da régua vigente —
   // nunca do corpo do pedido. Deixar quem pede escolher a própria alçada é o
   // controle virando autoatendimento.
-  const { valido, problemas, pedido } = montarPedido({
+  const { valido, problemas, pedido: pedidoMontado } = montarPedido({
     cenarioId,
     resultado,
     regua,
@@ -170,6 +170,20 @@ async function abrir(env, access, user, corpo) {
     solicitanteId: user.id,
   });
   if (!valido) return json({ error: problemas.join(" ") }, 400);
+
+  // Os gatilhos gravados na simulação são de quando ela foi calculada — antes
+  // de qualquer evidência existir. A ausência de evidência só pode ser
+  // conferida agora, contra o cofre real, não contra o que estava salvo.
+  const semEvidencia = await env.DB
+    .prepare(
+      "SELECT id FROM todogreen_evidences WHERE workspace_owner_id = ? AND calculo_id = ? AND status = 'ativo' LIMIT 1",
+    )
+    .bind(access.ownerId, cenarioId)
+    .first()
+    .then((linha) => !linha);
+  const pedido = semEvidencia
+    ? { ...pedidoMontado, gatilhos: [...pedidoMontado.gatilhos, "Operação sem evidência suficiente"] }
+    : pedidoMontado;
 
   const pendente = await env.DB
     .prepare(

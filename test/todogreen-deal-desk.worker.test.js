@@ -135,7 +135,9 @@ describe("abrir o pedido", () => {
     expect(pedido.situacao).toBe("pendente");
     expect(pedido.versao).toBe(1);
     expect(pedido.prazoEm).toBeTruthy();
-    expect(pedido.gatilhos).toEqual(["margem abaixo do piso"]);
+    // A simulação nasce com "margem abaixo do piso"; sem evidência vinculada
+    // no cofre, o próprio abrir() acrescenta o segundo gatilho.
+    expect(pedido.gatilhos).toEqual(["margem abaixo do piso", "Operação sem evidência suficiente"]);
   });
 
   it("desvio grande sobe a alçada sozinho", async () => {
@@ -188,6 +190,50 @@ describe("abrir o pedido", () => {
       corpo: { cenarioId: id, justificativa: JUSTIFICATIVA },
     });
     expect(segunda.status).toBe(409);
+  });
+
+  it("marca 'Operação sem evidência suficiente' quando o cofre está vazio para a simulação", async () => {
+    const id = await cenario({ dono: vendedor });
+    const { pedido } = await (
+      await pedir("/api/todogreen/deal-desk", {
+        metodo: "POST",
+        token: vendedor.token,
+        corpo: { cenarioId: id, justificativa: JUSTIFICATIVA },
+      })
+    ).json();
+    expect(pedido.gatilhos).toContain("Operação sem evidência suficiente");
+  });
+
+  it("não marca o gatilho de evidência quando há documento ativo vinculado", async () => {
+    const clienteId = crypto.randomUUID();
+    const agora = new Date().toISOString();
+    await env.DB.prepare(
+      `INSERT INTO todogreen_clients
+         (id, tenant_id, workspace_owner_id, name, legal_name, document, segment, status,
+          portal_enabled, created_by, updated_by, created_at, updated_at)
+       VALUES (?, 'todogreen', ?, 'Distribuidora Gama', 'Gama LTDA', '', 'varejo', 'ativo', 1, ?, ?, ?, ?)`,
+    ).bind(clienteId, dona.id, dona.id, dona.id, agora, agora).run();
+
+    const id = await cenario({ dono: vendedor, clienteId });
+    await env.DB.prepare(
+      `INSERT INTO todogreen_evidences
+         (id, tenant_id, client_id, workspace_owner_id, tipo, titulo, referencia, descricao,
+          emitido_em, arquivo_url, arquivo_nome, arquivo_bytes, hash_conteudo, calculo_id,
+          status, created_by, created_at, updated_at)
+       VALUES (?, 'todogreen', ?, ?, 'nota_fiscal', 'NF de apoio', '', '', ?, 'https://x', 'x.pdf', 10,
+               'hash', ?, 'ativo', ?, ?, ?)`,
+    )
+      .bind(crypto.randomUUID(), clienteId, dona.id, agora, id, dona.id, agora, agora)
+      .run();
+
+    const { pedido } = await (
+      await pedir("/api/todogreen/deal-desk", {
+        metodo: "POST",
+        token: vendedor.token,
+        corpo: { cenarioId: id, justificativa: JUSTIFICATIVA },
+      })
+    ).json();
+    expect(pedido.gatilhos).not.toContain("Operação sem evidência suficiente");
   });
 });
 
