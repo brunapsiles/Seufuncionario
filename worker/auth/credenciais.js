@@ -63,3 +63,17 @@ export async function createSession(env, userId) {
     .run();
   return token;
 }
+
+export async function sessionUser(request, env) {
+  if (!env.DB) return { id: "local" };
+  const token =
+    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || "";
+  if (!token) return null;
+  return env.DB.prepare(
+    `SELECT users.id, users.name, users.email FROM sessions
+    JOIN users ON users.id = sessions.user_id
+    WHERE sessions.token_hash = ? AND sessions.expires_at > ?`,
+  )
+    .bind(await sha256(token), new Date().toISOString())
+    .first();
+}
