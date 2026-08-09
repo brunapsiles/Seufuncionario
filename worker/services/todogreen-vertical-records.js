@@ -25,6 +25,8 @@
 //    a outra pessoa acabou de escrever, que é o defeito do JSON único.
 
 import { TENANT_ID, paginacao, podeNaVertical, recorteDeCarteira } from "./todogreen-access.js";
+import { doBanco as pedidoDoBanco } from "./todogreen-deal-desk.js";
+import { liberacaoDaProposta } from "../../src/features/logistics/dealDeskDomain.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -358,9 +360,28 @@ const noAlcanceDaCarteira = async (env, colecao, access, email, id) => {
     .catch(() => null);
 };
 
+// A tela já recusa gerar a proposta quando o Deal Desk não liberou a
+// simulação — "Guarda no código, não só no `disabled`", diz o comentário lá.
+// Só que o guarda estava no componente React, e qualquer chamada direta a
+// este endpoint passava por cima dele. A régua é a mesma (liberacaoDaProposta,
+// de dealDeskDomain.js); o que muda é onde ela é aplicada.
+const proposalLiberada = async (env, access, cenarioId) => {
+  const { results } = await env.DB.prepare(
+    "SELECT * FROM todogreen_deal_desk_requests WHERE workspace_owner_id = ? AND scenario_id = ?",
+  )
+    .bind(access.ownerId, cenarioId)
+    .all();
+  return liberacaoDaProposta(cenarioId, (results || []).map(pedidoDoBanco));
+};
+
 const criar = async (env, colecao, access, user, corpo) => {
   const erro = colecao.exigido(corpo);
   if (erro) return json({ error: erro }, 400);
+
+  if (colecao === COLECOES.proposals) {
+    const liberacao = await proposalLiberada(env, access, texto(corpo.cenarioId, 120));
+    if (!liberacao.liberada) return json({ error: liberacao.motivo }, 409);
+  }
 
   const valores = colecao.colunas(corpo);
   const campos = Object.keys(valores);

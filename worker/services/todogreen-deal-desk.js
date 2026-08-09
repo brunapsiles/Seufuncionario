@@ -41,7 +41,10 @@ const parse = (valor, alternativa) => {
   }
 };
 
-const doBanco = (row) => ({
+// Exportado porque quem cria uma proposta precisa saber, com a mesma régua
+// exata, se a simulação está liberada — duplicar este mapeamento lá faria os
+// dois lados um dia lerem status diferentes da mesma linha.
+export const doBanco = (row) => ({
   id: row.id,
   cenarioId: row.scenario_id,
   cliente: row.client_name,

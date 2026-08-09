@@ -274,6 +274,60 @@ describe("proposta precisa da simulação que gerou o preço", () => {
   });
 });
 
+// A tela recusa gerar a proposta quando o Deal Desk não liberou a simulação —
+// mas isso morava só no componente React. Estes testes existem para que uma
+// chamada direta ao endpoint não passe por cima do mesmo controle.
+async function pedidoDeDealDesk(cenarioId, { situacao = "pendente" } = {}) {
+  const agora = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO todogreen_deal_desk_requests
+       (id, tenant_id, workspace_owner_id, scenario_id, client_name, alcada_id, deviation_points,
+        alcada_reason, triggers_json, justification, requester_id, status, version,
+        decided_by, decision_note, decided_at, due_at, revision, created_at, updated_at)
+     VALUES (?, 'todogreen', ?, ?, 'Alfa', 'gestao_comercial', 2, 'margem', '[]',
+             'Justificativa com trinta caracteres reais.', ?, ?, 1, ?, ?, ?, ?, 1, ?, ?)`,
+  )
+    .bind(
+      crypto.randomUUID(),
+      gestora.id,
+      cenarioId,
+      gestora.id,
+      situacao,
+      situacao === "aprovado" ? gestora.id : null,
+      situacao === "aprovado" ? "aprovado no teste" : "",
+      situacao === "aprovado" ? agora : null,
+      new Date(Date.now() + 86_400_000).toISOString(),
+      agora,
+      agora,
+    )
+    .run();
+}
+
+describe("proposta não sai por cima de um Deal Desk pendente", () => {
+  it("pedido pendente para a simulação bloqueia a proposta direto no servidor", async () => {
+    const cenarioId = `cen-dd-pendente-${crypto.randomUUID()}`;
+    await pedidoDeDealDesk(cenarioId);
+    const r = await pedir("/api/todogreen/records/proposals", {
+      metodo: "POST",
+      token: gestora.token,
+      corpo: { cliente: "Alfa", titulo: "Proposta sem liberação", cenarioId },
+    });
+    expect(r.status).toBe(409);
+    expect((await r.json()).error).toMatch(/Deal Desk/i);
+  });
+
+  it("pedido aprovado libera a proposta", async () => {
+    const cenarioId = `cen-dd-aprovado-${crypto.randomUUID()}`;
+    await pedidoDeDealDesk(cenarioId, { situacao: "aprovado" });
+    const r = await pedir("/api/todogreen/records/proposals", {
+      metodo: "POST",
+      token: gestora.token,
+      corpo: { cliente: "Alfa", titulo: "Proposta liberada", cenarioId },
+    });
+    expect(r.status).toBe(201);
+  });
+});
+
 describe("lançamentos financeiros", () => {
   it("receita, custo e comissão convivem na mesma coleção", async () => {
     for (const tipo of ["revenue", "cost", "commission"]) {
