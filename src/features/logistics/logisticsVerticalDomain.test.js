@@ -113,6 +113,19 @@ describe("logistics vertical domain", () => {
     expect(result.recommendation.decision).toBe("Encaminhar ao Deal Desk");
   });
 
+  it("triggers Deal Desk for large contracts even with healthy margin", () => {
+    const result = centralPricingEngine("middle-mile", {
+      distanceKm: 1800,
+      tripsPerMonth: 320,
+      vehicleType: "VUC elétrico",
+      dataQuality: 90,
+      occupancyPercent: 85,
+    });
+    expect(result.selectedPrice).toBeGreaterThan(500000);
+    expect(result.approval.required).toBe(true);
+    expect(result.approval.triggers).toContain("Receita relevante acima de alçada");
+  });
+
   it("stores scenario snapshots without mutating historical inputs", () => {
     const inputs = { distanceKm: 80, tripsPerMonth: 20, customerTargetPrice: 50000 };
     const snapshot = createPricingScenarioSnapshot("middle-mile", inputs, {

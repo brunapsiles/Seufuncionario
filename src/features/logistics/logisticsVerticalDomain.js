@@ -1,3 +1,5 @@
+import { ALCADAS } from "./dealDeskDomain.js";
+
 const n = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -689,6 +691,12 @@ export const dealDeskTriggers = (summary = {}, productConfig = {}) => {
   if (summary.inputs?.strategicContract) triggers.push("Contrato estratégico");
   if (n(summary.inputs?.occupancyPercent) && n(summary.inputs.occupancyPercent) < 60)
     triggers.push("Baixa ocupação");
+  // Margem saudável não dispensa revisão quando o contrato é grande o
+  // bastante para superar a alçada mais baixa sozinho — sem isso, um negócio
+  // grande com preço "correto" nunca passaria por ninguém além de quem vendeu.
+  const primeiraAlcada = ALCADAS[0];
+  if (primeiraAlcada && n(summary.selectedPrice) > primeiraAlcada.valorMaximoContrato)
+    triggers.push("Receita relevante acima de alçada");
   return {
     required: triggers.length > 0,
     triggers,
