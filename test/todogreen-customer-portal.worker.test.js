@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import worker from "../worker-entry.js";
 
 // O teste que importa aqui não é "a tela abre". É: uma pessoa do cliente A,
@@ -268,6 +268,90 @@ describe("assistente do cliente", () => {
       "SELECT COUNT(*) AS n FROM todogreen_client_portal_events WHERE client_id = 'cli-a' AND action = 'assistente_fora_escopo'",
     ).first();
     expect(depois.n).toBeGreaterThan(antes.n);
+  });
+});
+
+// O assistente do cliente usava `env.AI.run()` num modelo só: se aquele
+// provedor caísse, o assistente caía junto — enquanto o app interno seguia
+// funcionando porque tinha catorze alternativas na cadeia. O cliente ficava
+// com a pior resiliência do produto justamente na parte que ele vê.
+describe("o assistente do cliente tem a mesma contingência do resto do produto", () => {
+  // Faz o primeiro provedor da cadeia falhar e o segundo responder. Se o
+  // assistente estivesse preso a um provedor, isto viraria 502.
+  const comProvedorInstavel = () => {
+    const original = globalThis.fetch;
+    const chamadas = [];
+    globalThis.fetch = vi.fn(async (entrada, init) => {
+      const alvo = String(entrada?.url || entrada);
+      if (alvo.includes("generativelanguage") || alvo.includes("/chat/completions")) {
+        chamadas.push(alvo);
+        if (chamadas.length === 1) throw new Error("provedor fora do ar");
+        return new Response(
+          JSON.stringify({ choices: [{ message: { content: "Foram 3 entregas em julho." } }] }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return original(entrada, init);
+    });
+    return { chamadas, restaurar: () => { globalThis.fetch = original; } };
+  };
+
+  const ambiente = { ...env, GEMINI_API_KEY: "chave-1", GROQ_API_KEY: "chave-2" };
+
+  const perguntar = (token, pergunta) =>
+    worker.fetch(
+      new Request("https://app.test/api/todogreen/portal/assistente", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "cf-connecting-ip": "198.51.100.7",
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ pergunta }),
+      }),
+      ambiente,
+      { waitUntil() {}, passThroughOnException() {} },
+    );
+
+  it("um provedor fora do ar não derruba o assistente: a cadeia segue", async () => {
+    const { chamadas, restaurar } = comProvedorInstavel();
+    try {
+      const r = await perguntar(pessoaA.token, "Quantas entregas foram feitas no período?");
+      expect(r.status).toBe(200);
+      const d = await r.json();
+      expect(d.foraDeEscopo).toBe(false);
+      expect(d.resposta).toContain("3 entregas");
+      // Prova de que houve contingência: o primeiro caiu, o segundo respondeu.
+      expect(chamadas.length).toBeGreaterThanOrEqual(2);
+    } finally {
+      restaurar();
+    }
+  });
+
+  it("a troca de motor não afrouxou o isolamento: o contexto é só do próprio cliente", async () => {
+    const capturado = { corpo: "" };
+    const original = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (entrada, init) => {
+      const alvo = String(entrada?.url || entrada);
+      if (alvo.includes("generativelanguage") || alvo.includes("/chat/completions")) {
+        capturado.corpo = String(init?.body || "");
+        return new Response(
+          JSON.stringify({ choices: [{ message: { content: "ok" } }] }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return original(entrada, init);
+    });
+    try {
+      await perguntar(pessoaA.token, "Como está o meu desempenho de entregas?");
+      // O que vai para o provedor carrega o cliente da sessão...
+      expect(capturado.corpo).toContain("Cliente A");
+      // ...e nada do outro cliente.
+      expect(capturado.corpo).not.toContain("Cliente B");
+      expect(capturado.corpo).not.toContain("OP-B-1");
+    } finally {
+      globalThis.fetch = original;
+    }
   });
 });
 

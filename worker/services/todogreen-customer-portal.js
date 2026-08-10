@@ -42,6 +42,7 @@ import {
   montarContextoDoCliente,
   validarContexto,
 } from "../../src/features/logistics/customerAssistantDomain.js";
+import { runWithFallback } from "./ai.js";
 
 const TENANT_ID = "todogreen";
 const MAX_LIMIT = 100;
@@ -754,33 +755,30 @@ export async function handleTodoGreenCustomerPortal(request, env) {
       return response({ error: "Não foi possível preparar o assistente." }, 500);
     }
 
-    if (!env.AI)
-      return response(
-        { error: "Assistente indisponível no momento." },
-        503,
-      );
-
-    const modelo = env.GEMINI_MODEL || "gemini-flash-lite-latest";
+    // O assistente usa a MESMA cadeia de provedores do resto do produto
+    // (worker/services/ai.js). Antes chamava `env.AI.run()` num modelo só:
+    // se aquele provedor caísse, o assistente do cliente caía junto, sem
+    // tentar nenhum outro — enquanto o app interno seguia funcionando porque
+    // tinha catorze alternativas. O cliente ficava com a pior resiliência do
+    // produto justamente na parte que ele vê.
+    //
+    // O que NÃO muda: a recusa antes do modelo, o contexto restrito ao
+    // próprio cliente e a validação que barra campo interno. A troca é só de
+    // motor.
     try {
-      const saida = await env.AI.run(modelo, {
-        messages: [
-          { role: "system", content: INSTRUCAO_ASSISTENTE },
-          {
-            role: "user",
-            content: `Dados do cliente (únicos disponíveis):\n${JSON.stringify(contexto, null, 2)}\n\nPergunta: ${pergunta}`,
-          },
-        ],
-        max_tokens: 1200,
+      const { ok, result, errors } = await runWithFallback(env, {
+        prompt: `Dados do cliente (únicos disponíveis):\n${JSON.stringify(contexto, null, 2)}\n\nPergunta: ${pergunta}`,
+        system: INSTRUCAO_ASSISTENTE,
       });
-      const texto =
-        saida?.response ||
-        saida?.result?.response ||
-        saida?.choices?.[0]?.message?.content ||
-        "";
-      if (!texto.trim())
+      if (!ok) {
+        console.error("assistente do portal: todos os provedores falharam", errors);
+        return response({ error: "O assistente está indisponível agora." }, 502);
+      }
+      const texto = String(result?.content || "").trim();
+      if (!texto)
         return response({ error: "O assistente não respondeu. Tente de novo." }, 502);
       await logPortalEvent(env, escopo, user, "assistente_pergunta", "", pergunta.slice(0, 120));
-      return response({ resposta: texto.trim(), foraDeEscopo: false });
+      return response({ resposta: texto, foraDeEscopo: false });
     } catch (erro) {
       console.error("assistente do portal", erro);
       return response({ error: "O assistente está indisponível agora." }, 502);

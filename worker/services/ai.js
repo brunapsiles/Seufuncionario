@@ -555,6 +555,213 @@ async function addCurrentWebContext(env, body, prompt, contextualPrompt) {
   };
 }
 
+// A cadeia de provedores, em ordem de preferência.
+//
+// Estava dentro de handleAi, fechada sobre o prompt daquela requisição. O
+// portal do cliente, que precisa da mesma contingência, não tinha como
+// alcançá-la — e por isso chamava `env.AI.run()` direto num modelo só: se
+// aquele provedor caísse, o assistente caía junto, sem tentar nenhum outro.
+//
+// Agora o `run` recebe prompt e system como argumento em vez de capturá-los,
+// e quem chama decide o que mandar. Mesma ordem, mesmos provedores, mesma
+// regra de "profundo usa os melhores primeiro".
+export function providerChain(
+  env,
+  { deep = false, confirmPaid = false, preferredProvider = "" } = {},
+) {
+  const compatible =
+    (config) =>
+    (runPrompt, runSystem) =>
+      askOpenAICompatible({
+        ...config,
+        prompt: runPrompt,
+        system: runSystem,
+      });
+  const providerMap = {
+    "gemini-lite": {
+      enabled: !!env.GEMINI_API_KEY,
+      run: (runPrompt, runSystem) =>
+        askGemini(env, runPrompt, runSystem, "gemini-flash-lite-latest"),
+    },
+    "gemini-flash": {
+      enabled: !!env.GEMINI_API_KEY,
+      run: (runPrompt, runSystem) =>
+        askGemini(env, runPrompt, runSystem, "gemini-flash-latest"),
+    },
+    gemma: {
+      enabled: !!env.GEMINI_API_KEY,
+      run: (runPrompt, runSystem) =>
+        askGemini(env, runPrompt, runSystem, "gemma-4-26b-a4b-it"),
+    },
+    groq: {
+      enabled: !!env.GROQ_API_KEY,
+      run: compatible({
+        endpoint: "https://api.groq.com/openai/v1/chat/completions",
+        token: env.GROQ_API_KEY,
+        model: env.GROQ_MODEL || "openai/gpt-oss-120b",
+        provider: "Groq Free",
+      }),
+    },
+    sambanova: {
+      enabled: !!env.SAMBANOVA_API_KEY,
+      run: compatible({
+        endpoint: "https://api.sambanova.ai/v1/chat/completions",
+        token: env.SAMBANOVA_API_KEY,
+        model: env.SAMBANOVA_MODEL || "gpt-oss-120b",
+        provider: "SambaNova Free",
+        timeout: 9000,
+      }),
+    },
+    cerebras: {
+      enabled: !!env.CEREBRAS_API_KEY,
+      run: compatible({
+        endpoint: "https://api.cerebras.ai/v1/chat/completions",
+        token: env.CEREBRAS_API_KEY,
+        model: env.CEREBRAS_MODEL || "gpt-oss-120b",
+        provider: "Cerebras Free",
+      }),
+    },
+    mistral: {
+      enabled: !!env.MISTRAL_API_KEY,
+      run: compatible({
+        endpoint: "https://api.mistral.ai/v1/chat/completions",
+        token: env.MISTRAL_API_KEY,
+        model: env.MISTRAL_MODEL || "mistral-small-latest",
+        provider: "Mistral Free",
+      }),
+    },
+    openrouter: {
+      enabled: !!env.OPENROUTER_API_KEY,
+      run: compatible({
+        endpoint: "https://openrouter.ai/api/v1/chat/completions",
+        token: env.OPENROUTER_API_KEY,
+        model: "openrouter/free",
+        provider: "OpenRouter Free",
+        headers: {
+          "HTTP-Referer": "https://seufuncionario-expo.brunapsiles.workers.dev",
+          "X-Title": "Seu Funcionário",
+        },
+      }),
+    },
+    github: {
+      enabled: !!env.GITHUB_MODELS_TOKEN,
+      run: compatible({
+        endpoint: "https://models.github.ai/inference/chat/completions",
+        token: env.GITHUB_MODELS_TOKEN,
+        model: env.GITHUB_MODELS_MODEL || "openai/gpt-4.1",
+        provider: "GitHub Models Free",
+        headers: {
+          accept: "application/vnd.github+json",
+          "x-github-api-version": "2026-03-10",
+        },
+      }),
+    },
+    huggingface: {
+      enabled: !!env.HF_TOKEN,
+      run: compatible({
+        endpoint: "https://router.huggingface.co/v1/chat/completions",
+        token: env.HF_TOKEN,
+        model: env.HF_MODEL || "openai/gpt-oss-120b:cheapest",
+        provider: "Hugging Face",
+      }),
+    },
+    "gpt-oss": {
+      enabled: !!env.AI,
+      run: (runPrompt, runSystem) =>
+        askCloudflare(env, runPrompt, runSystem, "@cf/openai/gpt-oss-120b"),
+    },
+    llama70: {
+      enabled: !!env.AI,
+      run: (runPrompt, runSystem) =>
+        askCloudflare(
+          env,
+          runPrompt,
+          runSystem,
+          "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        ),
+    },
+    glm: {
+      enabled: !!env.AI,
+      run: (runPrompt, runSystem) =>
+        askCloudflare(env, runPrompt, runSystem, "@cf/zai-org/glm-4.7-flash"),
+    },
+    llama: {
+      enabled: !!env.AI,
+      run: (runPrompt, runSystem) =>
+        askCloudflare(
+          env,
+          runPrompt,
+          runSystem,
+          "@cf/meta/llama-3.2-3b-instruct",
+        ),
+    },
+    xai: {
+      enabled: confirmPaid === true && !!env.XAI_API_KEY,
+      run: (runPrompt, runSystem) =>
+        askXai(env, runPrompt, runSystem),
+    },
+  };
+  const order = deep
+    ? [
+        "groq",
+        "sambanova",
+        "cerebras",
+        "gemini-flash",
+        "openrouter",
+        "github",
+        "gpt-oss",
+        "mistral",
+        "llama70",
+        "gemini-lite",
+        "gemma",
+        "huggingface",
+        "glm",
+        "llama",
+        "xai",
+      ]
+    : [
+        "gemini-lite",
+        "groq",
+        "sambanova",
+        "cerebras",
+        "openrouter",
+        "mistral",
+        "github",
+        "gpt-oss",
+        "gemma",
+        "llama70",
+        "huggingface",
+        "glm",
+        "llama",
+        "xai",
+      ];
+  const providers = order
+    .filter((name) => providerMap[name]?.enabled)
+    .map((name) => [name, providerMap[name].run]);
+  if (preferredProvider)
+    providers.sort(
+      (a, b) =>
+        Number(b[0] === preferredProvider) - Number(a[0] === preferredProvider),
+    );
+  return providers;
+}
+
+// Tenta a cadeia inteira e devolve o primeiro que responder. Se todos
+// falharem, devolve os erros para quem chamou decidir o que fazer — o núcleo
+// cai na contingência local, o portal responde 502.
+export async function runWithFallback(env, { prompt, system, ...opcoes } = {}) {
+  const providers = providerChain(env, opcoes);
+  const errors = [];
+  for (const [nome, run] of providers) {
+    try {
+      return { ok: true, result: await run(prompt, system), errors };
+    } catch (error) {
+      errors.push(`${nome}: ${error.message}`);
+    }
+  }
+  return { ok: false, result: null, errors };
+}
+
 export async function handleAiStream(request, env, user) {
   const ip = request.headers.get("cf-connecting-ip") || "local";
   if (!allowed(ip) || !allowed(`ai-user:${user.id}`, 12))
@@ -766,181 +973,11 @@ export async function handleAi(request, env, user) {
       "Captação",
       "Riscos",
     ].includes(specialist);
-  const compatible =
-    (config) =>
-    (runPrompt = contextualPrompt, runSystem = system) =>
-      askOpenAICompatible({
-        ...config,
-        prompt: runPrompt,
-        system: runSystem,
-      });
-  const providerMap = {
-    "gemini-lite": {
-      enabled: !!env.GEMINI_API_KEY,
-      run: (runPrompt = contextualPrompt, runSystem = system) =>
-        askGemini(env, runPrompt, runSystem, "gemini-flash-lite-latest"),
-    },
-    "gemini-flash": {
-      enabled: !!env.GEMINI_API_KEY,
-      run: (runPrompt = contextualPrompt, runSystem = system) =>
-        askGemini(env, runPrompt, runSystem, "gemini-flash-latest"),
-    },
-    gemma: {
-      enabled: !!env.GEMINI_API_KEY,
-      run: (runPrompt = contextualPrompt, runSystem = system) =>
-        askGemini(env, runPrompt, runSystem, "gemma-4-26b-a4b-it"),
-    },
-    groq: {
-      enabled: !!env.GROQ_API_KEY,
-      run: compatible({
-        endpoint: "https://api.groq.com/openai/v1/chat/completions",
-        token: env.GROQ_API_KEY,
-        model: env.GROQ_MODEL || "openai/gpt-oss-120b",
-        provider: "Groq Free",
-      }),
-    },
-    sambanova: {
-      enabled: !!env.SAMBANOVA_API_KEY,
-      run: compatible({
-        endpoint: "https://api.sambanova.ai/v1/chat/completions",
-        token: env.SAMBANOVA_API_KEY,
-        model: env.SAMBANOVA_MODEL || "gpt-oss-120b",
-        provider: "SambaNova Free",
-        timeout: 9000,
-      }),
-    },
-    cerebras: {
-      enabled: !!env.CEREBRAS_API_KEY,
-      run: compatible({
-        endpoint: "https://api.cerebras.ai/v1/chat/completions",
-        token: env.CEREBRAS_API_KEY,
-        model: env.CEREBRAS_MODEL || "gpt-oss-120b",
-        provider: "Cerebras Free",
-      }),
-    },
-    mistral: {
-      enabled: !!env.MISTRAL_API_KEY,
-      run: compatible({
-        endpoint: "https://api.mistral.ai/v1/chat/completions",
-        token: env.MISTRAL_API_KEY,
-        model: env.MISTRAL_MODEL || "mistral-small-latest",
-        provider: "Mistral Free",
-      }),
-    },
-    openrouter: {
-      enabled: !!env.OPENROUTER_API_KEY,
-      run: compatible({
-        endpoint: "https://openrouter.ai/api/v1/chat/completions",
-        token: env.OPENROUTER_API_KEY,
-        model: "openrouter/free",
-        provider: "OpenRouter Free",
-        headers: {
-          "HTTP-Referer": "https://seufuncionario-expo.brunapsiles.workers.dev",
-          "X-Title": "Seu Funcionário",
-        },
-      }),
-    },
-    github: {
-      enabled: !!env.GITHUB_MODELS_TOKEN,
-      run: compatible({
-        endpoint: "https://models.github.ai/inference/chat/completions",
-        token: env.GITHUB_MODELS_TOKEN,
-        model: env.GITHUB_MODELS_MODEL || "openai/gpt-4.1",
-        provider: "GitHub Models Free",
-        headers: {
-          accept: "application/vnd.github+json",
-          "x-github-api-version": "2026-03-10",
-        },
-      }),
-    },
-    huggingface: {
-      enabled: !!env.HF_TOKEN,
-      run: compatible({
-        endpoint: "https://router.huggingface.co/v1/chat/completions",
-        token: env.HF_TOKEN,
-        model: env.HF_MODEL || "openai/gpt-oss-120b:cheapest",
-        provider: "Hugging Face",
-      }),
-    },
-    "gpt-oss": {
-      enabled: !!env.AI,
-      run: (runPrompt = contextualPrompt, runSystem = system) =>
-        askCloudflare(env, runPrompt, runSystem, "@cf/openai/gpt-oss-120b"),
-    },
-    llama70: {
-      enabled: !!env.AI,
-      run: (runPrompt = contextualPrompt, runSystem = system) =>
-        askCloudflare(
-          env,
-          runPrompt,
-          runSystem,
-          "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-        ),
-    },
-    glm: {
-      enabled: !!env.AI,
-      run: (runPrompt = contextualPrompt, runSystem = system) =>
-        askCloudflare(env, runPrompt, runSystem, "@cf/zai-org/glm-4.7-flash"),
-    },
-    llama: {
-      enabled: !!env.AI,
-      run: (runPrompt = contextualPrompt, runSystem = system) =>
-        askCloudflare(
-          env,
-          runPrompt,
-          runSystem,
-          "@cf/meta/llama-3.2-3b-instruct",
-        ),
-    },
-    xai: {
-      enabled: body.confirmPaid === true && !!env.XAI_API_KEY,
-      run: (runPrompt = contextualPrompt, runSystem = system) =>
-        askXai(env, runPrompt, runSystem),
-    },
-  };
-  const order = deep
-    ? [
-        "groq",
-        "sambanova",
-        "cerebras",
-        "gemini-flash",
-        "openrouter",
-        "github",
-        "gpt-oss",
-        "mistral",
-        "llama70",
-        "gemini-lite",
-        "gemma",
-        "huggingface",
-        "glm",
-        "llama",
-        "xai",
-      ]
-    : [
-        "gemini-lite",
-        "groq",
-        "sambanova",
-        "cerebras",
-        "openrouter",
-        "mistral",
-        "github",
-        "gpt-oss",
-        "gemma",
-        "llama70",
-        "huggingface",
-        "glm",
-        "llama",
-        "xai",
-      ];
-  const providers = order
-    .filter((name) => providerMap[name]?.enabled)
-    .map((name) => [name, providerMap[name].run]);
-  if (body.preferredProvider)
-    providers.sort(
-      (a, b) =>
-        Number(b[0] === body.preferredProvider) -
-        Number(a[0] === body.preferredProvider),
-    );
+  const providers = providerChain(env, {
+    deep,
+    confirmPaid: body.confirmPaid === true,
+    preferredProvider: body.preferredProvider,
+  });
   if (specialist === "Diretor" && deep && providers.length >= 2) {
     const councilRoles = [
       "Estratégia e mercado: avalie objetivo, cliente, posicionamento, escolhas e riscos.",
@@ -982,7 +1019,7 @@ export async function handleAi(request, env, user) {
   }
   for (const [providerName, run] of providers) {
     try {
-      const result = await run();
+      const result = await run(contextualPrompt, system);
       return json(publicAiResult({ ...result, sources: web.sources }));
     } catch (error) {
       errors.push(`${providerName}: ${error.message}`);
