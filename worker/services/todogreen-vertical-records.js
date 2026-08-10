@@ -164,19 +164,23 @@ const COLECOES = {
   },
 
   operations: {
-    tabela: "todogreen_operations",
+    // Fonte canônica compartilhada com o Portal do Cliente. Antes o painel
+    // escrevia em todogreen_operations e o cliente lia outra tabela.
+    tabela: "todogreen_client_operations",
     permissao: "operations:manage",
     ordem: "updated_at DESC",
     daLinha: (row) => ({
       id: row.id,
       clientId: row.client_id,
       produtoId: row.product_id,
-      mesReferencia: row.reference_month,
-      entregas: row.deliveries,
-      pacotes: row.packages,
-      viagens: row.trips,
-      distanciaKm: row.distance_km,
-      ocupacaoPercent: row.occupancy_percent,
+      mesReferencia: row.service_date ? row.service_date.slice(0, 7) : "",
+      referencia: row.reference,
+      entregas: numero(parse(row.fields_json, {}).deliveries),
+      pacotes: numero(parse(row.fields_json, {}).packages),
+      viagens: numero(parse(row.fields_json, {}).trips),
+      distanciaKm: numero(row.distance_km || parse(row.fields_json, {}).distanceKm),
+      ocupacaoPercent: numero(parse(row.fields_json, {}).occupancyPercent),
+      ocorrencias: numero(row.incident_count),
       situacao: row.status,
       campos: parse(row.fields_json, {}),
       revision: row.revision,
@@ -186,14 +190,21 @@ const COLECOES = {
     colunas: (corpo) => ({
       client_id: texto(corpo.clientId, 120),
       product_id: texto(corpo.produtoId, 120),
-      reference_month: texto(corpo.mesReferencia, 10),
-      deliveries: numero(corpo.entregas),
-      packages: numero(corpo.pacotes),
-      trips: numero(corpo.viagens),
+      reference: texto(corpo.referencia || corpo.rota, 200),
+      service_date: /^\d{4}-\d{2}$/.test(texto(corpo.mesReferencia, 10))
+        ? `${texto(corpo.mesReferencia, 10)}-01`
+        : null,
       distance_km: numero(corpo.distanciaKm),
-      occupancy_percent: numero(corpo.ocupacaoPercent),
+      incident_count: numero(corpo.ocorrencias),
       status: texto(corpo.situacao, 40) || "active",
-      fields_json: JSON.stringify(objeto(corpo.campos)),
+      fields_json: JSON.stringify({
+        ...objeto(corpo.campos),
+        deliveries: numero(corpo.entregas),
+        packages: numero(corpo.pacotes),
+        trips: numero(corpo.viagens),
+        distanceKm: numero(corpo.distanciaKm),
+        occupancyPercent: numero(corpo.ocupacaoPercent),
+      }),
     }),
     exigido: (corpo) => (texto(corpo.clientId) ? "" : "Informe o cliente da operação."),
   },
@@ -329,8 +340,8 @@ const listar = async (env, colecao, access, email, { clienteId = "", limit = 500
   const filtroCliente = clienteId ? "AND t.client_id = ?" : "";
   const paramsFiltro = clienteId ? [clienteId] : [];
   const base = `FROM ${colecao.tabela} t
-      WHERE t.workspace_owner_id = ? AND t.archived_at IS NULL ${filtroCliente} ${recorte.sql}`;
-  const params = [access.ownerId, ...paramsFiltro, ...recorte.params];
+      WHERE t.tenant_id = ? AND t.workspace_owner_id = ? AND t.archived_at IS NULL ${filtroCliente} ${recorte.sql}`;
+  const params = [TENANT_ID, access.ownerId, ...paramsFiltro, ...recorte.params];
   const [{ results }, totalRow] = await Promise.all([
     env.DB.prepare(
       `SELECT t.* ${base}
@@ -352,10 +363,10 @@ const noAlcanceDaCarteira = async (env, colecao, access, email, id) => {
   return env.DB
     .prepare(
       `SELECT t.id FROM ${colecao.tabela} t
-        WHERE t.id = ? AND t.workspace_owner_id = ? AND t.archived_at IS NULL ${recorte.sql}
+        WHERE t.id = ? AND t.tenant_id = ? AND t.workspace_owner_id = ? AND t.archived_at IS NULL ${recorte.sql}
         LIMIT 1`,
     )
-    .bind(id, access.ownerId, ...recorte.params)
+    .bind(id, TENANT_ID, access.ownerId, ...recorte.params)
     .first()
     .catch(() => null);
 };
@@ -383,6 +394,15 @@ const criar = async (env, colecao, access, user, corpo) => {
     if (!liberacao.liberada) return json({ error: liberacao.motivo }, 409);
   }
 
+  if (colecao === COLECOES.operations) {
+    const cliente = await env.DB.prepare(
+      `SELECT id FROM todogreen_clients
+        WHERE tenant_id = ? AND workspace_owner_id = ? AND id = ?
+          AND archived_at IS NULL AND status = 'ativo'`,
+    ).bind(TENANT_ID, access.ownerId, texto(corpo.clientId, 120)).first();
+    if (!cliente) return json({ error: "Cliente não encontrado neste espaço." }, 404);
+  }
+
   const valores = colecao.colunas(corpo);
   const campos = Object.keys(valores);
   const agora = new Date().toISOString();
@@ -398,9 +418,9 @@ const criar = async (env, colecao, access, user, corpo) => {
     .run();
 
   const row = await env.DB.prepare(
-    `SELECT * FROM ${colecao.tabela} WHERE id = ? AND workspace_owner_id = ?`,
+    `SELECT * FROM ${colecao.tabela} WHERE id = ? AND tenant_id = ? AND workspace_owner_id = ?`,
   )
-    .bind(id, access.ownerId)
+    .bind(id, TENANT_ID, access.ownerId)
     .first();
   return json({ registro: colecao.daLinha(row) }, 201);
 };
@@ -408,9 +428,9 @@ const criar = async (env, colecao, access, user, corpo) => {
 const atualizar = async (env, colecao, access, user, id, corpo) => {
   const atual = await env.DB.prepare(
     `SELECT * FROM ${colecao.tabela}
-      WHERE id = ? AND workspace_owner_id = ? AND archived_at IS NULL`,
+      WHERE id = ? AND tenant_id = ? AND workspace_owner_id = ? AND archived_at IS NULL`,
   )
-    .bind(id, access.ownerId)
+    .bind(id, TENANT_ID, access.ownerId)
     .first();
   // 404 e não 403: dizer "existe, mas não é seu" já entrega que existe. Vale
   // tanto para registro de outro espaço quanto para cliente fora da carteira.
@@ -429,6 +449,15 @@ const atualizar = async (env, colecao, access, user, id, corpo) => {
   const erro = colecao.exigido(proximo);
   if (erro) return json({ error: erro }, 400);
 
+  if (colecao === COLECOES.operations) {
+    const cliente = await env.DB.prepare(
+      `SELECT id FROM todogreen_clients
+        WHERE tenant_id = ? AND workspace_owner_id = ? AND id = ?
+          AND archived_at IS NULL AND status = 'ativo'`,
+    ).bind(TENANT_ID, access.ownerId, texto(proximo.clientId, 120)).first();
+    if (!cliente) return json({ error: "Cliente não encontrado neste espaço." }, 404);
+  }
+
   const valores = colecao.colunas(proximo);
   const campos = Object.keys(valores);
   const agora = new Date().toISOString();
@@ -437,9 +466,9 @@ const atualizar = async (env, colecao, access, user, id, corpo) => {
     `UPDATE ${colecao.tabela}
         SET ${campos.map((c) => `${c} = ?`).join(", ")},
             revision = revision + 1, updated_by = ?, updated_at = ?
-      WHERE id = ? AND workspace_owner_id = ? AND revision = ?`,
+      WHERE id = ? AND tenant_id = ? AND workspace_owner_id = ? AND revision = ?`,
   )
-    .bind(...campos.map((c) => valores[c]), user.id, agora, id, access.ownerId, revisaoEsperada)
+    .bind(...campos.map((c) => valores[c]), user.id, agora, id, TENANT_ID, access.ownerId, revisaoEsperada)
     .run();
 
   // Alguém salvou entre a leitura e a escrita. Sobrescrever aqui seria repetir
@@ -451,9 +480,9 @@ const atualizar = async (env, colecao, access, user, id, corpo) => {
     );
 
   const row = await env.DB.prepare(
-    `SELECT * FROM ${colecao.tabela} WHERE id = ? AND workspace_owner_id = ?`,
+    `SELECT * FROM ${colecao.tabela} WHERE id = ? AND tenant_id = ? AND workspace_owner_id = ?`,
   )
-    .bind(id, access.ownerId)
+    .bind(id, TENANT_ID, access.ownerId)
     .first();
   return json({ registro: colecao.daLinha(row) });
 };
@@ -467,9 +496,9 @@ const arquivar = async (env, colecao, access, user, id) => {
   const { meta } = await env.DB.prepare(
     `UPDATE ${colecao.tabela}
         SET archived_at = ?, updated_by = ?, updated_at = ?, revision = revision + 1
-      WHERE id = ? AND workspace_owner_id = ? AND archived_at IS NULL`,
+      WHERE id = ? AND tenant_id = ? AND workspace_owner_id = ? AND archived_at IS NULL`,
   )
-    .bind(agora, user.id, agora, id, access.ownerId)
+    .bind(agora, user.id, agora, id, TENANT_ID, access.ownerId)
     .run();
   if (!meta?.changes) return json({ error: "Registro não encontrado." }, 404);
   return json({ ok: true });

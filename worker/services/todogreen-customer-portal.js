@@ -106,7 +106,7 @@ async function vinculosDaSessao(env, user) {
             c.name AS client_name, c.status AS client_status,
             c.portal_enabled, c.workspace_owner_id
        FROM todogreen_client_users v
-       JOIN todogreen_clients c ON c.id = v.client_id
+       JOIN todogreen_clients c ON c.id = v.client_id AND c.tenant_id = v.tenant_id
       WHERE v.tenant_id = ? AND v.email = ?
       ORDER BY c.name COLLATE NOCASE
       LIMIT 50`,
@@ -161,12 +161,13 @@ const operacaoDoBanco = (linha) => ({
 async function logPortalEvent(env, escopo, user, action, target = "", details = "") {
   await env.DB.prepare(
     `INSERT INTO todogreen_client_portal_events
-       (id, tenant_id, client_id, user_id, email, action, target, details, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, tenant_id, workspace_owner_id, client_id, user_id, email, action, target, details, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       crypto.randomUUID(),
       escopo.tenantId,
+      escopo.workspaceOwnerId,
       escopo.clientId,
       user?.id || null,
       escopo.email,
@@ -208,19 +209,19 @@ async function clientOverview(env, escopo) {
             COALESCE(AVG(data_quality), 0) AS qualidade,
             COUNT(*) AS calculos
        FROM environmental_calculations
-      WHERE tenant_id = ? AND client_id = ?`,
+      WHERE tenant_id = ? AND workspace_owner_id = ? AND client_id = ?`,
   )
-    .bind(escopo.tenantId, escopo.clientId)
+    .bind(escopo.tenantId, escopo.workspaceOwnerId, escopo.clientId)
     .first()
     .catch(() => null);
 
   const score = await env.DB.prepare(
     `SELECT score, weights_version, calculated_at
        FROM todogreen_green_scores
-      WHERE tenant_id = ? AND client_id = ? AND scope_type = 'cliente'
+      WHERE tenant_id = ? AND workspace_owner_id = ? AND client_id = ? AND scope_type = 'cliente'
       ORDER BY calculated_at DESC LIMIT 1`,
   )
-    .bind(escopo.tenantId, escopo.clientId)
+    .bind(escopo.tenantId, escopo.workspaceOwnerId, escopo.clientId)
     .first()
     .catch(() => null);
 
@@ -413,10 +414,10 @@ export async function handleTodoGreenCustomerPortal(request, env) {
     const linhas = await env.DB.prepare(
       `SELECT action, target, details, email, created_at
          FROM todogreen_client_portal_events
-        WHERE tenant_id = ? AND client_id = ?
+        WHERE tenant_id = ? AND workspace_owner_id = ? AND client_id = ?
         ORDER BY created_at DESC LIMIT 50`,
     )
-      .bind(escopo.tenantId, escopo.clientId)
+      .bind(escopo.tenantId, escopo.workspaceOwnerId, escopo.clientId)
       .all()
       .catch(() => ({ results: [] }));
     return response({ eventos: linhas.results || [] });
@@ -448,21 +449,21 @@ export async function handleTodoGreenCustomerPortal(request, env) {
     const calculos = await env.DB.prepare(
       `SELECT id, result_json, methodology_version, data_quality, created_at
          FROM environmental_calculations
-        WHERE tenant_id = ? AND client_id = ?
+        WHERE tenant_id = ? AND workspace_owner_id = ? AND client_id = ?
           AND substr(created_at, 1, 10) BETWEEN ? AND ?
         ORDER BY created_at`,
     )
-      .bind(escopo.tenantId, escopo.clientId, inicio, fim)
+      .bind(escopo.tenantId, escopo.workspaceOwnerId, escopo.clientId, inicio, fim)
       .all()
       .catch(() => ({ results: [] }));
 
     const score = await env.DB.prepare(
       `SELECT score, weights_version, components_json, calculated_at
          FROM todogreen_green_scores
-        WHERE tenant_id = ? AND client_id = ? AND scope_type = 'cliente'
+        WHERE tenant_id = ? AND workspace_owner_id = ? AND client_id = ? AND scope_type = 'cliente'
         ORDER BY calculated_at DESC LIMIT 1`,
     )
-      .bind(escopo.tenantId, escopo.clientId)
+      .bind(escopo.tenantId, escopo.workspaceOwnerId, escopo.clientId)
       .first()
       .catch(() => null);
 
@@ -810,9 +811,9 @@ export async function handleTodoGreenCustomerPortal(request, env) {
 
       const atual = await env.DB.prepare(
         `SELECT id, status FROM todogreen_client_requests
-          WHERE tenant_id = ? AND client_id = ? AND id = ?`,
+          WHERE tenant_id = ? AND workspace_owner_id = ? AND client_id = ? AND id = ?`,
       )
-        .bind(escopo.tenantId, escopo.clientId, id)
+        .bind(escopo.tenantId, escopo.workspaceOwnerId, escopo.clientId, id)
         .first();
       if (!atual) return response({ error: "Solicitação não encontrada." }, 404);
 
@@ -826,7 +827,7 @@ export async function handleTodoGreenCustomerPortal(request, env) {
       await env.DB.prepare(
         `UPDATE todogreen_client_requests
             SET status = ?, closed_at = ?, closed_by = ?, updated_at = ?
-          WHERE tenant_id = ? AND client_id = ? AND id = ?`,
+          WHERE tenant_id = ? AND workspace_owner_id = ? AND client_id = ? AND id = ?`,
       )
         .bind(
           movimento.status,
@@ -834,6 +835,7 @@ export async function handleTodoGreenCustomerPortal(request, env) {
           movimento.encerradoPor,
           new Date().toISOString(),
           escopo.tenantId,
+          escopo.workspaceOwnerId,
           escopo.clientId,
           id,
         )
@@ -892,9 +894,9 @@ async function responderSolicitacao(env, escopo, user, id, body) {
 
   const atual = await env.DB.prepare(
     `SELECT id, status FROM todogreen_client_requests
-      WHERE tenant_id = ? AND client_id = ? AND id = ?`,
+      WHERE tenant_id = ? AND workspace_owner_id = ? AND client_id = ? AND id = ?`,
   )
-    .bind(escopo.tenantId, escopo.clientId, id)
+    .bind(escopo.tenantId, escopo.workspaceOwnerId, escopo.clientId, id)
     .first();
   if (!atual) return response({ error: "Solicitação não encontrada." }, 404);
   if (STATUS_SOLICITACAO[statusValido(atual.status)].encerrado)
@@ -915,9 +917,9 @@ async function responderSolicitacao(env, escopo, user, id, body) {
   const proximo = statusValido(atual.status) === "aguardando_cliente" ? "em_analise" : atual.status;
   await env.DB.prepare(
     `UPDATE todogreen_client_requests SET status = ?, updated_at = ?
-      WHERE tenant_id = ? AND client_id = ? AND id = ?`,
+      WHERE tenant_id = ? AND workspace_owner_id = ? AND client_id = ? AND id = ?`,
   )
-    .bind(proximo, new Date().toISOString(), escopo.tenantId, escopo.clientId, id)
+    .bind(proximo, new Date().toISOString(), escopo.tenantId, escopo.workspaceOwnerId, escopo.clientId, id)
     .run();
 
   await logPortalEvent(env, escopo, user, "solicitacao_mensagem", id, texto.slice(0, 120));
@@ -945,7 +947,7 @@ export async function handleTodoGreenClients(request, env, access, user) {
               (SELECT COUNT(*) FROM todogreen_client_users v
                 WHERE v.client_id = c.id AND v.status = 'active') AS pessoas
          FROM todogreen_clients c
-        WHERE c.tenant_id = ? AND c.archived_at IS NULL
+        WHERE c.tenant_id = ? AND c.workspace_owner_id = ? AND c.archived_at IS NULL
           AND (? = 1 OR EXISTS (
             SELECT 1 FROM todogreen_client_assignments a
              WHERE a.tenant_id = c.tenant_id AND a.client_id = c.id
@@ -953,7 +955,7 @@ export async function handleTodoGreenClients(request, env, access, user) {
           ))
         ORDER BY c.name`,
     )
-      .bind(TENANT_ID, podeGerenciar ? 1 : 0, emailSessao)
+      .bind(TENANT_ID, access.ownerId, podeGerenciar ? 1 : 0, emailSessao)
       .all()
       .catch(() => ({ results: [] }));
     const ids = (linhas.results || []).map((item) => item.id);
@@ -993,6 +995,11 @@ export async function handleTodoGreenClients(request, env, access, user) {
     if (nome.length < 2)
       return response({ error: "Informe o nome do cliente." }, 400);
     const id = clean(body.id, 60) || crypto.randomUUID();
+    const existente = await env.DB.prepare(
+      "SELECT workspace_owner_id FROM todogreen_clients WHERE id = ?",
+    ).bind(id).first();
+    if (existente && existente.workspace_owner_id !== access.ownerId)
+      return response({ error: "Este identificador já pertence a outro espaço." }, 409);
     await env.DB.prepare(
       `INSERT INTO todogreen_clients
          (id, tenant_id, workspace_owner_id, name, legal_name, document, segment,
@@ -1008,7 +1015,9 @@ export async function handleTodoGreenClients(request, env, access, user) {
          notes = excluded.notes,
          updated_by = excluded.updated_by,
          updated_at = excluded.updated_at,
-         revision = todogreen_clients.revision + 1`,
+         revision = todogreen_clients.revision + 1
+       WHERE todogreen_clients.tenant_id = excluded.tenant_id
+         AND todogreen_clients.workspace_owner_id = excluded.workspace_owner_id`,
     )
       .bind(
         id,
@@ -1045,9 +1054,9 @@ export async function handleTodoGreenClients(request, env, access, user) {
       return response({ error: "Informe um e-mail válido." }, 400);
 
     const cliente = await env.DB.prepare(
-      "SELECT id FROM todogreen_clients WHERE tenant_id = ? AND id = ?",
+      "SELECT id FROM todogreen_clients WHERE tenant_id = ? AND workspace_owner_id = ? AND id = ? AND archived_at IS NULL",
     )
-      .bind(TENANT_ID, clientId)
+      .bind(TENANT_ID, access.ownerId, clientId)
       .first();
     if (!cliente) return response({ error: "Cliente não encontrado." }, 404);
 
@@ -1086,6 +1095,10 @@ export async function handleTodoGreenClients(request, env, access, user) {
     const clientId = clean(url.searchParams.get("cliente") ?? url.searchParams.get("clientId"), 60);
     if (!email) return response({ error: "Informe o e-mail." }, 400);
     if (!clientId) return response({ error: "Informe de qual empresa remover o acesso." }, 400);
+    const cliente = await env.DB.prepare(
+      "SELECT id FROM todogreen_clients WHERE tenant_id = ? AND workspace_owner_id = ? AND id = ? AND archived_at IS NULL",
+    ).bind(TENANT_ID, access.ownerId, clientId).first();
+    if (!cliente) return response({ error: "Cliente não encontrado." }, 404);
     await env.DB.prepare(
       "DELETE FROM todogreen_client_users WHERE tenant_id = ? AND client_id = ? AND email = ?",
     )
@@ -1113,9 +1126,9 @@ export async function handleTodoGreenClientAssignments(request, env, access, use
               a.created_at AS createdAt, a.updated_at AS updatedAt
          FROM todogreen_client_assignments a
          JOIN todogreen_clients c ON c.id = a.client_id AND c.tenant_id = a.tenant_id
-        WHERE a.tenant_id = ? AND a.status = 'active'
+        WHERE a.tenant_id = ? AND c.workspace_owner_id = ? AND a.status = 'active'
         ORDER BY c.name, a.seller_email`,
-    ).bind(TENANT_ID).all().catch(() => ({ results: [] }));
+    ).bind(TENANT_ID, access.ownerId).all().catch(() => ({ results: [] }));
     return response({ atribuicoes: rows.results || [] });
   }
 
@@ -1127,8 +1140,8 @@ export async function handleTodoGreenClientAssignments(request, env, access, use
     if (!isValidEmail(sellerEmail))
       return response({ error: "Informe o e-mail do vendedor." }, 400);
     const client = await env.DB.prepare(
-      "SELECT id FROM todogreen_clients WHERE tenant_id = ? AND id = ? AND archived_at IS NULL",
-    ).bind(TENANT_ID, clientId).first();
+      "SELECT id FROM todogreen_clients WHERE tenant_id = ? AND workspace_owner_id = ? AND id = ? AND archived_at IS NULL",
+    ).bind(TENANT_ID, access.ownerId, clientId).first();
     if (!client) return response({ error: "Cliente não encontrado." }, 404);
     const now = new Date().toISOString();
     await env.DB.prepare(
@@ -1150,6 +1163,10 @@ export async function handleTodoGreenClientAssignments(request, env, access, use
     const sellerEmail = normalizeEmail(url.searchParams.get("sellerEmail"));
     if (!clientId || !sellerEmail)
       return response({ error: "Informe o cliente e o vendedor." }, 400);
+    const client = await env.DB.prepare(
+      "SELECT id FROM todogreen_clients WHERE tenant_id = ? AND workspace_owner_id = ? AND id = ? AND archived_at IS NULL",
+    ).bind(TENANT_ID, access.ownerId, clientId).first();
+    if (!client) return response({ error: "Cliente não encontrado." }, 404);
     await env.DB.prepare(
       `UPDATE todogreen_client_assignments SET status = 'inactive', updated_at = ?
         WHERE tenant_id = ? AND client_id = ? AND lower(seller_email) = ?`,

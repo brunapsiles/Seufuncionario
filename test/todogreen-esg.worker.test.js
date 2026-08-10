@@ -94,11 +94,11 @@ beforeAll(async () => {
   ])
     await env.DB.prepare(
       `INSERT INTO todogreen_clients
-         (id, tenant_id, workspace_owner_id, name, status, portal_enabled,
+       (id, tenant_id, workspace_owner_id, name, status, portal_enabled,
           created_by, updated_by, created_at, updated_at)
-       VALUES (?, 'todogreen', 'dono', ?, 'ativo', 1, 'seed', 'seed', ?, ?)`,
+       VALUES (?, 'todogreen', ?, ?, 'ativo', 1, 'seed', 'seed', ?, ?)`,
     )
-      .bind(id, nome, agora, agora)
+      .bind(id, admin.id, nome, agora, agora)
       .run()
       .catch(() => {});
 
@@ -197,6 +197,7 @@ describe("calcular grava a memória, não só o número", () => {
           operacoes: [operacaoEletrica("BOA"), { referencia: "RUIM", distanciaKm: 0 }],
           ocupacaoPercent: 80,
           frotaLimpaPercent: 70,
+          ocorrencias: 0,
         },
       })
     ).json();
@@ -232,6 +233,31 @@ describe("calcular grava a memória, não só o número", () => {
     });
     expect(r.status).toBe(404);
   });
+
+  it("cliente de outro workspace também responde como não encontrado", async () => {
+    const outroDono = await criarUsuario("esg-outro-dono", "outro-dono@empresa.com.br");
+    const agora = new Date().toISOString();
+    await env.DB.prepare(
+      `INSERT INTO todogreen_clients
+         (id, tenant_id, workspace_owner_id, name, status, portal_enabled,
+          created_by, updated_by, created_at, updated_at)
+       VALUES ('esg-cli-outro', 'todogreen', ?, 'Cliente de outro espaço',
+               'ativo', 1, ?, ?, ?, ?)`,
+    ).bind(outroDono.id, outroDono.id, outroDono.id, agora, agora).run();
+
+    const r = await pedir("/api/todogreen/esg/calcular", {
+      method: "POST",
+      token: admin.token,
+      body: {
+        clienteId: "esg-cli-outro",
+        operacoes: [operacaoEletrica("FORA")],
+        ocupacaoPercent: 80,
+        frotaLimpaPercent: 70,
+        ocorrencias: 0,
+      },
+    });
+    expect(r.status).toBe(404);
+  });
 });
 
 describe("o Green Score fica gravado com a variação explicada", () => {
@@ -245,6 +271,7 @@ describe("o Green Score fica gravado com a variação explicada", () => {
           operacoes: [operacaoEletrica("B1")],
           ocupacaoPercent: 90,
           frotaLimpaPercent: 90,
+          ocorrencias: 0,
         },
       })
     ).json();
@@ -329,6 +356,7 @@ describe("pesos versionados", () => {
           operacoes: [operacaoEletrica("B3")],
           ocupacaoPercent: 70,
           frotaLimpaPercent: 60,
+          ocorrencias: 0,
         },
       })
     ).json();

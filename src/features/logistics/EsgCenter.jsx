@@ -150,13 +150,13 @@ export default function EsgCenter({ authHeaders, setToast }) {
   const [aviso, setAviso] = useState("");
   const [operacao, setOperacao] = useState({
     referencia: "",
-    distanciaKm: 100,
-    viagens: 10,
-    tipoVeiculo: "Furgão elétrico",
-    ocupacaoPercent: 80,
-    frotaLimpaPercent: 70,
-    ocorrencias: 0,
-    origemDistancia: "estimado",
+    distanciaKm: "",
+    viagens: "",
+    tipoVeiculo: "",
+    ocupacaoPercent: "",
+    frotaLimpaPercent: "",
+    ocorrencias: "",
+    origemDistancia: "",
   });
 
   useEffect(() => {
@@ -201,6 +201,31 @@ export default function EsgCenter({ authHeaders, setToast }) {
   const calcular = async () => {
     if (!clienteId) {
       setAviso("Escolha um cliente antes de calcular.");
+      return;
+    }
+    const faltantes = [
+      [Number(operacao.distanciaKm) > 0, "distância"],
+      [Number(operacao.viagens) > 0, "viagens"],
+      [operacao.tipoVeiculo.trim(), "tipo de veículo"],
+      [
+        operacao.ocupacaoPercent !== "" &&
+          Number(operacao.ocupacaoPercent) >= 0 &&
+          Number(operacao.ocupacaoPercent) <= 100,
+        "ocupação",
+      ],
+      [
+        operacao.frotaLimpaPercent !== "" &&
+          Number(operacao.frotaLimpaPercent) >= 0 &&
+          Number(operacao.frotaLimpaPercent) <= 100,
+        "frota de baixa emissão",
+      ],
+      [operacao.ocorrencias !== "" && Number(operacao.ocorrencias) >= 0, "ocorrências"],
+      [operacao.origemDistancia, "origem da distância"],
+    ]
+      .filter(([valido]) => !valido)
+      .map(([, nome]) => nome);
+    if (faltantes.length) {
+      setAviso(`Revise os dados obrigatórios: ${faltantes.join(", ")}.`);
       return;
     }
     setCalculando(true);
@@ -300,6 +325,11 @@ export default function EsgCenter({ authHeaders, setToast }) {
             <label key={chave}>
               <span>{rotulo}</span>
               <input
+                required
+                type="number"
+                min={chave === "distanciaKm" || chave === "viagens" ? "0.01" : "0"}
+                max={chave === "ocupacaoPercent" || chave === "frotaLimpaPercent" ? "100" : undefined}
+                step="any"
                 inputMode="decimal"
                 value={operacao[chave]}
                 onChange={(e) => setOperacao((o) => ({ ...o, [chave]: e.target.value }))}
@@ -309,6 +339,7 @@ export default function EsgCenter({ authHeaders, setToast }) {
           <label>
             <span>Tipo de veículo</span>
             <input
+              required
               value={operacao.tipoVeiculo}
               onChange={(e) => setOperacao((o) => ({ ...o, tipoVeiculo: e.target.value }))}
             />
@@ -319,6 +350,7 @@ export default function EsgCenter({ authHeaders, setToast }) {
               value={operacao.origemDistancia}
               onChange={(e) => setOperacao((o) => ({ ...o, origemDistancia: e.target.value }))}
             >
+              <option value="">Selecione a procedência</option>
               <option value="medido">Medido (telemetria)</option>
               <option value="documentado">Documentado</option>
               <option value="estimado">Estimado</option>

@@ -47,6 +47,9 @@ const num = (v) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 };
+const numeroInformado = (v) =>
+  v !== "" && v !== null && v !== undefined && Number.isFinite(Number(v));
+const percentualValido = (v) => numeroInformado(v) && Number(v) >= 0 && Number(v) <= 100;
 
 const podeGerenciarEsg = (access) =>
   access.role === "owner" ||
@@ -212,12 +215,7 @@ export async function handleTodoGreenEsg(request, env) {
     const clientId = clean(body.clienteId ?? body.clientId, 60);
     if (!clientId) return response({ error: "Informe o cliente." }, 400);
 
-    const cliente = await env.DB.prepare(
-      "SELECT id, name FROM todogreen_clients WHERE tenant_id = ? AND id = ?",
-    )
-      .bind(TENANT_ID, clientId)
-      .first()
-      .catch(() => null);
+    const cliente = await clienteNoAlcance(env, access, user, clientId);
     if (!cliente) return response({ error: "Cliente não encontrado." }, 404);
 
     const operacoes = Array.isArray(body.operacoes) ? body.operacoes : [];
@@ -227,14 +225,33 @@ export async function handleTodoGreenEsg(request, env) {
         400,
       );
 
+    if (!percentualValido(body.ocupacaoPercent))
+      return response({ error: "Informe a ocupação entre 0 e 100%." }, 400);
+    if (!percentualValido(body.frotaLimpaPercent))
+      return response({ error: "Informe a frota de baixa emissão entre 0 e 100%." }, 400);
+    if (!numeroInformado(body.ocorrencias) || Number(body.ocorrencias) < 0)
+      return response({ error: "Informe a quantidade de ocorrências, mesmo quando for zero." }, 400);
+
     const agora = new Date().toISOString();
     const calculos = [];
     for (const operacao of operacoes.slice(0, 200)) {
       let resultado;
       try {
+        if (!numeroInformado(operacao.distanciaKm) || Number(operacao.distanciaKm) <= 0)
+          throw new Error("Informe a distância da operação.");
+        if (!numeroInformado(operacao.viagens) || Number(operacao.viagens) <= 0)
+          throw new Error("Informe a quantidade de viagens da operação.");
+        if (!clean(operacao.tipoVeiculo, 60))
+          throw new Error("Informe o tipo de veículo da operação.");
+        if (
+          !["medido", "documentado", "estimado", "presumido"].includes(
+            operacao.origens?.distancia,
+          )
+        )
+          throw new Error("Informe a origem do dado de distância.");
         resultado = calcularImpactoAmbiental({
           distanciaKm: num(operacao.distanciaKm),
-          viagens: num(operacao.viagens) || 1,
+          viagens: num(operacao.viagens),
           tipoVeiculo: clean(operacao.tipoVeiculo, 60),
           origens: operacao.origens || {},
           calculadoEm: agora,
@@ -309,10 +326,10 @@ export async function handleTodoGreenEsg(request, env) {
     const anteriorLinha = await env.DB.prepare(
       `SELECT score, weights_version, components_json
          FROM todogreen_green_scores
-        WHERE tenant_id = ? AND client_id = ? AND scope_type = 'cliente'
+        WHERE tenant_id = ? AND workspace_owner_id = ? AND client_id = ? AND scope_type = 'cliente'
         ORDER BY calculated_at DESC LIMIT 1`,
     )
-      .bind(TENANT_ID, clientId)
+      .bind(TENANT_ID, access.ownerId, clientId)
       .first()
       .catch(() => null);
     const explicacao = explicarVariacao(
@@ -322,14 +339,15 @@ export async function handleTodoGreenEsg(request, env) {
 
     await env.DB.prepare(
       `INSERT INTO todogreen_green_scores
-         (id, tenant_id, client_id, scope_type, scope_id, score, components_json,
+         (id, tenant_id, workspace_owner_id, client_id, scope_type, scope_id, score, components_json,
           inputs_json, weights_version, data_quality, variation_explanation,
           previous_score, calculated_by, calculated_at)
-       VALUES (?, ?, ?, 'cliente', '', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, 'cliente', '', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         crypto.randomUUID(),
         TENANT_ID,
+        access.ownerId,
         clientId,
         score.score,
         JSON.stringify(score.componentes),
@@ -362,15 +380,17 @@ export async function handleTodoGreenEsg(request, env) {
       return response({ error: "Sem permissão para ver o histórico." }, 403);
     const clientId = clean(url.searchParams.get("cliente"), 60);
     if (!clientId) return response({ error: "Informe o cliente." }, 400);
+    const cliente = await clienteNoAlcance(env, access, user, clientId);
+    if (!cliente) return response({ error: "Cliente não encontrado." }, 404);
 
     const linhas = await env.DB.prepare(
       `SELECT score, weights_version, data_quality, variation_explanation,
               previous_score, calculated_at, components_json
          FROM todogreen_green_scores
-        WHERE tenant_id = ? AND client_id = ? AND scope_type = 'cliente'
+        WHERE tenant_id = ? AND workspace_owner_id = ? AND client_id = ? AND scope_type = 'cliente'
         ORDER BY calculated_at DESC LIMIT 24`,
     )
-      .bind(TENANT_ID, clientId)
+      .bind(TENANT_ID, access.ownerId, clientId)
       .all()
       .catch(() => ({ results: [] }));
 
@@ -379,10 +399,10 @@ export async function handleTodoGreenEsg(request, env) {
     const outros = await env.DB.prepare(
       `SELECT client_id, MAX(calculated_at) AS quando, score
          FROM todogreen_green_scores
-        WHERE tenant_id = ? AND scope_type = 'cliente' AND client_id <> ?
+        WHERE tenant_id = ? AND workspace_owner_id = ? AND scope_type = 'cliente' AND client_id <> ?
         GROUP BY client_id`,
     )
-      .bind(TENANT_ID, clientId)
+      .bind(TENANT_ID, access.ownerId, clientId)
       .all()
       .catch(() => ({ results: [] }));
 
@@ -436,31 +456,32 @@ export async function handleTodoGreenEsg(request, env) {
     const operacoes = await env.DB.prepare(
       `SELECT id, reference, service_date, fields_json
          FROM todogreen_client_operations
-        WHERE tenant_id = ? AND client_id = ? AND service_date BETWEEN ? AND ?
+        WHERE tenant_id = ? AND workspace_owner_id = ? AND client_id = ? AND archived_at IS NULL
+          AND service_date BETWEEN ? AND ?
         ORDER BY service_date`,
     )
-      .bind(TENANT_ID, clientId, inicio, fim)
+      .bind(TENANT_ID, access.ownerId, clientId, inicio, fim)
       .all()
       .catch(() => ({ results: [] }));
 
     const calculos = await env.DB.prepare(
       `SELECT id, result_json, methodology_version, data_quality, created_at
          FROM environmental_calculations
-        WHERE tenant_id = ? AND client_id = ?
+        WHERE tenant_id = ? AND workspace_owner_id = ? AND client_id = ?
           AND substr(created_at, 1, 10) BETWEEN ? AND ?
         ORDER BY created_at`,
     )
-      .bind(TENANT_ID, clientId, inicio, fim)
+      .bind(TENANT_ID, access.ownerId, clientId, inicio, fim)
       .all()
       .catch(() => ({ results: [] }));
 
     const score = await env.DB.prepare(
       `SELECT score, weights_version, components_json, calculated_at
          FROM todogreen_green_scores
-        WHERE tenant_id = ? AND client_id = ? AND scope_type = 'cliente'
+        WHERE tenant_id = ? AND workspace_owner_id = ? AND client_id = ? AND scope_type = 'cliente'
         ORDER BY calculated_at DESC LIMIT 1`,
     )
-      .bind(TENANT_ID, clientId)
+      .bind(TENANT_ID, access.ownerId, clientId)
       .first()
       .catch(() => null);
 
@@ -498,11 +519,11 @@ export async function handleTodoGreenEsg(request, env) {
     const linhas = await env.DB.prepare(
       `SELECT c.id, c.name, c.document
          FROM todogreen_clients c
-        WHERE c.tenant_id = ? AND c.archived_at IS NULL AND c.status = 'ativo'
+        WHERE c.tenant_id = ? AND c.workspace_owner_id = ? AND c.archived_at IS NULL AND c.status = 'ativo'
           ${recorte.sql}
         ORDER BY c.name`,
     )
-      .bind(TENANT_ID, ...recorte.params)
+      .bind(TENANT_ID, access.ownerId, ...recorte.params)
       .all()
       .catch(() => ({ results: [] }));
     return response({
@@ -531,9 +552,10 @@ async function clienteNoAlcance(env, access, user, clientId) {
   return env.DB.prepare(
     `SELECT c.id, c.name, c.document
        FROM todogreen_clients c
-      WHERE c.tenant_id = ? AND c.id = ? AND c.archived_at IS NULL ${recorte.sql}`,
+      WHERE c.tenant_id = ? AND c.workspace_owner_id = ? AND c.id = ?
+        AND c.archived_at IS NULL ${recorte.sql}`,
   )
-    .bind(TENANT_ID, clientId, ...recorte.params)
+    .bind(TENANT_ID, access.ownerId, clientId, ...recorte.params)
     .first()
     .catch(() => null);
 }

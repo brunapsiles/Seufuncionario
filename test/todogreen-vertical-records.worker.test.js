@@ -45,6 +45,26 @@ async function autorizar(usuario, papel = "admin", permissoes = ["*"]) {
     .run();
 }
 
+async function criarCliente(usuario, id, nome = id) {
+  const agora = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO todogreen_clients
+       (id, tenant_id, workspace_owner_id, name, status, portal_enabled,
+        created_by, updated_by, created_at, updated_at)
+     VALUES (?, 'todogreen', ?, ?, 'ativo', 1, ?, ?, ?, ?)`,
+  ).bind(id, usuario.id, nome, usuario.id, usuario.id, agora, agora).run();
+}
+
+async function vincularPortal(clientId, email) {
+  const agora = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO todogreen_client_users
+       (id, tenant_id, client_id, email, role, status, permissions_json,
+        invited_by, created_at, updated_at)
+     VALUES (?, 'todogreen', ?, ?, 'cliente_leitor', 'active', '[]', 'seed', ?, ?)`,
+  ).bind(crypto.randomUUID(), clientId, email, agora, agora).run();
+}
+
 const pedir = (caminho, { metodo = "GET", token, corpo } = {}) => {
   const headers = { "cf-connecting-ip": nextIp() };
   if (token) headers.authorization = `Bearer ${token}`;
@@ -183,6 +203,8 @@ describe("paginação e filtro no servidor", () => {
   it("o filtro por cliente é aplicado no servidor, não recortado depois na tela", async () => {
     const dono = await criarUsuario("rec-filtro-dono", "filtro-dono@parceiro.com.br");
     await autorizar(dono);
+    await criarCliente(dono, "cli-filtro-alvo", "Cliente alvo");
+    await criarCliente(dono, "cli-filtro-outro", "Cliente outro");
     const doCliente = await (
       await pedir("/api/todogreen/records/operations", {
         metodo: "POST",
@@ -202,6 +224,32 @@ describe("paginação e filtro no servidor", () => {
     const { registros, total } = await filtrada.json();
     expect(registros.map((r) => r.id)).toEqual([doCliente.registro.id]);
     expect(total).toBe(1);
+  });
+
+  it("a operação criada por dentro aparece no Portal do Cliente", async () => {
+    const dono = await criarUsuario("rec-portal-dono", "portal-dono@parceiro.com.br");
+    const cliente = await criarUsuario("rec-portal-cliente", "operacao@cliente.com.br");
+    await autorizar(dono);
+    await criarCliente(dono, "cli-portal-canonico", "Cliente canônico");
+    await vincularPortal("cli-portal-canonico", cliente.email);
+
+    const criada = await pedir("/api/todogreen/records/operations", {
+      metodo: "POST",
+      token: dono.token,
+      corpo: {
+        clientId: "cli-portal-canonico",
+        referencia: "OP-CANONICA-1",
+        mesReferencia: "2026-08",
+        entregas: 12,
+        distanciaKm: 88,
+      },
+    });
+    expect(criada.status).toBe(201);
+
+    const portal = await pedir("/api/todogreen/portal/operacoes", { token: cliente.token });
+    expect(portal.status).toBe(200);
+    const referencias = (await portal.json()).operacoes.map((item) => item.referencia);
+    expect(referencias).toContain("OP-CANONICA-1");
   });
 });
 
@@ -371,6 +419,7 @@ describe("papel que só consulta não altera", () => {
 
 describe("arquivar em vez de apagar", () => {
   it("o registro some da lista mas continua no banco", async () => {
+    await criarCliente(gestora, "c-1", "Cliente arquivamento");
     const { registro } = await (
       await pedir("/api/todogreen/records/operations", {
         metodo: "POST",
@@ -384,7 +433,7 @@ describe("arquivar em vez de apagar", () => {
     const lista = await pedir("/api/todogreen/records/operations", { token: gestora.token });
     expect((await lista.json()).registros.map((r) => r.id)).not.toContain(registro.id);
 
-    const linha = await env.DB.prepare("SELECT archived_at FROM todogreen_operations WHERE id = ?")
+    const linha = await env.DB.prepare("SELECT archived_at FROM todogreen_client_operations WHERE id = ?")
       .bind(registro.id)
       .first();
     expect(linha.archived_at).toBeTruthy();
