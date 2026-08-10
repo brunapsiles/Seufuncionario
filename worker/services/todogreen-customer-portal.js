@@ -43,6 +43,7 @@ import {
   validarContexto,
 } from "../../src/features/logistics/customerAssistantDomain.js";
 import { runWithFallback } from "./ai.js";
+import { normalizeCrmContacts } from "../../src/features/logistics/crmContactNormalizationDomain.js";
 
 const TENANT_ID = "todogreen";
 const MAX_LIMIT = 100;
@@ -112,6 +113,13 @@ const intelligenceFields = (input) => {
     version: finite(input.version, 1, 10),
     company: clean(input.company, 200),
     segment: clean(input.segment, 120),
+    suggestedSegment: input.suggestedSegment && typeof input.suggestedSegment === "object"
+      ? {
+          value: clean(input.suggestedSegment.value, 120),
+          confidence: clean(input.suggestedSegment.confidence, 40),
+          source: input.suggestedSegment.source ? intelligenceSource(input.suggestedSegment.source) : null,
+        }
+      : null,
     checkedAt: clean(input.checkedAt, 40),
     officialWebsite: input.officialWebsite ? intelligenceSource(input.officialWebsite) : null,
     linkedinCompany: input.linkedinCompany ? intelligenceSource(input.linkedinCompany) : null,
@@ -124,6 +132,17 @@ const intelligenceFields = (input) => {
     openRfqs: intelligenceSources(input.openRfqs),
     rfqWatchlist: intelligenceSources(input.rfqWatchlist),
     procurementPeople: intelligenceSources(input.procurementPeople),
+    contactCandidates: Array.isArray(input.contactCandidates)
+      ? input.contactCandidates.slice(0, 20).map((contact) => ({
+          id: clean(contact?.id, 80),
+          name: clean(contact?.name, 160),
+          title: clean(contact?.title, 160),
+          department: clean(contact?.department, 120),
+          linkedinUrl: safeExternalUrl(contact?.linkedinUrl),
+          source: clean(contact?.source, 80),
+          validation: clean(contact?.validation, 500),
+        })).filter((contact) => contact.name && contact.linkedinUrl)
+      : [],
     companyNews: intelligenceSources(input.companyNews),
     segmentNews: intelligenceSources(input.segmentNews),
     nextActions: Array.isArray(input.nextActions) ? input.nextActions.slice(0, 12).map((item) => clean(item, 500)).filter(Boolean) : [],
@@ -157,13 +176,13 @@ const crmFields = (value = {}) => {
         ? Object.fromEntries(Object.entries(input.qualification).slice(0, 40).map(([key, item]) => [clean(key, 80), clean(item, 1000)]))
         : {},
     contacts: Array.isArray(input.contacts)
-      ? input.contacts.slice(0, 100).map((contact) => ({
+      ? normalizeCrmContacts(input.contacts.slice(0, 100).map((contact) => ({
           id: clean(contact?.id, 80) || crypto.randomUUID(),
           name: clean(contact?.name, 160),
           title: clean(contact?.title, 120),
           department: clean(contact?.department, 120),
           email: normalizeEmail(contact?.email),
-          phone: clean(contact?.phone, 40),
+          phone: clean(contact?.phone, 500),
           linkedinUrl: /^https:\/\/(www\.)?linkedin\.com\//i.test(clean(contact?.linkedinUrl, 500)) ? clean(contact?.linkedinUrl, 500) : "",
           relationshipRole: clean(contact?.relationshipRole, 60) || "Influenciador",
           influence: finite(contact?.influence),
@@ -171,8 +190,11 @@ const crmFields = (value = {}) => {
           accessLevel: finite(contact?.accessLevel),
           priorities: clean(contact?.priorities, 1000),
           objections: clean(contact?.objections, 1000),
+          source: clean(contact?.source, 80),
+          sourceUrl: safeExternalUrl(contact?.sourceUrl),
+          validation: clean(contact?.validation, 500),
           active: contact?.active !== false,
-        })).filter((contact) => contact.name)
+        })).filter((contact) => contact.name))
       : [],
     intelligence:
       input.intelligence && typeof input.intelligence === "object" && !Array.isArray(input.intelligence)
@@ -356,6 +378,76 @@ async function clientOverview(env, escopo) {
     semDados:
       !(operacoes?.total || 0) && !(ambiental?.calculos || 0) && !score,
   };
+}
+
+// Prévia interna e somente leitura. Ela monta o mesmo escopo e o mesmo menu
+// usados pelo portal, mas não cria uma sessão de cliente nem grava eventos em
+// nome dele. O id ainda passa pela regra da carteira do usuário interno.
+export async function handleTodoGreenClientPortalPreview(request, env, access, user) {
+  if (!env.DB) return response({ error: "Banco indisponível." }, 503);
+  if (request.method !== "GET") return response({ error: "Método não permitido." }, 405);
+  const url = new URL(request.url);
+  const clientId = clean(url.pathname.split("/").filter(Boolean)[3], 60);
+  if (!clientId) return response({ error: "Informe o cliente." }, 400);
+  const canManageInternal = ["owner", "admin"].includes(access?.role) ||
+    access?.permissions?.includes("*") || access?.permissions?.includes("clients:manage");
+  const sessionEmail = normalizeEmail(user?.email);
+  const client = await env.DB.prepare(
+    `SELECT c.id,c.name,c.status,c.portal_enabled,c.workspace_owner_id
+       FROM todogreen_clients c
+      WHERE c.id=? AND c.tenant_id=? AND c.workspace_owner_id=? AND c.archived_at IS NULL
+        AND (?=1 OR EXISTS (
+          SELECT 1 FROM todogreen_client_assignments a
+           WHERE a.tenant_id=c.tenant_id AND a.client_id=c.id
+             AND a.status='active' AND lower(a.seller_email)=?
+        ))`,
+  ).bind(clientId, TENANT_ID, access.ownerId, canManageInternal ? 1 : 0, sessionEmail).first();
+  if (!client) return response({ error: "Cliente não encontrado na sua carteira." }, 404);
+
+  const usersResult = await env.DB.prepare(
+    `SELECT email,role,status,updated_at AS updatedAt
+       FROM todogreen_client_users
+      WHERE tenant_id=? AND client_id=? AND status='active'
+      ORDER BY email`,
+  ).bind(TENANT_ID, client.id).all().catch(() => ({ results: [] }));
+  const users = usersResult.results || [];
+  const requestedRole = clientPortalRole(url.searchParams.get("role") || users[0]?.role);
+  const previewScope = {
+    tenantId: TENANT_ID, clientId: client.id, clientName: client.name,
+    workspaceOwnerId: client.workspace_owner_id, email: sessionEmail,
+    role: requestedRole, permissions: permissionsForRole(requestedRole), status: "active",
+  };
+  const { sql, params } = scopedWhere(previewScope);
+  const [summary, recent, documents, requests] = await Promise.all([
+    clientOverview(env, previewScope),
+    env.DB.prepare(
+      `SELECT id,reference,status,service_date AS serviceDate,origin,destination
+         FROM todogreen_client_operations WHERE ${sql}
+        ORDER BY service_date DESC,created_at DESC LIMIT 5`,
+    ).bind(...params).all().catch(() => ({ results: [] })),
+    env.DB.prepare(`SELECT COUNT(*) AS total FROM todogreen_evidences WHERE ${sql}`)
+      .bind(...params).first().catch(() => ({ total: 0 })),
+    env.DB.prepare(`SELECT COUNT(*) AS total FROM todogreen_client_requests WHERE ${sql}`)
+      .bind(...params).first().catch(() => ({ total: 0 })),
+  ]);
+  return response({
+    preview: true,
+    client: { id: client.id, name: client.name },
+    portal: {
+      enabled: client.portal_enabled === 1,
+      role: requestedRole,
+      permissions: previewScope.permissions,
+      menu: menuForAccess(previewScope),
+    },
+    users: users.map((item) => ({ email: item.email, role: clientPortalRole(item.role), updatedAt: item.updatedAt })),
+    summary,
+    recentOperations: recent.results || [],
+    counts: {
+      operations: Number(summary?.operacoes?.total || 0),
+      documents: Number(documents?.total || 0),
+      requests: Number(requests?.total || 0),
+    },
+  });
 }
 
 export async function handleTodoGreenCustomerPortal(request, env) {
@@ -1082,6 +1174,7 @@ export async function handleTodoGreenClients(request, env, access, user) {
         segment: cliente.segment,
         status: cliente.status,
         portalEnabled: cliente.portal_enabled === 1,
+        portalUserCount: Number(cliente.pessoas || 0),
         notes: cliente.notes,
         revision: cliente.revision,
         createdAt: cliente.created_at,
