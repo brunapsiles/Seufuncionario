@@ -170,14 +170,17 @@ async function automaticValue(env, access, row) {
     ).bind(...common, `${start}T00:00:00.000Z`, `${end}T23:59:59.999Z`).first();
   } else if (["trips", "deliveries", "packages", "distance", "occupancy"].includes(row.metric_key)) {
     const column = {
-      trips: "SUM(trips)", deliveries: "SUM(deliveries)", packages: "SUM(packages)",
-      distance: "SUM(distance_km)", occupancy: "AVG(occupancy_percent)",
+      trips: "SUM(CAST(json_extract(fields_json, '$.trips') AS REAL))",
+      deliveries: "SUM(CAST(json_extract(fields_json, '$.deliveries') AS REAL))",
+      packages: "SUM(CAST(json_extract(fields_json, '$.packages') AS REAL))",
+      distance: "SUM(distance_km)",
+      occupancy: "AVG(CAST(json_extract(fields_json, '$.occupancyPercent') AS REAL))",
     }[row.metric_key];
     const scope = filterForScope(row);
     result = await env.DB.prepare(
-      `SELECT COALESCE(${column},0) AS value FROM todogreen_operations
+      `SELECT COALESCE(${column},0) AS value FROM todogreen_client_operations
         WHERE tenant_id = ? AND workspace_owner_id = ? AND archived_at IS NULL
-          AND reference_month >= ? AND reference_month <= ?${scope.sql}`,
+          AND substr(service_date, 1, 7) >= ? AND substr(service_date, 1, 7) <= ?${scope.sql}`,
     ).bind(...common, startMonth, endMonth, ...scope.binds).first();
   } else if (row.metric_key === "green_score") {
     const clientId = row.scope_type === "client" ? row.scope_id : "";
@@ -185,10 +188,10 @@ async function automaticValue(env, access, row) {
     result = await env.DB.prepare(
       `SELECT COALESCE(AVG(score),0) AS value FROM (
          SELECT score FROM todogreen_green_scores
-          WHERE tenant_id = ? AND calculated_at <= ?${scopeSql}
+          WHERE tenant_id = ? AND workspace_owner_id = ? AND calculated_at <= ?${scopeSql}
           ORDER BY calculated_at DESC LIMIT 20
        )`,
-    ).bind(TENANT_ID, `${end}T23:59:59.999Z`, ...(clientId ? [clientId] : [])).first();
+    ).bind(TENANT_ID, row.workspace_owner_id, `${end}T23:59:59.999Z`, ...(clientId ? [clientId] : [])).first();
   } else if (row.metric_key === "co2_avoided") {
     const clientId = row.scope_type === "client" ? row.scope_id : "";
     result = await env.DB.prepare(

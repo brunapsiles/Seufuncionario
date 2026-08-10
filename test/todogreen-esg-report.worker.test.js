@@ -93,10 +93,17 @@ beforeAll(async () => {
        (id, tenant_id, client_id, workspace_owner_id, reference, status,
         service_date, origin, destination, fields_json,
         created_by, updated_by, created_at, updated_at)
-     VALUES (?, 'todogreen', ?, 'dono', 'OP-REL-1', 'concluida', '2026-03-10',
+     VALUES (?, 'todogreen', ?, ?, 'OP-REL-1', 'concluida', '2026-03-10',
              'CD', 'Hub', ?, 'seed', 'seed', ?, ?)`,
   )
-    .bind(crypto.randomUUID(), CLI_MEU, JSON.stringify({ deliveries: 120 }), agora, agora)
+    .bind(
+      crypto.randomUUID(),
+      CLI_MEU,
+      gestor.id,
+      JSON.stringify({ deliveries: 120 }),
+      agora,
+      agora,
+    )
     .run();
 });
 

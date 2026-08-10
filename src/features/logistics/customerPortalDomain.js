@@ -99,12 +99,12 @@ export const resolveClientScope = (vinculo) => {
 // esqueceu de amarrar o cliente, o erro estoura no desenvolvimento em vez de
 // virar vazamento silencioso em produção.
 export const scopedWhere = (escopo, extra = "") => {
-  if (!escopo?.clientId || !escopo?.tenantId)
+  if (!escopo?.clientId || !escopo?.tenantId || !escopo?.workspaceOwnerId)
     throw new Error("Consulta do portal sem cliente na sessão.");
-  const base = "tenant_id = ? AND client_id = ?";
+  const base = "tenant_id = ? AND workspace_owner_id = ? AND client_id = ?";
   return {
     sql: extra ? `${base} AND ${extra}` : base,
-    params: [escopo.tenantId, escopo.clientId],
+    params: [escopo.tenantId, escopo.workspaceOwnerId, escopo.clientId],
   };
 };
 

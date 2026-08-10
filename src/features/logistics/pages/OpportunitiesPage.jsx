@@ -252,6 +252,7 @@ function CartaoOportunidade({ registro, analise, aberta, alternar }) {
 export default function OpportunitiesPage({ opportunities = [], onCreate, setToast }) {
   const [form, setForm] = useState(FORM_VAZIO);
   const [abertaId, setAbertaId] = useState(null);
+  const [salvando, setSalvando] = useState(false);
 
   const registros = useMemo(
     () => opportunities.map((item) => normalizarOportunidade(item)),
@@ -266,21 +267,28 @@ export default function OpportunitiesPage({ opportunities = [], onCreate, setToa
   const campo = (key) => (event) =>
     setForm((atual) => ({ ...atual, [key]: event.target.value }));
 
-  const salvar = (event) => {
+  const salvar = async (event) => {
     event.preventDefault();
-    onCreate?.({
-      id: `opp-${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      lastInteractionAt: new Date().toISOString(),
-      ...form,
-      // Números saem do formulário como texto; guardar assim faria o motor
-      // somar strings e produzir um pipeline errado sem erro nenhum.
-      ...Object.fromEntries(
-        [...CAMPOS_OPERACAO, ...CAMPOS_CONTRATO].map(({ key }) => [key, Number(form[key] || 0)]),
-      ),
-    });
-    setForm(FORM_VAZIO);
-    setToast?.("Oportunidade registrada com potencial ESG calculado.");
+    setSalvando(true);
+    try {
+      await onCreate?.({
+        id: `opp-${Date.now()}`,
+        createdAt: new Date().toISOString(),
+        lastInteractionAt: new Date().toISOString(),
+        ...form,
+        // Números saem do formulário como texto; guardar assim faria o motor
+        // somar strings e produzir um pipeline errado sem erro nenhum.
+        ...Object.fromEntries(
+          [...CAMPOS_OPERACAO, ...CAMPOS_CONTRATO].map(({ key }) => [key, Number(form[key] || 0)]),
+        ),
+      });
+      setForm(FORM_VAZIO);
+      setToast?.("Oportunidade registrada com potencial ESG calculado.");
+    } catch (erro) {
+      setToast?.(erro?.message || "Não foi possível registrar a oportunidade.");
+    } finally {
+      setSalvando(false);
+    }
   };
 
   return (
@@ -366,9 +374,9 @@ export default function OpportunitiesPage({ opportunities = [], onCreate, setToa
           Distância e viagens por mês são o que destrava o cálculo ambiental. Sem elas a
           oportunidade entra no pipeline, mas sem potencial ESG.
         </p>
-        <button className="tdg-action" type="submit">
+        <button className="tdg-action" type="submit" disabled={salvando}>
           <Plus size={16} />
-          Registrar oportunidade
+          {salvando ? "Registrando..." : "Registrar oportunidade"}
         </button>
       </form>
 

@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import OpportunitiesPage from "./OpportunitiesPage.jsx";
 
@@ -114,6 +114,17 @@ describe("página de oportunidades", () => {
     expect(registro.viagensMes).toBe(40);
     expect(registro.valorMensal).toBe(12000);
     expect(registro.cliente).toBe("Nova Conta");
+  });
+
+  it("não limpa o formulário nem anuncia sucesso quando a gravação falha", async () => {
+    const onCreate = vi.fn().mockRejectedValue(new Error("Servidor indisponível"));
+    const setToast = vi.fn();
+    render(<OpportunitiesPage opportunities={[]} onCreate={onCreate} setToast={setToast} />);
+    fireEvent.change(screen.getByLabelText("Cliente"), { target: { value: "Conta preservada" } });
+    fireEvent.click(screen.getByRole("button", { name: /Registrar oportunidade/ }));
+
+    await waitFor(() => expect(setToast).toHaveBeenCalledWith("Servidor indisponível"));
+    expect(screen.getByLabelText("Cliente")).toHaveValue("Conta preservada");
   });
 
   it("carteira vazia convida em vez de mostrar tela em branco", () => {

@@ -16,6 +16,7 @@ const vinculo = (extra = {}) => ({
   tenant_id: "todogreen",
   client_id: "cli-mercado",
   client_name: "Mercado Livre",
+  workspace_owner_id: "workspace-mercado",
   client_status: "ativo",
   portal_enabled: 1,
   email: "logistica@cliente.com.br",
@@ -60,15 +61,15 @@ describe("não existe como pedir outro cliente", () => {
   it("a consulta sempre carrega tenant e cliente da sessão", () => {
     const escopo = resolveClientScope(vinculo());
     const { sql, params } = scopedWhere(escopo);
-    expect(sql).toBe("tenant_id = ? AND client_id = ?");
-    expect(params).toEqual(["todogreen", "cli-mercado"]);
+    expect(sql).toBe("tenant_id = ? AND workspace_owner_id = ? AND client_id = ?");
+    expect(params).toEqual(["todogreen", "workspace-mercado", "cli-mercado"]);
   });
 
   it("condição extra não substitui o cliente, se soma a ele", () => {
     const escopo = resolveClientScope(vinculo());
     const { sql, params } = scopedWhere(escopo, "status = ?");
-    expect(sql).toBe("tenant_id = ? AND client_id = ? AND status = ?");
-    expect(params).toEqual(["todogreen", "cli-mercado"]);
+    expect(sql).toBe("tenant_id = ? AND workspace_owner_id = ? AND client_id = ? AND status = ?");
+    expect(params).toEqual(["todogreen", "workspace-mercado", "cli-mercado"]);
   });
 
   it("montar consulta sem cliente na sessão é erro, não consulta aberta", () => {
@@ -76,6 +77,7 @@ describe("não existe como pedir outro cliente", () => {
     expect(() => scopedWhere(null)).toThrow(/sem cliente/i);
     expect(() => scopedWhere({ tenantId: "todogreen" })).toThrow(/sem cliente/i);
     expect(() => scopedWhere({ clientId: "cli-mercado" })).toThrow(/sem cliente/i);
+    expect(() => scopedWhere({ tenantId: "todogreen", clientId: "cli-mercado" })).toThrow(/sem cliente/i);
   });
 });
 

@@ -1,5 +1,5 @@
 /* @vitest-environment jsdom */
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import EsgCenter from "./EsgCenter.jsx";
 
@@ -130,12 +130,33 @@ describe("Central ESG", () => {
     render(<EsgCenter authHeaders={authHeaders} setToast={setToast} />);
     await screen.findByText("v1.2026");
 
+    fireEvent.change(screen.getByLabelText("Distância (km)"), { target: { value: "100" } });
+    fireEvent.change(screen.getByLabelText("Viagens no período"), { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText("Ocupação média (%)"), { target: { value: "80" } });
+    fireEvent.change(screen.getByLabelText("Frota de baixa emissão (%)"), {
+      target: { value: "70" },
+    });
+    fireEvent.change(screen.getByLabelText("Ocorrências"), { target: { value: "0" } });
+    fireEvent.change(screen.getByLabelText("Tipo de veículo"), {
+      target: { value: "Furgão elétrico" },
+    });
+    fireEvent.change(screen.getByLabelText("Origem do dado de distância"), {
+      target: { value: "medido" },
+    });
     screen.getByRole("button", { name: /Calcular e gravar/ }).click();
 
     await waitFor(() => expect(corpo).toBeTruthy());
     // A origem do dado vai junto: é ela que define a qualidade, e qualidade
     // baixa muda o que o relatório pode afirmar.
-    expect(corpo.operacoes[0].origens.distancia).toBeTruthy();
+    expect(corpo.operacoes[0]).toMatchObject({
+      distanciaKm: 100,
+      viagens: 10,
+      tipoVeiculo: "Furgão elétrico",
+      origens: { distancia: "medido" },
+    });
+    expect(corpo.ocupacaoPercent).toBe(80);
+    expect(corpo.frotaLimpaPercent).toBe(70);
+    expect(corpo.ocorrencias).toBe(0);
     expect(corpo.clienteId).toBe("c1");
     await waitFor(() => expect(setToast).toHaveBeenCalled());
     expect(setToast.mock.calls[0][0]).toMatch(/memória de cálculo/i);
