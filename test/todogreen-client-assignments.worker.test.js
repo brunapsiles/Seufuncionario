@@ -96,6 +96,48 @@ describe("carteira comercial To Do Green", () => {
     expect(a.acesso.somenteCarteira).toBe(true);
   });
 
+  it("vendedor atualiza a visão 360º somente da própria carteira e com revisão", async () => {
+    const before = await (await call("/api/todogreen/clients", { token: sellerA.token })).json();
+    const revision = before.clientes[0].revision;
+    const updated = await call(`/api/todogreen/clients/${clientA}`, {
+      method: "PATCH",
+      token: sellerA.token,
+      body: {
+        revision,
+        crm: {
+          tier: "Estratégica",
+          stage: "Diagnóstico",
+          nextAction: "Validar rota prioritária",
+          nextActionAt: "2026-09-01",
+          strategicPotential: 95,
+          contacts: [{ name: "Ana Decisora", relationshipRole: "Decisor econômico", email: "ANA@CLIENTE.COM" }],
+        },
+      },
+    });
+    expect(updated.status).toBe(200);
+
+    const after = await (await call("/api/todogreen/clients", { token: sellerA.token })).json();
+    expect(after.clientes[0].crm).toMatchObject({
+      tier: "Estratégica",
+      stage: "Diagnóstico",
+      nextAction: "Validar rota prioritária",
+      strategicPotential: 95,
+    });
+    expect(after.clientes[0].crm.contacts[0]).toMatchObject({
+      name: "Ana Decisora",
+      email: "ana@cliente.com",
+    });
+
+    const stale = await call(`/api/todogreen/clients/${clientA}`, {
+      method: "PATCH", token: sellerA.token, body: { revision, crm: { stage: "Proposta" } },
+    });
+    expect(stale.status).toBe(409);
+    const outsidePortfolio = await call(`/api/todogreen/clients/${clientB}`, {
+      method: "PATCH", token: sellerA.token, body: { revision: 1, crm: { stage: "Proposta" } },
+    });
+    expect(outsidePortfolio.status).toBe(404);
+  });
+
   it("administrador mantém visão completa e pode retirar atribuição", async () => {
     const all = await (await call("/api/todogreen/clients", { token: admin.token })).json();
     expect(all.clientes.map((item) => item.id)).toEqual(expect.arrayContaining([clientA, clientB]));

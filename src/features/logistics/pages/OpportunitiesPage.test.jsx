@@ -169,6 +169,16 @@ describe("página de oportunidades", () => {
     expect(registro.cliente).toBe("Nova Conta");
   });
 
+  it("vincula a oportunidade ao identificador da conta e navega pelas etapas", () => {
+    const onCreate = vi.fn();
+    render(<OpportunitiesPage clients={[{ id: "cli-1", name: "Rede Alfa" }]} opportunities={[completa]} onCreate={onCreate} />);
+    fireEvent.change(screen.getByLabelText("Cliente"), { target: { value: "cli-1" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Proposta/ }));
+    expect(screen.getByRole("button", { name: /Distribuidora Norte/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Registrar oportunidade/ }));
+    expect(onCreate.mock.calls[0][0]).toMatchObject({ clientId: "cli-1", cliente: "Rede Alfa" });
+  });
+
   it("não limpa o formulário nem anuncia sucesso quando a gravação falha", async () => {
     const onCreate = vi.fn().mockRejectedValue(new Error("Servidor indisponível"));
     const setToast = vi.fn();
