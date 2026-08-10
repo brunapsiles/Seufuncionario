@@ -68,12 +68,58 @@ const sha256 = async (value) => {
 
 const clean = (value, max = 500) => String(value ?? "").trim().slice(0, max);
 
+const finite = (value, min = 0, max = 100) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : 0;
+};
+
 const parse = (value, fallback) => {
   try {
     return JSON.parse(value || "");
   } catch {
     return fallback;
   }
+};
+
+const crmFields = (value = {}) => {
+  const input = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return {
+    tier: clean(input.tier, 40),
+    stage: clean(input.stage, 60),
+    headquarters: clean(input.headquarters, 160),
+    strategicPotential: finite(input.strategicPotential),
+    relationshipStrength: finite(input.relationshipStrength),
+    operationalFit: finite(input.operationalFit),
+    esgFit: finite(input.esgFit),
+    dataQuality: finite(input.dataQuality),
+    churnRisk: finite(input.churnRisk),
+    nextAction: clean(input.nextAction, 500),
+    nextActionAt: clean(input.nextActionAt, 40),
+    lastInteractionAt: clean(input.lastInteractionAt, 40),
+    source: clean(input.source, 100),
+    tags: Array.isArray(input.tags) ? input.tags.slice(0, 20).map((item) => clean(item, 60)).filter(Boolean) : [],
+    qualification:
+      input.qualification && typeof input.qualification === "object" && !Array.isArray(input.qualification)
+        ? Object.fromEntries(Object.entries(input.qualification).slice(0, 40).map(([key, item]) => [clean(key, 80), clean(item, 1000)]))
+        : {},
+    contacts: Array.isArray(input.contacts)
+      ? input.contacts.slice(0, 100).map((contact) => ({
+          id: clean(contact?.id, 80) || crypto.randomUUID(),
+          name: clean(contact?.name, 160),
+          title: clean(contact?.title, 120),
+          department: clean(contact?.department, 120),
+          email: normalizeEmail(contact?.email),
+          phone: clean(contact?.phone, 40),
+          relationshipRole: clean(contact?.relationshipRole, 60) || "Influenciador",
+          influence: finite(contact?.influence),
+          supportLevel: finite(contact?.supportLevel, -100, 100),
+          accessLevel: finite(contact?.accessLevel),
+          priorities: clean(contact?.priorities, 1000),
+          objections: clean(contact?.objections, 1000),
+          active: contact?.active !== false,
+        })).filter((contact) => contact.name)
+      : [],
+  };
 };
 
 // Mesma sessão do resto do produto: o portal não tem login próprio.
@@ -939,11 +985,12 @@ export async function handleTodoGreenClients(request, env, access, user) {
     access?.permissions?.includes("clients:manage") ||
     access?.permissions?.includes("clients:assign");
   const emailSessao = normalizeEmail(user?.email);
+  const clientIdDaRota = clean(url.pathname.split("/").filter(Boolean)[3], 60);
 
   if (request.method === "GET") {
     const linhas = await env.DB.prepare(
-      `SELECT c.id, c.name, c.document, c.segment, c.status, c.portal_enabled,
-              c.updated_at,
+      `SELECT c.id, c.name, c.legal_name, c.document, c.segment, c.status, c.portal_enabled,
+              c.notes, c.fields_json, c.revision, c.created_at, c.updated_at,
               (SELECT COUNT(*) FROM todogreen_client_users v
                 WHERE v.client_id = c.id AND v.status = 'active') AS pessoas
          FROM todogreen_clients c
@@ -972,13 +1019,60 @@ export async function handleTodoGreenClients(request, env, access, user) {
     }
     return response({
       clientes: (linhas.results || []).map((cliente) => ({
-        ...cliente,
+        id: cliente.id,
+        name: cliente.name,
+        legalName: cliente.legal_name,
+        document: cliente.document,
+        segment: cliente.segment,
+        status: cliente.status,
+        portalEnabled: cliente.portal_enabled === 1,
+        notes: cliente.notes,
+        revision: cliente.revision,
+        createdAt: cliente.created_at,
+        updatedAt: cliente.updated_at,
+        crm: crmFields(parse(cliente.fields_json, {})),
         vendedores: atribuicoes
           .filter((item) => item.client_id === cliente.id)
           .map((item) => ({ email: item.seller_email, observacao: item.note, atualizadoEm: item.updated_at })),
       })),
-      acesso: { podeGerenciar, somenteCarteira: !podeGerenciar, vendedor: emailSessao },
+      acesso: { podeGerenciar, podeEditar: true, somenteCarteira: !podeGerenciar, vendedor: emailSessao },
     });
+  }
+
+  if (request.method === "PATCH" && clientIdDaRota) {
+    const body = await request.json().catch(() => ({}));
+    const atual = await env.DB.prepare(
+      `SELECT c.* FROM todogreen_clients c
+        WHERE c.id = ? AND c.tenant_id = ? AND c.workspace_owner_id = ? AND c.archived_at IS NULL
+          AND (? = 1 OR EXISTS (
+            SELECT 1 FROM todogreen_client_assignments a
+             WHERE a.tenant_id = c.tenant_id AND a.client_id = c.id
+               AND a.status = 'active' AND lower(a.seller_email) = ?
+          ))`,
+    ).bind(clientIdDaRota, TENANT_ID, access.ownerId, podeGerenciar ? 1 : 0, emailSessao).first();
+    if (!atual) return response({ error: "Cliente não encontrado." }, 404);
+    const revisao = Number(body.revision);
+    if (!Number.isFinite(revisao) || revisao <= 0)
+      return response({ error: "Informe a revisão do cliente que você leu." }, 400);
+    const crm = crmFields({ ...parse(atual.fields_json, {}), ...(body.crm || {}) });
+    const { meta } = await env.DB.prepare(
+      `UPDATE todogreen_clients
+          SET name = ?, legal_name = ?, document = ?, segment = ?, status = ?, notes = ?,
+              fields_json = ?, revision = revision + 1, updated_by = ?, updated_at = ?
+        WHERE id = ? AND tenant_id = ? AND workspace_owner_id = ? AND revision = ?`,
+    ).bind(
+      clean(body.name ?? atual.name, 200) || atual.name,
+      clean(body.legalName ?? atual.legal_name, 200),
+      clean(body.document ?? atual.document, 40),
+      clean(body.segment ?? atual.segment, 80),
+      clean(body.status ?? atual.status, 20) || "ativo",
+      clean(body.notes ?? atual.notes, 1000),
+      JSON.stringify(crm), user.id, agora,
+      clientIdDaRota, TENANT_ID, access.ownerId, revisao,
+    ).run();
+    if (!meta?.changes)
+      return response({ error: "Este cliente mudou enquanto você editava. Recarregue e tente novamente." }, 409);
+    return response({ ok: true, id: clientIdDaRota });
   }
 
   if (!podeGerenciar)
@@ -1003,8 +1097,8 @@ export async function handleTodoGreenClients(request, env, access, user) {
     await env.DB.prepare(
       `INSERT INTO todogreen_clients
          (id, tenant_id, workspace_owner_id, name, legal_name, document, segment,
-          status, portal_enabled, notes, created_by, updated_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          status, portal_enabled, notes, fields_json, created_by, updated_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          name = excluded.name,
          legal_name = excluded.legal_name,
@@ -1013,6 +1107,7 @@ export async function handleTodoGreenClients(request, env, access, user) {
          status = excluded.status,
          portal_enabled = excluded.portal_enabled,
          notes = excluded.notes,
+         fields_json = excluded.fields_json,
          updated_by = excluded.updated_by,
          updated_at = excluded.updated_at,
          revision = todogreen_clients.revision + 1
@@ -1030,6 +1125,7 @@ export async function handleTodoGreenClients(request, env, access, user) {
         clean(body.status, 20) || "ativo",
         body.portalLiberado === true || body.portalEnabled === true ? 1 : 0,
         clean(body.observacoes ?? body.notes, 1000),
+        JSON.stringify(crmFields(body.crm || {})),
         user.id,
         user.id,
         agora,

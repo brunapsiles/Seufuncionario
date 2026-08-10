@@ -3,10 +3,12 @@ import {
   accountHealth,
   calculateAccountScore,
   calculateRelationshipCoverage,
+  buildCrmCommandCenter,
   createTodoGreenAccount,
   createTodoGreenContact,
   crmAccountSummary,
   recommendNextCommercialAction,
+  TODO_GREEN_RELATIONSHIP_ROLES,
 } from "./todoGreenCrmDomain.js";
 
 describe("To Do Green enterprise CRM", () => {
@@ -113,5 +115,36 @@ describe("To Do Green enterprise CRM", () => {
     expect(summary.coverage).toBe(100);
     expect(summary.weightedPipeline).toBe(1_200_000);
     expect(summary.score).toBeGreaterThanOrEqual(80);
+  });
+
+  it("builds a command center ordered by commercial attention", () => {
+    const healthy = createTodoGreenAccount({
+      id: "healthy",
+      tradeName: "Conta saudável",
+      nextAction: "Reunião",
+      nextActionAt: "2999-01-01",
+      strategicPotential: 90,
+      relationshipStrength: 90,
+      operationalFit: 90,
+      esgFit: 90,
+      dataQuality: 90,
+      contacts: TODO_GREEN_RELATIONSHIP_ROLES.slice(0, 6).map((relationshipRole) =>
+        createTodoGreenContact({ relationshipRole }),
+      ),
+    });
+    const critical = createTodoGreenAccount({
+      id: "critical",
+      tradeName: "Conta atrasada",
+      nextAction: "Retomar contato",
+      nextActionAt: "2020-01-01",
+    });
+    const result = buildCrmCommandCenter([healthy, critical], [
+      { clientId: "healthy", estagio: "Proposta", value: 1000, probability: 50 },
+      { clientId: "critical", estagio: "Fechada ganha", value: 9000, probability: 100 },
+    ], new Date("2026-08-10"));
+    expect(result.totalAccounts).toBe(2);
+    expect(result.openOpportunities).toBe(1);
+    expect(result.overdueActions).toBe(1);
+    expect(result.accounts[0].name).toBe("Conta atrasada");
   });
 });

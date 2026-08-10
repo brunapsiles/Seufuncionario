@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Calculator,
@@ -10,6 +10,7 @@ import {
   LockKeyhole,
   Plus,
   Save,
+  Search,
   Target,
 } from "lucide-react";
 import Modal from "../../../components/Modal.jsx";
@@ -50,6 +51,7 @@ const CAMPOS_CONTRATO = [
 ];
 
 const FORM_VAZIO = {
+  clientId: "",
   cliente: "",
   productId: "middle-mile",
   estagio: "Diagnóstico",
@@ -63,6 +65,9 @@ const FORM_VAZIO = {
   mesesContrato: "12",
   probabilidade: "",
   nextStep: "",
+  expectedCloseAt: "",
+  source: "",
+  priority: "media",
 };
 
 const gravidadeRotulo = { alta: "Crítico", media: "Atenção", baixa: "Observação" };
@@ -534,6 +539,7 @@ function CartaoOportunidade({ registro, analise, jornada, aberta, alternar, onEd
 }
 
 export default function OpportunitiesPage({
+  clients = [],
   opportunities = [],
   scenarios = [],
   onCreate,
@@ -545,6 +551,15 @@ export default function OpportunitiesPage({
   const [abertaId, setAbertaId] = useState(null);
   const [salvando, setSalvando] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
+  const [filtroEstagio, setFiltroEstagio] = useState("todas");
+  const [busca, setBusca] = useState("");
+
+  useEffect(() => {
+    const clientId = new URLSearchParams(window.location.search).get("client") || "";
+    const client = clients.find((item) => item.id === clientId);
+    if (client)
+      setForm((current) => ({ ...current, clientId: client.id, cliente: client.name }));
+  }, [clients]);
 
   const registros = useMemo(
     () => opportunities.map((item) => normalizarOportunidade(item)),
@@ -566,6 +581,19 @@ export default function OpportunitiesPage({
     [registros, scenarios],
   );
   const editando = registros.find((registro) => registro.id === editandoId) || null;
+  const etapas = useMemo(() => ESTAGIOS_OPORTUNIDADE.map((estagio) => {
+    const itens = registros.filter((registro) => registro.estagio === estagio);
+    return {
+      estagio,
+      quantidade: itens.length,
+      valor: itens.reduce((sum, item) => sum + analisarOportunidade(item).financeiro.valorContrato, 0),
+    };
+  }), [registros]);
+  const visiveis = useMemo(() => registros.filter((registro) => {
+    const stageMatches = filtroEstagio === "todas" || registro.estagio === filtroEstagio;
+    const queryMatches = `${registro.cliente} ${registro.nextStep || ""} ${registro.source || ""}`.toLowerCase().includes(busca.toLowerCase());
+    return stageMatches && queryMatches;
+  }), [busca, filtroEstagio, registros]);
 
   const campo = (key) => (event) =>
     setForm((atual) => ({ ...atual, [key]: event.target.value }));
@@ -637,7 +665,7 @@ export default function OpportunitiesPage({
         <div className="tdg-form-row">
           <label>
             <span>Cliente</span>
-            <input required value={form.cliente} onChange={campo("cliente")} />
+            {clients.length ? <select required value={form.clientId} onChange={(event) => { const client = clients.find((item) => item.id === event.target.value); setForm((current) => ({ ...current, clientId: event.target.value, cliente: client?.name || "" })); }}><option value="">Selecione a conta</option>{clients.map((client) => <option value={client.id} key={client.id}>{client.name}</option>)}</select> : <input required value={form.cliente} onChange={campo("cliente")} />}
           </label>
           <label>
             <span>Estágio</span>
@@ -666,6 +694,12 @@ export default function OpportunitiesPage({
           ))}
         </div>
         <div className="tdg-form-row tdg-opp-form-larga">
+          <label><span>Próximo passo</span><input value={form.nextStep} onChange={campo("nextStep")} placeholder="Ação concreta acordada" /></label>
+          <label><span>Previsão de fechamento</span><input type="date" value={form.expectedCloseAt} onChange={campo("expectedCloseAt")} /></label>
+          <label><span>Origem</span><input value={form.source} onChange={campo("source")} placeholder="Indicação, prospecção, evento..." /></label>
+          <label><span>Prioridade</span><select value={form.priority} onChange={campo("priority")}><option value="alta">Alta</option><option value="media">Média</option><option value="baixa">Baixa</option></select></label>
+        </div>
+        <div className="tdg-form-row tdg-opp-form-larga">
           {CAMPOS_OPERACAO.map(({ key, label, type }) => (
             <label key={key}>
               <span>{label}</span>
@@ -683,6 +717,12 @@ export default function OpportunitiesPage({
         </button>
       </form>
 
+      <section className="tdg-pipeline-strip" aria-label="Etapas do pipeline">
+        <button type="button" className={filtroEstagio === "todas" ? "active" : ""} onClick={() => setFiltroEstagio("todas")}><strong>Pipeline completo</strong><span>{registros.length} negócio(s)</span><small>{BRL.format(resumo.valorTotal)}</small></button>
+        {etapas.map((item) => <button type="button" className={filtroEstagio === item.estagio ? "active" : ""} onClick={() => setFiltroEstagio(item.estagio)} key={item.estagio}><strong>{item.estagio}</strong><span>{item.quantidade} negócio(s)</span><small>{BRL.format(item.valor)}</small></button>)}
+      </section>
+      <div className="tdg-opp-toolbar"><Search size={17} /><input aria-label="Buscar oportunidades" placeholder="Buscar por conta, próximo passo ou origem" value={busca} onChange={(event) => setBusca(event.target.value)} />{filtroEstagio !== "todas" && <button type="button" onClick={() => setFiltroEstagio("todas")}>Limpar etapa</button>}</div>
+
       {registros.length === 0 && (
         <p className="tdg-opp-vazio">
           Nenhuma oportunidade registrada ainda. A primeira que você cadastrar já sai com
@@ -691,7 +731,7 @@ export default function OpportunitiesPage({
       )}
 
       <div className="tdg-opp-lista">
-        {registros.map((registro) => (
+        {visiveis.map((registro) => (
           <CartaoOportunidade
             key={registro.id}
             registro={registro}

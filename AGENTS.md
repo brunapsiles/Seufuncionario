@@ -194,6 +194,14 @@ gratuito da Cloudflare. O workflow `Publicar` do GitHub é apenas uma contingên
   criar um segundo cadastro de estudo nem marcar etapa como concluída só por
   clique. A precificação aberta pela oportunidade recebe os dados mapeados,
   mas custos e premissas continuam vazios até confirmação explícita.
+- **CRM To Do Green**: o cadastro canônico da conta continua em
+  `todogreen_clients`; a inteligência fica em `fields_json` e é normalizada
+  por `todoGreenCrmDomain.js`. A tela `pages/ClientsPage.jsx` conecta carteira,
+  mapa de relacionamento, saúde da conta, próximas ações e oportunidades pelo
+  `clientId`. Não criar uma segunda coleção de clientes nem ligar contas por
+  nome quando houver identificador. Vendedor pode atualizar a visão 360º
+  somente da própria carteira e toda alteração exige `revision`; o portal não
+  recebe scores, pipeline, forecast, responsáveis ou observações internas.
 - **Hierarquia universal de trabalho (v124)**: lógica pura em
   `src/features/work/hierarchyDomain.js` e interface lazy em
   `src/features/work/WorkStructure.jsx`. A organização raiz é sempre derivada

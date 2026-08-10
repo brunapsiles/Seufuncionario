@@ -5,6 +5,14 @@ const asNumber = (value) => {
 };
 const clamp = (value, min = 0, max = 100) => Math.min(max, Math.max(min, value));
 
+const CLOSED_STAGES = new Set([
+  "Ganho",
+  "Perdido",
+  "Fechada ganha",
+  "Fechada perdida",
+  "Cliente ativo",
+]);
+
 export const TODO_GREEN_ACCOUNT_TIERS = [
   "Estratégica",
   "Enterprise",
@@ -161,7 +169,9 @@ export const accountHealth = (account = {}, contacts = [], opportunities = []) =
   const accountScore = calculateAccountScore(account);
   const coverage = calculateRelationshipCoverage(contacts);
   const openOpportunities = opportunities.filter(
-    (opportunity) => opportunity.accountId === account.id && !["Ganho", "Perdido"].includes(opportunity.stage),
+    (opportunity) =>
+      (opportunity.accountId === account.id || opportunity.clientId === account.id) &&
+      !CLOSED_STAGES.has(opportunity.stage || opportunity.estagio),
   );
   const pipeline = openOpportunities.reduce((sum, item) => sum + asNumber(item.value), 0);
   const weightedPipeline = openOpportunities.reduce(
@@ -188,6 +198,50 @@ export const accountHealth = (account = {}, contacts = [], opportunities = []) =
     openOpportunities: openOpportunities.length,
     overdue,
     alerts,
+  };
+};
+
+export const crmAttention = (summary = {}) => {
+  const alerts = Array.isArray(summary.alerts) ? summary.alerts : [];
+  if (alerts.includes("Próxima ação atrasada") || asNumber(summary.churnRisk) >= 70)
+    return "critical";
+  if (alerts.length || asNumber(summary.coverage) < 60) return "attention";
+  return "healthy";
+};
+
+export const buildCrmCommandCenter = (accounts = [], opportunities = [], now = new Date()) => {
+  const summaries = accounts.map((account) => {
+    const contacts = Array.isArray(account.contacts) ? account.contacts : [];
+    const summary = crmAccountSummary(account, contacts, opportunities);
+    return {
+      ...summary,
+      churnRisk: asNumber(account.churnRisk),
+      attention: crmAttention({ ...summary, churnRisk: account.churnRisk }),
+      nextActionAt: account.nextActionAt || "",
+      overdue: account.nextActionAt
+        ? new Date(account.nextActionAt).getTime() < now.getTime()
+        : false,
+    };
+  });
+  const open = opportunities.filter(
+    (item) => !CLOSED_STAGES.has(item.stage || item.estagio),
+  );
+  const totalPipeline = summaries.reduce((sum, item) => sum + asNumber(item.pipeline), 0);
+  const weightedPipeline = summaries.reduce(
+    (sum, item) => sum + asNumber(item.weightedPipeline),
+    0,
+  );
+  return {
+    accounts: summaries.sort((a, b) => {
+      const order = { critical: 0, attention: 1, healthy: 2 };
+      return order[a.attention] - order[b.attention] || b.pipeline - a.pipeline;
+    }),
+    totalAccounts: accounts.length,
+    openOpportunities: open.length,
+    totalPipeline,
+    weightedPipeline,
+    overdueActions: summaries.filter((item) => item.overdue).length,
+    relationshipGaps: summaries.filter((item) => item.coverage < 60).length,
   };
 };
 
