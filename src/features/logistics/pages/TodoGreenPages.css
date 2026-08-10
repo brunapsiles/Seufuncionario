@@ -49,12 +49,15 @@
 
 /* CRM: cockpit de carteira + visão 360º. */
 .tdg-crm-metrics { display: grid; gap: 10px; grid-template-columns: repeat(5,minmax(0,1fr)); }
+.tdg-crm-admin-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; }
+.tdg-crm-import { cursor: pointer; }
+.tdg-crm-import input { display: none; }
 .tdg-crm-metrics article { background: #f5f9f7; border: 1px solid var(--tdg-line); border-radius: 15px; display: grid; gap: 4px; min-width: 0; padding: 14px; position: relative; }
 .tdg-crm-metrics article > svg { color: var(--tdg-green); position: absolute; right: 13px; top: 13px; }
 .tdg-crm-metrics article.attention { background: #fff9ec; border-color: #dec88f; }
 .tdg-crm-metrics span,.tdg-crm-metrics small { color: var(--tdg-muted); font-size: 11.5px; padding-right: 22px; }
 .tdg-crm-metrics strong { font-size: 1.35rem; overflow-wrap: anywhere; }
-.tdg-crm-toolbar { align-items: center; display: flex; gap: 12px; justify-content: space-between; }
+.tdg-crm-toolbar { align-items: center; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; }
 .tdg-crm-toolbar .tdg-client-toolbar { align-items: center; border: 1px solid var(--tdg-line); border-radius: 12px; flex: 1; padding-left: 11px; }
 .tdg-crm-toolbar .tdg-client-toolbar input { border: 0; outline: 0; }
 .tdg-crm-filters { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -75,6 +78,7 @@
 .tdg-crm-table > button span { display: grid; gap: 3px; min-width: 0; }
 .tdg-crm-table > button small { color: var(--tdg-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tdg-crm-table > button b { align-items: center; background: var(--tdg-soft); border-radius: 50%; color: var(--tdg-green); display: inline-flex; font-size: 13px; height: 34px; justify-content: center; width: 34px; }
+.tdg-crm-table > button.tdg-crm-load-more { color: var(--tdg-green); display: flex; font-weight: 800; justify-content: center; padding: 12px; }
 .tdg-crm-account { background: #fff; border: 1px solid var(--tdg-line); border-radius: 16px; display: grid; gap: 14px; padding: 16px; position: sticky; top: 16px; }
 .tdg-crm-account > header,.tdg-crm-account section > header { align-items: flex-start; display: flex; gap: 10px; justify-content: space-between; }
 .tdg-crm-account > header span { color: var(--tdg-green); font-size: 10px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }

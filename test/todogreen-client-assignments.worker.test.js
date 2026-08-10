@@ -138,6 +138,36 @@ describe("carteira comercial To Do Green", () => {
     expect(outsidePortfolio.status).toBe(404);
   });
 
+  it("importa um lote de forma idempotente, classifica a temperatura e atribui à sessão", async () => {
+    const payload = {
+      clientes: [{
+        id: "importacao-carteira-teste",
+        nome: "Conta Padronizada",
+        crm: {
+          temperature: "Morno",
+          source: "Carteira To Do Green",
+          tags: ["Origem: Carteira To Do Green"],
+        },
+      }],
+    };
+    const first = await call("/api/todogreen/clients/import", {
+      method: "POST", token: admin.token, body: payload,
+    });
+    expect(first.status).toBe(201);
+    const second = await call("/api/todogreen/clients/import", {
+      method: "POST", token: admin.token, body: payload,
+    });
+    expect(second.status).toBe(201);
+
+    const all = await (await call("/api/todogreen/clients", { token: admin.token })).json();
+    const imported = all.clientes.filter((item) => item.id === "importacao-carteira-teste");
+    expect(imported).toHaveLength(1);
+    expect(imported[0].crm.temperature).toBe("Morno");
+    expect(imported[0].vendedores).toEqual(expect.arrayContaining([
+      expect.objectContaining({ email: admin.email }),
+    ]));
+  });
+
   it("administrador mantém visão completa e pode retirar atribuição", async () => {
     const all = await (await call("/api/todogreen/clients", { token: admin.token })).json();
     expect(all.clientes.map((item) => item.id)).toEqual(expect.arrayContaining([clientA, clientB]));
