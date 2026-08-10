@@ -12,6 +12,9 @@ import {
   Target,
   Trash2,
   Upload,
+  ExternalLink,
+  Mail,
+  MessageCircle,
   UserPlus,
   Users,
   X,
@@ -25,6 +28,7 @@ import {
   buildCrmCommandCenter,
   crmAccountSummary,
 } from "../todoGreenCrmDomain.js";
+import { assessAccount, gmailComposeUrl, outlookComposeUrl, whatsappUrl } from "../accountIntelligenceDomain.js";
 import "./TodoGreenPages.css";
 
 const BRL = new Intl.NumberFormat("pt-BR", {
@@ -91,7 +95,7 @@ const accountForm = (client) => {
 
 function AccountEditor({ client, onClose, onSave }) {
   const [form, setForm] = useState(() => accountForm(client));
-  const [contact, setContact] = useState({ name: "", title: "", email: "", phone: "", relationshipRole: "Influenciador" });
+  const [contact, setContact] = useState({ name: "", title: "", email: "", phone: "", linkedinUrl: "", relationshipRole: "Influenciador" });
   const [saving, setSaving] = useState(false);
   const field = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
   const addContact = () => {
@@ -100,7 +104,7 @@ function AccountEditor({ client, onClose, onSave }) {
       ...current,
       contacts: [...current.contacts, { ...contact, id: crypto.randomUUID(), active: true }],
     }));
-    setContact({ name: "", title: "", email: "", phone: "", relationshipRole: "Influenciador" });
+    setContact({ name: "", title: "", email: "", phone: "", linkedinUrl: "", relationshipRole: "Influenciador" });
   };
   const save = async (event) => {
     event.preventDefault();
@@ -179,6 +183,7 @@ function AccountEditor({ client, onClose, onSave }) {
             <select aria-label="Papel no relacionamento" value={contact.relationshipRole} onChange={(event) => setContact({ ...contact, relationshipRole: event.target.value })}>{TODO_GREEN_RELATIONSHIP_ROLES.map((item) => <option key={item}>{item}</option>)}</select>
             <input aria-label="E-mail do contato" type="email" placeholder="E-mail" value={contact.email} onChange={(event) => setContact({ ...contact, email: event.target.value })} />
             <input aria-label="Telefone do contato" placeholder="Telefone" value={contact.phone} onChange={(event) => setContact({ ...contact, phone: event.target.value })} />
+            <input aria-label="LinkedIn do contato" type="url" placeholder="https://linkedin.com/in/..." value={contact.linkedinUrl} onChange={(event) => setContact({ ...contact, linkedinUrl: event.target.value })} />
             <button type="button" onClick={addContact}><UserPlus size={15} />Adicionar</button>
           </div>
           <div className="tdg-crm-contact-list">
@@ -198,6 +203,10 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [temperatureFilter, setTemperatureFilter] = useState("all");
+  const [contactFilter, setContactFilter] = useState("all");
+  const [stageFilter, setStageFilter] = useState("all");
+  const [ownerFilter, setOwnerFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("name-asc");
   const [visibleLimit, setVisibleLimit] = useState(100);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -223,18 +232,39 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
   const crmOpportunities = useMemo(() => opportunities.map(opportunityForCrm), [opportunities]);
   const command = useMemo(() => buildCrmCommandCenter(accounts, crmOpportunities), [accounts, crmOpportunities]);
   const summaryById = useMemo(() => new Map(command.accounts.map((item) => [item.id, item])), [command]);
+  const stageOptions = useMemo(() => [...new Set(clients.map((client) => client.crm?.stage).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR")), [clients]);
+  const ownerOptions = useMemo(() => [...new Set(clients.flatMap((client) => (client.vendedores || []).map((seller) => seller.email)).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR")), [clients]);
   const visible = useMemo(() => clients.filter((client) => {
     const summary = summaryById.get(client.id);
-    const matchesQuery = `${client.name} ${client.document || ""} ${client.segment || ""} ${client.crm?.stage || ""}`.toLowerCase().includes(query.toLowerCase());
+    const contactText = (client.crm?.contacts || []).map((contact) => `${contact.name || ""} ${contact.title || ""} ${contact.department || ""} ${contact.email || ""} ${contact.phone || ""}`).join(" ");
+    const ownerText = (client.vendedores || []).map((seller) => seller.email).join(" ");
+    const matchesQuery = `${client.name} ${client.legalName || ""} ${client.document || ""} ${client.segment || ""} ${client.crm?.stage || ""} ${contactText} ${ownerText}`.toLowerCase().includes(query.toLowerCase());
     const matchesFilter = filter === "all" || summary?.attention === filter || (filter === "no-decision" && summary?.coverage < 60);
     const matchesTemperature = temperatureFilter === "all" || client.crm?.temperature === temperatureFilter;
-    return matchesQuery && matchesFilter && matchesTemperature;
-  }), [clients, filter, query, summaryById, temperatureFilter]);
+    const hasContact = (client.crm?.contacts || []).some((contact) => contact.active !== false && (contact.email || contact.phone));
+    const matchesContact = contactFilter === "all" || (contactFilter === "with" ? hasContact : !hasContact);
+    const matchesStage = stageFilter === "all" || client.crm?.stage === stageFilter;
+    const matchesOwner = ownerFilter === "all" || (ownerFilter === "unassigned"
+      ? !(client.vendedores || []).length
+      : (client.vendedores || []).some((seller) => seller.email === ownerFilter));
+    return matchesQuery && matchesFilter && matchesTemperature && matchesContact && matchesStage && matchesOwner;
+  }).sort((a, b) => {
+    if (sortBy === "name-desc") return String(b.name).localeCompare(String(a.name), "pt-BR", { sensitivity: "base" });
+    if (sortBy === "temperature") {
+      const rank = { Quente: 0, Morno: 1, Frio: 2 };
+      return (rank[a.crm?.temperature] ?? 3) - (rank[b.crm?.temperature] ?? 3) || String(a.name).localeCompare(String(b.name), "pt-BR", { sensitivity: "base" });
+    }
+    if (sortBy === "next-action") return String(a.crm?.nextActionAt || "9999").localeCompare(String(b.crm?.nextActionAt || "9999")) || String(a.name).localeCompare(String(b.name), "pt-BR", { sensitivity: "base" });
+    if (sortBy === "updated") return String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")) || String(a.name).localeCompare(String(b.name), "pt-BR", { sensitivity: "base" });
+    if (sortBy === "contacts") return (b.crm?.contacts?.length || 0) - (a.crm?.contacts?.length || 0) || String(a.name).localeCompare(String(b.name), "pt-BR", { sensitivity: "base" });
+    return String(a.name).localeCompare(String(b.name), "pt-BR", { sensitivity: "base" });
+  }), [clients, contactFilter, filter, ownerFilter, query, sortBy, stageFilter, summaryById, temperatureFilter]);
   const renderedClients = visible.slice(0, visibleLimit);
   const selected = clients.find((client) => client.id === selectedId) || visible[0] || null;
   const selectedAccount = selected ? accountFromClient(selected) : null;
   const selectedOpportunities = selected ? crmOpportunities.filter((item) => item.clientId === selected.id) : [];
   const selectedSummary = selectedAccount ? crmAccountSummary(selectedAccount, selectedAccount.contacts, crmOpportunities) : null;
+  const selectedIntelligence = selected ? assessAccount(selected) : null;
 
   const createClient = async (event) => {
     event.preventDefault(); setError("");
@@ -301,7 +331,17 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
 
       {showCreate && <form className="tdg-client-admin-form" onSubmit={createClient}><strong>Nova conta</strong><div className="tdg-form-row"><label><span>Nome</span><input required value={clientForm.nome} onChange={(e) => setClientForm({ ...clientForm, nome: e.target.value })} /></label><label><span>Documento</span><input value={clientForm.documento} onChange={(e) => setClientForm({ ...clientForm, documento: e.target.value })} /></label><label><span>Segmento</span><input value={clientForm.segmento} onChange={(e) => setClientForm({ ...clientForm, segmento: e.target.value })} /></label><label><span>Classificação</span><select value={clientForm.tier} onChange={(e) => setClientForm({ ...clientForm, tier: e.target.value })}>{TODO_GREEN_ACCOUNT_TIERS.map((item) => <option key={item}>{item}</option>)}</select></label><label><span>Momento</span><select value={clientForm.stage} onChange={(e) => setClientForm({ ...clientForm, stage: e.target.value })}>{TODO_GREEN_ACCOUNT_STAGES.map((item) => <option key={item}>{item}</option>)}</select></label></div><button className="tdg-action"><Plus size={16} />Cadastrar conta</button></form>}
 
-      <div className="tdg-crm-toolbar"><div className="tdg-client-toolbar"><Search size={18} /><input aria-label="Buscar clientes" placeholder="Buscar por conta, documento, segmento ou etapa" value={query} onChange={(e) => { setQuery(e.target.value); setVisibleLimit(100); }} /></div><div className="tdg-crm-filters" aria-label="Temperatura das contas">{[["all", "Todas"], ["Quente", "Quentes"], ["Morno", "Mornas"], ["Frio", "Frias"]].map(([id, label]) => <button type="button" className={temperatureFilter === id ? "active" : ""} onClick={() => { setTemperatureFilter(id); setVisibleLimit(100); }} key={id}>{label}</button>)}</div><div className="tdg-crm-filters" aria-label="Saúde da carteira">{[["all", "Toda saúde"], ["critical", "Críticas"], ["attention", "Atenção"], ["healthy", "Saudáveis"], ["no-decision", "Mapa incompleto"]].map(([id, label]) => <button type="button" className={filter === id ? "active" : ""} onClick={() => { setFilter(id); setVisibleLimit(100); }} key={id}>{label}</button>)}</div></div>
+      <div className="tdg-crm-toolbar">
+        <div className="tdg-client-toolbar"><Search size={18} /><input aria-label="Buscar clientes e contatos" placeholder="Buscar conta, contato, e-mail, telefone ou responsável" value={query} onChange={(e) => { setQuery(e.target.value); setVisibleLimit(100); }} /></div>
+        <div className="tdg-crm-filter-grid" aria-label="Filtros e ordenação do CRM">
+          <label><span>Ordenar</span><select value={sortBy} onChange={(e) => setSortBy(e.target.value)}><option value="name-asc">Nome (A–Z)</option><option value="name-desc">Nome (Z–A)</option><option value="temperature">Temperatura</option><option value="next-action">Próxima ação</option><option value="updated">Atualização recente</option><option value="contacts">Mais contatos</option></select></label>
+          <label><span>Etapa</span><select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)}><option value="all">Todas as etapas</option>{stageOptions.map((stage) => <option key={stage}>{stage}</option>)}</select></label>
+          <label><span>Responsável</span><select value={ownerFilter} onChange={(e) => setOwnerFilter(e.target.value)}><option value="all">Todos</option><option value="unassigned">Sem responsável</option>{ownerOptions.map((owner) => <option key={owner}>{owner}</option>)}</select></label>
+          <label><span>Contatos</span><select value={contactFilter} onChange={(e) => setContactFilter(e.target.value)}><option value="all">Com e sem contato</option><option value="with">Com telefone/e-mail</option><option value="without">Sem telefone/e-mail</option></select></label>
+        </div>
+        <div className="tdg-crm-filters" aria-label="Temperatura das contas">{[["all", "Todas"], ["Quente", "Quentes"], ["Morno", "Mornas"], ["Frio", "Frias"]].map(([id, label]) => <button type="button" className={temperatureFilter === id ? "active" : ""} onClick={() => { setTemperatureFilter(id); setVisibleLimit(100); }} key={id}>{label}</button>)}</div>
+        <div className="tdg-crm-filters" aria-label="Saúde da carteira">{[["all", "Toda saúde"], ["critical", "Críticas"], ["attention", "Atenção"], ["healthy", "Saudáveis"], ["no-decision", "Mapa incompleto"]].map(([id, label]) => <button type="button" className={filter === id ? "active" : ""} onClick={() => { setFilter(id); setVisibleLimit(100); }} key={id}>{label}</button>)}</div>
+      </div>
 
       {loading && <p>Carregando carteira...</p>}
       {!loading && visible.length === 0 && <p className="tdg-crm-empty">Nenhuma conta corresponde aos filtros desta carteira.</p>}
@@ -316,8 +356,9 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
           <header><div><span>{selected.crm?.tier || "Enterprise"}{selected.crm?.temperature ? ` · ${selected.crm.temperature}` : ""}</span><h3>{selected.name}</h3><p>{selected.segment || "Segmento não informado"} · {selected.crm?.stage || "Mapeamento"}</p>{selected.crm?.source && <small>Origem interna: {selected.crm.source}</small>}</div>{access.podeEditar && <button type="button" onClick={() => setEditingId(selected.id)}><Edit3 size={15} />Editar 360º</button>}</header>
           <div className="tdg-crm-health"><div><strong>{selectedSummary.score}</strong><span>saúde da conta</span></div><div><strong>{selectedSummary.coverage}%</strong><span>cobertura de decisores</span></div></div>
           <section className="tdg-crm-next"><Target size={17} /><div><small>PRÓXIMA MELHOR AÇÃO</small><strong>{selectedSummary.nextAction}</strong></div></section>
+          <section className="tdg-crm-intelligence"><header><strong>IA · mapa da empresa</strong><small>Leitura dos dados do CRM</small></header><div><span>Relevância ESG</span><strong>{selectedIntelligence.esgRelevance}</strong><small>{selectedIntelligence.esgReason}</small></div><div><span>Próxima tarefa sugerida</span><strong>{selectedIntelligence.nextTask}</strong></div><div><span>Compras / procurement</span><strong>{selectedIntelligence.procurementContacts.length ? selectedIntelligence.procurementContacts.map((item) => item.name).join(", ") : "Contato ainda não mapeado"}</strong></div></section>
           {selectedSummary.alerts.length > 0 && <section className="tdg-crm-alerts"><strong><AlertTriangle size={15} />Pontos de atenção</strong>{selectedSummary.alerts.map((alert) => <span key={alert}>{alert}</span>)}</section>}
-          <section><header><strong>Relacionamento</strong><small>{selectedAccount.contacts.length} contato(s)</small></header><div className="tdg-crm-roles">{selectedAccount.contacts.slice(0, 5).map((contact) => <span key={contact.id}><b>{contact.name}</b>{contact.relationshipRole}</span>)}{selectedAccount.contacts.length === 0 && <p>Nenhum decisor ou patrocinador mapeado.</p>}</div></section>
+          <section><header><strong>Relacionamento</strong><small>{selectedAccount.contacts.length} contato(s)</small></header><div className="tdg-crm-roles">{selectedAccount.contacts.map((contact) => <article key={contact.id}><div><b>{contact.name}</b><small>{[contact.title, contact.department, contact.relationshipRole].filter(Boolean).join(" · ")}</small></div><div className="tdg-crm-contact-channels">{contact.email && <a href={`mailto:${contact.email}`}><Mail size={13} />{contact.email}</a>}{contact.phone && <a href={`tel:${contact.phone}`}>{contact.phone}</a>}</div><div className="tdg-crm-contact-actions">{contact.phone && <a href={whatsappUrl(contact.phone)} target="_blank" rel="noreferrer"><MessageCircle size={14} />WhatsApp</a>}{contact.email && <><a href={gmailComposeUrl(contact.email, `To Do Green · ${selected.name}`)} target="_blank" rel="noreferrer">Gmail</a><a href={outlookComposeUrl(contact.email, `To Do Green · ${selected.name}`)} target="_blank" rel="noreferrer">Outlook</a></>}{contact.linkedinUrl && <a href={contact.linkedinUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} />LinkedIn</a>}</div></article>)}{selectedAccount.contacts.length === 0 && <p>Nenhum decisor ou patrocinador mapeado.</p>}</div></section>
           <section><header><strong>Oportunidades</strong><button type="button" onClick={() => onNavigate?.(`/todogreen/oportunidades?client=${encodeURIComponent(selected.id)}`)}>Abrir pipeline <ArrowRight size={13} /></button></header>{selectedOpportunities.length === 0 ? <p>Nenhuma oportunidade ligada a esta conta.</p> : <div className="tdg-crm-opps">{selectedOpportunities.slice(0, 4).map((opp) => <article key={opp.id}><span><strong>{opp.stage}</strong><small>{opp.nextStep || "Próximo passo não definido"}</small></span><b>{BRL.format(opp.value || 0)}</b></article>)}</div>}</section>
           <section><header><strong>Responsáveis</strong></header><div className="tdg-client-sellers">{(selected.vendedores || []).length === 0 && <small>Sem responsável comercial</small>}{(selected.vendedores || []).map((seller) => <span key={seller.email}>{seller.email}{access.podeGerenciar && <button type="button" aria-label={`Remover ${seller.email}`} onClick={() => unassign(selected.id, seller.email)}><X size={12} /></button>}</span>)}</div>{access.podeGerenciar && <form className="tdg-crm-assign" onSubmit={assign}><input required type="email" aria-label="E-mail do vendedor" placeholder="vendedor@empresa.com" value={assignment.clientId === selected.id ? assignment.sellerEmail : ""} onChange={(e) => setAssignment({ clientId: selected.id, sellerEmail: e.target.value, note: "" })} /><button type="submit"><UserPlus size={14} />Atribuir</button></form>}</section>
         </aside>}

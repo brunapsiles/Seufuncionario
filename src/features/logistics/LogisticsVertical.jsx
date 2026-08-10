@@ -79,6 +79,7 @@ const EsgCenter = lazy(() => import("./EsgCenter.jsx"));
 const PricingParametersPanel = lazy(() => import("./PricingParametersPanel.jsx"));
 const DashboardBuilderPage = lazy(() => import("./pages/DashboardBuilderPage.jsx"));
 const GoalsPage = lazy(() => import("./pages/GoalsPage.jsx"));
+const SalesPerformancePage = lazy(() => import("./pages/SalesPerformancePage.jsx"));
 const ClientsPage = lazy(() => import("./pages/ClientsPage.jsx"));
 const TrackerPage = lazy(() => import("./pages/TrackerPage.jsx"));
 const OpportunitiesPage = lazy(() => import("./pages/OpportunitiesPage.jsx"));
@@ -203,6 +204,7 @@ const IMPLEMENTED_MODULE_IDS = new Set([
   "configuracoes",
   "dashboards",
   "metas",
+  "performance-comercial",
   "rastreamento",
   "solicitacoes",
 ]);
@@ -231,6 +233,14 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     area: "comercial",
     status: "functional",
     description: "Metas com fonte de medição, responsável, período, ritmo, projeção, check-ins, planos de ação, desdobramento e histórico.",
+  },
+  "performance-comercial": {
+    title: "Performance comercial",
+    navLabel: "Performance",
+    route: "/todogreen/performance-comercial",
+    area: "comercial",
+    status: "functional",
+    description: "Execução da carteira e atingimento de metas, sem misturar oportunidades, pipeline ou faturamento.",
   },
   clientes: {
     title: "Clientes e contatos",
@@ -1697,6 +1707,7 @@ export default function LogisticsVertical({ db, setToast, access = {}, authHeade
       {page === "dashboard" && <DashboardPanel data={verticalData} dashboard={dashboard} />}
       {page === "dashboards" && <Suspense fallback={<section className="tdg-panel">Carregando seus painéis...</section>}><DashboardBuilderPage authHeaders={authHeaders} summary={dashboard} setToast={setToast} /></Suspense>}
       {page === "metas" && <Suspense fallback={<section className="tdg-panel">Carregando metas...</section>}><GoalsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
+      {page === "performance-comercial" && <Suspense fallback={<section className="tdg-panel">Carregando performance comercial...</section>}><SalesPerformancePage authHeaders={authHeaders} onNavigate={navigate} /></Suspense>}
       {page === "solicitacoes" && <Suspense fallback={<section className="tdg-panel">Carregando solicitações...</section>}><ClientRequestsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "clientes" && <Suspense fallback={<section className="tdg-panel">Carregando clientes...</section>}><ClientsPage authHeaders={authHeaders} opportunities={verticalData.opportunities} onNavigate={navigate} setToast={setToast} /></Suspense>}
       {page === "oportunidades" && <Suspense fallback={<section className="tdg-panel">Carregando oportunidades...</section>}><OpportunitiesPage clients={clientes} opportunities={verticalData.opportunities} scenarios={verticalData.pricingScenarios} onCreate={(registro) => criar("opportunities", registro)} onUpdate={(id, alteracoes) => atualizar("opportunities", id, alteracoes)} onNavigate={navigate} setToast={setToast} /></Suspense>}

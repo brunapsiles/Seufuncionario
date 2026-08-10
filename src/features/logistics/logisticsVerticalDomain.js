@@ -211,9 +211,15 @@ export const TODO_GREEN_MODULE_CATALOG = [
     description: "Metas por empresa, área, equipe, pessoa, cliente, contrato, produto ou operação, com medição, check-ins, planos de ação e histórico.",
     permissions: ["goal:read", "goal:create", "goal:checkin", "goal:manage-team"],
   }),
+  module("performance-comercial", "Performance comercial", "comercial", "/todogreen/performance-comercial", {
+    icon: "Activity",
+    order: 20,
+    description: "Execução da carteira, cobertura de relacionamento, atualização, próximas ações e metas; sem dados de oportunidades.",
+    permissions: ["read", "goal:read"],
+  }),
   module("remuneracao", "Remuneração Variável", "comercial", "/todogreen/comissoes", {
     icon: "WalletCards",
-    order: 20,
+    order: 21,
     permissions: ["read", "commission:manage"],
   }),
   module("benchmark", "Benchmark", "comercial", "/todogreen/precificacao", { icon: "BarChart3", order: 21 }),

@@ -537,3 +537,48 @@
   .tdg-goal-filters, .tdg-goal-detail > header { display: grid; }
   .tdg-goal-filters label { min-width: 0; }
 }
+
+/* ===== Performance comercial: domínio separado de oportunidades ===== */
+.tdg-performance-page { display: grid; gap: 16px; }
+.tdg-performance-boundary { align-items: center; background: #eef8f3; border: 1px solid #bddbcc; border-radius: 13px; color: #17624f; display: flex; gap: 9px; padding: 11px 13px; }
+.tdg-performance-summary { display: grid; gap: 11px; grid-template-columns: repeat(5,minmax(0,1fr)); }
+.tdg-performance-summary article { background: #f5f9f7; border: 1px solid #d7e4dd; border-radius: 14px; display: grid; gap: 4px; padding: 14px; }
+.tdg-performance-summary article.attention { background: #fff7e6; border-color: #dfc184; }
+.tdg-performance-summary svg { color: #17624f; }
+.tdg-performance-summary span, .tdg-performance-summary small { color: #64756f; font-size: 11px; }
+.tdg-performance-summary strong { color: #173d31; font-size: 24px; }
+.tdg-performance-table { border: 1px solid #d8e3dd; border-radius: 16px; overflow: hidden; }
+.tdg-performance-table > div { align-items: center; border-top: 1px solid #e5ece8; display: grid; gap: 10px; grid-template-columns: minmax(190px,1.6fr) repeat(5,minmax(105px,1fr)); padding: 13px 15px; }
+.tdg-performance-table > div:first-child { border-top: 0; }
+.tdg-performance-table > .head { background: #f2f7f4; color: #61736c; font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.tdg-performance-table span { min-width: 0; }
+.tdg-performance-table strong, .tdg-performance-table small { display: block; overflow-wrap: anywhere; }
+.tdg-performance-table strong { color: #203d34; font-size: 13px; }
+.tdg-performance-table small { color: #71817c; font-size: 10.5px; margin-top: 3px; }
+.tdg-performance-table .risk strong { color: #9b2c20; }
+@media (max-width: 1050px) {
+  .tdg-performance-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .tdg-performance-table { overflow-x: auto; }
+  .tdg-performance-table > div { min-width: 900px; }
+}
+@media (max-width: 600px) { .tdg-performance-summary { grid-template-columns: 1fr; } }
+
+.tdg-crm-filter-grid { display: grid; gap: 10px; grid-template-columns: repeat(4,minmax(150px,1fr)); width: 100%; }
+.tdg-crm-filter-grid label { display: grid; gap: 5px; }
+.tdg-crm-filter-grid label > span { color: var(--tdg-muted); font-size: 11px; font-weight: 750; }
+.tdg-crm-filter-grid select { background: #fff; border: 1px solid var(--tdg-line); border-radius: 11px; color: var(--tdg-text); min-height: 42px; padding: 8px 10px; width: 100%; }
+.tdg-crm-roles article { align-items: flex-start; background: #f5f9f7; border: 1px solid #e0e9e4; border-radius: 11px; display: grid; gap: 8px; padding: 10px; }
+.tdg-crm-roles article b, .tdg-crm-roles article small { display: block; }
+.tdg-crm-roles article small { color: var(--tdg-muted); font-size: 10.5px; margin-top: 3px; }
+.tdg-crm-contact-channels { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.tdg-crm-contact-channels a { color: var(--tdg-green); font-size: 11.5px; overflow-wrap: anywhere; }
+.tdg-crm-contact-channels a, .tdg-crm-contact-actions a { align-items: center; display: inline-flex; gap: 4px; }
+.tdg-crm-contact-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.tdg-crm-contact-actions a { background: #fff; border: 1px solid #cbdad2; border-radius: 8px; color: #245848; font-size: 10.5px; font-weight: 700; padding: 6px 8px; text-decoration: none; }
+.tdg-crm-intelligence { background: #f2f7f4; border: 1px solid #cadfd4 !important; }
+.tdg-crm-intelligence > div { border-top: 1px solid #dbe8e1; display: grid; gap: 3px; padding: 9px 0; }
+.tdg-crm-intelligence > div:first-of-type { border-top: 0; }
+.tdg-crm-intelligence span, .tdg-crm-intelligence small { color: var(--tdg-muted); font-size: 10.5px; }
+.tdg-crm-intelligence strong { color: #1e493c; font-size: 12px; line-height: 1.45; }
+@media (max-width: 900px) { .tdg-crm-filter-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media (max-width: 560px) { .tdg-crm-filter-grid { grid-template-columns: 1fr; } }
