@@ -35,7 +35,7 @@ export function assessAccount(account = {}) {
 
 export const whatsappUrl = (phone) => {
   const digits = String(phone || "").replace(/\D/g, "");
-  if (!digits) return "";
+  if (digits.length < 10 || digits.length > 13) return "";
   const international = digits.startsWith("55") ? digits : `55${digits}`;
   return `https://wa.me/${international}`;
 };
