@@ -46,3 +46,14 @@ jobs:
         run: npm run test:worker
       - name: Construir
         run: npm run build
+      # Só o Chromium — é o único navegador que os specs usam, e baixar os
+      # outros dois só alongaria o job à toa.
+      - name: Instalar Chromium para o E2E
+        run: npx playwright install --with-deps chromium
+      # `wrangler dev` serve `dist/`, por isso este passo vem depois de
+      # "Construir". Só o arquivo de controle de acesso: é o único E2E
+      # promovido — ver o comentário no topo de vertical-acesso.spec.js.
+      - name: E2E de acesso à vertical (gate de produção)
+        run: npm run test:e2e:acesso
+        env:
+          CI: true

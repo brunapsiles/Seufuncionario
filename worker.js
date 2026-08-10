@@ -64,6 +64,7 @@ import {
 // Reexportado para quem já importava daqui (src/ai-providers.test.js).
 export { askOpenAICompatible, configuredAiProviders, publicAiResult };
 import { handleAuth } from "./worker/services/auth.js";
+import { handleTestSupport } from "./worker/services/test-support.js";
 import { handleCollab } from "./worker/services/collab.js";
 import { handleWorkspace } from "./worker/services/workspace.js";
 import { freeSuiteOwner, handleFreeSuite } from "./worker/services/free-suite.js";
@@ -4435,6 +4436,14 @@ export default {
       } catch (error) {
         console.error("Auth error", error);
         return json({ error: "Não foi possível concluir o acesso." }, 500);
+      }
+    }
+    if (url.pathname.startsWith("/api/test-support/")) {
+      try {
+        return await handleTestSupport(request, env, url);
+      } catch (error) {
+        console.error("Test support error", error);
+        return json({ error: "Não foi possível concluir a ação de teste." }, 500);
       }
     }
     if (
