@@ -4,6 +4,7 @@ import { handleTodoGreenFleet } from "./todogreen-fleet.js";
 import { handleTodoGreenTracker } from "./todogreen-tracker.js";
 import {
   handleTodoGreenCustomerPortal,
+  handleTodoGreenClientPortalPreview,
   handleTodoGreenClients,
   handleTodoGreenClientAssignments,
 } from "./todogreen-customer-portal.js";
@@ -54,6 +55,14 @@ export async function routeTodoGreenApi(request, env) {
       const resolved = await internalAccess(request, env);
       if (resolved.response) return resolved.response;
       return handleTodoGreenEvidences(request, env, resolved.access, resolved.user);
+    });
+  }
+
+  if (path.startsWith("/api/todogreen/client-portal-preview")) {
+    return guarded("To Do Green portal preview error", "Não foi possível montar a prévia do portal.", async () => {
+      const resolved = await internalAccess(request, env);
+      if (resolved.response) return resolved.response;
+      return handleTodoGreenClientPortalPreview(request, env, resolved.access, resolved.user);
     });
   }
 
