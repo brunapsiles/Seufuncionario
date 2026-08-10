@@ -16,6 +16,7 @@ describe("To Do Green enterprise CRM", () => {
     const account = createTodoGreenAccount({
       legalName: "  Cliente Logística S.A. ",
       tier: "Enterprise",
+      temperature: "Morno",
       strategicPotential: 82,
       relationshipStrength: 65,
       operationalFit: 90,
@@ -25,6 +26,7 @@ describe("To Do Green enterprise CRM", () => {
     });
     expect(account.legalName).toBe("Cliente Logística S.A.");
     expect(account.tier).toBe("Enterprise");
+    expect(account.temperature).toBe("Morno");
     expect(account.contacts).toEqual([]);
     expect(calculateAccountScore(account)).toBeGreaterThanOrEqual(75);
   });

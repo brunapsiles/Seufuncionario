@@ -21,6 +21,8 @@ export const TODO_GREEN_ACCOUNT_TIERS = [
   "Parceiro",
 ];
 
+export const TODO_GREEN_ACCOUNT_TEMPERATURES = ["Quente", "Morno", "Frio"];
+
 export const TODO_GREEN_RELATIONSHIP_ROLES = [
   "Decisor econômico",
   "Decisor técnico",
@@ -76,6 +78,7 @@ export const createTodoGreenAccount = (input = {}) => ({
   document: asText(input.document),
   segment: asText(input.segment),
   tier: TODO_GREEN_ACCOUNT_TIERS.includes(input.tier) ? input.tier : "Enterprise",
+  temperature: TODO_GREEN_ACCOUNT_TEMPERATURES.includes(input.temperature) ? input.temperature : "",
   stage: TODO_GREEN_ACCOUNT_STAGES.includes(input.stage) ? input.stage : "Mapeamento",
   ownerId: asText(input.ownerId),
   teamIds: Array.isArray(input.teamIds) ? [...new Set(input.teamIds.filter(Boolean))] : [],

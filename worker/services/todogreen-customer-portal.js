@@ -45,6 +45,7 @@ import {
 
 const TENANT_ID = "todogreen";
 const MAX_LIMIT = 100;
+const CRM_TEMPERATURES = new Set(["Quente", "Morno", "Frio"]);
 
 const response = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -85,6 +86,7 @@ const crmFields = (value = {}) => {
   const input = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   return {
     tier: clean(input.tier, 40),
+    temperature: CRM_TEMPERATURES.has(clean(input.temperature, 20)) ? clean(input.temperature, 20) : "",
     stage: clean(input.stage, 60),
     headquarters: clean(input.headquarters, 160),
     strategicPotential: finite(input.strategicPotential),
@@ -1077,6 +1079,70 @@ export async function handleTodoGreenClients(request, env, access, user) {
 
   if (!podeGerenciar)
     return response({ error: "Somente uma pessoa autorizada pode alterar clientes e carteiras." }, 403);
+
+  if (request.method === "POST" && clientIdDaRota === "import") {
+    const body = await request.json().catch(() => ({}));
+    const clientes = Array.isArray(body.clientes) ? body.clientes : [];
+    if (!clientes.length) return response({ error: "Envie ao menos um cliente para importar." }, 400);
+    if (clientes.length > 100) return response({ error: "Importe no máximo 100 clientes por lote." }, 400);
+
+    const preparados = clientes.map((item) => ({
+      id: clean(item?.id, 60),
+      nome: clean(item?.nome ?? item?.name, 200),
+      razaoSocial: clean(item?.razaoSocial ?? item?.legalName, 200),
+      documento: clean(item?.documento ?? item?.document, 40),
+      segmento: clean(item?.segmento ?? item?.segment, 80),
+      status: clean(item?.status, 20) || "ativo",
+      observacoes: clean(item?.observacoes ?? item?.notes, 1000),
+      crm: crmFields(item?.crm || {}),
+    }));
+    if (preparados.some((item) => !item.id || item.nome.length < 2))
+      return response({ error: "Cada cliente precisa de identificador estável e nome válido." }, 400);
+
+    for (let inicio = 0; inicio < preparados.length; inicio += 40) {
+      const lote = preparados.slice(inicio, inicio + 40);
+      const statements = [];
+      for (const item of lote) {
+        statements.push(env.DB.prepare(
+          `INSERT INTO todogreen_clients
+             (id, tenant_id, workspace_owner_id, name, legal_name, document, segment,
+              status, portal_enabled, notes, fields_json, created_by, updated_by, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET
+             name = excluded.name,
+             legal_name = excluded.legal_name,
+             document = excluded.document,
+             segment = excluded.segment,
+             status = excluded.status,
+             notes = excluded.notes,
+             fields_json = excluded.fields_json,
+             updated_by = excluded.updated_by,
+             updated_at = excluded.updated_at,
+             archived_at = NULL,
+             revision = todogreen_clients.revision + 1
+           WHERE todogreen_clients.tenant_id = excluded.tenant_id
+             AND todogreen_clients.workspace_owner_id = excluded.workspace_owner_id`,
+        ).bind(
+          item.id, TENANT_ID, access.ownerId || user.id, item.nome, item.razaoSocial,
+          item.documento, item.segmento, item.status, item.observacoes,
+          JSON.stringify(item.crm), user.id, user.id, agora, agora,
+        ));
+        statements.push(env.DB.prepare(
+          `INSERT INTO todogreen_client_assignments
+             (id, tenant_id, client_id, seller_email, status, note, assigned_by, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?)
+           ON CONFLICT(tenant_id, client_id, seller_email) DO UPDATE SET
+             status = 'active', note = excluded.note, assigned_by = excluded.assigned_by,
+             updated_at = excluded.updated_at`,
+        ).bind(
+          crypto.randomUUID(), TENANT_ID, item.id, emailSessao,
+          "Importado e atribuído automaticamente à carteira da sessão.", user.id, agora, agora,
+        ));
+      }
+      await env.DB.batch(statements);
+    }
+    return response({ ok: true, importados: preparados.length, vendedor: emailSessao }, 201);
+  }
 
   if (request.method === "POST") {
     let body = {};

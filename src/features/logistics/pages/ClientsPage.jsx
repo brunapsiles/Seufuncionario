@@ -11,6 +11,7 @@ import {
   Search,
   Target,
   Trash2,
+  Upload,
   UserPlus,
   Users,
   X,
@@ -18,6 +19,7 @@ import {
 import Modal from "../../../components/Modal.jsx";
 import {
   TODO_GREEN_ACCOUNT_STAGES,
+  TODO_GREEN_ACCOUNT_TEMPERATURES,
   TODO_GREEN_ACCOUNT_TIERS,
   TODO_GREEN_RELATIONSHIP_ROLES,
   buildCrmCommandCenter,
@@ -72,6 +74,7 @@ const accountForm = (client) => {
     segment: client?.segment || "",
     notes: client?.notes || "",
     tier: crm.tier || "Enterprise",
+    temperature: crm.temperature || "",
     stage: crm.stage || "Mapeamento",
     headquarters: crm.headquarters || "",
     strategicPotential: crm.strategicPotential || 0,
@@ -113,6 +116,7 @@ function AccountEditor({ client, onClose, onSave }) {
         crm: {
           ...client.crm,
           tier: form.tier,
+          temperature: form.temperature,
           stage: form.stage,
           headquarters: form.headquarters,
           strategicPotential: Number(form.strategicPotential || 0),
@@ -143,6 +147,7 @@ function AccountEditor({ client, onClose, onSave }) {
             <label><span>Documento</span><input value={form.document} onChange={field("document")} /></label>
             <label><span>Segmento</span><input value={form.segment} onChange={field("segment")} /></label>
             <label><span>Classificação</span><select value={form.tier} onChange={field("tier")}>{TODO_GREEN_ACCOUNT_TIERS.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label><span>Temperatura</span><select value={form.temperature} onChange={field("temperature")}><option value="">Não classificada</option>{TODO_GREEN_ACCOUNT_TEMPERATURES.map((item) => <option key={item}>{item}</option>)}</select></label>
             <label><span>Momento da conta</span><select value={form.stage} onChange={field("stage")}>{TODO_GREEN_ACCOUNT_STAGES.map((item) => <option key={item}>{item}</option>)}</select></label>
             <label><span>Sede / região</span><input value={form.headquarters} onChange={field("headquarters")} /></label>
             <label><span>Próxima ação</span><input value={form.nextAction} onChange={field("nextAction")} /></label>
@@ -192,6 +197,8 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
   const [access, setAccess] = useState({ podeGerenciar: false, podeEditar: true, somenteCarteira: true });
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
+  const [temperatureFilter, setTemperatureFilter] = useState("all");
+  const [visibleLimit, setVisibleLimit] = useState(100);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState("");
@@ -199,6 +206,7 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
   const [showCreate, setShowCreate] = useState(false);
   const [clientForm, setClientForm] = useState({ nome: "", documento: "", segmento: "", tier: "Enterprise", stage: "Mapeamento" });
   const [assignment, setAssignment] = useState({ clientId: "", sellerEmail: "", note: "" });
+  const [importProgress, setImportProgress] = useState("");
 
   const load = async () => {
     setLoading(true); setError("");
@@ -219,8 +227,10 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
     const summary = summaryById.get(client.id);
     const matchesQuery = `${client.name} ${client.document || ""} ${client.segment || ""} ${client.crm?.stage || ""}`.toLowerCase().includes(query.toLowerCase());
     const matchesFilter = filter === "all" || summary?.attention === filter || (filter === "no-decision" && summary?.coverage < 60);
-    return matchesQuery && matchesFilter;
-  }), [clients, filter, query, summaryById]);
+    const matchesTemperature = temperatureFilter === "all" || client.crm?.temperature === temperatureFilter;
+    return matchesQuery && matchesFilter && matchesTemperature;
+  }), [clients, filter, query, summaryById, temperatureFilter]);
+  const renderedClients = visible.slice(0, visibleLimit);
   const selected = clients.find((client) => client.id === selectedId) || visible[0] || null;
   const selectedAccount = selected ? accountFromClient(selected) : null;
   const selectedOpportunities = selected ? crmOpportunities.filter((item) => item.clientId === selected.id) : [];
@@ -253,10 +263,32 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
       await load();
     } catch (reason) { setError(reason.message); }
   };
+  const importClients = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setError("");
+    try {
+      const payload = JSON.parse(await file.text());
+      const items = Array.isArray(payload?.clientes) ? payload.clientes : [];
+      if (!items.length) throw new Error("O arquivo não contém clientes para importar.");
+      for (let index = 0; index < items.length; index += 100) {
+        const batch = items.slice(index, index + 100);
+        setImportProgress(`Importando ${Math.min(index + batch.length, items.length)} de ${items.length} contas...`);
+        await api("clients/import", authHeaders, { method: "POST", body: JSON.stringify({ clientes: batch }) });
+      }
+      setToast?.(`${items.length} contas importadas e atribuídas à sua carteira.`);
+      await load();
+    } catch (reason) {
+      setError(reason instanceof SyntaxError ? "O arquivo de importação não é um JSON válido." : reason.message);
+    } finally {
+      setImportProgress("");
+      event.target.value = "";
+    }
+  };
 
   return (
     <section className="tdg-panel tdg-page tdg-clients-page">
-      <header className="tdg-page-title"><div><span>COMANDO COMERCIAL</span><h2>CRM e carteira 360º</h2><p>Priorize contas, acompanhe relacionamentos, forecast e próximas ações em uma única rotina. Cada vendedor continua vendo somente sua carteira.</p></div>{access.podeGerenciar && <button className="tdg-action" type="button" onClick={() => setShowCreate((value) => !value)}><Plus size={16} />Nova conta</button>}</header>
+      <header className="tdg-page-title"><div><span>COMANDO COMERCIAL</span><h2>CRM e carteira 360º</h2><p>Priorize contas, acompanhe relacionamentos, forecast e próximas ações em uma única rotina. Cada vendedor continua vendo somente sua carteira.</p></div>{access.podeGerenciar && <div className="tdg-crm-admin-actions"><label className="tdg-action tdg-crm-import"><Upload size={16} />{importProgress || "Importar base"}<input type="file" accept="application/json,.json" disabled={Boolean(importProgress)} onChange={importClients} /></label><button className="tdg-action" type="button" onClick={() => setShowCreate((value) => !value)}><Plus size={16} />Nova conta</button></div>}</header>
       {error && <div className="tdg-page-error">{error}</div>}
 
       <div className="tdg-crm-metrics" aria-label="Resumo do CRM">
@@ -269,18 +301,19 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
 
       {showCreate && <form className="tdg-client-admin-form" onSubmit={createClient}><strong>Nova conta</strong><div className="tdg-form-row"><label><span>Nome</span><input required value={clientForm.nome} onChange={(e) => setClientForm({ ...clientForm, nome: e.target.value })} /></label><label><span>Documento</span><input value={clientForm.documento} onChange={(e) => setClientForm({ ...clientForm, documento: e.target.value })} /></label><label><span>Segmento</span><input value={clientForm.segmento} onChange={(e) => setClientForm({ ...clientForm, segmento: e.target.value })} /></label><label><span>Classificação</span><select value={clientForm.tier} onChange={(e) => setClientForm({ ...clientForm, tier: e.target.value })}>{TODO_GREEN_ACCOUNT_TIERS.map((item) => <option key={item}>{item}</option>)}</select></label><label><span>Momento</span><select value={clientForm.stage} onChange={(e) => setClientForm({ ...clientForm, stage: e.target.value })}>{TODO_GREEN_ACCOUNT_STAGES.map((item) => <option key={item}>{item}</option>)}</select></label></div><button className="tdg-action"><Plus size={16} />Cadastrar conta</button></form>}
 
-      <div className="tdg-crm-toolbar"><div className="tdg-client-toolbar"><Search size={18} /><input aria-label="Buscar clientes" placeholder="Buscar por conta, documento, segmento ou etapa" value={query} onChange={(e) => setQuery(e.target.value)} /></div><div className="tdg-crm-filters" aria-label="Filtros da carteira">{[["all", "Todas"], ["critical", "Críticas"], ["attention", "Atenção"], ["healthy", "Saudáveis"], ["no-decision", "Mapa incompleto"]].map(([id, label]) => <button type="button" className={filter === id ? "active" : ""} onClick={() => setFilter(id)} key={id}>{label}</button>)}</div></div>
+      <div className="tdg-crm-toolbar"><div className="tdg-client-toolbar"><Search size={18} /><input aria-label="Buscar clientes" placeholder="Buscar por conta, documento, segmento ou etapa" value={query} onChange={(e) => { setQuery(e.target.value); setVisibleLimit(100); }} /></div><div className="tdg-crm-filters" aria-label="Temperatura das contas">{[["all", "Todas"], ["Quente", "Quentes"], ["Morno", "Mornas"], ["Frio", "Frias"]].map(([id, label]) => <button type="button" className={temperatureFilter === id ? "active" : ""} onClick={() => { setTemperatureFilter(id); setVisibleLimit(100); }} key={id}>{label}</button>)}</div><div className="tdg-crm-filters" aria-label="Saúde da carteira">{[["all", "Toda saúde"], ["critical", "Críticas"], ["attention", "Atenção"], ["healthy", "Saudáveis"], ["no-decision", "Mapa incompleto"]].map(([id, label]) => <button type="button" className={filter === id ? "active" : ""} onClick={() => { setFilter(id); setVisibleLimit(100); }} key={id}>{label}</button>)}</div></div>
 
       {loading && <p>Carregando carteira...</p>}
       {!loading && visible.length === 0 && <p className="tdg-crm-empty">Nenhuma conta corresponde aos filtros desta carteira.</p>}
       {!loading && visible.length > 0 && <div className="tdg-crm-workspace">
         <div className="tdg-crm-table" role="table" aria-label="Contas do CRM">
           <div className="tdg-crm-table-head" role="row"><span>Conta</span><span>Saúde</span><span>Pipeline</span><span>Próxima ação</span></div>
-          {visible.map((client) => { const summary = summaryById.get(client.id); return <button type="button" role="row" className={`${selected?.id === client.id ? "selected" : ""} ${summary?.attention || ""}`} onClick={() => setSelectedId(client.id)} key={client.id}><span><strong>{client.name}</strong><small>{client.segment || "Segmento não informado"} · {client.crm?.stage || "Mapeamento"}</small></span><span><b>{summary?.score || 0}</b><small>{summary?.coverage || 0}% de cobertura</small></span><span><strong>{BRL.format(summary?.pipeline || 0)}</strong><small>{summary?.openOpportunities || 0} aberta(s)</small></span><span><strong>{summary?.nextAction || "Definir próxima ação"}</strong><small>{client.crm?.nextActionAt || "Sem prazo"}</small></span></button>; })}
+          {renderedClients.map((client) => { const summary = summaryById.get(client.id); return <button type="button" role="row" className={`${selected?.id === client.id ? "selected" : ""} ${summary?.attention || ""}`} onClick={() => setSelectedId(client.id)} key={client.id}><span><strong>{client.name}</strong><small>{client.crm?.temperature ? `${client.crm.temperature} · ` : ""}{client.segment || "Segmento não informado"} · {client.crm?.stage || "Mapeamento"}</small></span><span><b>{summary?.score || 0}</b><small>{summary?.coverage || 0}% de cobertura</small></span><span><strong>{BRL.format(summary?.pipeline || 0)}</strong><small>{summary?.openOpportunities || 0} aberta(s)</small></span><span><strong>{summary?.nextAction || "Definir próxima ação"}</strong><small>{client.crm?.nextActionAt || "Sem prazo"}</small></span></button>; })}
+          {visible.length > renderedClients.length && <button type="button" className="tdg-crm-load-more" onClick={() => setVisibleLimit((current) => current + 100)}>Mostrar mais 100 contas ({renderedClients.length} de {visible.length})</button>}
         </div>
 
         {selected && selectedSummary && <aside className="tdg-crm-account">
-          <header><div><span>{selected.crm?.tier || "Enterprise"}</span><h3>{selected.name}</h3><p>{selected.segment || "Segmento não informado"} · {selected.crm?.stage || "Mapeamento"}</p></div>{access.podeEditar && <button type="button" onClick={() => setEditingId(selected.id)}><Edit3 size={15} />Editar 360º</button>}</header>
+          <header><div><span>{selected.crm?.tier || "Enterprise"}{selected.crm?.temperature ? ` · ${selected.crm.temperature}` : ""}</span><h3>{selected.name}</h3><p>{selected.segment || "Segmento não informado"} · {selected.crm?.stage || "Mapeamento"}</p>{selected.crm?.source && <small>Origem interna: {selected.crm.source}</small>}</div>{access.podeEditar && <button type="button" onClick={() => setEditingId(selected.id)}><Edit3 size={15} />Editar 360º</button>}</header>
           <div className="tdg-crm-health"><div><strong>{selectedSummary.score}</strong><span>saúde da conta</span></div><div><strong>{selectedSummary.coverage}%</strong><span>cobertura de decisores</span></div></div>
           <section className="tdg-crm-next"><Target size={17} /><div><small>PRÓXIMA MELHOR AÇÃO</small><strong>{selectedSummary.nextAction}</strong></div></section>
           {selectedSummary.alerts.length > 0 && <section className="tdg-crm-alerts"><strong><AlertTriangle size={15} />Pontos de atenção</strong>{selectedSummary.alerts.map((alert) => <span key={alert}>{alert}</span>)}</section>}
