@@ -117,6 +117,28 @@ export async function resolveTodoGreenAccess(env, user, requestedOwnerId) {
     .first()
     .catch(() => null);
 
+  // A carteira pode ser preparada antes do primeiro acesso do vendedor e, por
+  // isso, é vinculada por e-mail. Quando ainda não existe `tenant_users`, a
+  // atribuição ativa também precisa levar a sessão ao espaço dono do cliente;
+  // caso contrário o vendedor entra num espaço próprio vazio e não vê nem a
+  // carteira que recebeu. O JOIN mantém a origem do espaço no cliente, sem
+  // aceitar um owner enviado pelo navegador.
+  const espacosDaCarteira = await env.DB
+    .prepare(
+      `SELECT c.workspace_owner_id, MAX(a.updated_at) AS ultima_atribuicao
+         FROM todogreen_client_assignments a
+         JOIN todogreen_clients c
+           ON c.tenant_id = a.tenant_id AND c.id = a.client_id
+        WHERE a.tenant_id = ? AND lower(a.seller_email) = ?
+          AND a.status = 'active' AND c.archived_at IS NULL
+        GROUP BY c.workspace_owner_id
+        ORDER BY ultima_atribuicao DESC`,
+    )
+    .bind(TENANT_ID, email)
+    .all()
+    .then((resultado) => resultado.results || [])
+    .catch(() => []);
+
   // Sem domínio na conta: entrar exige alguém ter autorizado esta pessoa.
   if (!ehAdministrador && !autorizado && !vinculo)
     return { access: null, motivo: NEGADO.semVinculo };
@@ -131,8 +153,11 @@ export async function resolveTodoGreenAccess(env, user, requestedOwnerId) {
   // Os espaços que esta sessão alcança de fato. O administrador da vertical
   // opera qualquer espaço porque é dele que a operação depende; todos os
   // demais ficam presos ao próprio espaço e ao do vínculo.
-  const espacoPadrao = vinculo?.workspace_owner_id || user.id;
-  const permitidos = new Set([user.id, espacoPadrao].filter(Boolean));
+  const donosDaCarteira = espacosDaCarteira
+    .map((item) => item.workspace_owner_id)
+    .filter(Boolean);
+  const espacoPadrao = vinculo?.workspace_owner_id || donosDaCarteira[0] || user.id;
+  const permitidos = new Set([user.id, espacoPadrao, ...donosDaCarteira].filter(Boolean));
 
   const pedido = clean(requestedOwnerId, 100);
   if (pedido && !ehAdministrador && !permitidos.has(pedido))
