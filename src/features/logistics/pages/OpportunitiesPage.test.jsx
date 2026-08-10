@@ -31,6 +31,18 @@ const crua = {
   probability: 30,
 };
 
+const mapeada = {
+  ...completa,
+  revision: 3,
+  origin: "Cajamar",
+  destination: "Osasco",
+  weightKg: 900,
+  sla: "98,5% no prazo",
+  deliveryWindows: "08h às 18h",
+  trackingSystem: "TMS do cliente",
+  primaryObjective: "esg",
+};
+
 const abrir = (nome) => fireEvent.click(screen.getByRole("button", { name: new RegExp(nome) }));
 
 describe("página de oportunidades", () => {
@@ -56,6 +68,47 @@ describe("página de oportunidades", () => {
     expect(screen.getByText(/Green Score projetado/)).toBeInTheDocument();
     expect(screen.getByText("Ver memória de cálculo")).toBeInTheDocument();
     expect(screen.getByText(/Potencial de expansão/)).toBeInTheDocument();
+    expect(screen.getByText(/Mapear → Simular → Rodar → Reportar → Escalar/)).toBeInTheDocument();
+  });
+
+  it("leva uma oportunidade mapeada para a calculadora existente", () => {
+    const onNavigate = vi.fn();
+    render(<OpportunitiesPage opportunities={[mapeada]} onNavigate={onNavigate} />);
+    abrir("Distribuidora Norte");
+    fireEvent.click(screen.getByRole("button", { name: /Simular agora/ }));
+    expect(onNavigate).toHaveBeenCalledWith("/todogreen/precificacao?opportunity=opp-1");
+  });
+
+  it("reconhece a simulação vinculada e avança para o piloto", () => {
+    render(
+      <OpportunitiesPage
+        opportunities={[mapeada]}
+        scenarios={[{ id: "sc-1", opportunityId: "opp-1" }]}
+      />,
+    );
+    abrir("Distribuidora Norte");
+    expect(screen.getByText(/Etapa atual: Rodar/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Simular agora/ })).not.toBeInTheDocument();
+  });
+
+  it("atualiza o estudo preservando a revisão concorrente", async () => {
+    const onUpdate = vi.fn().mockResolvedValue({});
+    render(<OpportunitiesPage opportunities={[mapeada]} onUpdate={onUpdate} />);
+    abrir("Distribuidora Norte");
+    fireEvent.click(screen.getByRole("button", { name: /Atualizar estudo/ }));
+    fireEvent.change(screen.getByLabelText("Cubagem média (m³)"), {
+      target: { value: "18" },
+    });
+    fireEvent.change(screen.getByLabelText("Situação do piloto"), {
+      target: { value: "planejado" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Salvar estudo/ }));
+
+    await waitFor(() => expect(onUpdate).toHaveBeenCalled());
+    expect(onUpdate.mock.calls[0][0]).toBe("opp-1");
+    expect(onUpdate.mock.calls[0][1].volumeM3).toBe(18);
+    expect(onUpdate.mock.calls[0][1].pilotStatus).toBe("planejado");
+    expect(onUpdate.mock.calls[0][1].revision).toBe(3);
   });
 
   it("a memória de cálculo fica disponível, não escondida em outra tela", () => {

@@ -157,6 +157,31 @@
 .tdg-opp-riscos li.g-media span { color: #8a5b00; }
 .tdg-opp-expansao li { background: #f5f9f7; border-radius: 13px; display: grid; gap: 3px; padding: 11px; }
 .tdg-opp-expansao small { color: var(--tdg-muted); font-size: 12px; line-height: 1.45; }
+.tdg-jornada { background: #f5f9f7; border: 1px solid var(--tdg-line); border-radius: 16px; display: grid; gap: 12px; padding: 14px; }
+.tdg-jornada > header { align-items: center; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; }
+.tdg-jornada > header > div:first-child { display: grid; gap: 3px; }
+.tdg-jornada > header small,.tdg-jornada > p { color: var(--tdg-muted); font-size: 12px; line-height: 1.45; margin: 0; }
+.tdg-jornada-acoes { display: flex; flex-wrap: wrap; gap: 8px; }
+.tdg-jornada-acoes button,.tdg-estudo-actions > button:not(.tdg-action) { align-items: center; background: #fff; border: 1px solid var(--tdg-line); border-radius: 11px; color: var(--tdg-text); display: inline-flex; font: inherit; font-size: 12px; font-weight: 750; gap: 6px; min-height: 38px; padding: 8px 11px; }
+.tdg-jornada-acoes .tdg-action { background: var(--tdg-green); color: #fff; }
+.tdg-jornada-etapas { display: grid; gap: 8px; grid-template-columns: repeat(5,minmax(0,1fr)); }
+.tdg-jornada-etapas article { align-items: start; background: #fff; border: 1px solid var(--tdg-line); border-radius: 13px; display: grid; gap: 8px; grid-template-columns: 18px minmax(0,1fr); min-width: 0; padding: 11px; }
+.tdg-jornada-etapas article > span { display: grid; gap: 2px; min-width: 0; }
+.tdg-jornada-etapas article strong { font-size: 12.5px; }
+.tdg-jornada-etapas article small { color: var(--tdg-muted); font-size: 10.5px; line-height: 1.35; }
+.tdg-jornada-etapas article.e-concluida { border-color: #9fcbb9; color: var(--tdg-green); }
+.tdg-jornada-etapas article.e-atual { background: #fff7e6; border-color: #d9b877; color: #8a5b00; }
+.tdg-jornada-etapas article.e-bloqueada { color: #87938f; opacity: .78; }
+.tdg-estudo-form { display: grid; gap: 15px; padding: 18px 22px 22px; }
+.tdg-estudo-intro { background: var(--tdg-soft); border-radius: 13px; color: var(--tdg-muted); line-height: 1.5; margin: 0; padding: 12px 14px; }
+.tdg-estudo-form fieldset { border: 1px solid var(--tdg-line); border-radius: 15px; display: grid; gap: 11px; margin: 0; min-width: 0; padding: 15px; }
+.tdg-estudo-form legend { color: var(--tdg-green); font-size: 13px; font-weight: 850; padding: 0 6px; }
+.tdg-estudo-grid { display: grid; gap: 11px; grid-template-columns: repeat(2,minmax(0,1fr)); }
+.tdg-estudo-form label { display: grid; gap: 5px; min-width: 0; }
+.tdg-estudo-form label > span { color: var(--tdg-muted); font-size: 11.5px; font-weight: 750; }
+.tdg-estudo-form input,.tdg-estudo-form select,.tdg-estudo-form textarea { background: #fff; border: 1px solid var(--tdg-line); border-radius: 11px; color: var(--tdg-text); font: inherit; min-height: 42px; min-width: 0; padding: 9px 11px; width: 100%; }
+.tdg-estudo-form textarea { line-height: 1.45; min-height: 74px; resize: vertical; }
+.tdg-estudo-actions { align-items: center; border-top: 1px solid var(--tdg-line); display: flex; gap: 9px; justify-content: flex-end; padding-top: 14px; }
 
 @media (max-width: 900px) {
   .tdg-opp-resumo,.tdg-opp-numeros,.tdg-opp-form-larga { grid-template-columns: repeat(2,minmax(0,1fr)); }
@@ -164,11 +189,14 @@
   .tdg-opp-head { grid-template-columns: 20px minmax(0,1fr) auto; }
   .tdg-opp-head-esg { display: none !important; }
   .tdg-opp-componentes > div { grid-template-columns: minmax(0,1fr); }
+  .tdg-jornada-etapas { grid-template-columns: repeat(2,minmax(0,1fr)); }
 }
 @media (max-width: 560px) {
   .tdg-opp-resumo,.tdg-opp-numeros,.tdg-opp-form-larga { grid-template-columns: minmax(0,1fr); }
   .tdg-opp-acao { grid-template-columns: 20px minmax(0,1fr); }
   .tdg-opp-acao .tdg-opp-urgencia { grid-column: 2; justify-self: start; }
+  .tdg-jornada-etapas,.tdg-estudo-grid { grid-template-columns: minmax(0,1fr); }
+  .tdg-estudo-form { padding: 14px; }
 }
 
 .tdg-req-page { display: grid; gap: 18px; }

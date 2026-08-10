@@ -185,6 +185,15 @@ gratuito da Cloudflare. O workflow `Publicar` do GitHub é apenas uma contingên
   A conversão de cenário em `quotes` é explícita e mantém
   `sourcePricingScenarioId`. Templates setoriais são configurações iniciais,
   nunca regras fixas ou produtos separados.
+- **Jornada de eletrificação To Do Green**: regras puras em
+  `src/features/logistics/electrificationJourneyDomain.js` e interface dentro
+  da oportunidade em `pages/OpportunitiesPage.jsx`. A jornada é sempre
+  `Mapear → Simular → Rodar → Reportar → Escalar` e deriva o avanço dos
+  registros já existentes: diagnóstico na oportunidade, cenário com
+  `opportunityId`, piloto, relatório/evidência e decisão de expansão. Não
+  criar um segundo cadastro de estudo nem marcar etapa como concluída só por
+  clique. A precificação aberta pela oportunidade recebe os dados mapeados,
+  mas custos e premissas continuam vazios até confirmação explícita.
 - **Hierarquia universal de trabalho (v124)**: lógica pura em
   `src/features/work/hierarchyDomain.js` e interface lazy em
   `src/features/work/WorkStructure.jsx`. A organização raiz é sempre derivada

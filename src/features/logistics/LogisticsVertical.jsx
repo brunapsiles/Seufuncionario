@@ -67,6 +67,7 @@ import {
 } from "./pricingPremisesDomain.js";
 import { liberacaoDaProposta } from "./dealDeskDomain.js";
 import { useVerticalRecords } from "./useVerticalRecords.js";
+import { inputsDePrecificacaoDaOportunidade } from "./electrificationJourneyDomain.js";
 import {
   agruparModulosPorTela,
   grupoAtendeBusca,
@@ -621,10 +622,16 @@ const productDefaults = {
   },
 };
 
-const todoGreenPath = () => (typeof window === "undefined" ? "/todogreen" : window.location.pathname);
+const todoGreenPath = () =>
+  typeof window === "undefined"
+    ? "/todogreen"
+    : `${window.location.pathname}${window.location.search}`;
 
 const sectionFromPath = (path) => {
-  const slug = String(path || "").replace(/^\/todogreen\/?/, "").split("/")[0];
+  const slug = String(path || "")
+    .replace(/^\/todogreen\/?/, "")
+    .split("?")[0]
+    .split("/")[0];
   return slug || "dashboard";
 };
 
@@ -1030,9 +1037,22 @@ function DashboardPanel({ data, dashboard }) {
   );
 }
 
-function PricingPanel({ role, criar, db, authHeaders, setToast }) {
-  const [productId, setProductId] = useState("middle-mile");
-  const [inputs, setInputs] = useState(productDefaults["middle-mile"]);
+function PricingPanel({ role, criar, db, authHeaders, setToast, opportunities = [] }) {
+  const opportunityId =
+    typeof window === "undefined"
+      ? ""
+      : new URLSearchParams(window.location.search).get("opportunity") || "";
+  const sourceOpportunity = opportunities.find((item) => item.id === opportunityId) || null;
+  const initialProductId = sourceOpportunity?.productId || "middle-mile";
+  const [productId, setProductId] = useState(initialProductId);
+  const [inputs, setInputs] = useState(() =>
+    sourceOpportunity
+      ? inputsDePrecificacaoDaOportunidade(
+          sourceOpportunity,
+          productDefaults[initialProductId] || productDefaults["middle-mile"],
+        )
+      : productDefaults["middle-mile"],
+  );
   // Declaração de procedência das premissas. Cai a cada mudança: confirmar um
   // cenário e depois trocar a distância deixaria a declaração valendo para um
   // cálculo que já não é o mesmo.
@@ -1145,6 +1165,7 @@ function PricingPanel({ role, criar, db, authHeaders, setToast }) {
       id: snapshot.id,
       productId,
       clientId: snapshot.clientId || inputs.clientId || "",
+      opportunityId: sourceOpportunity?.id || "",
       ruleVersion: regua?.versao || "padrao",
       inputs,
       result: snapshot.result,
@@ -1587,7 +1608,7 @@ export default function LogisticsVertical({ db, setToast, access = {}, authHeade
   // A vertical inteira numa chamada só, e só depois que o acesso foi
   // confirmado: pedir os registros antes disso seria bater no servidor para
   // ouvir 403.
-  const { dados: registros, erro: erroDosRegistros, criar } = useVerticalRecords(authHeaders, { ativo: allowed });
+  const { dados: registros, erro: erroDosRegistros, criar, atualizar } = useVerticalRecords(authHeaders, { ativo: allowed });
   // Os pedidos ao Deal Desk. A proposta precisa deles para saber se sai — e a
   // decisão de sair ou não é do servidor, não de um estado local.
   const [pedidosDeAprovacao, setPedidosDeAprovacao] = useState([]);
@@ -1678,9 +1699,9 @@ export default function LogisticsVertical({ db, setToast, access = {}, authHeade
       {page === "metas" && <Suspense fallback={<section className="tdg-panel">Carregando metas...</section>}><GoalsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "solicitacoes" && <Suspense fallback={<section className="tdg-panel">Carregando solicitações...</section>}><ClientRequestsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "clientes" && <Suspense fallback={<section className="tdg-panel">Carregando clientes...</section>}><ClientsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
-      {page === "oportunidades" && <Suspense fallback={<section className="tdg-panel">Carregando oportunidades...</section>}><OpportunitiesPage opportunities={verticalData.opportunities} onCreate={(registro) => criar("opportunities", registro)} setToast={setToast} /></Suspense>}
+      {page === "oportunidades" && <Suspense fallback={<section className="tdg-panel">Carregando oportunidades...</section>}><OpportunitiesPage opportunities={verticalData.opportunities} scenarios={verticalData.pricingScenarios} onCreate={(registro) => criar("opportunities", registro)} onUpdate={(id, alteracoes) => atualizar("opportunities", id, alteracoes)} onNavigate={navigate} setToast={setToast} /></Suspense>}
       {page === "propostas" && <ProposalPanel data={verticalData} criar={criar} pedidosDeAprovacao={pedidosDeAprovacao} setToast={setToast} />}
-      {page === "precificacao" && <PricingPanel role={role} criar={criar} db={db} authHeaders={authHeaders} setToast={setToast} />}
+      {page === "precificacao" && <PricingPanel key={new URLSearchParams(path.split("?")[1] || "").get("opportunity") || "nova"} role={role} criar={criar} db={db} authHeaders={authHeaders} setToast={setToast} opportunities={verticalData.opportunities} />}
       {["esg", "green-score", "calculadora-ambiental", "tradutor-esg", "escopo-3"].includes(page) && <EsgPanel dashboard={dashboard} data={verticalData} />}
       {page === "regua" && (
         <Suspense fallback={<section className="tdg-panel">Carregando régua comercial...</section>}>
