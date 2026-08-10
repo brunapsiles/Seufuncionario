@@ -10,8 +10,7 @@ import {
   atalhosDaTela,
   corpoDaPergunta,
   especialistaDaTela,
-  eventosDoTrecho,
-  montarPergunta,
+  textoDaProposta,
 } from "./sementeDomain.js";
 
 // O universo real de telas da vertical vem de duas fontes que já existem: o
@@ -46,8 +45,8 @@ describe("quem responde por cada tela", () => {
   });
 
   it("todo especialista escolhido existe no registro da vertical", () => {
-    // Este é o defeito que acabou de ser corrigido no núcleo: nome fora do
-    // registro cai no "Consultor" genérico, e a resposta perde a vertical.
+    // Nome fora do registro cai no "Consultor" genérico, e a resposta perde a
+    // vertical — o defeito que a Central de Trabalho tinha.
     const foraDoRegistro = [...new Set(Object.values(ESPECIALISTA_POR_TELA))].filter(
       (nome) => !especialistaDaVertical(nome),
     );
@@ -69,8 +68,6 @@ describe("quem responde por cada tela", () => {
   });
 
   it("sem tela conhecida atende o comercial, não um erro", () => {
-    // A Semente é a inteligência comercial da vertical: sem contexto, o
-    // comercial é o palpite honesto. O que ela não pode é deixar de responder.
     expect(especialistaDaTela(undefined)).toBe("Especialista Comercial");
     expect(especialistaDaTela("")).toBe("Especialista Comercial");
     expect(especialistaDaTela("tela-que-nao-existe")).toBe("Especialista Comercial");
@@ -90,56 +87,83 @@ describe("atalhos de abertura", () => {
   it("os atalhos mudam com o especialista", () => {
     expect(atalhosDaTela("precificacao")).not.toEqual(atalhosDaTela("esg"));
   });
+});
 
-  it("todo especialista usado no mapa tem atalho próprio", () => {
-    // Especialista sem atalho cai no conjunto do comercial em silêncio: quem
-    // abre a Semente no ESG recebe três perguntas sobre carteira.
-    const padraoComercial = atalhosDaTela("tela-que-nao-existe");
-    const semAtalho = [];
-    for (const [tela, nome] of Object.entries(ESPECIALISTA_POR_TELA)) {
-      if (nome === "Especialista Comercial") continue;
-      if (atalhosDaTela(tela) === padraoComercial) semAtalho.push(nome);
-    }
-    expect([...new Set(semAtalho)]).toEqual([]);
+describe("o corpo que vai para /api/todogreen/semente", () => {
+  const base = { pergunta: "Onde a margem caiu?", tela: "precificacao" };
+
+  it("recusa pergunta curta demais para significar alguma coisa", () => {
+    expect(corpoDaPergunta({ pergunta: "oi" }).valido).toBe(false);
+    expect(corpoDaPergunta({ pergunta: "  " }).corpo).toBeNull();
+    expect(corpoDaPergunta().valido).toBe(false);
+  });
+
+  it("leva pergunta, tela e o cliente em foco quando há um", () => {
+    const { valido, corpo } = corpoDaPergunta({ ...base, clienteId: "cli-9" });
+    expect(valido).toBe(true);
+    expect(corpo.pergunta).toBe("Onde a margem caiu?");
+    expect(corpo.tela).toBe("precificacao");
+    expect(corpo.clienteId).toBe("cli-9");
+  });
+
+  it("sem cliente em foco não inventa um", () => {
+    expect(corpoDaPergunta(base).corpo.clienteId).toBeUndefined();
+    expect(corpoDaPergunta({ ...base, clienteId: "  " }).corpo.clienteId).toBeUndefined();
+  });
+
+  it("leva a conversa anterior, senão cada pergunta nasce amnésica", () => {
+    const { corpo } = corpoDaPergunta({
+      ...base,
+      historico: [
+        { de: "voce", texto: "Quais contratos estão abaixo do piso?" },
+        { de: "semente", texto: "Três: Alfa, Beta e Gama." },
+      ],
+    });
+    expect(corpo.historico).toEqual([
+      { role: "user", content: "Quais contratos estão abaixo do piso?" },
+      { role: "assistant", content: "Três: Alfa, Beta e Gama." },
+    ]);
+  });
+
+  it("não reenvia mensagem de erro como se fosse fala da assistente", () => {
+    const { corpo } = corpoDaPergunta({
+      ...base,
+      historico: [
+        { de: "voce", texto: "Pergunta que falhou" },
+        { de: "semente", texto: "Cota mensal de IA esgotada.", falhou: true },
+      ],
+    });
+    expect(corpo.historico.map((item) => item.content)).not.toContain(
+      "Cota mensal de IA esgotada.",
+    );
+  });
+
+  it("corta o histórico no limite combinado com o servidor", () => {
+    const historico = Array.from({ length: 40 }, (_, indice) => ({
+      de: indice % 2 === 0 ? "voce" : "semente",
+      texto: `mensagem ${indice}`,
+    }));
+    expect(corpoDaPergunta({ ...base, historico }).corpo.historico).toHaveLength(8);
   });
 });
 
-describe("a pergunta que sai daqui", () => {
-  it("recusa pergunta curta demais para significar alguma coisa", () => {
-    expect(montarPergunta({ pergunta: "" }).valido).toBe(false);
-    expect(montarPergunta({ pergunta: "  " }).valido).toBe(false);
-    expect(montarPergunta({ pergunta: "oi" }).valido).toBe(false);
-    expect(montarPergunta({}).valido).toBe(false);
-    expect(montarPergunta().valido).toBe(false);
-  });
-
-  it("leva os dados da tela junto da pergunta", () => {
-    // Sem isto a resposta vira conselho genérico de logística, que é o mesmo
-    // que a pessoa teria digitando a pergunta em qualquer buscador.
-    const { valido, prompt } = montarPergunta({
-      pergunta: "Onde a margem está abaixo do piso?",
-      tela: "precificacao",
-      resumo: { margemOperacionalPercent: 11.4, receitaPrevista: 480000 },
-    });
-    expect(valido).toBe(true);
-    expect(prompt).toContain("precificacao");
-    expect(prompt).toContain("11.4");
-    expect(prompt).toContain("480000");
-    expect(prompt).toContain("Onde a margem está abaixo do piso?");
-  });
-
-  it("sem resumo não inventa contexto", () => {
-    const { prompt } = montarPergunta({ pergunta: "Qual a próxima ação?", tela: "clientes" });
-    expect(prompt.startsWith("Pergunta:")).toBe(true);
-    expect(montarPergunta({ pergunta: "Qual a próxima ação?", resumo: {} }).prompt).toBe(prompt);
-  });
-
-  it("manda a Semente dizer o que falta em vez de estimar", () => {
-    // O produto inteiro se apoia em dado real. Uma IA que preenche o buraco
-    // com estimativa destrói exatamente a auditabilidade que a vertical vende.
-    expect(montarPergunta({ pergunta: "Fecha o mês?" }).prompt).toContain(
-      "diga qual falta em vez de estimar",
+describe("a proposta dita em português", () => {
+  it("quem confirma lê exatamente o que vai acontecer", () => {
+    // Botão "Confirmar" embaixo de um objeto ilegível é assinatura em branco.
+    expect(
+      textoDaProposta({ tipo: "criar_tarefa", titulo: "Ligar para compras", cliente: "Rede Alfa", prazo: "2026-08-20" }),
+    ).toBe('Criar tarefa: "Ligar para compras" para Rede Alfa até 2026-08-20');
+    expect(
+      textoDaProposta({ tipo: "definir_proxima_acao", cliente: "Rede Alfa", acao: "Enviar proposta" }),
+    ).toBe('Definir próxima ação de Rede Alfa: "Enviar proposta"');
+    expect(textoDaProposta({ tipo: "pesquisar_empresa", cliente: "Rede Alfa" })).toBe(
+      "Pesquisar Rede Alfa na web agora",
     );
+  });
+
+  it("tipo desconhecido manda não confirmar em vez de fingir que entendeu", () => {
+    expect(textoDaProposta({ tipo: "apagar_tudo" })).toBe("Ação desconhecida — não confirme.");
+    expect(textoDaProposta()).toBe("Ação desconhecida — não confirme.");
   });
 });
 
@@ -151,121 +175,9 @@ describe("identidade da Semente", () => {
     expect(SEMENTE.saudacao.length).toBeGreaterThan(40);
   });
 
-  it("anuncia só o que ela realmente faz pelos especialistas da vertical", () => {
+  it("anuncia só o que ela realmente faz", () => {
     expect(HABILIDADES).toContain("Analisa empresas");
     expect(HABILIDADES).toContain("Avalia riscos ESG");
     expect(HABILIDADES.length).toBe(6);
-  });
-});
-
-describe("o corpo que vai para /api/ai", () => {
-  const base = { pergunta: "Onde a margem caiu?", tela: "precificacao" };
-
-  it("recusa o mesmo que montarPergunta recusa", () => {
-    expect(corpoDaPergunta({ pergunta: "oi", tela: "clientes" }).valido).toBe(false);
-    expect(corpoDaPergunta().corpo).toBeNull();
-  });
-
-  it("manda o especialista da tela junto do prompt", () => {
-    const { corpo } = corpoDaPergunta(base);
-    expect(corpo.specialist).toBe("Especialista em Precificação Logística");
-    expect(corpo.prompt).toContain("Onde a margem caiu?");
-  });
-
-  it("leva a conversa anterior, senão cada pergunta nasce amnésica", () => {
-    // "E o segundo caso?" não quer dizer nada sem as mensagens anteriores.
-    const { corpo } = corpoDaPergunta({
-      ...base,
-      historico: [
-        { de: "voce", texto: "Quais contratos estão abaixo do piso?" },
-        { de: "semente", texto: "Três: Alfa, Beta e Gama." },
-      ],
-    });
-    expect(corpo.messages.map((item) => item.role)).toEqual(["user", "assistant", "user"]);
-    expect(corpo.messages[1].content).toBe("Três: Alfa, Beta e Gama.");
-  });
-
-  it("a pergunta atual é a última mensagem, que é a que o servidor descarta", () => {
-    // O servidor faz messages.slice(-9, -1): ele assume que a última é a
-    // pergunta atual e a remove do histórico. Mandar sem ela perderia a
-    // penúltima mensagem de verdade.
-    const { corpo } = corpoDaPergunta({
-      ...base,
-      historico: [{ de: "voce", texto: "Pergunta anterior de verdade" }],
-    });
-    expect(corpo.messages.at(-1)).toEqual({ role: "user", content: "Onde a margem caiu?" });
-  });
-
-  it("não reenvia mensagem de erro como se fosse fala da assistente", () => {
-    const { corpo } = corpoDaPergunta({
-      ...base,
-      historico: [
-        { de: "voce", texto: "Pergunta que falhou" },
-        { de: "semente", texto: "Cota mensal de IA esgotada.", falhou: true },
-      ],
-    });
-    expect(corpo.messages.map((item) => item.content)).not.toContain(
-      "Cota mensal de IA esgotada.",
-    );
-  });
-
-  it("corta o histórico no limite que o servidor lê", () => {
-    const historico = Array.from({ length: 40 }, (_, indice) => ({
-      de: indice % 2 === 0 ? "voce" : "semente",
-      texto: `mensagem ${indice}`,
-    }));
-    expect(corpoDaPergunta({ ...base, historico }).corpo.messages).toHaveLength(10);
-  });
-
-  it("sem escolha explícita, deixa o servidor decidir a busca web", () => {
-    // O servidor já tem heurística própria (shouldSearchWeb). Mandar `false`
-    // por omissão desligaria uma capacidade que existe.
-    expect(corpoDaPergunta(base).corpo.webSearch).toBeUndefined();
-  });
-
-  it("com a busca ligada, procura pela pergunta crua e não pelos dados do cliente", () => {
-    const { corpo } = corpoDaPergunta({
-      ...base,
-      resumo: { receitaPrevista: 480000, clienteCritico: "Transportes Alfa" },
-      buscarNaWeb: true,
-    });
-    expect(corpo.webSearch).toBe(true);
-    expect(corpo.webSearchQuery).toBe("Onde a margem caiu?");
-    expect(corpo.webSearchQuery).not.toContain("Transportes Alfa");
-    expect(corpo.webSearchQuery).not.toContain("480000");
-  });
-
-  it("com a busca desligada, o servidor não busca por conta própria", () => {
-    expect(corpoDaPergunta({ ...base, buscarNaWeb: false }).corpo.webSearch).toBe(false);
-    expect(corpoDaPergunta({ ...base, buscarNaWeb: false }).corpo.webSearchQuery).toBeUndefined();
-  });
-});
-
-describe("leitura do streaming", () => {
-  it("separa quadros completos e guarda o pedaço que ficou pela metade", () => {
-    const { eventos, resto } = eventosDoTrecho(
-      'data: {"t":"Olá"}\n\ndata: {"t":" mundo"}\n\ndata: {"t":"inc',
-    );
-    expect(eventos).toEqual([{ t: "Olá" }, { t: " mundo" }]);
-    expect(resto).toBe('data: {"t":"inc');
-  });
-
-  it("um quadro quebrado não derruba a leitura do resto", () => {
-    const { eventos } = eventosDoTrecho('data: nao-e-json\n\ndata: {"t":"segue"}\n\n');
-    expect(eventos).toEqual([{ t: "segue" }]);
-  });
-
-  it("lê o encerramento com as fontes", () => {
-    const { eventos } = eventosDoTrecho(
-      'data: {"done":true,"provider":"Google Gemini","sources":[{"url":"https://a"}]}\n\n',
-    );
-    expect(eventos[0].done).toBe(true);
-    expect(eventos[0].sources).toHaveLength(1);
-  });
-
-  it("aguenta buffer vazio e lixo sem quadro", () => {
-    expect(eventosDoTrecho("")).toEqual({ eventos: [], resto: "" });
-    expect(eventosDoTrecho(undefined).eventos).toEqual([]);
-    expect(eventosDoTrecho(": keep-alive\n\n").eventos).toEqual([]);
   });
 });

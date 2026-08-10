@@ -16,6 +16,7 @@ import { handleTodoGreenVerticalRecords } from "./todogreen-vertical-records.js"
 import { handleTodoGreenDealDesk } from "./todogreen-deal-desk.js";
 import { entregarArquivo, handleTodoGreenEvidences } from "./todogreen-evidences.js";
 import { handleTodoGreenClientIntelligence } from "./todogreen-client-intelligence.js";
+import { handleTodoGreenSemente } from "./todogreen-semente.js";
 
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
   status,
@@ -123,6 +124,14 @@ export async function routeTodoGreenApi(request, env) {
       return path.startsWith("/api/todogreen/client-assignments")
         ? handleTodoGreenClientAssignments(request, env, resolved.access, resolved.user)
         : handleTodoGreenClients(request, env, resolved.access, resolved.user);
+    });
+  }
+
+  if (path.startsWith("/api/todogreen/semente")) {
+    return guarded("To Do Green Semente error", "A Semente não conseguiu responder agora.", async () => {
+      const resolved = await internalAccess(request, env);
+      if (resolved.response) return resolved.response;
+      return handleTodoGreenSemente(request, env, resolved.access, resolved.user);
     });
   }
 

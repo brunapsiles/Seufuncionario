@@ -3,21 +3,20 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Semente from "./Semente.jsx";
 
-// A regra que originou esta tela: a Semente não pode atrapalhar. Estes testes
-// existem para que ela continue não atrapalhando quando alguém mexer no
-// componente daqui a seis meses — recolhida por padrão, silenciosa depois de
-// fechada, e sempre chamando o especialista da tela em que a pessoa está.
+// A regra que originou esta tela: a Semente não pode atrapalhar. E a regra que
+// originou esta versão: ela fala com /api/todogreen/semente — a carteira real,
+// as ferramentas do CRM e as ações propostas — e nada é executado sem clique.
 
 const resposta = (dados, ok = true) =>
   Promise.resolve({ ok, json: () => Promise.resolve(dados) });
 
 const authHeaders = () => ({ authorization: "Bearer t" });
 
-const corpoEnviado = () => JSON.parse(global.fetch.mock.calls.at(-1)[1].body);
+const corpoEnviado = (indice = -1) => JSON.parse(global.fetch.mock.calls.at(indice)[1].body);
 
 beforeEach(() => {
   localStorage.clear();
-  global.fetch = vi.fn(() => resposta({ content: "Três contas estão abaixo do piso." }));
+  global.fetch = vi.fn(() => resposta({ resposta: "Três contas estão paradas.", carteira: 12 }));
 });
 
 afterEach(() => {
@@ -27,22 +26,26 @@ afterEach(() => {
 
 const abrir = () => fireEvent.click(screen.getByRole("button", { name: /Abrir Semente/i }));
 
+const perguntarPor = async (texto) => {
+  fireEvent.change(await screen.findByPlaceholderText(/Pergunte sobre a sua carteira/i), {
+    target: { value: texto },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /Enviar pergunta/i }));
+};
+
 describe("ela não ocupa a tela sem ser chamada", () => {
   it("começa recolhida, num botão só", () => {
     render(<Semente pagina="clientes" authHeaders={authHeaders} />);
     expect(screen.getByRole("button", { name: /Abrir Semente/i })).toBeTruthy();
     expect(screen.queryByRole("complementary")).toBeNull();
-    expect(screen.queryByPlaceholderText(/Pergunte sobre esta tela/i)).toBeNull();
   });
 
   it("não pergunta nada ao servidor enquanto ninguém abriu", () => {
-    render(<Semente pagina="precificacao" resumo={{ margem: 9 }} authHeaders={authHeaders} />);
+    render(<Semente pagina="precificacao" authHeaders={authHeaders} />);
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it("quem fechou não a encontra aberta de novo na próxima tela", async () => {
-    // Este é o comportamento que separa assistente de incômodo: a escolha de
-    // fechar vale para as próximas telas, não só para aquela.
     const { unmount } = render(<Semente pagina="clientes" authHeaders={authHeaders} />);
     abrir();
     await screen.findByRole("complementary");
@@ -57,19 +60,7 @@ describe("ela não ocupa a tela sem ser chamada", () => {
     expect(screen.queryByRole("complementary")).toBeNull();
   });
 
-  it("quem deixou aberta a reencontra aberta", async () => {
-    const { unmount } = render(<Semente pagina="clientes" authHeaders={authHeaders} />);
-    abrir();
-    await screen.findByRole("complementary");
-    unmount();
-
-    render(<Semente pagina="clientes" authHeaders={authHeaders} />);
-    await screen.findByRole("complementary");
-  });
-
   it("sobrevive a localStorage bloqueado", async () => {
-    // Janela anônima ou política do navegador. Perder a memória da escolha é
-    // aceitável; quebrar a vertical inteira não é.
     const original = Object.getOwnPropertyDescriptor(window, "localStorage");
     Object.defineProperty(window, "localStorage", {
       configurable: true,
@@ -87,340 +78,113 @@ describe("ela não ocupa a tela sem ser chamada", () => {
   });
 });
 
-describe("quem responde é o especialista da tela", () => {
-  it("na precificação, o especialista de precificação", async () => {
-    render(<Semente pagina="precificacao" authHeaders={authHeaders} />);
-    abrir();
-    fireEvent.change(await screen.findByPlaceholderText(/Pergunte sobre esta tela/i), {
-      target: { value: "Este preço se sustenta?" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /Enviar pergunta/i }));
-    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
-    expect(corpoEnviado().specialist).toBe("Especialista em Precificação Logística");
-  });
-
-  it("no ESG, o especialista de ESG", async () => {
-    render(<Semente pagina="green-score" authHeaders={authHeaders} />);
-    abrir();
-    fireEvent.click((await screen.findAllByRole("button")).find((botao) =>
-      /Green Score/i.test(botao.textContent),
-    ));
-    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
-    expect(corpoEnviado().specialist).toBe("Especialista ESG");
-  });
-
-  it("manda a sessão junto, senão a resposta não é do espaço de quem perguntou", async () => {
-    render(<Semente pagina="clientes" authHeaders={authHeaders} />);
-    abrir();
-    fireEvent.click((await screen.findAllByRole("button")).find((botao) =>
-      /carteira/i.test(botao.textContent),
-    ));
-    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
-    expect(global.fetch.mock.calls.at(-1)[1].headers.authorization).toBe("Bearer t");
-  });
-
-  it("leva os dados da tela na pergunta", async () => {
-    render(
-      <Semente pagina="receita" resumo={{ receitaPrevista: 480000 }} authHeaders={authHeaders} />,
-    );
-    abrir();
-    fireEvent.change(await screen.findByPlaceholderText(/Pergunte sobre esta tela/i), {
-      target: { value: "A receita está concentrada?" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /Enviar pergunta/i }));
-    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
-    expect(corpoEnviado().prompt).toContain("480000");
-  });
-});
-
-describe("conversa", () => {
-  it("mostra a resposta do servidor, não um texto pronto", async () => {
-    render(<Semente pagina="clientes" authHeaders={authHeaders} />);
-    abrir();
-    fireEvent.change(await screen.findByPlaceholderText(/Pergunte sobre esta tela/i), {
-      target: { value: "O que está parado?" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /Enviar pergunta/i }));
-    expect(await screen.findByText("Três contas estão abaixo do piso.")).toBeTruthy();
-    expect(screen.getByText("O que está parado?")).toBeTruthy();
-  });
-
-  it("diz que falhou em vez de fingir que respondeu", async () => {
-    global.fetch = vi.fn(() => resposta({ error: "Cota mensal de IA esgotada." }, false));
-    render(<Semente pagina="clientes" authHeaders={authHeaders} />);
-    abrir();
-    fireEvent.change(await screen.findByPlaceholderText(/Pergunte sobre esta tela/i), {
-      target: { value: "O que está parado?" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /Enviar pergunta/i }));
-    expect(await screen.findByText("Cota mensal de IA esgotada.")).toBeTruthy();
-  });
-
-  it("não envia pergunta curta demais", async () => {
-    render(<Semente pagina="clientes" authHeaders={authHeaders} />);
-    abrir();
-    fireEvent.change(await screen.findByPlaceholderText(/Pergunte sobre esta tela/i), {
-      target: { value: "oi" },
-    });
-    expect(screen.getByRole("button", { name: /Enviar pergunta/i }).disabled).toBe(true);
-    fireEvent.submit(screen.getByPlaceholderText(/Pergunte sobre esta tela/i).closest("form"));
-    expect(global.fetch).not.toHaveBeenCalled();
-  });
-
-  it("os atalhos somem depois da primeira pergunta", async () => {
-    render(<Semente pagina="clientes" authHeaders={authHeaders} />);
-    abrir();
-    const atalho = (await screen.findAllByRole("button")).find((botao) =>
-      /carteira/i.test(botao.textContent),
-    );
-    fireEvent.click(atalho);
-    await screen.findByText("Três contas estão abaixo do piso.");
-    expect(screen.queryByText(atalho.textContent, { selector: "button" })).toBeNull();
-  });
-});
-
-// ===== A API inteira, não uma fatia =====
-//
-// A Semente usa /api/ai/stream com queda para /api/ai, manda o espaço ativo, a
-// conversa anterior e a busca web, e mostra fontes e contingência. Cada um
-// desses pedaços some sem quebrar nada visivelmente — por isso todos têm teste.
-
-const sse = (quadros) => ({
-  ok: true,
-  headers: { get: () => "text/event-stream; charset=utf-8" },
-  body: {
-    getReader() {
-      const codificador = new TextEncoder();
-      let indice = 0;
-      return {
-        read: () =>
-          Promise.resolve(
-            indice < quadros.length
-              ? { done: false, value: codificador.encode(quadros[indice++]) }
-              : { done: true, value: undefined },
-          ),
-      };
-    },
-  },
-});
-
-const semStream = () => ({
-  ok: false,
-  status: 503,
-  headers: { get: () => "application/json" },
-  json: () => Promise.resolve({ error: "Streaming indisponível.", fallback: true }),
-});
-
-const perguntarPor = async (texto) => {
-  fireEvent.change(await screen.findByPlaceholderText(/Pergunte sobre esta tela/i), {
-    target: { value: texto },
-  });
-  fireEvent.click(screen.getByRole("button", { name: /Enviar pergunta/i }));
-};
-
-describe("streaming", () => {
-  it("mostra a resposta chegando em pedaços, sem esperar o fim", async () => {
-    global.fetch = vi.fn((url) =>
-      url === "/api/ai/stream"
-        ? Promise.resolve(
-            sse(['data: {"t":"A margem "}\n\n', 'data: {"t":"caiu em três contratos."}\n\n']),
-          )
-        : Promise.reject(new Error("não deveria cair para /api/ai")),
-    );
+describe("a pergunta vai para a vertical, com o contexto da tela", () => {
+  it("chama /api/todogreen/semente com pergunta, tela e sessão", async () => {
     render(<Semente pagina="precificacao" authHeaders={authHeaders} />);
     abrir();
     await perguntarPor("Onde a margem caiu?");
-    expect(await screen.findByText("A margem caiu em três contratos.")).toBeTruthy();
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    const [url, opcoes] = global.fetch.mock.calls.at(-1);
+    expect(url).toBe("/api/todogreen/semente");
+    expect(opcoes.headers.authorization).toBe("Bearer t");
+    expect(corpoEnviado()).toMatchObject({ pergunta: "Onde a margem caiu?", tela: "precificacao" });
   });
 
-  it("um quadro partido pela rede não perde texto", async () => {
-    // O chunk da rede corta o JSON no meio: é o caso que quebra leitor ingênuo.
-    global.fetch = vi.fn(() =>
-      Promise.resolve(sse(['data: {"t":"Meta', 'de"}\n\ndata: {"t":" batida."}\n\n'])),
-    );
-    render(<Semente pagina="metas" authHeaders={authHeaders} />);
+  it("leva o cliente aberto na tela quando há um", async () => {
+    render(<Semente pagina="clientes" clienteId="cli-42" authHeaders={authHeaders} />);
     abrir();
-    await perguntarPor("A meta fecha?");
-    expect(await screen.findByText("Metade batida.")).toBeTruthy();
-  });
-
-  it("mostra as fontes quando a busca na internet trouxe alguma", async () => {
-    global.fetch = vi.fn(() =>
-      Promise.resolve(
-        sse([
-          'data: {"t":"O diesel subiu."}\n\n',
-          'data: {"done":true,"sources":[{"title":"ANP - preços","url":"https://anp.gov.br/x"}]}\n\n',
-        ]),
-      ),
-    );
-    render(<Semente pagina="custos" authHeaders={authHeaders} />);
-    abrir();
-    await perguntarPor("O diesel subiu?");
-    const fonte = await screen.findByRole("link", { name: "ANP - preços" });
-    expect(fonte.getAttribute("href")).toBe("https://anp.gov.br/x");
-    expect(fonte.getAttribute("rel")).toContain("noopener");
-  });
-
-  it("cai para /api/ai quando o streaming não está disponível", async () => {
-    // O streaming fala só com o Gemini. Sem esta queda, uma falha dele viraria
-    // falha da Semente — e a cadeia de 14 provedores do /api/ai ficaria parada.
-    global.fetch = vi.fn((url) =>
-      url === "/api/ai/stream"
-        ? Promise.resolve(semStream())
-        : resposta({ content: "Respondi pela cadeia completa." }),
-    );
-    render(<Semente pagina="clientes" authHeaders={authHeaders} />);
-    abrir();
-    await perguntarPor("O que está parado?");
-    expect(await screen.findByText("Respondi pela cadeia completa.")).toBeTruthy();
-    expect(global.fetch.mock.calls.map((chamada) => chamada[0])).toEqual([
-      "/api/ai/stream",
-      "/api/ai",
-    ]);
-  });
-
-  it("cai para /api/ai quando o streaming abre e morre sem texto", async () => {
-    global.fetch = vi.fn((url) =>
-      url === "/api/ai/stream"
-        ? Promise.resolve(sse(['data: {"error":"Falha no streaming.","fallback":true}\n\n']))
-        : resposta({ content: "Segunda tentativa respondeu." }),
-    );
-    render(<Semente pagina="clientes" authHeaders={authHeaders} />);
-    abrir();
-    await perguntarPor("O que está parado?");
-    expect(await screen.findByText("Segunda tentativa respondeu.")).toBeTruthy();
-  });
-
-  it("a rede caindo no streaming não impede a resposta", async () => {
-    global.fetch = vi.fn((url) =>
-      url === "/api/ai/stream"
-        ? Promise.reject(new Error("rede"))
-        : resposta({ content: "Respondi mesmo assim." }),
-    );
-    render(<Semente pagina="clientes" authHeaders={authHeaders} />);
-    abrir();
-    await perguntarPor("O que está parado?");
-    expect(await screen.findByText("Respondi mesmo assim.")).toBeTruthy();
-  });
-});
-
-describe("contexto do espaço de trabalho", () => {
-  beforeEach(() => {
-    global.fetch = vi.fn((url) =>
-      url === "/api/ai/stream" ? Promise.resolve(semStream()) : resposta({ content: "ok" }),
-    );
-  });
-
-  it("manda o espaço ativo, não o espaço pessoal de quem perguntou", async () => {
-    // A vertical é operada dentro do espaço do tenant. Sem workspaceOwnerId o
-    // servidor assume o espaço pessoal: perfil do negócio, memórias aprovadas
-    // e cota iriam todos para o lugar errado.
-    localStorage.setItem("sf-space", "espaco-todogreen");
-    render(<Semente pagina="clientes" authHeaders={authHeaders} />);
-    abrir();
-    await perguntarPor("O que está parado?");
-    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
-    expect(corpoEnviado().workspaceOwnerId).toBe("espaco-todogreen");
-  });
-
-  it("sem espaço ativo não inventa um", async () => {
-    render(<Semente pagina="clientes" authHeaders={authHeaders} />);
-    abrir();
-    await perguntarPor("O que está parado?");
-    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
-    expect(corpoEnviado().workspaceOwnerId).toBeUndefined();
+    await perguntarPor("Qual a próxima ação para essa empresa?");
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    expect(corpoEnviado().clienteId).toBe("cli-42");
   });
 
   it("a segunda pergunta leva a primeira junto", async () => {
     render(<Semente pagina="clientes" authHeaders={authHeaders} />);
     abrir();
     await perguntarPor("Primeira pergunta minha");
-    await screen.findByText("ok");
+    await screen.findByText("Três contas estão paradas.");
     await perguntarPor("E o segundo caso?");
-    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(4));
-    const { messages } = corpoEnviado();
-    expect(messages.map((item) => item.content)).toEqual([
-      "Primeira pergunta minha",
-      "ok",
-      "E o segundo caso?",
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
+    expect(corpoEnviado().historico).toEqual([
+      { role: "user", content: "Primeira pergunta minha" },
+      { role: "assistant", content: "Três contas estão paradas." },
     ]);
   });
 
-  it("o mesmo corpo vai para os dois endpoints", async () => {
-    render(<Semente pagina="esg" authHeaders={authHeaders} />);
-    abrir();
-    await perguntarPor("Onde falta evidência?");
-    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
-    expect(global.fetch.mock.calls[0][1].body).toBe(global.fetch.mock.calls[1][1].body);
-  });
-});
-
-describe("busca na internet", () => {
-  beforeEach(() => {
-    global.fetch = vi.fn((url) =>
-      url === "/api/ai/stream" ? Promise.resolve(semStream()) : resposta({ content: "ok" }),
+  it("mostra qual ferramenta foi consultada, para a resposta ser conferível", async () => {
+    global.fetch = vi.fn(() =>
+      resposta({ resposta: "A conta Alfa está sem próxima ação.", consultou: { ferramenta: "carteira" } }),
     );
-  });
-
-  it("desligada por padrão, deixa o servidor decidir", async () => {
     render(<Semente pagina="clientes" authHeaders={authHeaders} />);
     abrir();
     await perguntarPor("O que está parado?");
-    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
-    expect(corpoEnviado().webSearch).toBeUndefined();
+    expect(await screen.findByText(/Consultei: carteira/i)).toBeTruthy();
   });
 
-  it("ligada, manda a pergunta crua como consulta externa", async () => {
-    render(
-      <Semente
-        pagina="clientes"
-        resumo={{ clienteCritico: "Transportes Alfa" }}
-        authHeaders={authHeaders}
-      />,
-    );
-    abrir();
-    fireEvent.click(await screen.findByRole("button", { name: /Buscar na internet/i }));
-    await perguntarPor("Qual o preço atual do diesel?");
-    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
-    const corpo = corpoEnviado();
-    expect(corpo.webSearch).toBe(true);
-    expect(corpo.webSearchQuery).toBe("Qual o preço atual do diesel?");
-    expect(corpo.webSearchQuery).not.toContain("Transportes Alfa");
-  });
-
-  it("o interruptor diz em que estado está", async () => {
+  it("diz que falhou em vez de fingir que respondeu", async () => {
+    global.fetch = vi.fn(() => resposta({ error: "Os provedores de IA não responderam agora." }, false));
     render(<Semente pagina="clientes" authHeaders={authHeaders} />);
     abrir();
-    const globo = await screen.findByRole("button", { name: /Buscar na internet/i });
-    expect(globo.getAttribute("aria-pressed")).toBe("false");
-    fireEvent.click(globo);
-    await waitFor(() => expect(globo.getAttribute("aria-pressed")).toBe("true"));
+    await perguntarPor("O que está parado?");
+    expect(await screen.findByText("Os provedores de IA não responderam agora.")).toBeTruthy();
+  });
+
+  it("não envia pergunta curta demais", async () => {
+    render(<Semente pagina="clientes" authHeaders={authHeaders} />);
+    abrir();
+    fireEvent.change(await screen.findByPlaceholderText(/Pergunte sobre a sua carteira/i), {
+      target: { value: "oi" },
+    });
+    expect(screen.getByRole("button", { name: /Enviar pergunta/i }).disabled).toBe(true);
+    fireEvent.submit(screen.getByPlaceholderText(/Pergunte sobre a sua carteira/i).closest("form"));
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });
 
-describe("honestidade da resposta", () => {
-  it("avisa quando o texto é contingência e não análise dos dados", async () => {
-    // Entregar roteiro de emergência com cara de análise é a mentira mais cara
-    // que uma assistente pode contar para quem está decidindo preço.
-    global.fetch = vi.fn((url) =>
-      url === "/api/ai/stream"
-        ? Promise.resolve(semStream())
-        : resposta({ content: "Plano inicial...", degraded: true }),
-    );
-    render(<Semente pagina="precificacao" authHeaders={authHeaders} />);
+describe("proposta não é execução", () => {
+  const proposta = { tipo: "definir_proxima_acao", cliente: "Rede Alfa", acao: "Enviar proposta", prazo: "2026-08-20" };
+
+  it("a proposta chega como botão dizendo exatamente o que vai acontecer", async () => {
+    global.fetch = vi.fn(() => resposta({ resposta: "Sugiro registrar a próxima ação.", proposta }));
+    render(<Semente pagina="clientes" authHeaders={authHeaders} />);
     abrir();
-    await perguntarPor("Este preço se sustenta?");
-    expect(await screen.findByText(/roteiro de contingência/i)).toBeTruthy();
+    await perguntarPor("O que faço com a Rede Alfa?");
+    expect(await screen.findByText(/Definir próxima ação de Rede Alfa/)).toBeTruthy();
+    expect(screen.getByText(/Nada foi gravado ainda/)).toBeTruthy();
+    // E só a pergunta foi ao servidor — nenhuma execução aconteceu.
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(corpoEnviado().executar).toBeUndefined();
   });
 
-  it("resposta normal não ganha aviso de contingência", async () => {
-    global.fetch = vi.fn((url) =>
-      url === "/api/ai/stream" ? Promise.resolve(semStream()) : resposta({ content: "Sustenta." }),
-    );
-    render(<Semente pagina="precificacao" authHeaders={authHeaders} />);
+  it("confirmar dispara a execução e mostra o resumo do que foi feito", async () => {
+    global.fetch = vi.fn((url, opcoes) => {
+      const corpo = JSON.parse(opcoes.body);
+      if (corpo.executar)
+        return resposta({ ok: true, tipo: corpo.executar.tipo, resumo: "Próxima ação de Rede Alfa: Enviar proposta." });
+      return resposta({ resposta: "Sugiro registrar a próxima ação.", proposta });
+    });
+    render(<Semente pagina="clientes" authHeaders={authHeaders} />);
     abrir();
-    await perguntarPor("Este preço se sustenta?");
-    await screen.findByText("Sustenta.");
-    expect(screen.queryByText(/roteiro de contingência/i)).toBeNull();
+    await perguntarPor("O que faço com a Rede Alfa?");
+    fireEvent.click(await screen.findByRole("button", { name: /Confirmar e executar/i }));
+    expect(await screen.findByText("Próxima ação de Rede Alfa: Enviar proposta.")).toBeTruthy();
+    // O corpo da execução é a proposta literal que estava na tela.
+    expect(corpoEnviado()).toEqual({ executar: proposta });
+    // O botão some: proposta executada não pode ser executada duas vezes.
+    expect(screen.queryByRole("button", { name: /Confirmar e executar/i })).toBeNull();
+  });
+
+  it("execução recusada pelo servidor aparece como falha, e a proposta continua visível", async () => {
+    global.fetch = vi.fn((url, opcoes) => {
+      const corpo = JSON.parse(opcoes.body);
+      if (corpo.executar) return resposta({ error: "Seu papel não cria itens na Central de Trabalho." }, false);
+      return resposta({ resposta: "Sugiro criar a tarefa.", proposta: { tipo: "criar_tarefa", titulo: "Ligar" } });
+    });
+    render(<Semente pagina="clientes" authHeaders={authHeaders} />);
+    abrir();
+    await perguntarPor("Cria uma tarefa?");
+    fireEvent.click(await screen.findByRole("button", { name: /Confirmar e executar/i }));
+    expect(await screen.findByText("Seu papel não cria itens na Central de Trabalho.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Confirmar e executar/i })).toBeTruthy();
   });
 });

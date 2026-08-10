@@ -1764,7 +1764,11 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
       {/* A Semente fica por último no DOM de propósito: quem navega por teclado
           ou leitor de tela percorre a tela inteira antes de chegar nela, em vez
           de tropeçar num assistente antes do conteúdo que veio ver. */}
-      <Semente pagina={page} resumo={dashboard} authHeaders={authHeaders} />
+      <Semente
+        pagina={page}
+        clienteId={new URLSearchParams(path.split("?")[1] || "").get("client") || ""}
+        authHeaders={authHeaders}
+      />
     </main>
   );
 }

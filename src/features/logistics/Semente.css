@@ -29,38 +29,41 @@
   font-size: 14px;
   font-weight: 700;
   gap: 9px;
-  padding: 11px 18px 11px 13px;
+  padding: 10px 18px 10px 12px;
   transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 
 .semente-launcher:hover { transform: translateY(-2px); box-shadow: 0 16px 34px rgba(16, 36, 31, 0.32); }
 .semente-launcher:focus-visible { outline: 3px solid var(--tdg-lime, #92c83e); outline-offset: 3px; }
 
-/* ===== Avatar ===== */
+/* ===== Avatar =====
+ *
+ * O robô da marca: cabeça branca, viseira escura, olhos verdes que brilham,
+ * folha brotando no topo. Desenhado no SementeAvatar.jsx; pintado aqui.
+ */
 
-.semente-avatar {
-  align-items: center;
-  background: rgba(255, 255, 255, 0.16);
-  border-radius: 50%;
-  color: var(--tdg-lime, #92c83e);
-  display: inline-flex;
-  flex: 0 0 auto;
-  height: 30px;
-  justify-content: center;
-  width: 30px;
-}
+.semente-avatar { display: inline-flex; flex: 0 0 auto; }
 
-.semente-avatar--pensando { animation: semente-pulsa 1.3s ease-in-out infinite; }
+.semente-cabeca { fill: #fff; stroke: rgba(16, 36, 31, 0.14); stroke-width: 1; }
+.semente-viseira { fill: #10241f; }
+.semente-olho { fill: var(--tdg-lime, #92c83e); }
+.semente-orelha { fill: #e3ede7; }
+.semente-folha { fill: var(--tdg-lime, #92c83e); }
+.semente-folha--esquerda { fill: var(--tdg-green, #17624f); }
+.semente-caule { stroke: var(--tdg-green, #17624f); stroke-width: 2; stroke-linecap: round; fill: none; }
 
-@keyframes semente-pulsa {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.55; transform: scale(0.9); }
+/* Pensando: os olhos pulsam. É o "Analisando..." da identidade, sem texto. */
+.semente-avatar--pensando .semente-olho { animation: semente-pisca 1.1s ease-in-out infinite; }
+
+@keyframes semente-pisca {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
 }
 
 /* Quem pediu menos movimento no sistema não deveria ganhar um ícone piscando
  * no canto da tela pelo resto do expediente. */
 @media (prefers-reduced-motion: reduce) {
-  .semente-avatar--pensando { animation: none; }
+  .semente-avatar--pensando .semente-olho { animation: none; }
   .semente-launcher { transition: none; }
   .semente { animation: none; }
 }
@@ -152,26 +155,28 @@
 
 .semente-lema { color: var(--tdg-muted, #62766f); font-size: 11px; font-style: italic; }
 
+.semente-bloco { display: flex; flex-direction: column; gap: 4px; max-width: 88%; }
+.semente-bloco--voce { align-self: flex-end; align-items: flex-end; }
+.semente-bloco--semente { align-self: flex-start; }
+.semente-bloco .semente-msg { max-width: 100%; }
+
 .semente-msg {
   border-radius: 14px;
   font-size: 13px;
   line-height: 1.5;
   margin: 0;
-  max-width: 88%;
   padding: 9px 12px;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .semente-msg--voce {
-  align-self: flex-end;
   background: var(--tdg-green, #17624f);
   border-bottom-right-radius: 5px;
   color: #fff;
 }
 
 .semente-msg--semente {
-  align-self: flex-start;
   background: var(--tdg-card, #fff);
   border: 1px solid var(--tdg-line, #d6e8df);
   border-bottom-left-radius: 5px;
@@ -179,12 +184,57 @@
 }
 
 .semente-msg--erro { background: #fdecec; border-color: #f4c4c4; color: #8c2f2f; }
-.semente-msg--pensando { color: var(--tdg-muted, #62766f); font-style: italic; }
+.semente-msg--pensando { align-self: flex-start; color: var(--tdg-muted, #62766f); font-style: italic; }
 
-.semente-bloco { display: flex; flex-direction: column; gap: 4px; max-width: 88%; }
-.semente-bloco--voce { align-self: flex-end; align-items: flex-end; }
-.semente-bloco--semente { align-self: flex-start; }
-.semente-bloco .semente-msg { max-width: 100%; }
+/* De onde a resposta veio: qual ferramenta ela consultou. */
+.semente-consulta {
+  color: var(--tdg-muted, #62766f);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ===== Proposta de ação =====
+ *
+ * A proposta é visualmente um contrato, não uma continuação do texto: borda
+ * própria, o que vai acontecer em negrito, e o aviso de que nada foi gravado.
+ */
+
+.semente-proposta {
+  background: var(--tdg-soft, #e8f5ef);
+  border: 1px solid var(--tdg-green, #17624f);
+  border-radius: 12px;
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+}
+.semente-proposta strong { color: var(--tdg-ink, #10241f); font-size: 12.5px; line-height: 1.4; }
+.semente-proposta small { color: var(--tdg-muted, #62766f); font-size: 11px; }
+.semente-proposta button {
+  align-items: center;
+  background: var(--tdg-green, #17624f);
+  border: 0;
+  border-radius: 10px;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 6px;
+  justify-content: center;
+  padding: 8px 12px;
+}
+.semente-proposta button:disabled { cursor: wait; opacity: 0.6; }
+.semente-proposta button:focus-visible { outline: 2px solid var(--tdg-ink, #10241f); outline-offset: 2px; }
+
+.semente-feito {
+  background: #e8f5ef;
+  border-radius: 9px;
+  color: var(--tdg-green, #17624f);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 9px;
+}
 
 .semente-aviso {
   background: #fff5e4;
@@ -193,22 +243,6 @@
   font-size: 11px;
   line-height: 1.45;
   padding: 6px 9px;
-}
-
-.semente-fontes {
-  display: grid;
-  gap: 3px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.semente-fontes a {
-  color: var(--tdg-green, #17624f);
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  display: block;
 }
 
 /* ===== Atalhos ===== */
@@ -255,27 +289,6 @@
   padding: 9px 11px;
 }
 .semente-campo input:focus { border-color: var(--tdg-green, #17624f); outline: none; }
-
-/* O globo é um interruptor, não um botão de ação: quando ligado, a pergunta
-   sai com busca na internet junto. Precisa parecer ligado. */
-.semente-web {
-  align-items: center;
-  background: transparent;
-  border: 1px solid var(--tdg-line, #d6e8df);
-  border-radius: 11px;
-  color: var(--tdg-muted, #62766f);
-  cursor: pointer;
-  display: inline-flex;
-  flex: 0 0 auto;
-  justify-content: center;
-  padding: 9px;
-}
-.semente-web.ativo {
-  background: var(--tdg-soft, #e8f5ef);
-  border-color: var(--tdg-green, #17624f);
-  color: var(--tdg-green, #17624f);
-}
-.semente-web:focus-visible { outline: 2px solid var(--tdg-green, #17624f); outline-offset: 1px; }
 
 .semente-campo button[type="submit"] {
   align-items: center;

@@ -164,12 +164,36 @@ export async function handleTodoGreenClientIntelligence(request, env, access, us
       configured: webSearchConfiguration(env).configured,
     });
   const body = await request.json().catch(() => ({}));
-  const focus = body.focus === "contacts" ? "contacts" : "company";
-  const cacheAge = cached?.checkedAt ? Date.now() - Date.parse(cached.checkedAt) : Infinity;
-  if (body.force !== true && cacheAge < 24 * 60 * 60 * 1000) return response({ intelligence: cached, cached: true });
+  const resultado = await pesquisarEmpresa(env, {
+    linha: row,
+    ownerId: access.ownerId,
+    userId: user.id,
+    forcar: body.force === true,
+    focus: body.focus === "contacts" ? "contacts" : "company",
+  });
+  if (resultado.erro) return response({ error: resultado.erro }, resultado.status || 502);
+  if (resultado.doCache) return response({ intelligence: resultado.relatorio, cached: true });
+  return response({ intelligence: resultado.relatorio, enrichment: resultado.enrichment, cached: false });
+}
 
-  const company = clean(row.name, 200);
-  const segment = clean(row.segment, 120);
+/**
+ * A pesquisa em si, separada da rota.
+ *
+ * Existe como função porque tem dois chamadores: os botões "Pesquisar
+ * empresa"/"Pesquisar contatos" da tela do cliente e a ação
+ * `pesquisar_empresa` que a Semente propõe. Duplicar as consultas, o
+ * enriquecimento e a gravação em dois lugares garantiria que um dia
+ * divergissem — e a divergência apareceria como "a pesquisa da Semente acha
+ * coisa diferente da pesquisa do botão".
+ */
+export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = false, focus = "company" }) {
+  const fields = parse(linha.fields_json, {});
+  const cached = fields.intelligence && typeof fields.intelligence === "object" ? fields.intelligence : null;
+  const idadeDoCache = cached?.checkedAt ? Date.now() - Date.parse(cached.checkedAt) : Infinity;
+  if (!forcar && idadeDoCache < 24 * 60 * 60 * 1000) return { relatorio: cached, doCache: true };
+
+  const company = clean(linha.name, 200);
+  const segment = clean(linha.segment, 120);
   const year = new Date().getUTCFullYear();
   const queries = [
     ["identity", `"${company}" site oficial LinkedIn empresa procurement compras`],
@@ -183,22 +207,23 @@ export async function handleTodoGreenClientIntelligence(request, env, access, us
   if (focus === "contacts")
     queries.push(["contacts", `"${company}" site:linkedin.com/in (head OR diretor OR gerente) (procurement OR compras OR suprimentos OR logística)`]);
   const settled = await Promise.all(queries.map(async ([kind, query]) => ({ kind, ...(await searchWeb(env, query)) })));
-  if (settled.every((item) => !item.configured)) return response({ error: "Pesquisa web ainda não configurada. Cadastre uma chave do Brave Search, Tavily, Serper, Exa, Jina ou Google Search." }, 503);
+  if (settled.every((item) => !item.configured))
+    return { erro: "Pesquisa web ainda não configurada. Cadastre uma chave do Brave Search, Tavily, Serper, Exa, Jina ou Google Search.", status: 503 };
   const report = classifyCompanyResearch({ company, segment, searches: settled, checkedAt: new Date().toISOString() });
   report.providers = [...new Set(settled.flatMap((item) => item.providers || []))];
   report.failures = settled.flatMap((item) => item.failures || []).slice(0, 12);
   const existingContacts = Array.isArray(fields.contacts) ? fields.contacts : [];
   const existingIdentities = new Set(existingContacts.flatMap((item) => [normalize(item.linkedinUrl), normalize(item.name)].filter(Boolean)));
   const discoveredContacts = (report.contactCandidates || []).filter((item) => !existingIdentities.has(normalize(item.linkedinUrl)) && !existingIdentities.has(normalize(item.name)));
-  const filledSegment = !clean(row.segment, 120) && report.suggestedSegment?.value ? report.suggestedSegment.value : clean(row.segment, 120);
+  const filledSegment = !clean(linha.segment, 120) && report.suggestedSegment?.value ? report.suggestedSegment.value : clean(linha.segment, 120);
   report.autoEnrichment = {
-    segmentFilled: !clean(row.segment, 120) && Boolean(filledSegment),
+    segmentFilled: !clean(linha.segment, 120) && Boolean(filledSegment),
     contactsAdded: discoveredContacts.length,
   };
   const nextFields = { ...fields, contacts: [...existingContacts, ...discoveredContacts], intelligence: report };
   await env.DB.prepare(
     `UPDATE todogreen_clients SET segment=?,fields_json=?,revision=revision+1,updated_by=?,updated_at=?
       WHERE id=? AND tenant_id=? AND workspace_owner_id=?`,
-  ).bind(filledSegment, JSON.stringify(nextFields), user.id, report.checkedAt, row.id, TENANT_ID, access.ownerId).run();
-  return response({ intelligence: report, enrichment: report.autoEnrichment, cached: false });
+  ).bind(filledSegment, JSON.stringify(nextFields), userId, report.checkedAt, linha.id, TENANT_ID, ownerId).run();
+  return { relatorio: report, enrichment: report.autoEnrichment, doCache: false };
 }

@@ -3,22 +3,20 @@
 // "Planta oportunidades. Colhe resultados."
 //
 // A parte pura: qual especialista atende cada tela, o que a Semente sabe
-// fazer, e como ela se apresenta. Fica separada do componente porque é isso
-// que dá para testar sem montar tela — e porque a escolha do especialista é
-// regra de produto, não detalhe de renderização.
+// fazer, como ela se apresenta, e o corpo que vai para o servidor. Fica
+// separada do componente porque é isso que dá para testar sem montar tela.
 //
-// A Semente não é um especialista novo: ela é a porta. Quem responde são os
-// dez especialistas registrados em todoGreenAiSpecialists.js, e ela escolhe
-// qual chamar pelo lugar onde a pessoa está. Perguntar sobre margem na tela
-// de precificação e receber resposta de um generalista seria o mesmo defeito
-// que a Central de Trabalho tinha.
+// A Semente fala com /api/todogreen/semente — o endpoint da vertical que
+// carrega a carteira real, as ferramentas de consulta ao CRM e as ações que
+// ela pode propor. O rótulo de especialista continua vindo da tela, porque é
+// assim que ela se apresenta; quem monta o contexto de verdade é o servidor.
 
 export const SEMENTE = Object.freeze({
   nome: "Semente",
   assinatura: "A inteligência comercial da To Do Green",
   lema: "Planta oportunidades. Colhe resultados.",
   saudacao:
-    "Olá! Eu sou a Semente. Posso analisar empresas, identificar oportunidades, avaliar riscos ESG e sugerir a próxima ação — sempre com os dados desta tela.",
+    "Olá! Eu sou a Semente. Conheço a sua carteira: posso analisar contas, achar contatos de compras, ler a pesquisa externa e propor a próxima ação — e você confirma antes de qualquer coisa ser gravada.",
 });
 
 // O que ela faz, na ordem em que a marca apresenta.
@@ -80,7 +78,7 @@ const ATALHOS_POR_ESPECIALISTA = Object.freeze({
   "Especialista Comercial": [
     "O que está parado na minha carteira?",
     "Quais contas correm risco de perda?",
-    "Qual a próxima ação em cada oportunidade aberta?",
+    "Quem cuida de compras nas minhas contas quentes?",
   ],
   "Especialista em Precificação Logística": [
     "Onde a margem está abaixo do piso?",
@@ -90,7 +88,7 @@ const ATALHOS_POR_ESPECIALISTA = Object.freeze({
   "Especialista ESG": [
     "O que sustenta o Green Score deste período?",
     "Onde falta evidência para o relatório do cliente?",
-    "Quanto do cálculo é medição e quanto é estimativa?",
+    "Quais contas têm sinal ESG na pesquisa externa?",
   ],
   "Especialista em Operações Logísticas": [
     "Que rota está com ocupação abaixo do previsto?",
@@ -104,7 +102,7 @@ const ATALHOS_POR_ESPECIALISTA = Object.freeze({
   ],
   "Especialista em Dados": [
     "Que registro está incompleto ou inconsistente?",
-    "Quanto do total está apoiado em medição?",
+    "Quais contas estão sem contato com canal?",
     "Que número não se sustenta na evidência?",
   ],
   "Especialista em Projetos": [
@@ -118,92 +116,53 @@ export const atalhosDaTela = (pagina) =>
   ATALHOS_POR_ESPECIALISTA[especialistaDaTela(pagina)] ||
   ATALHOS_POR_ESPECIALISTA["Especialista Comercial"];
 
-// A pergunta vai junto de um resumo do que está na tela — sem isso a Semente
-// responderia genérico sobre logística, que é conselho de internet, não
-// análise da operação de quem perguntou.
-export const montarPergunta = ({ pergunta, tela, resumo } = {}) => {
-  const texto = String(pergunta || "").trim();
-  if (texto.length < 3) return { valido: false, prompt: "" };
-  const contexto = resumo && Object.keys(resumo).length
-    ? `Dados desta tela (${tela || "vertical"}):\n${JSON.stringify(resumo, null, 2)}\n\n`
-    : "";
-  return {
-    valido: true,
-    prompt: `${contexto}Pergunta: ${texto}\n\nResponda com base apenas nos dados acima. Se faltar dado para concluir, diga qual falta em vez de estimar.`,
-  };
-};
+// ===== O corpo que vai para /api/todogreen/semente =====
+//
+// O servidor monta o contexto sozinho — carteira, ferramentas, permissões.
+// Daqui vão só a pergunta, a tela (para a Semente saber onde a pessoa está),
+// o cliente em foco quando há um, e a conversa até aqui.
 
-// ===== O corpo que vai para /api/ai =====
-//
-// A Semente não fala com um endpoint reduzido: ela usa a mesma API do resto do
-// Seu Funcionário, com tudo que ela oferece. Estava mandando só `prompt` e
-// `specialist`, e com isso perdia quatro coisas que o produto já tem pronto:
-//
-//   workspaceOwnerId  o espaço ativo. Sem ele o servidor assume o espaço
-//                     pessoal de quem perguntou — e a vertical é operada
-//                     dentro do espaço do tenant. Perfil do negócio, memórias
-//                     aprovadas e cota iam todos para o lugar errado.
-//   businessId        omitido de propósito: o servidor cai no negócio
-//                     selecionado do espaço, que é a resposta certa aqui.
-//   messages          a conversa anterior. Sem isso cada pergunta nascia
-//                     amnésica e "e o segundo caso?" não queria dizer nada.
-//   webSearch         a busca na internet, com as fontes de volta na resposta.
-//
-// As memórias aprovadas do espaço entram sozinhas no servidor assim que o
-// espaço certo chega — não há nada a mandar por aqui.
-
-export const HISTORICO_MAXIMO = 10;
+export const HISTORICO_MAXIMO = 8;
 
 const PAPEL = { voce: "user", semente: "assistant" };
 
-export const corpoDaPergunta = ({
-  pergunta,
-  tela,
-  resumo,
-  historico = [],
-  buscarNaWeb,
-} = {}) => {
-  const { valido, prompt } = montarPergunta({ pergunta, tela, resumo });
-  if (!valido) return { valido: false, corpo: null };
-  const texto = String(pergunta).trim();
-  const anteriores = (Array.isArray(historico) ? historico : [])
-    // Mensagem que falhou é aviso de erro na tela, não fala da assistente.
-    // Reenviá-la ensinaria o modelo a imitar mensagem de erro.
-    .filter((item) => item && !item.falhou && PAPEL[item.de] && typeof item.texto === "string")
-    .map((item) => ({ role: PAPEL[item.de], content: item.texto }));
+export const corpoDaPergunta = ({ pergunta, tela, clienteId, historico = [] } = {}) => {
+  const texto = String(pergunta || "").trim();
+  if (texto.length < 3) return { valido: false, corpo: null };
   const corpo = {
-    prompt,
-    specialist: especialistaDaTela(tela),
-    // O servidor descarta a última mensagem por entender que é a pergunta
-    // atual (`slice(-9, -1)`). Ela vai junto, como o resto do produto manda.
-    messages: [...anteriores, { role: "user", content: texto }].slice(-HISTORICO_MAXIMO),
+    pergunta: texto,
+    tela: String(tela || "").trim() || undefined,
+    clienteId: String(clienteId || "").trim() || undefined,
+    historico: (Array.isArray(historico) ? historico : [])
+      // Mensagem que falhou é aviso de erro na tela, não fala da assistente.
+      // Reenviá-la ensinaria o modelo a imitar mensagem de erro.
+      .filter((item) => item && !item.falhou && PAPEL[item.de] && typeof item.texto === "string")
+      .map((item) => ({ role: PAPEL[item.de], content: item.texto }))
+      .slice(-HISTORICO_MAXIMO),
   };
-  if (buscarNaWeb !== undefined) corpo.webSearch = !!buscarNaWeb;
-  // A consulta externa usa a pergunta crua. Mandar o `prompt` inteiro faria a
-  // busca na internet procurar pelos números da operação do cliente.
-  if (buscarNaWeb) corpo.webSearchQuery = texto;
   return { valido: true, corpo };
 };
 
-// ===== Leitura do streaming =====
+// ===== A proposta de ação, dita em português =====
 //
-// O /api/ai/stream devolve Server-Sent Events: quadros separados por linha em
-// branco, cada um com uma linha `data: {...}`. Fica aqui, puro, porque partir
-// texto em quadros é onde erro de borda mora — um chunk da rede corta um
-// quadro no meio, e o resto precisa esperar o próximo pedaço.
+// A proposta chega do servidor como objeto ({tipo, campos...}). Quem vai
+// clicar em "Confirmar" precisa ler exatamente o que vai acontecer — um botão
+// que diz só "Confirmar" embaixo de um JSON é assinatura em branco.
 
-export const eventosDoTrecho = (buffer) => {
-  const partes = String(buffer || "").split("\n\n");
-  const resto = partes.pop() || "";
-  const eventos = [];
-  for (const parte of partes) {
-    const linha = parte.split("\n").find((item) => item.startsWith("data:"));
-    if (!linha) continue;
-    try {
-      eventos.push(JSON.parse(linha.slice(5).trim()));
-    } catch {
-      // Quadro que não é JSON não derruba a leitura do resto da resposta.
-    }
+export const textoDaProposta = (proposta = {}) => {
+  const tipo = String(proposta.tipo || "");
+  if (tipo === "criar_tarefa") {
+    const partes = [`Criar tarefa: "${proposta.titulo || "sem título"}"`];
+    if (proposta.cliente) partes.push(`para ${proposta.cliente}`);
+    if (proposta.prazo) partes.push(`até ${proposta.prazo}`);
+    return partes.join(" ");
   }
-  return { eventos, resto };
+  if (tipo === "definir_proxima_acao") {
+    const partes = [`Definir próxima ação de ${proposta.cliente || "?"}: "${proposta.acao || ""}"`];
+    if (proposta.prazo) partes.push(`até ${proposta.prazo}`);
+    return partes.join(" ");
+  }
+  if (tipo === "pesquisar_empresa")
+    return `Pesquisar ${proposta.cliente || "a empresa"} na web agora`;
+  return "Ação desconhecida — não confirme.";
 };
