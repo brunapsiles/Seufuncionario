@@ -202,6 +202,12 @@ gratuito da Cloudflare. O workflow `Publicar` do GitHub é apenas uma contingên
   nome quando houver identificador. Vendedor pode atualizar a visão 360º
   somente da própria carteira e toda alteração exige `revision`; o portal não
   recebe scores, pipeline, forecast, responsáveis ou observações internas.
+  A pesquisa 360 usa `buildCompanyResearchPlans`: três consultas reais
+  consolidadas alimentam as sete categorias da ficha (quatro quando o foco é
+  aprofundar contatos). Não voltar a disparar uma chamada por categoria. O
+  Tavily usa profundidade `basic` por padrão para respeitar a cota gratuita;
+  `TAVILY_SEARCH_DEPTH=advanced` é uma escolha operacional explícita. Resultados
+  repetidos do mesmo `kind` devem ser concatenados, nunca sobrescritos.
 - **Hierarquia universal de trabalho (v124)**: lógica pura em
   `src/features/work/hierarchyDomain.js` e interface lazy em
   `src/features/work/WorkStructure.jsx`. A organização raiz é sempre derivada

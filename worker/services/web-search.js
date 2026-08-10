@@ -99,7 +99,7 @@ async function googleSearch(query, key, engineId, fetcher) {
   return normalizeSearchResults(data?.items, "Google Search");
 }
 
-async function tavilySearch(query, key, fetcher) {
+async function tavilySearch(query, key, fetcher, searchDepth = "basic") {
   const response = await fetcher("https://api.tavily.com/search", {
     method: "POST",
     headers: {
@@ -110,7 +110,10 @@ async function tavilySearch(query, key, fetcher) {
     body: JSON.stringify({
       query,
       topic: "general",
-      search_depth: "advanced",
+      // A busca básica custa metade dos créditos da avançada e é suficiente
+      // para descoberta de links e snippets. A avançada continua disponível
+      // por configuração explícita, mas nunca vira o padrão silenciosamente.
+      search_depth: searchDepth === "advanced" ? "advanced" : "basic",
       max_results: MAX_RESULTS,
       include_answer: false,
       include_raw_content: false,
@@ -241,7 +244,12 @@ export async function searchWeb(env, rawQuery, { fetcher = fetch } = {}) {
   const configured = [
     env.TAVILY_API_KEY && {
       name: "Tavily",
-      run: () => tavilySearch(query, env.TAVILY_API_KEY, fetcher),
+      run: () => tavilySearch(
+        query,
+        env.TAVILY_API_KEY,
+        fetcher,
+        env.TAVILY_SEARCH_DEPTH,
+      ),
     },
     braveKey && {
       name: "Brave Search",

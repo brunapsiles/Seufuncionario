@@ -1,9 +1,30 @@
 import { describe, expect, it } from "vitest";
-import { classifyCompanyResearch } from "../../../worker/services/todogreen-client-intelligence.js";
+import {
+  buildCompanyResearchPlans,
+  classifyCompanyResearch,
+} from "../../../worker/services/todogreen-client-intelligence.js";
 
 const result = (title, url, snippet = "") => ({ title, url, snippet, provider: "teste" });
 
 describe("inteligência externa comercial", () => {
+  it("consolida a pesquisa 360 em três chamadas e preserva todas as categorias", () => {
+    const plans = buildCompanyResearchPlans({
+      company: "Amazon",
+      segment: "E-commerce",
+      year: 2026,
+    });
+    expect(plans).toHaveLength(3);
+    expect(new Set(plans.flatMap((item) => item.kinds))).toEqual(new Set([
+      "identity", "supplier", "rfq", "esg", "news", "segment", "contacts",
+    ]));
+    expect(buildCompanyResearchPlans({
+      company: "Amazon",
+      segment: "E-commerce",
+      year: 2026,
+      focus: "contacts",
+    })).toHaveLength(4);
+  });
+
   it("não confunde vaga com RFQ e só confirma oportunidade aberta de transporte", () => {
     const report = classifyCompanyResearch({ company: "Empresa X", segment: "Varejo", searches: [
       { kind: "rfq", results: [
@@ -40,5 +61,14 @@ describe("inteligência externa comercial", () => {
       linkedinUrl: "https://www.linkedin.com/in/ana-souza",
       source: "Pesquisa web",
     })]);
+  });
+
+  it("preserva contatos vindos de mais de uma consulta consolidada", () => {
+    const report = classifyCompanyResearch({ company: "Empresa X", segment: "", searches: [
+      { kind: "contacts", results: [result("Ana Souza - Head de Procurement | LinkedIn", "https://www.linkedin.com/in/ana-souza", "Compras")] },
+      { kind: "contacts", results: [result("João Lima - Gerente de Logística | LinkedIn", "https://www.linkedin.com/in/joao-lima", "Supply chain")] },
+    ] });
+    expect(report.procurementPeople).toHaveLength(2);
+    expect(report.contactCandidates.map((item) => item.name)).toEqual(["Ana Souza", "João Lima"]);
   });
 });

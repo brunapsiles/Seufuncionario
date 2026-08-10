@@ -79,7 +79,10 @@ const publicContact = (item, index) => {
 
 /** Classifica apenas o que está evidenciado no resultado. Não transforma notícia ou vaga em RFQ. */
 export function classifyCompanyResearch({ company, segment, searches, checkedAt = new Date().toISOString() }) {
-  const byKind = Object.fromEntries(searches.map((item) => [item.kind, item.results || []]));
+  const byKind = {};
+  for (const item of searches) {
+    byKind[item.kind] = [...(byKind[item.kind] || []), ...(item.results || [])];
+  }
   const all = unique(searches.flatMap((item) => item.results || []), 40);
   const companyToken = normalize(company).split(/\s+/).filter((item) => item.length > 3)[0] || "";
   const linkedInCompany = all.find((item) => /linkedin\.com\/company\//i.test(item.url));
@@ -143,6 +146,36 @@ export function classifyCompanyResearch({ company, segment, searches, checkedAt 
 
 const response = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 
+/**
+ * Uma pesquisa 360 não precisa cobrar uma chamada por seção da tela.
+ * Cada plano abaixo atende várias classificações com o mesmo conjunto de
+ * fontes. Assim preservamos ESG, notícias, fornecedores, RFQs e contatos com
+ * três consultas reais em vez de sete (quatro no foco de contatos).
+ */
+export function buildCompanyResearchPlans({ company, segment, year, focus = "company" }) {
+  const name = clean(company, 200);
+  const market = clean(segment, 120) || "logística e transporte";
+  const plans = [
+    {
+      kinds: ["identity", "esg", "news", "segment"],
+      query: `"${name}" site oficial LinkedIn ESG sustentabilidade descarbonização notícias ${year} ${market}`,
+    },
+    {
+      kinds: ["supplier", "rfq"],
+      query: `"${name}" ("cadastro de fornecedores" OR "seja fornecedor" OR RFQ OR RFP OR licitação OR concorrência) (transporte OR transportadora OR logística OR frete)`,
+    },
+    {
+      kinds: ["contacts"],
+      query: `"${name}" site:linkedin.com/in (procurement OR compras OR suprimentos OR sourcing OR logística OR supply chain)`,
+    },
+  ];
+  if (focus === "contacts") plans.push({
+    kinds: ["contacts"],
+    query: `"${name}" site:linkedin.com/in (head OR diretor OR gerente) (procurement OR compras OR suprimentos OR logística)`,
+  });
+  return plans;
+}
+
 export async function handleTodoGreenClientIntelligence(request, env, access, user) {
   if (!env.DB) return response({ error: "Banco indisponível." }, 503);
   if (!['GET', 'POST'].includes(request.method)) return response({ error: "Método não permitido." }, 405);
@@ -171,22 +204,20 @@ export async function handleTodoGreenClientIntelligence(request, env, access, us
   const company = clean(row.name, 200);
   const segment = clean(row.segment, 120);
   const year = new Date().getUTCFullYear();
-  const queries = [
-    ["identity", `"${company}" site oficial LinkedIn empresa procurement compras`],
-    ["supplier", `"${company}" ("cadastro de fornecedores" OR "seja fornecedor" OR "supplier portal")`],
-    ["rfq", `"${company}" (RFQ OR RFP OR licitação OR concorrência) (transporte OR transportadora OR logística OR frete)`],
-    ["esg", `"${company}" ESG sustentabilidade descarbonização emissões logística Escopo 3`],
-    ["news", `"${company}" notícias ${year} logística expansão operação`],
-    ["segment", `${segment || "logística e transporte"} notícias tendências ${year} Brasil ESG fornecedores transporte`],
-    ["contacts", `"${company}" site:linkedin.com/in (procurement OR compras OR suprimentos OR sourcing OR logística OR supply chain)`],
-  ];
-  if (focus === "contacts")
-    queries.push(["contacts", `"${company}" site:linkedin.com/in (head OR diretor OR gerente) (procurement OR compras OR suprimentos OR logística)`]);
-  const settled = await Promise.all(queries.map(async ([kind, query]) => ({ kind, ...(await searchWeb(env, query)) })));
-  if (settled.every((item) => !item.configured)) return response({ error: "Pesquisa web ainda não configurada. Cadastre uma chave do Brave Search, Tavily, Serper, Exa, Jina ou Google Search." }, 503);
+  const plans = buildCompanyResearchPlans({ company, segment, year, focus });
+  const planResults = await Promise.all(plans.map(async (plan) => ({
+    ...plan,
+    ...(await searchWeb(env, plan.query)),
+  })));
+  const settled = planResults.flatMap((item) => item.kinds.map((kind) => ({
+    kind,
+    configured: item.configured,
+    results: item.results,
+  })));
+  if (planResults.every((item) => !item.configured)) return response({ error: "Pesquisa web ainda não configurada. Cadastre uma chave do Brave Search, Tavily, Serper, Exa, Jina ou Google Search." }, 503);
   const report = classifyCompanyResearch({ company, segment, searches: settled, checkedAt: new Date().toISOString() });
-  report.providers = [...new Set(settled.flatMap((item) => item.providers || []))];
-  report.failures = settled.flatMap((item) => item.failures || []).slice(0, 12);
+  report.providers = [...new Set(planResults.flatMap((item) => item.providers || []))];
+  report.failures = planResults.flatMap((item) => item.failures || []).slice(0, 12);
   const existingContacts = Array.isArray(fields.contacts) ? fields.contacts : [];
   const existingIdentities = new Set(existingContacts.flatMap((item) => [normalize(item.linkedinUrl), normalize(item.name)].filter(Boolean)));
   const discoveredContacts = (report.contactCandidates || []).filter((item) => !existingIdentities.has(normalize(item.linkedinUrl)) && !existingIdentities.has(normalize(item.name)));

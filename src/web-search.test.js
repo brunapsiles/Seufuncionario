@@ -118,6 +118,18 @@ describe("web search service", () => {
     );
     expect(result.providers).toEqual(["Tavily", "Serper"]);
     expect(result.results).toHaveLength(2);
+    const tavilyCall = fetcher.mock.calls.find(([url]) => String(url).includes("tavily"));
+    expect(JSON.parse(tavilyCall[1].body).search_depth).toBe("basic");
+  });
+
+  it("só usa busca avançada do Tavily quando configurada explicitamente", async () => {
+    const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ results: [] }) });
+    await searchWeb(
+      { TAVILY_API_KEY: "t", TAVILY_SEARCH_DEPTH: "advanced" },
+      "pesquisa profunda",
+      { fetcher },
+    );
+    expect(JSON.parse(fetcher.mock.calls[0][1].body).search_depth).toBe("advanced");
   });
 
   it("produz contexto numerado com obrigação de citar", () => {
