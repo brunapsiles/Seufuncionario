@@ -82,6 +82,57 @@ const parse = (value, fallback) => {
   }
 };
 
+const safeExternalUrl = (value) => {
+  try {
+    const url = new URL(clean(value, 1000));
+    return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+  } catch { return ""; }
+};
+
+const intelligenceSource = (item = {}) => ({
+  title: clean(item.title, 240),
+  url: safeExternalUrl(item.url),
+  snippet: clean(item.snippet, 700),
+  provider: clean(item.provider, 60),
+  category: clean(item.category, 40),
+  actionable: item.actionable === true,
+  validation: clean(item.validation, 500),
+  verification: clean(item.verification, 500),
+  currentness: clean(item.currentness, 500),
+});
+
+const intelligenceSources = (items, limit = 10) => Array.isArray(items)
+  ? items.slice(0, limit).map(intelligenceSource).filter((item) => item.title && item.url)
+  : [];
+
+const intelligenceFields = (input) => {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  return {
+    version: finite(input.version, 1, 10),
+    company: clean(input.company, 200),
+    segment: clean(input.segment, 120),
+    checkedAt: clean(input.checkedAt, 40),
+    officialWebsite: input.officialWebsite ? intelligenceSource(input.officialWebsite) : null,
+    linkedinCompany: input.linkedinCompany ? intelligenceSource(input.linkedinCompany) : null,
+    esg: {
+      relevance: clean(input.esg?.relevance, 40),
+      signals: intelligenceSources(input.esg?.signals),
+    },
+    supplierLinks: intelligenceSources(input.supplierLinks),
+    supplierWatchlist: intelligenceSources(input.supplierWatchlist),
+    openRfqs: intelligenceSources(input.openRfqs),
+    rfqWatchlist: intelligenceSources(input.rfqWatchlist),
+    procurementPeople: intelligenceSources(input.procurementPeople),
+    companyNews: intelligenceSources(input.companyNews),
+    segmentNews: intelligenceSources(input.segmentNews),
+    nextActions: Array.isArray(input.nextActions) ? input.nextActions.slice(0, 12).map((item) => clean(item, 500)).filter(Boolean) : [],
+    providers: Array.isArray(input.providers) ? input.providers.slice(0, 8).map((item) => clean(item, 60)).filter(Boolean) : [],
+    failures: Array.isArray(input.failures) ? input.failures.slice(0, 12).map((item) => ({ provider: clean(item?.provider, 60), error: clean(item?.error, 180) })) : [],
+    excludedVacancies: finite(input.excludedVacancies, 0, 1000),
+    disclaimer: clean(input.disclaimer, 1000),
+  };
+};
+
 const crmFields = (value = {}) => {
   const input = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   return {
@@ -122,6 +173,10 @@ const crmFields = (value = {}) => {
           active: contact?.active !== false,
         })).filter((contact) => contact.name)
       : [],
+    intelligence:
+      input.intelligence && typeof input.intelligence === "object" && !Array.isArray(input.intelligence)
+        ? intelligenceFields(input.intelligence)
+        : null,
   };
 };
 

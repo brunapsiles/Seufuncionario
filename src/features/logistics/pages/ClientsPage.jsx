@@ -15,6 +15,7 @@ import {
   ExternalLink,
   Mail,
   MessageCircle,
+  RefreshCw,
   UserPlus,
   Users,
   X,
@@ -68,6 +69,47 @@ const opportunityForCrm = (item) => ({
   value: Number(item.valorContrato || 0) || Number(item.valorMensal || 0) * Number(item.mesesContrato || 12),
   probability: item.probabilidade,
 });
+
+const formatCheckedAt = (value) => value ? new Date(value).toLocaleString("pt-BR") : "Ainda não pesquisado";
+
+function ResearchLinks({ title, items = [], empty }) {
+  return <div className="tdg-crm-research-group"><span>{title}</span>{items.length
+    ? <ul>{items.map((item) => <li key={item.url}><a href={item.url} target="_blank" rel="noreferrer">{item.title}</a>{item.snippet && <small>{item.snippet}</small>}{item.validation && <em>{item.validation}</em>}</li>)}</ul>
+    : <small>{empty}</small>}</div>;
+}
+
+function ExternalIntelligence({ client, authHeaders, onUpdated }) {
+  const [report, setReport] = useState(client.crm?.intelligence || null);
+  const [researching, setResearching] = useState(false);
+  const [error, setError] = useState("");
+  const research = async () => {
+    setResearching(true); setError("");
+    try {
+      const data = await api(`client-intelligence/${encodeURIComponent(client.id)}`, authHeaders, { method: "POST", body: JSON.stringify({ force: true }) });
+      setReport(data.intelligence || null);
+      onUpdated?.();
+    } catch (reason) { setError(reason.message); }
+    finally { setResearching(false); }
+  };
+  return <section className="tdg-crm-web-intelligence">
+    <header><div><strong>Inteligência externa</strong><small>{formatCheckedAt(report?.checkedAt)}</small></div><button type="button" onClick={research} disabled={researching}><RefreshCw size={14} className={researching ? "spin" : ""} />{researching ? "Pesquisando..." : report ? "Atualizar web" : "Pesquisar empresa"}</button></header>
+    {error && <p className="tdg-crm-research-error">{error}</p>}
+    {!report && !error && <p>A IA ainda não pesquisou esta empresa na web. A busca verifica site, LinkedIn, ESG, fornecedores, RFQs, procurement e notícias.</p>}
+    {report && <>
+      <div className="tdg-crm-research-identity">{report.officialWebsite && <a href={report.officialWebsite.url} target="_blank" rel="noreferrer">Site provável <ExternalLink size={13} /></a>}{report.linkedinCompany && <a href={report.linkedinCompany.url} target="_blank" rel="noreferrer">LinkedIn da empresa <ExternalLink size={13} /></a>}<b>ESG: {report.esg?.relevance || "A validar"}</b></div>
+      <ResearchLinks title="RFQs de transporte abertas" items={report.openRfqs} empty="Nenhuma RFQ acionável comprovada nesta pesquisa." />
+      <ResearchLinks title="Cadastro de fornecedores" items={report.supplierLinks} empty="Nenhum portal oficial identificado." />
+      <ResearchLinks title="Procurement no LinkedIn" items={report.procurementPeople} empty="Nenhum contato público confirmado." />
+      <ResearchLinks title="Sinais ESG" items={report.esg?.signals} empty="Nenhuma evidência pública suficiente." />
+      <ResearchLinks title="Notícias da empresa" items={report.companyNews} empty="Nenhuma notícia relevante encontrada." />
+      <ResearchLinks title="Notícias e tendências do segmento" items={report.segmentNews} empty="Nenhuma notícia setorial relevante encontrada." />
+      {report.rfqWatchlist?.length > 0 && <details><summary>Sinais de compras ainda não acionáveis ({report.rfqWatchlist.length})</summary><ResearchLinks title="Exigem confirmação" items={report.rfqWatchlist} empty="" /></details>}
+      {report.supplierWatchlist?.length > 0 && <details><summary>Possíveis portais não confirmados ({report.supplierWatchlist.length})</summary><ResearchLinks title="Domínio não confirmado" items={report.supplierWatchlist} empty="" /></details>}
+      <div className="tdg-crm-research-next"><span>Próximas ações sugeridas</span>{report.nextActions?.map((item) => <strong key={item}>{item}</strong>)}</div>
+      <small className="tdg-crm-research-note">{report.disclaimer}</small>
+    </>}
+  </section>;
+}
 
 const accountForm = (client) => {
   const crm = client?.crm || {};
@@ -357,6 +399,7 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
           <div className="tdg-crm-health"><div><strong>{selectedSummary.score}</strong><span>saúde da conta</span></div><div><strong>{selectedSummary.coverage}%</strong><span>cobertura de decisores</span></div></div>
           <section className="tdg-crm-next"><Target size={17} /><div><small>PRÓXIMA MELHOR AÇÃO</small><strong>{selectedSummary.nextAction}</strong></div></section>
           <section className="tdg-crm-intelligence"><header><strong>IA · mapa da empresa</strong><small>Leitura dos dados do CRM</small></header><div><span>Relevância ESG</span><strong>{selectedIntelligence.esgRelevance}</strong><small>{selectedIntelligence.esgReason}</small></div><div><span>Próxima tarefa sugerida</span><strong>{selectedIntelligence.nextTask}</strong></div><div><span>Compras / procurement</span><strong>{selectedIntelligence.procurementContacts.length ? selectedIntelligence.procurementContacts.map((item) => item.name).join(", ") : "Contato ainda não mapeado"}</strong></div></section>
+          <ExternalIntelligence key={selected.id} client={selected} authHeaders={authHeaders} onUpdated={load} />
           {selectedSummary.alerts.length > 0 && <section className="tdg-crm-alerts"><strong><AlertTriangle size={15} />Pontos de atenção</strong>{selectedSummary.alerts.map((alert) => <span key={alert}>{alert}</span>)}</section>}
           <section><header><strong>Relacionamento</strong><small>{selectedAccount.contacts.length} contato(s)</small></header><div className="tdg-crm-roles">{selectedAccount.contacts.map((contact) => <article key={contact.id}><div><b>{contact.name}</b><small>{[contact.title, contact.department, contact.relationshipRole].filter(Boolean).join(" · ")}</small></div><div className="tdg-crm-contact-channels">{contact.email && <a href={`mailto:${contact.email}`}><Mail size={13} />{contact.email}</a>}{contact.phone && <a href={`tel:${contact.phone}`}>{contact.phone}</a>}</div><div className="tdg-crm-contact-actions">{contact.phone && <a href={whatsappUrl(contact.phone)} target="_blank" rel="noreferrer"><MessageCircle size={14} />WhatsApp</a>}{contact.email && <><a href={gmailComposeUrl(contact.email, `To Do Green · ${selected.name}`)} target="_blank" rel="noreferrer">Gmail</a><a href={outlookComposeUrl(contact.email, `To Do Green · ${selected.name}`)} target="_blank" rel="noreferrer">Outlook</a></>}{contact.linkedinUrl && <a href={contact.linkedinUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} />LinkedIn</a>}</div></article>)}{selectedAccount.contacts.length === 0 && <p>Nenhum decisor ou patrocinador mapeado.</p>}</div></section>
           <section><header><strong>Oportunidades</strong><button type="button" onClick={() => onNavigate?.(`/todogreen/oportunidades?client=${encodeURIComponent(selected.id)}`)}>Abrir pipeline <ArrowRight size={13} /></button></header>{selectedOpportunities.length === 0 ? <p>Nenhuma oportunidade ligada a esta conta.</p> : <div className="tdg-crm-opps">{selectedOpportunities.slice(0, 4).map((opp) => <article key={opp.id}><span><strong>{opp.stage}</strong><small>{opp.nextStep || "Próximo passo não definido"}</small></span><b>{BRL.format(opp.value || 0)}</b></article>)}</div>}</section>

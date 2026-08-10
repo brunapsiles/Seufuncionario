@@ -14,6 +14,7 @@ import { handleTodoGreenRequests } from "./todogreen-requests.js";
 import { handleTodoGreenVerticalRecords } from "./todogreen-vertical-records.js";
 import { handleTodoGreenDealDesk } from "./todogreen-deal-desk.js";
 import { entregarArquivo, handleTodoGreenEvidences } from "./todogreen-evidences.js";
+import { handleTodoGreenClientIntelligence } from "./todogreen-client-intelligence.js";
 
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
   status,
@@ -113,6 +114,14 @@ export async function routeTodoGreenApi(request, env) {
       return path.startsWith("/api/todogreen/client-assignments")
         ? handleTodoGreenClientAssignments(request, env, resolved.access, resolved.user)
         : handleTodoGreenClients(request, env, resolved.access, resolved.user);
+    });
+  }
+
+  if (path.startsWith("/api/todogreen/client-intelligence")) {
+    return guarded("To Do Green client intelligence error", "Não foi possível pesquisar a empresa.", async () => {
+      const resolved = await internalAccess(request, env);
+      if (resolved.response) return resolved.response;
+      return handleTodoGreenClientIntelligence(request, env, resolved.access, resolved.user);
     });
   }
 
