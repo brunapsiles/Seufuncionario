@@ -7,8 +7,8 @@
   display: flex;
   gap: 24px;
   justify-content: space-between;
-  margin: 0 auto 18px;
-  max-width: 1240px;
+  margin: 0 auto;
+  max-width: 1384px;
   padding: 22px 24px;
   width: 100%;
 }
@@ -78,8 +78,8 @@
 }
 
 .tdg.tdg-module-page > .tdg-panel:not([data-tdg-home-only="true"]) {
-  margin-inline: auto;
-  max-width: 1240px;
+  margin: 0 auto;
+  max-width: 1384px;
   width: 100%;
 }
 
@@ -308,7 +308,7 @@
   }
 }
 
-@media (min-width: 721px) and (max-width: 1040px) {
+@media (min-width: 721px) and (max-width: 1180px) {
   .tdg-pricing-detail .tdg-form,
   .tdg-price-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));

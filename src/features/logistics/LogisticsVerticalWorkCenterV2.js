@@ -278,7 +278,11 @@ const render = () => {
 if (typeof window !== "undefined") {
   loadCache();
   state.loading = false;
-  const start = () => { render(); sync(); const observer = new MutationObserver(render); observer.observe(document.body, { childList: true, subtree: true }); };
+  const start = () => {
+    render();
+    window.setTimeout(render, 0);
+    window.setTimeout(render, 100);
+  };
   window.addEventListener("popstate", render);
   window.addEventListener("pageshow", render);
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true }); else start();
