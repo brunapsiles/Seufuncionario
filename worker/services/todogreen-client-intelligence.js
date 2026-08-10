@@ -1,5 +1,5 @@
 import { recorteDeCarteira, TENANT_ID } from "./todogreen-access.js";
-import { searchWeb } from "./web-search.js";
+import { searchWeb, webSearchConfiguration } from "./web-search.js";
 
 const clean = (value, max = 1000) => String(value ?? "").replace(/\s+/g, " ").trim().slice(0, max);
 const parse = (value, fallback) => { try { return JSON.parse(value || ""); } catch { return fallback; } };
@@ -115,7 +115,11 @@ export async function handleTodoGreenClientIntelligence(request, env, access, us
   if (!row) return response({ error: "Cliente não encontrado na sua carteira." }, 404);
   const fields = parse(row.fields_json, {});
   const cached = fields.intelligence && typeof fields.intelligence === "object" ? fields.intelligence : null;
-  if (request.method === "GET") return response({ intelligence: cached, configured: Boolean(env.TAVILY_API_KEY || env.BRAVE_SEARCH_API_KEY || env.SERPER_API_KEY || env.EXA_API_KEY || env.JINA_API_KEY || (env.SEARCH_API_KEY && env.SEARCH_ENGINE_ID)) });
+  if (request.method === "GET")
+    return response({
+      intelligence: cached,
+      configured: webSearchConfiguration(env).configured,
+    });
   const body = await request.json().catch(() => ({}));
   const cacheAge = cached?.checkedAt ? Date.now() - Date.parse(cached.checkedAt) : Infinity;
   if (body.force !== true && cacheAge < 24 * 60 * 60 * 1000) return response({ intelligence: cached, cached: true });

@@ -61,6 +61,7 @@ import {
   handleAiStream,
   publicAiResult,
 } from "./worker/services/ai.js";
+import { webSearchConfiguration } from "./worker/services/web-search.js";
 // Reexportado para quem já importava daqui (src/ai-providers.test.js).
 export { askOpenAICompatible, configuredAiProviders, publicAiResult };
 import { handleAuth } from "./worker/services/auth.js";
@@ -4301,6 +4302,7 @@ export default {
       } catch {}
       const appVersion = await publishedVersion(env, url.origin);
       const clientVersion = url.searchParams.get("client") || "";
+      const search = webSearchConfiguration(env);
       return json({
         status: database === "operacional" ? "operacional" : "degradado",
         database,
@@ -4310,6 +4312,12 @@ export default {
         current: clientVersion
           ? clientVersion === (appVersion?.version || "local")
           : true,
+        capabilities: {
+          webSearch: {
+            configured: search.configured,
+            braveConfigured: search.providers.brave,
+          },
+        },
         roadmap: {
           complete: true,
           completedThrough: 27,

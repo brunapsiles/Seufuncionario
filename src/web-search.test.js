@@ -4,10 +4,25 @@ import {
   normalizeSearchResults,
   searchWeb,
   shouldSearchWeb,
+  webSearchConfiguration,
   webResultsToContext,
 } from "../worker/services/web-search.js";
 
 describe("web search service", () => {
+  it("reconhece SEARCH_API_KEY como Brave quando não há engine do Google", () => {
+    expect(webSearchConfiguration({ SEARCH_API_KEY: "segredo" })).toEqual({
+      configured: true,
+      providers: {
+        brave: true,
+        tavily: false,
+        serper: false,
+        exa: false,
+        jina: false,
+        google: false,
+      },
+    });
+  });
+
   it("detecta pedido de informação atual sem forçar busca em toda conversa", () => {
     expect(shouldSearchWeb("Pesquise os preços atuais", undefined)).toBe(true);
     expect(shouldSearchWeb("Escreva um e-mail para a Ana", undefined)).toBe(false);
