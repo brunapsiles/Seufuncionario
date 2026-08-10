@@ -15,6 +15,12 @@ import { allowed, json } from "./worker/lib/http.js";
 import { logAudit } from "./worker/lib/audit.js";
 import { membershipRole } from "./worker/lib/membership.js";
 import {
+  canEditRecord,
+  canSeeTask,
+  filterRecordsForViewer,
+  resolveViewerContext,
+} from "./worker/lib/visibility.js";
+import {
   emailEnabled,
   notifyNewNotifications,
   pushEnabled,
@@ -361,64 +367,6 @@ async function handleErrorLog(request, env) {
   return json({ ok: true });
 }
 
-export function canSeeTask(record, userId, ctx = {}) {
-  if (!record || !userId) return false;
-  if (record.ownerId === userId) return true;
-  if (record.assigneeId === userId) return true;
-  if (
-    Array.isArray(record.assignees) &&
-    record.assignees.some((a) => a && a.userId === userId)
-  )
-    return true;
-  if (Array.isArray(record.sharedWith) && record.sharedWith.includes(userId))
-    return true;
-  if (record.visibility === "espaco_todo") return true;
-  if (
-    Array.isArray(record.interested) &&
-    record.interested.some((i) => i && i.userId === userId)
-  )
-    return true;
-  if (
-    ctx.teamIds instanceof Set &&
-    Array.isArray(record.sharedTeams) &&
-    record.sharedTeams.some((t) => ctx.teamIds.has(t))
-  )
-    return true;
-  if (
-    ctx.projects instanceof Set &&
-    record.visibility === "projeto" &&
-    record.project &&
-    ctx.projects.has(record.project)
-  )
-    return true;
-  return false;
-}
-
-export function canEditRecord(record, userId, ctx = {}) {
-  if (!record || !userId) return false;
-  if (record.ownerId === userId) return true;
-  if (Array.isArray(record.editors) && record.editors.includes(userId))
-    return true;
-  if (record.sharingPermission !== "editar") return false;
-  if (Array.isArray(record.sharedWith) && record.sharedWith.includes(userId))
-    return true;
-  if (
-    ctx.teamIds instanceof Set &&
-    Array.isArray(record.sharedTeams) &&
-    record.sharedTeams.some((teamId) => ctx.teamIds.has(teamId))
-  )
-    return true;
-  if (
-    ctx.projects instanceof Set &&
-    record.visibility === "projeto" &&
-    record.project &&
-    ctx.projects.has(record.project)
-  )
-    return true;
-  if (record.visibility === "espaco_todo") return true;
-  return false;
-}
-
 const RESTRICTED_FIELDS = [
   "tasks",
   "leads",
@@ -478,32 +426,6 @@ const OWNER_ONLY_TOP_LEVEL_FIELDS = [
   "teams",
   "projects",
 ];
-
-function resolveViewerContext(data, userId) {
-  const teamIds = new Set(
-    (Array.isArray(data?.teams) ? data.teams : [])
-      .filter((t) => Array.isArray(t.memberIds) && t.memberIds.includes(userId))
-      .map((t) => t.id),
-  );
-  const baseCtx = { teamIds, projects: new Set() };
-  const projects = new Set(
-    (Array.isArray(data?.tasks) ? data.tasks : [])
-      .filter((t) => t.project && canSeeTask(t, userId, baseCtx))
-      .map((t) => t.project),
-  );
-  const chatChannels = new Map(
-    (Array.isArray(data?.chatChannels) ? data.chatChannels : [])
-      .filter((channel) => canSeeTask(channel, userId, { teamIds, projects }))
-      .map((channel) => [channel.id, channel]),
-  );
-  return { teamIds, projects, chatChannels };
-}
-
-function filterRecordsForViewer(records, userId, ctx) {
-  return (Array.isArray(records) ? records : []).filter((r) =>
-    canSeeTask(r, userId, ctx),
-  );
-}
 
 // Fields only the record's owner (or a legacy no-owner record, which has no
 // owner to defer to) may change. A non-owner who can merely SEE a shared
