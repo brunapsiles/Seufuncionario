@@ -207,6 +207,28 @@ function deduplicateResults(groups) {
   return combined;
 }
 
+export function webSearchConfiguration(env = {}) {
+  const brave = Boolean(
+    env.BRAVE_SEARCH_API_KEY ||
+      (env.SEARCH_API_KEY && !env.SEARCH_ENGINE_ID),
+  );
+  const providers = {
+    brave,
+    tavily: Boolean(env.TAVILY_API_KEY),
+    serper: Boolean(env.SERPER_API_KEY),
+    exa: Boolean(env.EXA_API_KEY),
+    jina: Boolean(env.JINA_API_KEY),
+    google: Boolean(
+      (env.GOOGLE_SEARCH_API_KEY || env.SEARCH_API_KEY) &&
+        env.SEARCH_ENGINE_ID,
+    ),
+  };
+  return {
+    configured: Object.values(providers).some(Boolean),
+    providers,
+  };
+}
+
 export async function searchWeb(env, rawQuery, { fetcher = fetch } = {}) {
   const query = normalizeSearchQuery(rawQuery);
   if (query.length < 3)
