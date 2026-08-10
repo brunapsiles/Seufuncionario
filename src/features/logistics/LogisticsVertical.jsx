@@ -74,6 +74,7 @@ import {
   ordenarPorRelevancia,
   resumirAssuntos,
 } from "./moduleGroupingDomain.js";
+import Semente from "./Semente.jsx";
 
 const EsgCenter = lazy(() => import("./EsgCenter.jsx"));
 const PricingParametersPanel = lazy(() => import("./PricingParametersPanel.jsx"));
@@ -1759,6 +1760,11 @@ export default function LogisticsVertical({ db, setToast, access = {}, authHeade
           {modulesByArea.map((area) => <AreaSection area={area} grupos={area.grupos} key={area.id} />)}
         </>
       )}
+
+      {/* A Semente fica por último no DOM de propósito: quem navega por teclado
+          ou leitor de tela percorre a tela inteira antes de chegar nela, em vez
+          de tropeçar num assistente antes do conteúdo que veio ver. */}
+      <Semente pagina={page} resumo={dashboard} authHeaders={authHeaders} />
     </main>
   );
 }

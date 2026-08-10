@@ -1,0 +1,300 @@
+/* A Semente na tela.
+ *
+ * Regra que orienta tudo aqui: ela não pode atrapalhar. Recolhida é um botão
+ * pequeno no canto; aberta é um painel estreito que ocupa um canto, não a
+ * tela. O z-index fica em 60 de propósito — acima da barra lateral (30) e do
+ * cabeçalho (40), para continuar alcançável, e abaixo da gaveta de metas (80)
+ * e dos modais (100), para nunca cobrir uma decisão que a pessoa já tomou.
+ */
+
+.semente-launcher,
+.semente {
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  position: fixed;
+  right: 18px;
+  z-index: 60;
+}
+
+/* ===== Recolhida ===== */
+
+.semente-launcher {
+  align-items: center;
+  background: linear-gradient(135deg, var(--tdg-green, #17624f), #2f7a5c);
+  border: 0;
+  border-radius: 999px;
+  box-shadow: 0 12px 30px rgba(16, 36, 31, 0.26);
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: 700;
+  gap: 9px;
+  padding: 11px 18px 11px 13px;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.semente-launcher:hover { transform: translateY(-2px); box-shadow: 0 16px 34px rgba(16, 36, 31, 0.32); }
+.semente-launcher:focus-visible { outline: 3px solid var(--tdg-lime, #92c83e); outline-offset: 3px; }
+
+/* ===== Avatar ===== */
+
+.semente-avatar {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 50%;
+  color: var(--tdg-lime, #92c83e);
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 30px;
+  justify-content: center;
+  width: 30px;
+}
+
+.semente-avatar--pensando { animation: semente-pulsa 1.3s ease-in-out infinite; }
+
+@keyframes semente-pulsa {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.9); }
+}
+
+/* Quem pediu menos movimento no sistema não deveria ganhar um ícone piscando
+ * no canto da tela pelo resto do expediente. */
+@media (prefers-reduced-motion: reduce) {
+  .semente-avatar--pensando { animation: none; }
+  .semente-launcher { transition: none; }
+  .semente { animation: none; }
+}
+
+/* ===== Aberta ===== */
+
+.semente {
+  animation: semente-entra 0.18s ease-out;
+  background: var(--tdg-card, #fff);
+  border: 1px solid var(--tdg-line, #d6e8df);
+  border-radius: 20px;
+  box-shadow: 0 24px 60px rgba(16, 36, 31, 0.22);
+  display: flex;
+  flex-direction: column;
+  max-height: min(560px, calc(100vh - 120px));
+  overflow: hidden;
+  width: min(360px, calc(100vw - 36px));
+}
+
+@keyframes semente-entra {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.semente-topo {
+  align-items: center;
+  background: linear-gradient(135deg, var(--tdg-green, #17624f), #2f7a5c);
+  color: #fff;
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+}
+
+.semente-topo > div { display: grid; line-height: 1.25; min-width: 0; }
+.semente-topo strong { font-size: 14px; }
+.semente-topo small {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.semente-topo button {
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  color: rgba(255, 255, 255, 0.86);
+  cursor: pointer;
+  display: inline-flex;
+  margin-left: auto;
+  padding: 6px;
+}
+.semente-topo button:hover { background: rgba(255, 255, 255, 0.16); color: #fff; }
+.semente-topo button:focus-visible { outline: 2px solid var(--tdg-lime, #92c83e); outline-offset: 1px; }
+
+/* ===== Conversa ===== */
+
+.semente-conversa {
+  background: var(--tdg-bg, #f3f8f5);
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 120px;
+  overflow-y: auto;
+  padding: 14px;
+}
+
+.semente-boas-vindas { color: var(--tdg-ink, #10241f); display: grid; gap: 10px; }
+.semente-boas-vindas p { font-size: 13px; line-height: 1.5; margin: 0; }
+
+.semente-habilidades {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.semente-habilidades li {
+  background: var(--tdg-soft, #e8f5ef);
+  border-radius: 999px;
+  color: var(--tdg-green, #17624f);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+}
+
+.semente-lema { color: var(--tdg-muted, #62766f); font-size: 11px; font-style: italic; }
+
+.semente-msg {
+  border-radius: 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+  max-width: 88%;
+  padding: 9px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.semente-msg--voce {
+  align-self: flex-end;
+  background: var(--tdg-green, #17624f);
+  border-bottom-right-radius: 5px;
+  color: #fff;
+}
+
+.semente-msg--semente {
+  align-self: flex-start;
+  background: var(--tdg-card, #fff);
+  border: 1px solid var(--tdg-line, #d6e8df);
+  border-bottom-left-radius: 5px;
+  color: var(--tdg-ink, #10241f);
+}
+
+.semente-msg--erro { background: #fdecec; border-color: #f4c4c4; color: #8c2f2f; }
+.semente-msg--pensando { color: var(--tdg-muted, #62766f); font-style: italic; }
+
+.semente-bloco { display: flex; flex-direction: column; gap: 4px; max-width: 88%; }
+.semente-bloco--voce { align-self: flex-end; align-items: flex-end; }
+.semente-bloco--semente { align-self: flex-start; }
+.semente-bloco .semente-msg { max-width: 100%; }
+
+.semente-aviso {
+  background: #fff5e4;
+  border-radius: 9px;
+  color: #7a5310;
+  font-size: 11px;
+  line-height: 1.45;
+  padding: 6px 9px;
+}
+
+.semente-fontes {
+  display: grid;
+  gap: 3px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.semente-fontes a {
+  color: var(--tdg-green, #17624f);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
+/* ===== Atalhos ===== */
+
+.semente-atalhos {
+  border-top: 1px solid var(--tdg-line, #d6e8df);
+  display: grid;
+  gap: 6px;
+  padding: 10px 14px;
+}
+
+.semente-atalhos button {
+  background: var(--tdg-soft, #e8f5ef);
+  border: 0;
+  border-radius: 11px;
+  color: var(--tdg-green, #17624f);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 11px;
+  text-align: left;
+}
+.semente-atalhos button:hover { background: #d9efe4; }
+.semente-atalhos button:focus-visible { outline: 2px solid var(--tdg-green, #17624f); outline-offset: 1px; }
+
+/* ===== Campo ===== */
+
+.semente-campo {
+  align-items: center;
+  border-top: 1px solid var(--tdg-line, #d6e8df);
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.semente-campo input {
+  background: var(--tdg-bg, #f3f8f5);
+  border: 1px solid var(--tdg-line, #d6e8df);
+  border-radius: 11px;
+  color: var(--tdg-ink, #10241f);
+  flex: 1 1 auto;
+  font-size: 13px;
+  min-width: 0;
+  padding: 9px 11px;
+}
+.semente-campo input:focus { border-color: var(--tdg-green, #17624f); outline: none; }
+
+/* O globo é um interruptor, não um botão de ação: quando ligado, a pergunta
+   sai com busca na internet junto. Precisa parecer ligado. */
+.semente-web {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--tdg-line, #d6e8df);
+  border-radius: 11px;
+  color: var(--tdg-muted, #62766f);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  justify-content: center;
+  padding: 9px;
+}
+.semente-web.ativo {
+  background: var(--tdg-soft, #e8f5ef);
+  border-color: var(--tdg-green, #17624f);
+  color: var(--tdg-green, #17624f);
+}
+.semente-web:focus-visible { outline: 2px solid var(--tdg-green, #17624f); outline-offset: 1px; }
+
+.semente-campo button[type="submit"] {
+  align-items: center;
+  background: var(--tdg-green, #17624f);
+  border: 0;
+  border-radius: 11px;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  justify-content: center;
+  padding: 10px;
+}
+.semente-campo button[type="submit"]:disabled { cursor: not-allowed; opacity: 0.45; }
+.semente-campo button[type="submit"]:focus-visible { outline: 2px solid var(--tdg-lime, #92c83e); outline-offset: 2px; }
+
+/* Em telas estreitas o painel encosta nas bordas em vez de sobrar meio dedo
+ * de cada lado, e a altura cede espaço para o teclado virtual. */
+@media (max-width: 520px) {
+  .semente-launcher, .semente { bottom: calc(12px + env(safe-area-inset-bottom, 0px)); right: 12px; }
+  .semente { left: 12px; max-height: min(70vh, calc(100vh - 100px)); width: auto; }
+}
