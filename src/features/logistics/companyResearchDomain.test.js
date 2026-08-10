@@ -27,4 +27,18 @@ describe("inteligência externa comercial", () => {
     expect(report.companyNews[0].category).toBe("company_news");
     expect(report.segmentNews[0].category).toBe("segment_news");
   });
+
+  it("sugere segmento e transforma perfil público de procurement em contato verificável", () => {
+    const report = classifyCompanyResearch({ company: "Loja Exemplo", segment: "", searches: [
+      { kind: "identity", results: [result("Loja Exemplo | LinkedIn", "https://www.linkedin.com/company/loja-exemplo", "Rede brasileira de varejo com lojas físicas")] },
+      { kind: "contacts", results: [result("Ana Souza - Gerente de Procurement - Loja Exemplo | LinkedIn", "https://www.linkedin.com/in/ana-souza", "Compras e suprimentos")] },
+      { kind: "supplier", results: [] }, { kind: "rfq", results: [] }, { kind: "esg", results: [] }, { kind: "news", results: [] }, { kind: "segment", results: [] },
+    ] });
+    expect(report.suggestedSegment.value).toBe("Varejo");
+    expect(report.contactCandidates).toEqual([expect.objectContaining({
+      name: "Ana Souza",
+      linkedinUrl: "https://www.linkedin.com/in/ana-souza",
+      source: "Pesquisa web",
+    })]);
+  });
 });

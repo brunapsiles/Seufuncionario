@@ -1,12 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  ArrowLeft,
   ArrowRight,
   BriefcaseBusiness,
   Building2,
   CalendarClock,
   CircleDollarSign,
   Edit3,
+  Eye,
+  Globe2,
+  LayoutGrid,
+  List,
+  ListPlus,
   Plus,
   Search,
   Target,
@@ -16,6 +22,7 @@ import {
   Mail,
   MessageCircle,
   RefreshCw,
+  UserSearch,
   UserPlus,
   Users,
   X,
@@ -78,21 +85,9 @@ function ResearchLinks({ title, items = [], empty }) {
     : <small>{empty}</small>}</div>;
 }
 
-function ExternalIntelligence({ client, authHeaders, onUpdated }) {
-  const [report, setReport] = useState(client.crm?.intelligence || null);
-  const [researching, setResearching] = useState(false);
-  const [error, setError] = useState("");
-  const research = async () => {
-    setResearching(true); setError("");
-    try {
-      const data = await api(`client-intelligence/${encodeURIComponent(client.id)}`, authHeaders, { method: "POST", body: JSON.stringify({ force: true }) });
-      setReport(data.intelligence || null);
-      onUpdated?.();
-    } catch (reason) { setError(reason.message); }
-    finally { setResearching(false); }
-  };
+function ExternalIntelligence({ report, researching, error, onResearch }) {
   return <section className="tdg-crm-web-intelligence">
-    <header><div><strong>Inteligência externa</strong><small>{formatCheckedAt(report?.checkedAt)}</small></div><button type="button" onClick={research} disabled={researching}><RefreshCw size={14} className={researching ? "spin" : ""} />{researching ? "Pesquisando..." : report ? "Atualizar web" : "Pesquisar empresa"}</button></header>
+    <header><div><strong>Inteligência externa</strong><small>{formatCheckedAt(report?.checkedAt)}</small></div><button type="button" onClick={() => onResearch?.("company")} disabled={researching}><RefreshCw size={14} className={researching ? "spin" : ""} />{researching ? "Pesquisando..." : report ? "Atualizar web" : "Pesquisar empresa"}</button></header>
     {error && <p className="tdg-crm-research-error">{error}</p>}
     {!report && !error && <p>A IA ainda não pesquisou esta empresa na web. A busca verifica site, LinkedIn, ESG, fornecedores, RFQs, procurement e notícias.</p>}
     {report && <>
@@ -100,6 +95,8 @@ function ExternalIntelligence({ client, authHeaders, onUpdated }) {
       <ResearchLinks title="RFQs de transporte abertas" items={report.openRfqs} empty="Nenhuma RFQ acionável comprovada nesta pesquisa." />
       <ResearchLinks title="Cadastro de fornecedores" items={report.supplierLinks} empty="Nenhum portal oficial identificado." />
       <ResearchLinks title="Procurement no LinkedIn" items={report.procurementPeople} empty="Nenhum contato público confirmado." />
+      {report.suggestedSegment?.value && <div className="tdg-crm-research-enrichment"><strong>Segmento identificado: {report.suggestedSegment.value}</strong><small>Confiança {report.suggestedSegment.confidence}. {report.autoEnrichment?.segmentFilled ? "Preenchido automaticamente no CRM." : "O CRM já possuía um segmento e foi preservado."}</small></div>}
+      {report.autoEnrichment?.contactsAdded > 0 && <div className="tdg-crm-research-enrichment"><strong>{report.autoEnrichment.contactsAdded} contato(s) público(s) incluído(s)</strong><small>Vínculo e cargo ficam marcados para confirmação antes da abordagem.</small></div>}
       <ResearchLinks title="Sinais ESG" items={report.esg?.signals} empty="Nenhuma evidência pública suficiente." />
       <ResearchLinks title="Notícias da empresa" items={report.companyNews} empty="Nenhuma notícia relevante encontrada." />
       <ResearchLinks title="Notícias e tendências do segmento" items={report.segmentNews} empty="Nenhuma notícia setorial relevante encontrada." />
@@ -109,6 +106,82 @@ function ExternalIntelligence({ client, authHeaders, onUpdated }) {
       <small className="tdg-crm-research-note">{report.disclaimer}</small>
     </>}
   </section>;
+}
+
+function ClientTaskModal({ client, suggestion, currentUserId, onClose, onCreate }) {
+  const [form, setForm] = useState({
+    title: suggestion || `Próxima ação comercial · ${client.name}`,
+    description: `Conta vinculada: ${client.name}`,
+    priority: "Alta",
+    due: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const save = async (event) => {
+    event.preventDefault(); setSaving(true);
+    try {
+      await onCreate?.({
+        id: crypto.randomUUID(), title: form.title.trim(), description: form.description.trim(),
+        priority: form.priority, status: "A fazer", due: form.due, area: "Comercial",
+        assigneeType: "real", assignee: "", assigneeId: currentUserId || "", project: "",
+        isMission: false, distribution: "atribuida", difficulty: "Simples", slots: "1",
+        points: "", reward: "", approvalMode: "imediata", allowWithdrawal: true,
+        assignees: [], interested: [], missionStatus: "", deliveries: [], attachments: [],
+        visibility: "privado", sharedWith: [], sharedTeams: [], subtasks: [], dependsOn: [],
+        recurrence: { frequency: "none" }, ownerId: currentUserId || null,
+        clientId: client.id, clientName: client.name, source: "todogreen-crm",
+        createdAt: new Date().toISOString(),
+      });
+      onClose();
+    } finally { setSaving(false); }
+  };
+  return <Modal title={`Nova tarefa · ${client.name}`} onClose={onClose}>
+    <form className="tdg-crm-task-form" onSubmit={save}>
+      <label><span>Tarefa</span><input required value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></label>
+      <label><span>Orientação</span><textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
+      <div><label><span>Prioridade</span><select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })}><option>Alta</option><option>Média</option><option>Baixa</option></select></label><label><span>Prazo</span><input type="date" value={form.due} onChange={(event) => setForm({ ...form, due: event.target.value })} /></label></div>
+      <footer><button type="button" onClick={onClose}>Cancelar</button><button className="tdg-action" type="submit" disabled={saving}>{saving ? "Criando..." : "Criar tarefa"}</button></footer>
+    </form>
+  </Modal>;
+}
+
+const roleLabel = (role) => ({ cliente_admin: "Administrador do cliente", cliente_gestor: "Gestor do cliente", cliente_leitor: "Leitor" })[role] || role;
+
+function ClientPortalPreview({ client, authHeaders, open, onClose }) {
+  const [role, setRole] = useState("cliente_gestor");
+  const [preview, setPreview] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!open || !client?.id) return undefined;
+    let active = true; setLoading(true); setError("");
+    api(`client-portal-preview/${encodeURIComponent(client.id)}?role=${encodeURIComponent(role)}`, authHeaders)
+      .then((data) => { if (active) setPreview(data); })
+      .catch((reason) => { if (active) setError(reason.message); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [authHeaders, client?.id, open, role]);
+  if (!open) return null;
+  const summary = preview?.summary;
+  return <section className="tdg-crm-portal-preview" aria-label="Prévia do portal do cliente">
+    <header><div><span>VISUALIZAÇÃO ADMINISTRATIVA</span><h3>O que {client.name} vê no portal</h3><p>Prévia somente leitura. Nenhuma ação é registrada como se tivesse sido feita pelo cliente.</p></div><button type="button" onClick={onClose}><X size={15} />Fechar prévia</button></header>
+    <div className="tdg-crm-portal-bar"><strong className={preview?.portal?.enabled ? "enabled" : "disabled"}>{preview?.portal?.enabled ? "Portal liberado" : "Portal ainda bloqueado"}</strong><label><span>Visualizar como</span><select value={role} onChange={(event) => setRole(event.target.value)}><option value="cliente_admin">Administrador do cliente</option><option value="cliente_gestor">Gestor do cliente</option><option value="cliente_leitor">Leitor</option></select></label><small>{preview?.users?.length || 0} acesso(s) ativo(s)</small></div>
+    {loading && <p>Montando a visão do cliente...</p>}{error && <p className="tdg-crm-research-error">{error}</p>}
+    {!loading && preview && <>
+      <nav>{preview.portal.menu.map((item) => <span key={item.id}>{item.label}</span>)}</nav>
+      <div className="tdg-crm-portal-metrics"><article><small>Operações</small><strong>{summary?.operacoes?.total || 0}</strong></article><article><small>Entregas</small><strong>{summary?.operacoes?.entregas || 0}</strong></article><article><small>CO₂ evitado</small><strong>{Number(summary?.ambiental?.co2EvitadoKg || 0).toLocaleString("pt-BR")} kg</strong></article><article><small>Green Score</small><strong>{summary?.greenScore?.valor ?? "Sem cálculo"}</strong></article></div>
+      <div className="tdg-crm-portal-content"><section><header><strong>Operações recentes</strong><small>{preview.counts.operations} registro(s)</small></header>{preview.recentOperations.length ? preview.recentOperations.map((item) => <article key={item.id}><span><b>{item.reference || "Sem referência"}</b><small>{item.origin || "Origem não informada"} → {item.destination || "Destino não informado"}</small></span><strong>{item.status || "Sem status"}</strong></article>) : <p>Nenhuma operação disponível para o cliente.</p>}</section><section><header><strong>Serviços do portal</strong></header><dl><div><dt>Documentos</dt><dd>{preview.counts.documents}</dd></div><div><dt>Solicitações</dt><dd>{preview.counts.requests}</dd></div><div><dt>Papel simulado</dt><dd>{roleLabel(preview.portal.role)}</dd></div></dl>{preview.users.length > 0 && <div className="tdg-crm-portal-users"><small>Usuários liberados</small>{preview.users.map((user) => <span key={user.email}>{user.email} · {roleLabel(user.role)}</span>)}</div>}</section></div>
+    </>}
+  </section>;
+}
+
+function ContactCard({ contact, clientName }) {
+  const details = [...new Set([contact.title, contact.department, contact.relationshipRole].filter(Boolean))];
+  const whatsapp = whatsappUrl(contact.phone);
+  return <article>
+    <div><b>{contact.name}</b><small>{details.join(" · ") || "Função ainda não informada"}</small>{contact.source && <em className="tdg-crm-contact-source">{contact.source} · confirmar vínculo</em>}</div>
+    <div className="tdg-crm-contact-channels">{contact.email && <a href={`mailto:${contact.email}`}><Mail size={13} />{contact.email}</a>}{contact.phone && <a href={`tel:${contact.phone}`}>{contact.phone}</a>}</div>
+    <div className="tdg-crm-contact-actions">{whatsapp && <a href={whatsapp} target="_blank" rel="noreferrer"><MessageCircle size={14} />WhatsApp</a>}{contact.email && <><a href={gmailComposeUrl(contact.email, `To Do Green · ${clientName}`)} target="_blank" rel="noreferrer">Gmail</a><a href={outlookComposeUrl(contact.email, `To Do Green · ${clientName}`)} target="_blank" rel="noreferrer">Outlook</a></>}{contact.linkedinUrl && <a href={contact.linkedinUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} />LinkedIn</a>}</div>
+  </article>;
 }
 
 const accountForm = (client) => {
@@ -239,7 +312,9 @@ function AccountEditor({ client, onClose, onSave }) {
   );
 }
 
-export default function ClientsPage({ authHeaders, opportunities = [], onNavigate, setToast }) {
+const clientIdFromLocation = () => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("client") || "";
+
+export default function ClientsPage({ authHeaders, opportunities = [], onNavigate, setToast, onCreateTask, currentUserId }) {
   const [clients, setClients] = useState([]);
   const [access, setAccess] = useState({ podeGerenciar: false, podeEditar: true, somenteCarteira: true });
   const [query, setQuery] = useState("");
@@ -249,11 +324,20 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
   const [stageFilter, setStageFilter] = useState("all");
   const [ownerFilter, setOwnerFilter] = useState("all");
   const [sortBy, setSortBy] = useState("name-asc");
+  const [viewMode, setViewMode] = useState(() => {
+    if (typeof window === "undefined") return "cards";
+    return window.localStorage.getItem("todogreen-crm-view") === "table" ? "table" : "cards";
+  });
   const [visibleLimit, setVisibleLimit] = useState(100);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedId, setSelectedId] = useState(clientIdFromLocation);
   const [editingId, setEditingId] = useState("");
+  const [taskClientId, setTaskClientId] = useState("");
+  const [portalPreviewOpen, setPortalPreviewOpen] = useState(false);
+  const [researching, setResearching] = useState(false);
+  const [researchError, setResearchError] = useState("");
+  const [researchReports, setResearchReports] = useState({});
   const [showCreate, setShowCreate] = useState(false);
   const [clientForm, setClientForm] = useState({ nome: "", documento: "", segmento: "", tier: "Enterprise", stage: "Mapeamento" });
   const [assignment, setAssignment] = useState({ clientId: "", sellerEmail: "", note: "" });
@@ -263,12 +347,24 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
     setLoading(true); setError("");
     try {
       const data = await api("clients", authHeaders);
-      setClients(data.clientes || []); setAccess(data.acesso || access);
-      setSelectedId((current) => current || data.clientes?.[0]?.id || "");
+      const loaded = data.clientes || [];
+      setClients(loaded); setAccess(data.acesso || access);
+      setSelectedId((current) => loaded.some((item) => item.id === current)
+        ? current
+        : loaded.some((item) => item.id === clientIdFromLocation()) ? clientIdFromLocation() : "");
     } catch (reason) { setError(reason.message); }
     finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const sync = () => { setSelectedId(clientIdFromLocation()); setPortalPreviewOpen(false); };
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
+  useEffect(() => {
+    if (typeof window !== "undefined") window.localStorage.setItem("todogreen-crm-view", viewMode);
+  }, [viewMode]);
 
   const accounts = useMemo(() => clients.map(accountFromClient), [clients]);
   const crmOpportunities = useMemo(() => opportunities.map(opportunityForCrm), [opportunities]);
@@ -302,11 +398,43 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
     return String(a.name).localeCompare(String(b.name), "pt-BR", { sensitivity: "base" });
   }), [clients, contactFilter, filter, ownerFilter, query, sortBy, stageFilter, summaryById, temperatureFilter]);
   const renderedClients = visible.slice(0, visibleLimit);
-  const selected = clients.find((client) => client.id === selectedId) || visible[0] || null;
+  const selected = clients.find((client) => client.id === selectedId) || null;
   const selectedAccount = selected ? accountFromClient(selected) : null;
   const selectedOpportunities = selected ? crmOpportunities.filter((item) => item.clientId === selected.id) : [];
   const selectedSummary = selectedAccount ? crmAccountSummary(selectedAccount, selectedAccount.contacts, crmOpportunities) : null;
   const selectedIntelligence = selected ? assessAccount(selected) : null;
+  const selectedReport = selected ? researchReports[selected.id] || selected.crm?.intelligence || null : null;
+  const procurementNames = selectedIntelligence
+    ? [...new Set(selectedIntelligence.procurementContacts.map((item) => item.name).filter(Boolean))]
+    : [];
+
+  const openClient = (clientId) => {
+    setSelectedId(clientId); setPortalPreviewOpen(false); setResearchError("");
+    onNavigate?.(`/todogreen/clientes?client=${encodeURIComponent(clientId)}`);
+  };
+  const closeClient = () => {
+    setSelectedId(""); setPortalPreviewOpen(false); setResearchError("");
+    onNavigate?.("/todogreen/clientes");
+  };
+  const researchSelected = async (focus = "company") => {
+    if (!selected) return;
+    setResearching(true); setResearchError("");
+    try {
+      const data = await api(`client-intelligence/${encodeURIComponent(selected.id)}`, authHeaders, {
+        method: "POST", body: JSON.stringify({ force: true, focus }),
+      });
+      setResearchReports((current) => ({ ...current, [selected.id]: data.intelligence || null }));
+      await load();
+      const additions = data.enrichment?.contactsAdded ? ` ${data.enrichment.contactsAdded} contato(s) incluído(s).` : "";
+      const segment = data.enrichment?.segmentFilled ? " Segmento preenchido." : "";
+      setToast?.(`${focus === "contacts" ? "Contatos e procurement pesquisados." : "Empresa pesquisada e ficha atualizada."}${segment}${additions}`);
+    } catch (reason) { setResearchError(reason.message); }
+    finally { setResearching(false); }
+  };
+  const createTask = async (task) => {
+    if (!onCreateTask) throw new Error("Não foi possível conectar a tarefa ao workspace.");
+    await onCreateTask(task); setToast?.("Tarefa criada e vinculada ao cliente.");
+  };
 
   const createClient = async (event) => {
     event.preventDefault(); setError("");
@@ -358,55 +486,36 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
     }
   };
 
-  return (
-    <section className="tdg-panel tdg-page tdg-clients-page">
-      <header className="tdg-page-title"><div><span>COMANDO COMERCIAL</span><h2>CRM e carteira 360º</h2><p>Priorize contas, acompanhe relacionamentos, forecast e próximas ações em uma única rotina. Cada vendedor continua vendo somente sua carteira.</p></div>{access.podeGerenciar && <div className="tdg-crm-admin-actions"><label className="tdg-action tdg-crm-import"><Upload size={16} />{importProgress || "Importar base"}<input type="file" accept="application/json,.json" disabled={Boolean(importProgress)} onChange={importClients} /></label><button className="tdg-action" type="button" onClick={() => setShowCreate((value) => !value)}><Plus size={16} />Nova conta</button></div>}</header>
-      {error && <div className="tdg-page-error">{error}</div>}
-
-      <div className="tdg-crm-metrics" aria-label="Resumo do CRM">
-        <article><Building2 size={18} /><span>Contas na carteira</span><strong>{command.totalAccounts}</strong></article>
-        <article><BriefcaseBusiness size={18} /><span>Oportunidades abertas</span><strong>{command.openOpportunities}</strong></article>
-        <article><CircleDollarSign size={18} /><span>Forecast ponderado</span><strong>{BRL.format(command.weightedPipeline)}</strong><small>{BRL.format(command.totalPipeline)} em pipeline</small></article>
-        <article className={command.overdueActions ? "attention" : ""}><CalendarClock size={18} /><span>Ações atrasadas</span><strong>{command.overdueActions}</strong></article>
-        <article className={command.relationshipGaps ? "attention" : ""}><Users size={18} /><span>Mapa incompleto</span><strong>{command.relationshipGaps}</strong></article>
-      </div>
-
+  return <section className="tdg-panel tdg-page tdg-clients-page">
+    {error && <div className="tdg-page-error">{error}</div>}
+    {!selected && <>
+      <header className="tdg-page-title"><div><span>COMANDO COMERCIAL</span><h2>CRM e carteira 360º</h2><p>Priorize contas, acompanhe relacionamentos, forecast e próximas ações. Clique em uma conta para abrir sua visão gerencial.</p></div>{access.podeGerenciar && <div className="tdg-crm-admin-actions"><label className="tdg-action tdg-crm-import"><Upload size={16} />{importProgress || "Importar base"}<input type="file" accept="application/json,.json" disabled={Boolean(importProgress)} onChange={importClients} /></label><button className="tdg-action" type="button" onClick={() => setShowCreate((value) => !value)}><Plus size={16} />Nova conta</button></div>}</header>
+      <div className="tdg-crm-metrics" aria-label="Resumo do CRM"><article><Building2 size={18} /><span>Contas na carteira</span><strong>{command.totalAccounts}</strong></article><article><BriefcaseBusiness size={18} /><span>Oportunidades abertas</span><strong>{command.openOpportunities}</strong></article><article><CircleDollarSign size={18} /><span>Forecast ponderado</span><strong>{BRL.format(command.weightedPipeline)}</strong><small>{BRL.format(command.totalPipeline)} em pipeline</small></article><article className={command.overdueActions ? "attention" : ""}><CalendarClock size={18} /><span>Ações atrasadas</span><strong>{command.overdueActions}</strong></article><article className={command.relationshipGaps ? "attention" : ""}><Users size={18} /><span>Mapa incompleto</span><strong>{command.relationshipGaps}</strong></article></div>
       {showCreate && <form className="tdg-client-admin-form" onSubmit={createClient}><strong>Nova conta</strong><div className="tdg-form-row"><label><span>Nome</span><input required value={clientForm.nome} onChange={(e) => setClientForm({ ...clientForm, nome: e.target.value })} /></label><label><span>Documento</span><input value={clientForm.documento} onChange={(e) => setClientForm({ ...clientForm, documento: e.target.value })} /></label><label><span>Segmento</span><input value={clientForm.segmento} onChange={(e) => setClientForm({ ...clientForm, segmento: e.target.value })} /></label><label><span>Classificação</span><select value={clientForm.tier} onChange={(e) => setClientForm({ ...clientForm, tier: e.target.value })}>{TODO_GREEN_ACCOUNT_TIERS.map((item) => <option key={item}>{item}</option>)}</select></label><label><span>Momento</span><select value={clientForm.stage} onChange={(e) => setClientForm({ ...clientForm, stage: e.target.value })}>{TODO_GREEN_ACCOUNT_STAGES.map((item) => <option key={item}>{item}</option>)}</select></label></div><button className="tdg-action"><Plus size={16} />Cadastrar conta</button></form>}
+      <div className="tdg-crm-toolbar"><div className="tdg-client-toolbar"><Search size={18} /><input aria-label="Buscar clientes e contatos" placeholder="Buscar conta, contato, e-mail, telefone ou responsável" value={query} onChange={(e) => { setQuery(e.target.value); setVisibleLimit(100); }} /></div><div className="tdg-crm-view-switch" aria-label="Modo de visualização"><button type="button" className={viewMode === "cards" ? "active" : ""} onClick={() => setViewMode("cards")}><LayoutGrid size={15} />Cartões</button><button type="button" className={viewMode === "table" ? "active" : ""} onClick={() => setViewMode("table")}><List size={15} />Tabela</button></div><div className="tdg-crm-filter-grid" aria-label="Filtros e ordenação do CRM"><label><span>Ordenar</span><select value={sortBy} onChange={(e) => setSortBy(e.target.value)}><option value="name-asc">Nome (A–Z)</option><option value="name-desc">Nome (Z–A)</option><option value="temperature">Temperatura</option><option value="next-action">Próxima ação</option><option value="updated">Atualização recente</option><option value="contacts">Mais contatos</option></select></label><label><span>Etapa</span><select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)}><option value="all">Todas as etapas</option>{stageOptions.map((stage) => <option key={stage}>{stage}</option>)}</select></label><label><span>Responsável</span><select value={ownerFilter} onChange={(e) => setOwnerFilter(e.target.value)}><option value="all">Todos</option><option value="unassigned">Sem responsável</option>{ownerOptions.map((owner) => <option key={owner}>{owner}</option>)}</select></label><label><span>Contatos</span><select value={contactFilter} onChange={(e) => setContactFilter(e.target.value)}><option value="all">Com e sem contato</option><option value="with">Com telefone/e-mail</option><option value="without">Sem telefone/e-mail</option></select></label></div><div className="tdg-crm-filters" aria-label="Temperatura das contas">{[["all", "Todas"], ["Quente", "Quentes"], ["Morno", "Mornas"], ["Frio", "Frias"]].map(([id, label]) => <button type="button" className={temperatureFilter === id ? "active" : ""} onClick={() => { setTemperatureFilter(id); setVisibleLimit(100); }} key={id}>{label}</button>)}</div><div className="tdg-crm-filters" aria-label="Saúde da carteira">{[["all", "Toda saúde"], ["critical", "Críticas"], ["attention", "Atenção"], ["healthy", "Saudáveis"], ["no-decision", "Mapa incompleto"]].map(([id, label]) => <button type="button" className={filter === id ? "active" : ""} onClick={() => { setFilter(id); setVisibleLimit(100); }} key={id}>{label}</button>)}</div></div>
+      {loading && <p>Carregando carteira...</p>}{!loading && visible.length === 0 && <p className="tdg-crm-empty">Nenhuma conta corresponde aos filtros desta carteira.</p>}
+      {!loading && visible.length > 0 && viewMode === "cards" && <div className="tdg-crm-card-grid" aria-label="Contas do CRM em cartões">{renderedClients.map((client) => { const summary = summaryById.get(client.id); return <button type="button" className={summary?.attention || ""} onClick={() => openClient(client.id)} key={client.id}><header><span><strong>{client.name}</strong><small>{client.segment || "Segmento não informado"}</small></span><b>{summary?.score || 0}</b></header><div className="tdg-crm-card-tags"><em>{client.crm?.temperature || "Sem temperatura"}</em><em>{client.crm?.stage || "Mapeamento"}</em></div><dl><div><dt>Pipeline</dt><dd>{BRL.format(summary?.pipeline || 0)}</dd></div><div><dt>Decisores</dt><dd>{summary?.coverage || 0}%</dd></div><div><dt>Contatos</dt><dd>{client.crm?.contacts?.length || 0}</dd></div></dl><footer><span><small>Próxima ação</small><strong>{summary?.nextAction || "Definir próxima ação"}</strong></span><ArrowRight size={16} /></footer></button>; })}{visible.length > renderedClients.length && <button type="button" className="tdg-crm-card-load-more" onClick={() => setVisibleLimit((current) => current + 100)}>Mostrar mais 100 contas ({renderedClients.length} de {visible.length})</button>}</div>}
+      {!loading && visible.length > 0 && viewMode === "table" && <div className="tdg-crm-table" role="table" aria-label="Contas do CRM"><div className="tdg-crm-table-head" role="row"><span>Conta</span><span>Saúde</span><span>Pipeline</span><span>Próxima ação</span></div>{renderedClients.map((client) => { const summary = summaryById.get(client.id); return <button type="button" role="row" className={summary?.attention || ""} onClick={() => openClient(client.id)} key={client.id}><span><strong>{client.name}</strong><small>{client.crm?.temperature ? `${client.crm.temperature} · ` : ""}{client.segment || "Segmento não informado"} · {client.crm?.stage || "Mapeamento"}</small></span><span><b>{summary?.score || 0}</b><small>{summary?.coverage || 0}% de cobertura</small></span><span><strong>{BRL.format(summary?.pipeline || 0)}</strong><small>{summary?.openOpportunities || 0} aberta(s)</small></span><span><strong>{summary?.nextAction || "Definir próxima ação"}</strong><small>{client.crm?.nextActionAt || "Sem prazo"}</small></span></button>; })}{visible.length > renderedClients.length && <button type="button" className="tdg-crm-load-more" onClick={() => setVisibleLimit((current) => current + 100)}>Mostrar mais 100 contas ({renderedClients.length} de {visible.length})</button>}</div>}
+    </>}
 
-      <div className="tdg-crm-toolbar">
-        <div className="tdg-client-toolbar"><Search size={18} /><input aria-label="Buscar clientes e contatos" placeholder="Buscar conta, contato, e-mail, telefone ou responsável" value={query} onChange={(e) => { setQuery(e.target.value); setVisibleLimit(100); }} /></div>
-        <div className="tdg-crm-filter-grid" aria-label="Filtros e ordenação do CRM">
-          <label><span>Ordenar</span><select value={sortBy} onChange={(e) => setSortBy(e.target.value)}><option value="name-asc">Nome (A–Z)</option><option value="name-desc">Nome (Z–A)</option><option value="temperature">Temperatura</option><option value="next-action">Próxima ação</option><option value="updated">Atualização recente</option><option value="contacts">Mais contatos</option></select></label>
-          <label><span>Etapa</span><select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)}><option value="all">Todas as etapas</option>{stageOptions.map((stage) => <option key={stage}>{stage}</option>)}</select></label>
-          <label><span>Responsável</span><select value={ownerFilter} onChange={(e) => setOwnerFilter(e.target.value)}><option value="all">Todos</option><option value="unassigned">Sem responsável</option>{ownerOptions.map((owner) => <option key={owner}>{owner}</option>)}</select></label>
-          <label><span>Contatos</span><select value={contactFilter} onChange={(e) => setContactFilter(e.target.value)}><option value="all">Com e sem contato</option><option value="with">Com telefone/e-mail</option><option value="without">Sem telefone/e-mail</option></select></label>
-        </div>
-        <div className="tdg-crm-filters" aria-label="Temperatura das contas">{[["all", "Todas"], ["Quente", "Quentes"], ["Morno", "Mornas"], ["Frio", "Frias"]].map(([id, label]) => <button type="button" className={temperatureFilter === id ? "active" : ""} onClick={() => { setTemperatureFilter(id); setVisibleLimit(100); }} key={id}>{label}</button>)}</div>
-        <div className="tdg-crm-filters" aria-label="Saúde da carteira">{[["all", "Toda saúde"], ["critical", "Críticas"], ["attention", "Atenção"], ["healthy", "Saudáveis"], ["no-decision", "Mapa incompleto"]].map(([id, label]) => <button type="button" className={filter === id ? "active" : ""} onClick={() => { setFilter(id); setVisibleLimit(100); }} key={id}>{label}</button>)}</div>
-      </div>
-
-      {loading && <p>Carregando carteira...</p>}
-      {!loading && visible.length === 0 && <p className="tdg-crm-empty">Nenhuma conta corresponde aos filtros desta carteira.</p>}
-      {!loading && visible.length > 0 && <div className="tdg-crm-workspace">
-        <div className="tdg-crm-table" role="table" aria-label="Contas do CRM">
-          <div className="tdg-crm-table-head" role="row"><span>Conta</span><span>Saúde</span><span>Pipeline</span><span>Próxima ação</span></div>
-          {renderedClients.map((client) => { const summary = summaryById.get(client.id); return <button type="button" role="row" className={`${selected?.id === client.id ? "selected" : ""} ${summary?.attention || ""}`} onClick={() => setSelectedId(client.id)} key={client.id}><span><strong>{client.name}</strong><small>{client.crm?.temperature ? `${client.crm.temperature} · ` : ""}{client.segment || "Segmento não informado"} · {client.crm?.stage || "Mapeamento"}</small></span><span><b>{summary?.score || 0}</b><small>{summary?.coverage || 0}% de cobertura</small></span><span><strong>{BRL.format(summary?.pipeline || 0)}</strong><small>{summary?.openOpportunities || 0} aberta(s)</small></span><span><strong>{summary?.nextAction || "Definir próxima ação"}</strong><small>{client.crm?.nextActionAt || "Sem prazo"}</small></span></button>; })}
-          {visible.length > renderedClients.length && <button type="button" className="tdg-crm-load-more" onClick={() => setVisibleLimit((current) => current + 100)}>Mostrar mais 100 contas ({renderedClients.length} de {visible.length})</button>}
-        </div>
-
-        {selected && selectedSummary && <aside className="tdg-crm-account">
-          <header><div><span>{selected.crm?.tier || "Enterprise"}{selected.crm?.temperature ? ` · ${selected.crm.temperature}` : ""}</span><h3>{selected.name}</h3><p>{selected.segment || "Segmento não informado"} · {selected.crm?.stage || "Mapeamento"}</p>{selected.crm?.source && <small>Origem interna: {selected.crm.source}</small>}</div>{access.podeEditar && <button type="button" onClick={() => setEditingId(selected.id)}><Edit3 size={15} />Editar 360º</button>}</header>
-          <div className="tdg-crm-health"><div><strong>{selectedSummary.score}</strong><span>saúde da conta</span></div><div><strong>{selectedSummary.coverage}%</strong><span>cobertura de decisores</span></div></div>
-          <section className="tdg-crm-next"><Target size={17} /><div><small>PRÓXIMA MELHOR AÇÃO</small><strong>{selectedSummary.nextAction}</strong></div></section>
-          <section className="tdg-crm-intelligence"><header><strong>IA · mapa da empresa</strong><small>Leitura dos dados do CRM</small></header><div><span>Relevância ESG</span><strong>{selectedIntelligence.esgRelevance}</strong><small>{selectedIntelligence.esgReason}</small></div><div><span>Próxima tarefa sugerida</span><strong>{selectedIntelligence.nextTask}</strong></div><div><span>Compras / procurement</span><strong>{selectedIntelligence.procurementContacts.length ? selectedIntelligence.procurementContacts.map((item) => item.name).join(", ") : "Contato ainda não mapeado"}</strong></div></section>
-          <ExternalIntelligence key={selected.id} client={selected} authHeaders={authHeaders} onUpdated={load} />
-          {selectedSummary.alerts.length > 0 && <section className="tdg-crm-alerts"><strong><AlertTriangle size={15} />Pontos de atenção</strong>{selectedSummary.alerts.map((alert) => <span key={alert}>{alert}</span>)}</section>}
-          <section><header><strong>Relacionamento</strong><small>{selectedAccount.contacts.length} contato(s)</small></header><div className="tdg-crm-roles">{selectedAccount.contacts.map((contact) => <article key={contact.id}><div><b>{contact.name}</b><small>{[contact.title, contact.department, contact.relationshipRole].filter(Boolean).join(" · ")}</small></div><div className="tdg-crm-contact-channels">{contact.email && <a href={`mailto:${contact.email}`}><Mail size={13} />{contact.email}</a>}{contact.phone && <a href={`tel:${contact.phone}`}>{contact.phone}</a>}</div><div className="tdg-crm-contact-actions">{contact.phone && <a href={whatsappUrl(contact.phone)} target="_blank" rel="noreferrer"><MessageCircle size={14} />WhatsApp</a>}{contact.email && <><a href={gmailComposeUrl(contact.email, `To Do Green · ${selected.name}`)} target="_blank" rel="noreferrer">Gmail</a><a href={outlookComposeUrl(contact.email, `To Do Green · ${selected.name}`)} target="_blank" rel="noreferrer">Outlook</a></>}{contact.linkedinUrl && <a href={contact.linkedinUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} />LinkedIn</a>}</div></article>)}{selectedAccount.contacts.length === 0 && <p>Nenhum decisor ou patrocinador mapeado.</p>}</div></section>
-          <section><header><strong>Oportunidades</strong><button type="button" onClick={() => onNavigate?.(`/todogreen/oportunidades?client=${encodeURIComponent(selected.id)}`)}>Abrir pipeline <ArrowRight size={13} /></button></header>{selectedOpportunities.length === 0 ? <p>Nenhuma oportunidade ligada a esta conta.</p> : <div className="tdg-crm-opps">{selectedOpportunities.slice(0, 4).map((opp) => <article key={opp.id}><span><strong>{opp.stage}</strong><small>{opp.nextStep || "Próximo passo não definido"}</small></span><b>{BRL.format(opp.value || 0)}</b></article>)}</div>}</section>
-          <section><header><strong>Responsáveis</strong></header><div className="tdg-client-sellers">{(selected.vendedores || []).length === 0 && <small>Sem responsável comercial</small>}{(selected.vendedores || []).map((seller) => <span key={seller.email}>{seller.email}{access.podeGerenciar && <button type="button" aria-label={`Remover ${seller.email}`} onClick={() => unassign(selected.id, seller.email)}><X size={12} /></button>}</span>)}</div>{access.podeGerenciar && <form className="tdg-crm-assign" onSubmit={assign}><input required type="email" aria-label="E-mail do vendedor" placeholder="vendedor@empresa.com" value={assignment.clientId === selected.id ? assignment.sellerEmail : ""} onChange={(e) => setAssignment({ clientId: selected.id, sellerEmail: e.target.value, note: "" })} /><button type="submit"><UserPlus size={14} />Atribuir</button></form>}</section>
-        </aside>}
-      </div>}
-      {editingId && <AccountEditor client={clients.find((item) => item.id === editingId)} onClose={() => setEditingId("")} onSave={(payload) => saveClient(clients.find((item) => item.id === editingId), payload)} />}
-    </section>
-  );
+    {selected && selectedSummary && <div className="tdg-crm-detail">
+      <button className="tdg-crm-back" type="button" onClick={closeClient}><ArrowLeft size={16} />Voltar para a carteira</button>
+      <header className="tdg-crm-detail-hero"><div><span>{selected.crm?.tier || "Enterprise"}{selected.crm?.temperature ? ` · ${selected.crm.temperature}` : ""}</span><h2>{selected.name}</h2><p>{selected.segment || "Segmento não informado"} · {selected.crm?.stage || "Mapeamento"}{selected.document ? ` · ${selected.document}` : ""}</p><small>{selected.crm?.source ? `Origem: ${selected.crm.source}` : "Conta da carteira To Do Green"}</small></div><div className="tdg-crm-detail-actions">{access.podeEditar && <button type="button" onClick={() => setEditingId(selected.id)}><Edit3 size={15} />Editar</button>}<button type="button" onClick={() => setTaskClientId(selected.id)}><ListPlus size={15} />Adicionar tarefa</button><button type="button" onClick={() => researchSelected("company")} disabled={researching}><Globe2 size={15} />Pesquisar empresa</button><button type="button" onClick={() => researchSelected("contacts")} disabled={researching}><UserSearch size={15} />Pesquisar contatos</button><button type="button" onClick={() => setPortalPreviewOpen(true)}><Eye size={15} />Ver como cliente</button><button type="button" onClick={() => onNavigate?.(`/todogreen/oportunidades?client=${encodeURIComponent(selected.id)}`)}>Pipeline <ArrowRight size={15} /></button></div></header>
+      <div className="tdg-crm-detail-metrics"><article><small>Saúde da conta</small><strong>{selectedSummary.score}</strong><span>{selectedSummary.attention === "healthy" ? "Saudável" : selectedSummary.attention === "critical" ? "Crítica" : "Atenção"}</span></article><article><small>Cobertura de decisores</small><strong>{selectedSummary.coverage}%</strong><span>{selectedAccount.contacts.length} contato(s)</span></article><article><small>Pipeline da conta</small><strong>{BRL.format(selectedSummary.pipeline || 0)}</strong><span>{selectedSummary.openOpportunities || 0} oportunidade(s)</span></article><article><small>Portal do cliente</small><strong>{selected.portalEnabled ? "Liberado" : "Bloqueado"}</strong><span>{selected.portalUserCount || 0} acesso(s) ativo(s)</span></article></div>
+      <section className="tdg-crm-next"><Target size={17} /><div><small>PRÓXIMA MELHOR AÇÃO</small><strong>{selectedSummary.nextAction}</strong></div><button type="button" onClick={() => setTaskClientId(selected.id)}>Transformar em tarefa</button></section>
+      {portalPreviewOpen && <ClientPortalPreview client={selected} authHeaders={authHeaders} open onClose={() => setPortalPreviewOpen(false)} />}
+      <div className="tdg-crm-detail-grid"><main>
+        <section className="tdg-crm-intelligence"><header><strong>IA · mapa da empresa</strong><small>Leitura dos dados do CRM</small></header><div><span>Relevância ESG</span><strong>{selectedIntelligence.esgRelevance}</strong><small>{selectedIntelligence.esgReason}</small></div><div><span>Próxima tarefa sugerida</span><strong>{selectedIntelligence.nextTask}</strong></div><div><span>Compras / procurement</span><strong>{procurementNames.length ? procurementNames.join(", ") : "Contato ainda não mapeado"}</strong></div></section>
+        <ExternalIntelligence report={selectedReport} researching={researching} error={researchError} onResearch={researchSelected} />
+        <section className="tdg-crm-detail-section"><header><strong>Relacionamento</strong><small>{selectedAccount.contacts.length} contato(s)</small></header><div className="tdg-crm-roles">{selectedAccount.contacts.map((contact) => <ContactCard key={contact.id} contact={contact} clientName={selected.name} />)}{selectedAccount.contacts.length === 0 && <p>Nenhum decisor ou patrocinador mapeado.</p>}</div></section>
+      </main><aside>
+        {selectedSummary.alerts.length > 0 && <section className="tdg-crm-alerts"><strong><AlertTriangle size={15} />Pontos de atenção</strong>{selectedSummary.alerts.map((alert) => <span key={alert}>{alert}</span>)}</section>}
+        <section className="tdg-crm-detail-section"><header><strong>Oportunidades</strong><button type="button" onClick={() => onNavigate?.(`/todogreen/oportunidades?client=${encodeURIComponent(selected.id)}`)}>Abrir pipeline <ArrowRight size={13} /></button></header>{selectedOpportunities.length === 0 ? <p>Nenhuma oportunidade ligada a esta conta.</p> : <div className="tdg-crm-opps">{selectedOpportunities.slice(0, 6).map((opp) => <article key={opp.id}><span><strong>{opp.stage}</strong><small>{opp.nextStep || "Próximo passo não definido"}</small></span><b>{BRL.format(opp.value || 0)}</b></article>)}</div>}</section>
+        <section className="tdg-crm-detail-section"><header><strong>Responsáveis</strong></header><div className="tdg-client-sellers">{(selected.vendedores || []).length === 0 && <small>Sem responsável comercial</small>}{(selected.vendedores || []).map((seller) => <span key={seller.email}>{seller.email}{access.podeGerenciar && <button type="button" aria-label={`Remover ${seller.email}`} onClick={() => unassign(selected.id, seller.email)}><X size={12} /></button>}</span>)}</div>{access.podeGerenciar && <form className="tdg-crm-assign" onSubmit={assign}><input required type="email" aria-label="E-mail do vendedor" placeholder="vendedor@empresa.com" value={assignment.clientId === selected.id ? assignment.sellerEmail : ""} onChange={(e) => setAssignment({ clientId: selected.id, sellerEmail: e.target.value, note: "" })} /><button type="submit"><UserPlus size={14} />Atribuir</button></form>}</section>
+        <section className="tdg-crm-detail-section"><header><strong>Dados da conta</strong></header><dl className="tdg-crm-account-data"><div><dt>Razão social</dt><dd>{selected.legalName || "Não informada"}</dd></div><div><dt>Sede</dt><dd>{selected.crm?.headquarters || "Não informada"}</dd></div><div><dt>Última atualização</dt><dd>{selected.updatedAt ? new Date(selected.updatedAt).toLocaleString("pt-BR") : "Não informada"}</dd></div></dl></section>
+      </aside></div>
+    </div>}
+    {editingId && <AccountEditor client={clients.find((item) => item.id === editingId)} onClose={() => setEditingId("")} onSave={(payload) => saveClient(clients.find((item) => item.id === editingId), payload)} />}
+    {taskClientId && <ClientTaskModal client={clients.find((item) => item.id === taskClientId)} suggestion={selectedIntelligence?.nextTask} currentUserId={currentUserId} onClose={() => setTaskClientId("")} onCreate={createTask} />}
+  </section>;
 }

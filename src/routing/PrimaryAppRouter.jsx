@@ -39,7 +39,7 @@ export default function PrimaryAppRouter({
   if (route.kind === "todogreen")
     return (
       <Suspense fallback={<div className="inbox-loading">Carregando To Do Green...</div>}>
-        <LogisticsVertical db={db} setToast={setToast} authHeaders={authHeaders} />
+        <LogisticsVertical db={db} update={update} setToast={setToast} authHeaders={authHeaders} />
       </Suspense>
     );
   return null;

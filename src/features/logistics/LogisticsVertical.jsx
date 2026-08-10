@@ -1569,7 +1569,7 @@ function AccessPanel({ role, authHeaders, setToast }) {
   );
 }
 
-export default function LogisticsVertical({ db, setToast, access = {}, authHeaders }) {
+export default function LogisticsVertical({ db, update, setToast, access = {}, authHeaders }) {
   const [path, setPath] = useState(todoGreenPath());
   const [query, setQuery] = useState("");
   // `access` chega vazio hoje; se um dia vier preenchido, ainda precisa passar
@@ -1710,7 +1710,7 @@ export default function LogisticsVertical({ db, setToast, access = {}, authHeade
       {page === "metas" && <Suspense fallback={<section className="tdg-panel">Carregando metas...</section>}><GoalsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "performance-comercial" && <Suspense fallback={<section className="tdg-panel">Carregando performance comercial...</section>}><SalesPerformancePage authHeaders={authHeaders} onNavigate={navigate} /></Suspense>}
       {page === "solicitacoes" && <Suspense fallback={<section className="tdg-panel">Carregando solicitações...</section>}><ClientRequestsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
-      {page === "clientes" && <Suspense fallback={<section className="tdg-panel">Carregando clientes...</section>}><ClientsPage authHeaders={authHeaders} opportunities={verticalData.opportunities} onNavigate={navigate} setToast={setToast} /></Suspense>}
+      {page === "clientes" && <Suspense fallback={<section className="tdg-panel">Carregando clientes...</section>}><ClientsPage authHeaders={authHeaders} opportunities={verticalData.opportunities} onNavigate={navigate} setToast={setToast} currentUserId={db?.user?.id} onCreateTask={(task) => update?.((current) => ({ ...current, tasks: [task, ...(current.tasks || [])] }))} /></Suspense>}
       {page === "oportunidades" && <Suspense fallback={<section className="tdg-panel">Carregando oportunidades...</section>}><OpportunitiesPage clients={clientes} opportunities={verticalData.opportunities} scenarios={verticalData.pricingScenarios} onCreate={(registro) => criar("opportunities", registro)} onUpdate={(id, alteracoes) => atualizar("opportunities", id, alteracoes)} onNavigate={navigate} setToast={setToast} /></Suspense>}
       {page === "propostas" && <ProposalPanel data={verticalData} criar={criar} pedidosDeAprovacao={pedidosDeAprovacao} setToast={setToast} />}
       {page === "precificacao" && <PricingPanel key={new URLSearchParams(path.split("?")[1] || "").get("opportunity") || "nova"} role={role} criar={criar} db={db} authHeaders={authHeaders} setToast={setToast} opportunities={verticalData.opportunities} />}

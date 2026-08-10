@@ -1,11 +1,11 @@
 /* @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ClientsPage from "./ClientsPage.jsx";
 
 describe("página de clientes", () => {
-  afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+  afterEach(() => { cleanup(); vi.restoreAllMocks(); window.localStorage.clear(); window.history.replaceState({}, "", "/"); });
 
   it("explica e exibe somente a carteira devolvida para o vendedor", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
@@ -18,6 +18,7 @@ describe("página de clientes", () => {
     expect(await screen.findByRole("heading", { name: "CRM e carteira 360º" })).toBeInTheDocument();
     expect(screen.getAllByText("Cliente atribuído").length).toBeGreaterThan(0);
     expect(screen.getByText("Contas na carteira")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cartões" })).toHaveClass("active");
     expect(screen.queryByText("Definir responsável comercial")).not.toBeInTheDocument();
   });
 
@@ -37,6 +38,10 @@ describe("página de clientes", () => {
 
     expect(await screen.findByText("Forecast ponderado")).toBeInTheDocument();
     expect(screen.getAllByText(/600\.000/).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: /Rede Alfa/ }));
+    expect(await screen.findByRole("heading", { name: "Rede Alfa" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Pesquisar empresa/ }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /Ver como cliente/ })).toBeInTheDocument();
     expect(screen.getAllByText("Mapear e acessar o decisor econômico.").length).toBeGreaterThan(0);
     expect(screen.getByText("Reunião com compras")).toBeInTheDocument();
   });
