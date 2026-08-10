@@ -1,11 +1,28 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, ChevronDown, ChevronRight, Leaf, Plus, Target } from "lucide-react";
+import {
+  AlertTriangle,
+  Calculator,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  CircleDashed,
+  Leaf,
+  LockKeyhole,
+  Plus,
+  Save,
+  Target,
+} from "lucide-react";
+import Modal from "../../../components/Modal.jsx";
 import {
   ESTAGIOS_OPORTUNIDADE,
   analisarOportunidade,
   normalizarOportunidade,
   resumirPipeline,
 } from "../opportunityIntelligenceDomain.js";
+import {
+  OBJETIVOS_ELETRIFICACAO,
+  avaliarJornadaEletrificacao,
+} from "../electrificationJourneyDomain.js";
 import "./TodoGreenPages.css";
 
 const BRL = new Intl.NumberFormat("pt-BR", {
@@ -49,6 +66,271 @@ const FORM_VAZIO = {
 };
 
 const gravidadeRotulo = { alta: "Crítico", media: "Atenção", baixa: "Observação" };
+
+const CAMPOS_ESTUDO = [
+  "origin",
+  "destination",
+  "distanciaKm",
+  "viagensMes",
+  "deliveryWindows",
+  "operationalRestrictions",
+  "weightKg",
+  "volumeM3",
+  "pallets",
+  "packages",
+  "loadDescription",
+  "seasonality",
+  "sla",
+  "criticalRequirements",
+  "trackingSystem",
+  "integrationNeeds",
+  "primaryObjective",
+  "electrificationTarget",
+  "pilotStart",
+  "pilotEnd",
+  "pilotScope",
+  "pilotSuccessCriteria",
+  "pilotStatus",
+  "reportStatus",
+  "reportUrl",
+  "expansionStatus",
+  "expansionPlan",
+];
+
+const NUMERICOS_ESTUDO = new Set([
+  "distanciaKm",
+  "viagensMes",
+  "weightKg",
+  "volumeM3",
+  "pallets",
+  "packages",
+]);
+
+function CampoEstudo({ form, campo, rotulo, tipo = "text", onChange, opcoes }) {
+  return (
+    <label>
+      <span>{rotulo}</span>
+      {opcoes ? (
+        <select value={form[campo] || ""} onChange={onChange(campo)}>
+          {opcoes.map((opcao) => (
+            <option value={opcao.id} key={opcao.id}>
+              {opcao.label}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input type={tipo} value={form[campo] || ""} onChange={onChange(campo)} />
+      )}
+    </label>
+  );
+}
+
+function EstudoEletrificacaoModal({ registro, onClose, onSave, setToast }) {
+  const [form, setForm] = useState(() =>
+    Object.fromEntries(CAMPOS_ESTUDO.map((campo) => [campo, registro[campo] ?? ""])),
+  );
+  const [salvando, setSalvando] = useState(false);
+  const mudar = (campo) => (event) =>
+    setForm((atual) => ({ ...atual, [campo]: event.target.value }));
+  const salvar = async (event) => {
+    event.preventDefault();
+    setSalvando(true);
+    try {
+      await onSave({
+        ...form,
+        ...Object.fromEntries(
+          [...NUMERICOS_ESTUDO].map((campo) => [campo, Number(form[campo] || 0)]),
+        ),
+        revision: registro.revision,
+        lastInteractionAt: new Date().toISOString(),
+      });
+      setToast?.("Estudo de eletrificação atualizado.");
+      onClose();
+    } catch (erro) {
+      setToast?.(erro?.message || "Não foi possível atualizar o estudo.");
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <Modal title={`Estudo de eletrificação · ${registro.cliente}`} onClose={onClose} wide>
+      <form className="tdg-estudo-form" onSubmit={salvar}>
+        <p className="tdg-estudo-intro">
+          O diagnóstico alimenta a precificação, o plano do piloto e o relatório. Campos sem
+          informação permanecem pendentes e não recebem estimativas automáticas.
+        </p>
+
+        <fieldset>
+          <legend>1. Rota e demanda</legend>
+          <div className="tdg-estudo-grid">
+            <CampoEstudo form={form} campo="origin" rotulo="Origem" onChange={mudar} />
+            <CampoEstudo form={form} campo="destination" rotulo="Destino" onChange={mudar} />
+            <CampoEstudo form={form} campo="distanciaKm" rotulo="Distância por viagem (km)" tipo="number" onChange={mudar} />
+            <CampoEstudo form={form} campo="viagensMes" rotulo="Viagens por mês" tipo="number" onChange={mudar} />
+            <CampoEstudo form={form} campo="weightKg" rotulo="Peso médio (kg)" tipo="number" onChange={mudar} />
+            <CampoEstudo form={form} campo="volumeM3" rotulo="Cubagem média (m³)" tipo="number" onChange={mudar} />
+            <CampoEstudo form={form} campo="pallets" rotulo="Pallets por viagem" tipo="number" onChange={mudar} />
+            <CampoEstudo form={form} campo="packages" rotulo="Pacotes por viagem" tipo="number" onChange={mudar} />
+          </div>
+          <label>
+            <span>Descrição da carga</span>
+            <textarea value={form.loadDescription || ""} onChange={mudar("loadDescription")} />
+          </label>
+          <label>
+            <span>Sazonalidade e picos</span>
+            <textarea value={form.seasonality || ""} onChange={mudar("seasonality")} />
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>2. Serviço, restrições e sistemas</legend>
+          <div className="tdg-estudo-grid">
+            <CampoEstudo form={form} campo="deliveryWindows" rotulo="Janelas de coleta e entrega" onChange={mudar} />
+            <CampoEstudo form={form} campo="sla" rotulo="SLA exigido" onChange={mudar} />
+            <CampoEstudo form={form} campo="trackingSystem" rotulo="TMS ou rastreador atual" onChange={mudar} />
+            <CampoEstudo form={form} campo="integrationNeeds" rotulo="Integração necessária" onChange={mudar} />
+          </div>
+          <label>
+            <span>Restrições operacionais</span>
+            <textarea value={form.operationalRestrictions || ""} onChange={mudar("operationalRestrictions")} />
+          </label>
+          <label>
+            <span>Requisitos críticos</span>
+            <textarea value={form.criticalRequirements || ""} onChange={mudar("criticalRequirements")} />
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>3. Objetivo e piloto</legend>
+          <div className="tdg-estudo-grid">
+            <CampoEstudo
+              form={form}
+              campo="primaryObjective"
+              rotulo="Objetivo principal"
+              onChange={mudar}
+              opcoes={[{ id: "", label: "Selecione" }, ...OBJETIVOS_ELETRIFICACAO]}
+            />
+            <CampoEstudo form={form} campo="electrificationTarget" rotulo="Meta de eletrificação" onChange={mudar} />
+            <CampoEstudo form={form} campo="pilotStart" rotulo="Início previsto" tipo="date" onChange={mudar} />
+            <CampoEstudo form={form} campo="pilotEnd" rotulo="Fim previsto" tipo="date" onChange={mudar} />
+            <CampoEstudo
+              form={form}
+              campo="pilotStatus"
+              rotulo="Situação do piloto"
+              onChange={mudar}
+              opcoes={[
+                { id: "", label: "Ainda não planejado" },
+                { id: "planejado", label: "Planejado" },
+                { id: "em_andamento", label: "Em andamento" },
+                { id: "concluido", label: "Concluído" },
+                { id: "cancelado", label: "Cancelado" },
+              ]}
+            />
+          </div>
+          <label>
+            <span>Escopo do piloto</span>
+            <textarea value={form.pilotScope || ""} onChange={mudar("pilotScope")} />
+          </label>
+          <label>
+            <span>Critérios de sucesso e decisão Go/No-Go</span>
+            <textarea value={form.pilotSuccessCriteria || ""} onChange={mudar("pilotSuccessCriteria")} />
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>4. Relatório e escala</legend>
+          <div className="tdg-estudo-grid">
+            <CampoEstudo
+              form={form}
+              campo="reportStatus"
+              rotulo="Relatório do piloto"
+              onChange={mudar}
+              opcoes={[
+                { id: "", label: "Não iniciado" },
+                { id: "em_preparacao", label: "Em preparação" },
+                { id: "publicado", label: "Publicado" },
+              ]}
+            />
+            <CampoEstudo form={form} campo="reportUrl" rotulo="Link do relatório ou evidência" tipo="url" onChange={mudar} />
+            <CampoEstudo
+              form={form}
+              campo="expansionStatus"
+              rotulo="Decisão de expansão"
+              onChange={mudar}
+              opcoes={[
+                { id: "", label: "Ainda não avaliada" },
+                { id: "em_analise", label: "Em análise" },
+                { id: "aprovada", label: "Aprovada" },
+                { id: "implantada", label: "Implantada" },
+                { id: "nao_aprovada", label: "Não aprovada" },
+              ]}
+            />
+          </div>
+          <label>
+            <span>Plano de escala</span>
+            <textarea value={form.expansionPlan || ""} onChange={mudar("expansionPlan")} />
+          </label>
+        </fieldset>
+
+        <footer className="tdg-estudo-actions">
+          <button type="button" onClick={onClose}>Cancelar</button>
+          <button className="tdg-action" type="submit" disabled={salvando}>
+            <Save size={16} />
+            {salvando ? "Salvando..." : "Salvar estudo"}
+          </button>
+        </footer>
+      </form>
+    </Modal>
+  );
+}
+
+function JornadaEletrificacao({ jornada, onEdit, onSimulate }) {
+  return (
+    <section className="tdg-jornada" aria-label="Jornada de eletrificação">
+      <header>
+        <div>
+          <strong>Mapear → Simular → Rodar → Reportar → Escalar</strong>
+          <small>
+            {jornada.concluida
+              ? "Jornada concluída e pronta para acompanhamento da expansão."
+              : `Etapa atual: ${jornada.etapaAtual?.label || "—"} · ${jornada.percentual}% concluído`}
+          </small>
+        </div>
+        <div className="tdg-jornada-acoes">
+          <button type="button" onClick={onEdit}>Atualizar estudo</button>
+          {jornada.etapaAtual?.id === "simular" && (
+            <button type="button" className="tdg-action" onClick={onSimulate}>
+              <Calculator size={15} /> Simular agora
+            </button>
+          )}
+        </div>
+      </header>
+      <div className="tdg-jornada-etapas">
+        {jornada.etapas.map((etapa) => (
+          <article className={`e-${etapa.estado}`} key={etapa.id}>
+            {etapa.estado === "concluida" ? (
+              <CheckCircle2 size={17} />
+            ) : etapa.estado === "bloqueada" ? (
+              <LockKeyhole size={15} />
+            ) : (
+              <CircleDashed size={17} />
+            )}
+            <span>
+              <strong>{etapa.label}</strong>
+              <small>{etapa.descricao}</small>
+            </span>
+          </article>
+        ))}
+      </div>
+      {!jornada.mapeamento.completo && (
+        <p>
+          Para concluir o mapeamento: {jornada.mapeamento.faltando.join(" · ")}.
+        </p>
+      )}
+    </section>
+  );
+}
 
 function BlocoAmbiental({ ambiental }) {
   if (!ambiental.disponivel)
@@ -111,7 +393,7 @@ function BlocoAmbiental({ ambiental }) {
   );
 }
 
-function CartaoOportunidade({ registro, analise, aberta, alternar }) {
+function CartaoOportunidade({ registro, analise, jornada, aberta, alternar, onEdit, onSimulate }) {
   const { ambiental, greenScore, financeiro, operacional, expansao, riscos } = analise;
   const criticos = riscos.filter((risco) => risco.gravidade === "alta").length;
   return (
@@ -161,6 +443,8 @@ function CartaoOportunidade({ registro, analise, aberta, alternar }) {
               {gravidadeRotulo[analise.proximaAcao.urgencia]}
             </span>
           </div>
+
+          <JornadaEletrificacao jornada={jornada} onEdit={onEdit} onSimulate={onSimulate} />
 
           <BlocoAmbiental ambiental={ambiental} />
 
@@ -249,10 +533,18 @@ function CartaoOportunidade({ registro, analise, aberta, alternar }) {
   );
 }
 
-export default function OpportunitiesPage({ opportunities = [], onCreate, setToast }) {
+export default function OpportunitiesPage({
+  opportunities = [],
+  scenarios = [],
+  onCreate,
+  onUpdate,
+  onNavigate,
+  setToast,
+}) {
   const [form, setForm] = useState(FORM_VAZIO);
   const [abertaId, setAbertaId] = useState(null);
   const [salvando, setSalvando] = useState(false);
+  const [editandoId, setEditandoId] = useState(null);
 
   const registros = useMemo(
     () => opportunities.map((item) => normalizarOportunidade(item)),
@@ -263,6 +555,17 @@ export default function OpportunitiesPage({ opportunities = [], onCreate, setToa
     () => new Map(registros.map((registro) => [registro.id, analisarOportunidade(registro)])),
     [registros],
   );
+  const jornadas = useMemo(
+    () =>
+      new Map(
+        registros.map((registro) => [
+          registro.id,
+          avaliarJornadaEletrificacao(registro, scenarios),
+        ]),
+      ),
+    [registros, scenarios],
+  );
+  const editando = registros.find((registro) => registro.id === editandoId) || null;
 
   const campo = (key) => (event) =>
     setForm((atual) => ({ ...atual, [key]: event.target.value }));
@@ -393,11 +696,22 @@ export default function OpportunitiesPage({ opportunities = [], onCreate, setToa
             key={registro.id}
             registro={registro}
             analise={analises.get(registro.id)}
+            jornada={jornadas.get(registro.id)}
             aberta={abertaId === registro.id}
             alternar={() => setAbertaId((atual) => (atual === registro.id ? null : registro.id))}
+            onEdit={() => setEditandoId(registro.id)}
+            onSimulate={() => onNavigate?.(`/todogreen/precificacao?opportunity=${encodeURIComponent(registro.id)}`)}
           />
         ))}
       </div>
+      {editando && (
+        <EstudoEletrificacaoModal
+          registro={editando}
+          onClose={() => setEditandoId(null)}
+          onSave={(alteracoes) => onUpdate?.(editando.id, alteracoes)}
+          setToast={setToast}
+        />
+      )}
     </section>
   );
 }
