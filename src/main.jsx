@@ -5,7 +5,11 @@ import "./styles.css";
 import "./features/logistics/LogisticsVertical.css";
 import "./features/logistics/LogisticsVerticalNavigation.css";
 import "./features/logistics/LogisticsVerticalPolish.js";
-import "./features/logistics/LogisticsVerticalSalesPerformance.js";
+import "./features/logistics/LogisticsVerticalRecovery.css";
+import "./features/logistics/LogisticsVerticalRecovery.js";
+import "./features/logistics/LogisticsVerticalCredentials.js";
+import "./features/logistics/LogisticsVerticalWorkCenterV2.js";
+import "./features/logistics/LogisticsVerticalFleet.js";
 import "./features/logistics/LogisticsVerticalNavigation.js";
 
 const reportError = (message, stack, componentStack) => {

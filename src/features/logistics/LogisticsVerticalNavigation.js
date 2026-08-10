@@ -28,6 +28,7 @@ const MODULE_META = {
   dashboards: ["Meus painéis", "Crie e organize visões para clientes, vendas, resultados, operação e indicadores ambientais."],
   clientes: ["Clientes e contatos", "Cadastre e acompanhe clientes, decisores, necessidades e próximos passos."],
   oportunidades: ["Oportunidades", "Acompanhe oportunidades comerciais, etapas, prioridades e potencial de negócio."],
+  "performance-comercial": ["Performance comercial", "Acompanhe execução da carteira e metas sem misturar oportunidades ou pipeline."],
   propostas: ["Propostas e contratos", "Crie propostas comerciais e acompanhe as condições de cada negociação."],
   precificacao: ["Precificação", "Escolha o serviço logístico que deseja calcular."],
   esg: ["Inteligência ESG", "Acompanhe impacto ambiental, Green Score e informações para clientes."],

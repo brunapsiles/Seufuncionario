@@ -112,6 +112,7 @@ const crmFields = (value = {}) => {
           department: clean(contact?.department, 120),
           email: normalizeEmail(contact?.email),
           phone: clean(contact?.phone, 40),
+          linkedinUrl: /^https:\/\/(www\.)?linkedin\.com\//i.test(clean(contact?.linkedinUrl, 500)) ? clean(contact?.linkedinUrl, 500) : "",
           relationshipRole: clean(contact?.relationshipRole, 60) || "Influenciador",
           influence: finite(contact?.influence),
           supportLevel: finite(contact?.supportLevel, -100, 100),
