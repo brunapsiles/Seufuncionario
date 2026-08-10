@@ -9,34 +9,38 @@ import { api, contaNova, criarConta, habilitarTodoGreen } from "./apoio.js";
 // não pode chegar a produção — com a menor superfície possível: poucos
 // testes, sem preencher formulário de produto.
 //
-// ESTADO: ainda `fixme`, apesar da separação. Três causas reais de
-// instabilidade já foram encontradas e corrigidas nesta rodada de
-// investigação (worker.js, App.jsx, LogisticsVerticalCredentials.js — ver
-// commit), mas o sintoma original permanece: rodando os quatro testes deste
-// arquivo em sequência (`npx playwright test e2e/vertical-acesso.spec.js`),
-// o primeiro passa e os demais travam nos 45s de `esperarEntrar`, sempre a
-// partir do teste que faz um `page.goto("/")` inteiro (recarga de página) no
-// meio da sequência — mesmo com `.wrangler/state` completamente zerado antes
-// de rodar, o que descarta acúmulo de dados de execuções anteriores como
-// causa. Rodado sozinho (`--grep`), qualquer um dos quatro passa em segundos.
+// ESTADO: promovido — `.fixme` removido, e o passo entrou em
+// `.github/workflows/ci.yml`. Duas causas reais de instabilidade, as duas
+// corrigidas:
 //
-// Hipóteses já eliminadas: colisão do limite de tentativas (`auth:${ip}`) —
-// corrigida e testada em `test/auth-rate-limit-local-dev.worker.test.js`,
-// mas o sintoma persiste mesmo com ela corrigida; e acúmulo de dados no D1
-// local entre execuções — eliminada rodando com estado zerado.
+// 1) `habilitarTodoGreen()` escrevia um negócio chamado "To Do Green" no
+//    espaço de trabalho — a forma antiga de ganhar acesso à vertical, que o
+//    worker não confere mais desde que o acesso passou a exigir e-mail
+//    autorizado (`todogreen_access_emails`) ou `TODOGREEN_ADMIN_EMAILS`.
+//    Uma conta de teste, com e-mail aleatório, nunca bateria com nenhum dos
+//    dois — o segundo teste em diante falhava de verdade, não por timing.
+//    Corrigido com um endpoint só-de-teste (`worker/services/test-support.js`,
+//    trancado fora de produção) que faz o mesmo INSERT que a tela de
+//    "acessos por e-mail" já faz, para o e-mail da própria sessão.
 //
-// Ainda não fica claro se o problema é específico deste ambiente (o `wrangler
-// dev` local detectou um proxy de saída configurado — "Proxy environment
-// variables detected" no início do log — algo que um runner de CI comum não
-// tem) ou algo que também aconteceria lá. Por isso este arquivo NÃO entra no
-// fluxo "Qualidade" ainda: colocar um portão instável bloqueando publicação
-// seria pior do que não ter portão nenhum. Assim que alguém confirmar rodando
-// em CI de verdade (ou achar a causa raiz do travamento), promover para
-// `test.describe` sem `.fixme` e adicionar o passo em `.github/workflows/ci.yml`.
+// 2) O sintoma que travava a suíte inteira nos 45s de `esperarEntrar`: o
+//    limite geral de `/api/auth/*` (`ip ? 8 : 200` por minuto) achava que
+//    tinha IP de borda de produção porque `wrangler dev` carimba
+//    `cf-connecting-ip: 127.0.0.1` em toda requisição local — não deixa o
+//    cabeçalho ausente, como a suíte de vitest-pool-workers simulava. Depois
+//    de ~8 registros na sequência (poucos testes bastam), `/api/auth/register`
+//    passava a devolver 429 e `criarConta` travava esperando uma tela que
+//    nunca chegava. Corrigido em `edgeIp()` (worker/lib/http.js), que trata
+//    loopback como "sem IP de borda" — Cloudflare nunca reporta 127.0.0.1
+//    como IP de um cliente externo de verdade.
+//
+// Os quatro testes deste arquivo passam em sequência, inclusive dentro da
+// suíte `e2e/` inteira. `vertical.spec.js` continua `fixme`: tem outra
+// instabilidade, não relacionada a estas duas — ver o comentário lá.
 
 const abas = (page) => page.getByRole("navigation", { name: /Navegação To Do Green/ });
 
-test.describe.fixme("acesso à vertical To Do Green", () => {
+test.describe("acesso à vertical To Do Green", () => {
   test("quem não tem o negócio no espaço não entra na vertical", async ({ page }) => {
     await criarConta(page, contaNova("sem-vertical"));
 

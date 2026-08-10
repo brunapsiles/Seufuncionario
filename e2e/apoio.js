@@ -79,18 +79,17 @@ export async function api(page, caminho, opcoes = {}) {
   );
 }
 
-// Dá à conta o negócio que libera a vertical — o mesmo caminho que a titular
-// percorreu ao cadastrar a empresa dela.
-export async function habilitarTodoGreen(page) {
-  const atual = await api(page, "/api/workspace");
-  const revisao = atual.corpo?.revision ?? 0;
-  const dados = atual.corpo?.data || {};
-  const r = await api(page, "/api/workspace", {
-    method: "PUT",
-    body: {
-      data: { ...dados, businesses: [{ id: "b-e2e", name: "To Do Green" }] },
-      revision: revisao,
-    },
+// Concede acesso à vertical pelo mesmo INSERT que um admin usaria na tela de
+// "acessos por e-mail" — /api/test-support/todogreen-acesso só existe quando
+// não há `cf-connecting-ip` (ausente em `wrangler dev` local, sempre presente
+// atrás da borda da Cloudflare em produção) e só concede para o e-mail da
+// própria sessão. Escrever um negócio chamado "To Do Green" no espaço não
+// libera mais nada — essa checagem foi removida do worker por ser
+// contornável por qualquer pessoa que renomeasse o próprio negócio.
+export async function habilitarTodoGreen(page, papel) {
+  const r = await api(page, "/api/test-support/todogreen-acesso", {
+    method: "POST",
+    body: papel ? { role: papel } : {},
   });
   // O React não fica sabendo de uma escrita feita por fora dele: sem recarregar,
   // a vertical continua invisível porque o estado da tela é o de antes.

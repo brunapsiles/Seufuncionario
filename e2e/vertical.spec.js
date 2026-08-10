@@ -10,15 +10,26 @@ import { contaNova, criarConta, habilitarTodoGreen } from "./apoio.js";
 //
 // Rodando sozinho, o arquivo de login passa inteiro em 18 segundos. Rodando a
 // suíte completa, os testes daqui começam a estourar o tempo de espera do
-// login — sempre em `criarConta`, nunca numa asserção de produto. O padrão
-// aponta para o servidor local (`wrangler dev`) degradando ao longo da série,
-// não para defeito nas telas: as mesmas telas passam quando o teste roda
-// isolado.
+// login — sempre em `criarConta`, nunca numa asserção de produto.
 //
-// Falta descobrir se é memória do miniflare, o tamanho do bundle sendo servido
-// a cada navegação, ou contenção de D1. Enquanto isso não estiver resolvido,
-// deixar estes testes ativos ensinaria a equipe a ignorar vermelho — que é o
-// pior estrago que uma suíte pode causar.
+// UMA causa real já foi encontrada e corrigida: `wrangler dev` carimba
+// `cf-connecting-ip: 127.0.0.1` em toda requisição local (não deixa o
+// cabeçalho ausente, como a suíte de vitest-pool-workers simulava), e o
+// limite de tentativas de `/api/auth/*` tratava esse loopback como IP de
+// borda de produção — 8 por minuto. `edgeIp()` (worker/lib/http.js) corrigiu
+// isso, e `vertical-acesso.spec.js` já roda com `.fixme` removido, os quatro
+// testes passando em sequência, inclusive dentro da suíte `e2e/` inteira.
+//
+// Mesmo com essa causa corrigida, rodando `e2e/` inteiro ainda sobra: (1)
+// `login.spec.js` "entra de novo depois de sair" trava no `.auth-shell`
+// depois do logout — não é rate limit de auth, é outra coisa; (2) o teste de
+// oportunidades deste arquivo salva o registro mas a lista não mostra
+// "Distribuidora E2E" a tempo. Nenhum dos dois reproduz rodando isolado.
+//
+// Falta descobrir se o que sobra é memória do miniflare, o tamanho do bundle
+// servido a cada navegação, ou contenção de D1. Enquanto isso não estiver
+// resolvido, deixar estes testes ativos ensinaria a equipe a ignorar
+// vermelho — que é o pior estrago que uma suíte pode causar.
 //
 // Para investigar: `npx playwright test e2e/vertical.spec.js --grep <nome>`.
 //

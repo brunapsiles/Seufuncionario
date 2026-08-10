@@ -12,7 +12,7 @@ import {
   sessionUser,
   sha256,
 } from "../auth/credenciais.js";
-import { allowed, json } from "../lib/http.js";
+import { allowed, edgeIp, json } from "../lib/http.js";
 import {
   codeEmailHtml,
   emailEnabled,
@@ -26,14 +26,13 @@ export async function handleAuth(request, env, url) {
       { error: "O serviço de contas ainda não está configurado." },
       503,
     );
-  const ip = request.headers.get("cf-connecting-ip");
-  // Em produção o Cloudflare sempre carimba este cabeçalho — é a borda dele
-  // que grava, o cliente não escreve por cima. A ausência só acontece em dev
-  // local (`wrangler dev` não simula a borda), onde toda a suíte de E2E bate
-  // no mesmo processo sem IP nenhum e cairia no mesmo balde. Um limite de 8
-  // por minuto pensado para um IP de verdade travava a própria suíte de teste
-  // muito antes de travar um ataque — daí o teto bem mais largo só quando não
-  // há IP de borda para diferenciar quem está pedindo.
+  const ip = edgeIp(request);
+  // Em produção o Cloudflare sempre carimba este cabeçalho com o IP real do
+  // cliente. `wrangler dev` também carimba um valor — 127.0.0.1 — mas não é
+  // IP de borda nenhum; edgeIp() trata os dois casos (ausência e loopback)
+  // como "sem como identificar quem pede", e é por isso que o teto fica bem
+  // mais largo: um limite pensado para atacante de verdade não pode travar a
+  // própria suíte de E2E rodando local.
   if (!allowed(`auth:${ip || "local-auth"}`, ip ? 8 : 200))
     return json(
       { error: "Muitas tentativas. Aguarde um minuto e tente novamente." },

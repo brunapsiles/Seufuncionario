@@ -34,3 +34,25 @@ export function allowed(key, cap = 8) {
   limits.set(key, item);
   return item.count <= cap;
 }
+
+// O IP de borda que separa "limite pensado para um atacante" de "limite
+// generoso porque não há como identificar quem pede".
+//
+// A ausência do cabeçalho não é o único sinal disso: `wrangler dev` grava
+// `cf-connecting-ip: 127.0.0.1` em toda requisição local — não deixa o
+// cabeçalho ausente como a suíte de teste (`vitest-pool-workers`, que não
+// passa por nenhum servidor de verdade) simulava. Um teto pensado para IP de
+// borda de produção, aplicado sem essa distinção, prendia a própria suíte de
+// E2E no limite de 8 por minuto assim que a sequência de testes criava mais
+// de 8 contas — o que parecia travamento aleatório e era, na verdade,
+// 429 silencioso em `criarConta`.
+//
+// Em produção o Cloudflare nunca reporta loopback como IP de um cliente
+// externo, então tratar 127.0.0.1/::1 como "sem IP de borda" não abre brecha
+// nenhuma — só corrige o que já deveria valer.
+const LOOPBACK_IPS = new Set(["127.0.0.1", "::1"]);
+
+export function edgeIp(request) {
+  const ip = request.headers.get("cf-connecting-ip");
+  return ip && !LOOPBACK_IPS.has(ip) ? ip : null;
+}
