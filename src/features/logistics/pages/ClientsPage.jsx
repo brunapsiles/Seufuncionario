@@ -79,9 +79,19 @@ const opportunityForCrm = (item) => ({
 
 const formatCheckedAt = (value) => value ? new Date(value).toLocaleString("pt-BR") : "Ainda não pesquisado";
 
+const ENGLISH_WORDS = /\b(the|and|with|from|for|across|we|our|their|this|that|company|manager|procurement|supply|chain|transportation|distribution|reports|growth|emissions|business)\b/gi;
+const PORTUGUESE_WORDS = /\b(o|a|os|as|de|do|da|dos|das|com|para|por|empresa|compras|logística|transporte|emissões|crescimento)\b/gi;
+const sourceHost = (url) => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "fonte externa"; } };
+const isEnglishSource = (item) => {
+  const text = `${item?.title || ""} ${item?.snippet || ""}`;
+  const english = text.match(ENGLISH_WORDS)?.length || 0;
+  const portuguese = text.match(PORTUGUESE_WORDS)?.length || 0;
+  return english >= 4 && english > portuguese * 2;
+};
+
 function ResearchLinks({ title, items = [], empty }) {
   return <div className="tdg-crm-research-group"><span>{title}</span>{items.length
-    ? <ul>{items.map((item) => <li key={item.url}><a href={item.url} target="_blank" rel="noreferrer">{item.title}</a>{item.snippet && <small>{item.snippet}</small>}{item.validation && <em>{item.validation}</em>}</li>)}</ul>
+    ? <ul>{items.map((item) => { const english = isEnglishSource(item); return <li key={item.url}><a href={item.url} target="_blank" rel="noreferrer">{english ? `Fonte internacional · ${sourceHost(item.url)}` : item.title}</a>{item.snippet && <small>{english ? "Conteúdo original em inglês. A evidência foi classificada pelo CRM, e o link permanece disponível para conferência." : item.snippet}</small>}{item.validation && <em>{item.validation}</em>}</li>; })}</ul>
     : <small>{empty}</small>}</div>;
 }
 

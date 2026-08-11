@@ -8,6 +8,7 @@ import {
   executarFerramenta,
   lerDecisao,
   montarIndice,
+  respostaPareceEmIngles,
 } from "../../../worker/services/todogreen-semente.js";
 
 // O lado do servidor da Semente, na parte que é pura: ler a decisão do
@@ -58,6 +59,13 @@ describe("ler a decisão do modelo", () => {
     // existe, mesmo que ele jure que sim.
     expect(lerDecisao('{"consultar":{"ferramenta":"apagar_banco"}}').consultar).toBeNull();
     expect(lerDecisao('{"resposta":"x","acao":{"tipo":"transferir_dinheiro"}}').acao).toBeNull();
+  });
+});
+
+describe("idioma da resposta", () => {
+  it("detecta resposta em inglês sem confundir cargos e siglas isolados", () => {
+    expect(respostaPareceEmIngles("The company reports strong business growth and supply chain investments across their transportation network.")).toBe(true);
+    expect(respostaPareceEmIngles("A empresa tem um Procurement Manager responsável por Supply Chain no Brasil.")).toBe(false);
   });
 });
 
@@ -180,6 +188,7 @@ describe("o contrato com o modelo", () => {
     // gerador de dado plausível com botão de gravar.
     expect(INSTRUCAO).toContain("Nunca estime");
     expect(INSTRUCAO).toContain("quem confirma é a pessoa");
+    expect(INSTRUCAO).toContain("português do Brasil");
   });
 
   it("a instrução proíbe recomendar ferramenta externa", () => {
