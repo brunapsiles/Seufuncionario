@@ -7,6 +7,7 @@ const DECISION_ROLES = ["patrocinador", "decisor econômico", "compras"];
 
 export function assessAccount(account = {}) {
   const contacts = account.crm?.contacts || [];
+  const activeContacts = contacts.filter((contact) => contact.active !== false);
   const profile = lower(`${account.segment || ""} ${account.name || ""} ${account.notes || ""}`);
   const esgMatches = ESG_HIGH.filter((keyword) => profile.includes(keyword));
   const procurementContacts = contacts.filter((contact) => PROCUREMENT.some((keyword) => lower(`${contact.title} ${contact.department} ${contact.relationshipRole}`).includes(keyword)));
@@ -15,12 +16,37 @@ export function assessAccount(account = {}) {
   const staleContacts = contacts.filter((contact) => contact.active === false);
   const noChannel = contacts.filter((contact) => !contact.email && !contact.phone && !contact.linkedinUrl);
 
-  let nextTask;
-  if (!contacts.length) nextTask = "Mapear ao menos um contato de Procurement de Logística e Transportes e um patrocinador da operação.";
-  else if (!logisticsProcurementContacts.length) nextTask = "Identificar no Brasil quem lidera Procurement de Logística, Transportes, Fretes ou Supply Chain nesta empresa.";
-  else if (!decisionContacts.length) nextTask = "Confirmar o decisor econômico e o patrocinador interno antes da abordagem comercial.";
-  else if (!account.crm?.nextAction) nextTask = `Agendar uma abordagem com ${procurementContacts[0].name} e registrar objetivo e prazo.`;
-  else nextTask = account.crm.nextAction;
+  const namedContact = activeContacts.find((contact) => contact.name)?.name || "o contato cadastrado";
+  const completed = new Set(Array.isArray(account.crm?.completedSuggestedActions) ? account.crm.completedSuggestedActions : []);
+  const candidates = [];
+  if (!activeContacts.length) candidates.push({
+    key: "map-first-contact",
+    title: "Mapear ao menos um contato de Procurement de Logística e Transportes no Brasil.",
+  });
+  if (activeContacts.length && !procurementContacts.length) candidates.push({
+    key: "request-procurement-referral",
+    title: `Pedir a ${namedContact} a indicação de quem decide sobre contratação de transportes e logística no Brasil.`,
+  });
+  if (procurementContacts.length && !logisticsProcurementContacts.length) candidates.push({
+    key: "validate-logistics-scope",
+    title: `Confirmar com ${procurementContacts[0].name} se sua atuação inclui fretes, transportes ou logística no Brasil.`,
+  });
+  if (activeContacts.length && !decisionContacts.length) candidates.push({
+    key: "confirm-economic-decision",
+    title: "Confirmar o decisor econômico e o patrocinador interno antes da abordagem comercial.",
+  });
+  if (logisticsProcurementContacts.length && !account.crm?.nextAction) candidates.push({
+    key: "schedule-procurement-approach",
+    title: `Agendar uma abordagem com ${logisticsProcurementContacts[0].name} e registrar objetivo e prazo.`,
+  });
+  if (account.crm?.nextAction) candidates.push({
+    key: `crm-next-action:${lower(account.crm.nextAction).slice(0, 80)}`,
+    title: account.crm.nextAction,
+  });
+  const pending = candidates.find((item) => !completed.has(item.key)) || {
+    key: "review-commercial-plan",
+    title: "Revisar o estágio da conta e definir uma nova ação comercial com responsável e prazo.",
+  };
 
   return {
     esgRelevance: esgMatches.length ? "Alta" : profile ? "A validar" : "Sem dados suficientes",
@@ -32,7 +58,9 @@ export function assessAccount(account = {}) {
     strongestContacts: [...decisionContacts, ...procurementContacts].filter((item, index, list) => list.findIndex((candidate) => candidate.id === item.id) === index).slice(0, 3),
     staleContacts,
     noChannel,
-    nextTask,
+    nextTask: pending.title,
+    nextTaskKey: pending.key,
+    nextTaskCanComplete: !completed.has(pending.key),
   };
 }
 

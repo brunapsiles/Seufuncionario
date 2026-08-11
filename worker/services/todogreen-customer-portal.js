@@ -131,7 +131,7 @@ const intelligenceSources = (items, limit = 10) => Array.isArray(items)
 const intelligenceFields = (input) => {
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;
   const version = finite(input.version, 1, 10);
-  if (version < 3) return null;
+  if (version < 4) return null;
   return {
     version,
     company: clean(input.company, 200),
@@ -264,6 +264,9 @@ const crmFields = (value = {}, companyName = "") => {
     churnRisk: finite(input.churnRisk),
     nextAction: clean(input.nextAction, 500),
     nextActionAt: clean(input.nextActionAt, 40),
+    completedSuggestedActions: Array.isArray(input.completedSuggestedActions)
+      ? [...new Set(input.completedSuggestedActions.slice(0, 50).map((item) => clean(item, 120)).filter(Boolean))]
+      : [],
     lastInteractionAt: clean(input.lastInteractionAt, 40),
     source: clean(input.source, 100),
     tags: Array.isArray(input.tags) ? input.tags.slice(0, 20).map((item) => clean(item, 60)).filter(Boolean) : [],

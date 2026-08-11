@@ -8,7 +8,7 @@ const normalize = (value) => clean(value, 1200).normalize("NFD").replace(/[\u030
 const safeUrl = (value) => { try { const url = new URL(value); return ["http:", "https:"].includes(url.protocol) ? url.href : ""; } catch { return ""; } };
 const resultKey = (item) => safeUrl(item?.url).replace(/[#?].*$/, "").replace(/\/$/, "");
 const includesAny = (text, terms) => terms.some((term) => text.includes(term));
-export const COMPANY_RESEARCH_VERSION = 3;
+export const COMPANY_RESEARCH_VERSION = 4;
 
 const VACANCY = ["vaga", "vagas", "career", "carreira", "emprego", "job", "jobs", "hiring", "we are hiring", "we're looking", "talentos", "recrutamento", "analista de compras", "comprador"];
 const TRANSPORT = ["transporte", "transportadora", "logistica", "frete", "frota", "middle mile", "last mile", "transferencia", "distribuicao", "carrier"];
@@ -56,10 +56,25 @@ const SEGMENTS = [
   ["Serviços financeiros", ["banco", "financeir", "fintech", "seguros"]],
 ];
 
+const NEWS_PROFILE_NOISE = [
+  "company size", "associated members", "people who've listed", "founded", "funding last round",
+  "total rounds", "investors n/a", "specialties n/a", "get directions", "overview",
+];
+
+const cleanSnippet = (value, max = 420) => clean(value, 1800)
+  .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+  .replace(/<[^>]+>/g, " ")
+  .replace(/#{1,6}\s*/g, "")
+  .replace(/\bN\/?A\b/gi, "")
+  .replace(/\s*\[\.\.\.\]\s*/g, " … ")
+  .replace(/\s+/g, " ")
+  .trim()
+  .slice(0, max);
+
 const source = (item, category, extra = {}) => ({
   title: clean(item?.title, 240),
   url: safeUrl(item?.url),
-  snippet: clean(item?.snippet, category === "procurement_contact" ? 380 : 700),
+  snippet: cleanSnippet(item?.snippet, category === "procurement_contact" ? 300 : 420),
   provider: clean(item?.provider, 60),
   category,
   ...extra,
@@ -76,6 +91,13 @@ const unique = (items, limit = 8) => {
 };
 
 const isVacancy = (item) => includesAny(normalize(`${item.title} ${item.snippet} ${item.url}`), VACANCY);
+
+const isCompanyProfileNoise = (item) => {
+  const url = safeUrl(item?.url);
+  const text = normalize(`${item?.title} ${item?.snippet}`);
+  return /linkedin\.com\/(?:company|in)\//i.test(url) ||
+    NEWS_PROFILE_NOISE.filter((term) => text.includes(term)).length >= 2;
+};
 
 const resultsByKind = (searches = []) => searches.reduce((groups, item) => {
   const kind = clean(item?.kind, 40);
@@ -207,7 +229,7 @@ const publicContact = (item, index, { company, officialHost }) => {
 
 const isLegacyUnverifiedWebContact = (contact) =>
   normalize(contact?.source).startsWith("pesquisa web") &&
-  (Number(contact?.researchVersion || 0) < COMPANY_RESEARCH_VERSION || contact?.verifiedBrazil !== true);
+  (Number(contact?.researchVersion || 0) < 3 || contact?.verifiedBrazil !== true);
 
 /** Classifica apenas o que está evidenciado no resultado. Não transforma notícia ou vaga em RFQ. */
 export function classifyCompanyResearch({ company, segment, searches, checkedAt = new Date().toISOString() }) {
@@ -253,8 +275,21 @@ export function classifyCompanyResearch({ company, segment, searches, checkedAt 
     validation: "Resultado filtrado por empresa, Brasil e escopo de logística/transportes.",
   }));
   const contactCandidates = acceptedProfiles.map((item, index) => publicContact(item, index, { company, officialHost })).filter(Boolean);
-  const companyNews = unique((byKind.news || []).filter((item) => mentionsCompany(item, company) && !isVacancy(item))).map((item) => source(item, "company_news"));
-  const segmentNews = unique((byKind.segment || []).filter((item) => !isVacancy(item))).map((item) => source(item, "segment_news"));
+  const officialWebsiteKey = officialWebsite ? resultKey(officialWebsite) : "";
+  const companyNewsResults = unique((byKind.news || []).filter((item) =>
+    mentionsCompany(item, company) && !isVacancy(item) && !isCompanyProfileNoise(item) &&
+    (!officialWebsiteKey || resultKey(item) !== officialWebsiteKey)
+  ), 4);
+  const companyNewsKeys = new Set(companyNewsResults.map(resultKey));
+  const segmentTokens = normalize(segment).split(/\s+/).filter((item) => item.length > 3);
+  const segmentNewsResults = unique((byKind.segment || []).filter((item) => {
+    const text = normalize(`${item?.title} ${item?.snippet} ${item?.url}`);
+    return !isVacancy(item) && !isCompanyProfileNoise(item) && !mentionsCompany(item, company) &&
+      !companyNewsKeys.has(resultKey(item)) &&
+      (includesAny(text, TRANSPORT) || segmentTokens.some((token) => text.includes(token)));
+  }), 4);
+  const companyNews = companyNewsResults.map((item) => source(item, "company_news"));
+  const segmentNews = segmentNewsResults.map((item) => source(item, "segment_news"));
   const esgRelevance = esgSignals.length ? "Alta" : segment && includesAny(normalize(segment), TRANSPORT.concat(["varejo", "industria", "e-commerce", "alimentos", "energia"])) ? "Provável" : "A validar";
 
   const nextActions = [];
@@ -305,8 +340,16 @@ export function buildCompanyResearchPlans({ company, segment, year, focus = "com
   const market = clean(segment, 120) || "logística e transporte";
   const plans = [
     {
-      kinds: ["identity", "esg", "news", "segment"],
-      query: `"${name}" Brasil site oficial LinkedIn empresa segmento ESG sustentabilidade notícias ${year} ${market}`,
+      kinds: ["identity"],
+      query: `"${name}" Brasil site oficial LinkedIn empresa segmento`,
+    },
+    {
+      kinds: ["esg", "news"],
+      query: `"${name}" Brasil ESG sustentabilidade logística notícias ${year}`,
+    },
+    {
+      kinds: ["segment"],
+      query: `"${market}" Brasil logística transportes tendências notícias ${year}`,
     },
     {
       kinds: ["supplier", "rfq"],

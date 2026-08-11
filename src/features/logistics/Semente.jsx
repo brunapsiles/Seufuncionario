@@ -35,6 +35,71 @@ const CHAVE_ABERTA = "todogreen:semente:aberta";
 let contador = 0;
 const proximoId = () => (contador += 1);
 
+const partesInline = (texto, prefixo) => {
+  const partes = [];
+  const padrao = /(\*\*[^*\n]+\*\*|\[[^\]]+\]\(https?:\/\/[^\s)]+\))/g;
+  let inicio = 0;
+  let achado;
+  while ((achado = padrao.exec(texto)) !== null) {
+    if (achado.index > inicio) partes.push(texto.slice(inicio, achado.index));
+    const token = achado[0];
+    if (token.startsWith("**")) {
+      partes.push(<strong key={`${prefixo}-strong-${achado.index}`}>{token.slice(2, -2)}</strong>);
+    } else {
+      const link = token.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/);
+      partes.push(<a key={`${prefixo}-link-${achado.index}`} href={link[2]} target="_blank" rel="noreferrer">{link[1]}</a>);
+    }
+    inicio = achado.index + token.length;
+  }
+  if (inicio < texto.length) partes.push(texto.slice(inicio));
+  return partes;
+};
+
+// Renderiza o subconjunto de Markdown que a IA usa, com elementos React. Sem
+// HTML injetado: símbolos viram formatação, mas o texto do modelo continua
+// incapaz de inserir marcação executável na página.
+function MensagemSemente({ texto, classe }) {
+  const linhas = String(texto || "").split(/\r?\n/);
+  const blocos = [];
+  for (let indice = 0; indice < linhas.length;) {
+    const linha = linhas[indice].trim();
+    if (!linha) { indice += 1; continue; }
+    const titulo = linha.match(/^#{1,6}\s+(.+)$/);
+    if (titulo) {
+      blocos.push(<strong className="semente-msg-titulo" key={`titulo-${indice}`}>{partesInline(titulo[1], `titulo-${indice}`)}</strong>);
+      indice += 1;
+      continue;
+    }
+    const marcador = linha.match(/^[-*]\s+(.+)$/);
+    if (marcador) {
+      const itens = [];
+      while (indice < linhas.length) {
+        const item = linhas[indice].trim().match(/^[-*]\s+(.+)$/);
+        if (!item) break;
+        itens.push(<li key={`item-${indice}`}>{partesInline(item[1], `item-${indice}`)}</li>);
+        indice += 1;
+      }
+      blocos.push(<ul key={`lista-${indice}`}>{itens}</ul>);
+      continue;
+    }
+    const numerado = linha.match(/^\d+[.)]\s+(.+)$/);
+    if (numerado) {
+      const itens = [];
+      while (indice < linhas.length) {
+        const item = linhas[indice].trim().match(/^\d+[.)]\s+(.+)$/);
+        if (!item) break;
+        itens.push(<li key={`numero-${indice}`}>{partesInline(item[1], `numero-${indice}`)}</li>);
+        indice += 1;
+      }
+      blocos.push(<ol key={`numerada-${indice}`}>{itens}</ol>);
+      continue;
+    }
+    blocos.push(<p key={`paragrafo-${indice}`}>{partesInline(linha, `paragrafo-${indice}`)}</p>);
+    indice += 1;
+  }
+  return <div className={classe}>{blocos}</div>;
+}
+
 export default function Semente({ pagina, clienteId, authHeaders, aoAgir }) {
   const [aberta, setAberta] = useState(false);
   const [pergunta, setPergunta] = useState("");
@@ -191,11 +256,9 @@ export default function Semente({ pagina, clienteId, authHeaders, aoAgir }) {
             {item.consultou && (
               <small className="semente-consulta">Consultei: {item.consultou.ferramenta}</small>
             )}
-            <p
-              className={`semente-msg semente-msg--${item.de}${item.falhou ? " semente-msg--erro" : ""}`}
-            >
-              {item.texto}
-            </p>
+            {item.de === "semente" && !item.falhou
+              ? <MensagemSemente texto={item.texto} classe="semente-msg semente-msg--semente" />
+              : <p className={`semente-msg semente-msg--${item.de}${item.falhou ? " semente-msg--erro" : ""}`}>{item.texto}</p>}
             {item.proposta && (
               <div className="semente-proposta">
                 <strong>{textoDaProposta(item.proposta)}</strong>

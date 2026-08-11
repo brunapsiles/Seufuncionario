@@ -428,9 +428,11 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
   const selectedAccount = useMemo(() => selected ? accountFromClient(selected) : null, [selected]);
   const selectedOpportunities = selected ? crmOpportunities.filter((item) => item.clientId === selected.id) : [];
   const selectedSummary = selectedAccount ? crmAccountSummary(selectedAccount, selectedAccount.contacts, crmOpportunities) : null;
-  const selectedIntelligence = selected ? assessAccount(selected) : null;
+  const selectedIntelligence = selected && selectedAccount
+    ? assessAccount({ ...selected, crm: { ...(selected.crm || {}), contacts: selectedAccount.contacts } })
+    : null;
   const selectedReportCandidate = selected ? researchReports[selected.id] || selected.crm?.intelligence || null : null;
-  const selectedReport = Number(selectedReportCandidate?.version || 0) >= 3 ? selectedReportCandidate : null;
+  const selectedReport = Number(selectedReportCandidate?.version || 0) >= 4 ? selectedReportCandidate : null;
   const logisticsProcurementNames = selectedIntelligence
     ? [...new Set(selectedIntelligence.logisticsProcurementContacts.map((item) => item.name).filter(Boolean))]
     : [];
@@ -509,6 +511,26 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
     if (!onCreateTask) throw new Error("Não foi possível conectar a tarefa ao workspace.");
     await onCreateTask(task); setToast?.("Tarefa criada e vinculada ao cliente.");
   };
+  const completeSuggestedAction = async () => {
+    if (!selected || !selectedIntelligence?.nextTaskKey) return;
+    const completed = [...new Set([
+      ...(selected.crm?.completedSuggestedActions || []),
+      selectedIntelligence.nextTaskKey,
+    ])];
+    try {
+      await api(`clients/${encodeURIComponent(selected.id)}`, authHeaders, {
+        method: "PATCH",
+        body: JSON.stringify({
+          revision: selected.revision,
+          crm: { ...selected.crm, completedSuggestedActions: completed },
+        }),
+      });
+      setToast?.("Ação concluída. A IA selecionou o próximo passo da conta.");
+      await load();
+    } catch (reason) {
+      setError(reason.message);
+    }
+  };
 
   const createClient = async (event) => {
     event.preventDefault(); setError("");
@@ -576,7 +598,7 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
       <button className="tdg-crm-back" type="button" onClick={closeClient}><ArrowLeft size={16} />Voltar para a carteira</button>
       <header className="tdg-crm-detail-hero"><div><span>{selected.crm?.tier || "Enterprise"}{selected.crm?.temperature ? ` · ${selected.crm.temperature}` : ""}</span><h2>{selected.name}</h2><p>{selected.segment || "Segmento não informado"} · {selected.crm?.stage || "Mapeamento"}{selected.document ? ` · ${selected.document}` : ""}</p><small>{selected.crm?.source ? `Origem: ${selected.crm.source}` : "Conta da carteira To Do Green"}</small></div><div className="tdg-crm-detail-actions">{access.podeEditar && <button type="button" onClick={() => setEditingId(selected.id)}><Edit3 size={15} />Editar</button>}<button type="button" onClick={() => setTaskClientId(selected.id)}><ListPlus size={15} />Adicionar tarefa</button><button type="button" onClick={() => researchSelected("company")} disabled={researching}><Globe2 size={15} />Pesquisar empresa</button><button type="button" onClick={() => researchSelected("contacts")} disabled={researching}><UserSearch size={15} />Pesquisar contatos</button><button type="button" onClick={() => setPortalPreviewOpen(true)}><Eye size={15} />Ver como cliente</button><button type="button" onClick={() => onNavigate?.(`/todogreen/oportunidades?client=${encodeURIComponent(selected.id)}`)}>Pipeline <ArrowRight size={15} /></button></div></header>
       <div className="tdg-crm-detail-metrics"><article><small>Saúde da conta</small><strong>{selectedSummary.score}</strong><span>{selectedSummary.attention === "healthy" ? "Saudável" : selectedSummary.attention === "critical" ? "Crítica" : "Atenção"}</span></article><article><small>Cobertura de decisores</small><strong>{selectedSummary.coverage}%</strong><span>{selectedAccount.contacts.length} contato(s)</span></article><article><small>Pipeline da conta</small><strong>{BRL.format(selectedSummary.pipeline || 0)}</strong><span>{selectedSummary.openOpportunities || 0} oportunidade(s)</span></article><article><small>Portal do cliente</small><strong>{selected.portalEnabled ? "Liberado" : "Bloqueado"}</strong><span>{selected.portalUserCount || 0} acesso(s) ativo(s)</span></article></div>
-      <section className="tdg-crm-next"><Target size={17} /><div><small>PRÓXIMA MELHOR AÇÃO</small><strong>{selectedSummary.nextAction}</strong></div><button type="button" onClick={() => setTaskClientId(selected.id)}>Transformar em tarefa</button></section>
+      <section className="tdg-crm-next"><Target size={17} /><div><small>PRÓXIMA MELHOR AÇÃO</small><strong>{selectedIntelligence.nextTask}</strong></div><button type="button" onClick={() => setTaskClientId(selected.id)}>Transformar em tarefa</button><button type="button" onClick={completeSuggestedAction} disabled={!selectedIntelligence.nextTaskCanComplete}>Marcar feita e ver próxima</button></section>
       {portalPreviewOpen && <ClientPortalPreview client={selected} authHeaders={authHeaders} open onClose={() => setPortalPreviewOpen(false)} />}
       <div className="tdg-crm-detail-grid"><main>
         <section className="tdg-crm-intelligence"><header><strong>IA · mapa da empresa</strong><small>Leitura dos dados do CRM</small></header><div><span>Relevância ESG</span><strong>{selectedIntelligence.esgRelevance}</strong><small>{selectedIntelligence.esgReason}</small></div><div><span>Próxima tarefa sugerida</span><strong>{selectedIntelligence.nextTask}</strong></div><div><span>Procurement de Logística e Transportes</span><strong>{procurementSummary}</strong></div></section>

@@ -4,12 +4,12 @@ import { buildCompanyResearchPlans, classifyCompanyResearch, resolveWebsiteEnric
 const result = (title, url, snippet = "") => ({ title, url, snippet, provider: "teste" });
 
 describe("inteligência externa comercial", () => {
-  it("faz a pesquisa completa em três chamadas e mantém o foco brasileiro", () => {
+  it("separa identidade, notícias e tendências em cinco chamadas com foco brasileiro", () => {
     const plans = buildCompanyResearchPlans({ company: "Adidas", segment: "Varejo", year: 2026 });
-    expect(plans).toHaveLength(3);
+    expect(plans).toHaveLength(5);
     expect(new Set(plans.flatMap((item) => item.kinds))).toEqual(new Set(["identity", "supplier", "rfq", "esg", "news", "segment", "contacts"]));
     expect(plans.every((item) => item.query.includes("Brasil"))).toBe(true);
-    expect(buildCompanyResearchPlans({ company: "Adidas", segment: "Varejo", year: 2026, focus: "contacts" })).toHaveLength(4);
+    expect(buildCompanyResearchPlans({ company: "Adidas", segment: "Varejo", year: 2026, focus: "contacts" })).toHaveLength(6);
   });
   it("não confunde vaga com RFQ e só confirma oportunidade aberta de transporte", () => {
     const report = classifyCompanyResearch({ company: "Empresa X", segment: "Varejo", searches: [
@@ -60,9 +60,9 @@ describe("inteligência externa comercial", () => {
       source: "Pesquisa web",
       country: "Brasil",
       verifiedBrazil: true,
-      researchVersion: 3,
+      researchVersion: 4,
     })]);
-    expect(report.version).toBe(3);
+    expect(report.version).toBe(4);
     expect(report.suggestedHeadquarters?.value).toBe("São Paulo, SP");
   });
 
@@ -110,5 +110,25 @@ describe("inteligência externa comercial", () => {
       { kind: "contacts", results: [result("Bruno Lima - Gerente de Suprimentos - Empresa Brasil | LinkedIn", "https://br.linkedin.com/in/bruno", "Curitiba, Brasil. Supply chain e contratação de transportadoras na Empresa Brasil.")] },
     ] });
     expect(report.contactCandidates.map((item) => item.name)).toEqual(["Ana Souza", "Bruno Lima"]);
+  });
+
+  it("não repete perfil corporativo como notícia nem duplica a empresa nas tendências", () => {
+    const profile = result(
+      "GRUPO Caffeine Army - Mais que um grupo",
+      "https://www.linkedin.com/company/caffeine-army",
+      "### Company Size 51-200 employees 179 associated members Founded 2016 ### Overview",
+    );
+    const duplicatedNews = result(
+      "Caffeine Army anuncia nova operação logística",
+      "https://noticias.example.com/caffeine-army-logistica",
+      "A Caffeine Army anunciou investimento em distribuição no Brasil.",
+    );
+    const report = classifyCompanyResearch({ company: "Caffeine Army", segment: "Alimentos e bebidas", searches: [
+      { kind: "news", results: [profile, duplicatedNews] },
+      { kind: "segment", results: [profile, duplicatedNews, result("Logística de alimentos avança no Brasil", "https://setor.example.com/logistica-alimentos", "Tendências de transporte e distribuição para alimentos e bebidas.")] },
+    ] });
+    expect(report.companyNews.map((item) => item.url)).toEqual(["https://noticias.example.com/caffeine-army-logistica"]);
+    expect(report.segmentNews.map((item) => item.url)).toEqual(["https://setor.example.com/logistica-alimentos"]);
+    expect(report.companyNews[0].snippet).not.toContain("###");
   });
 });

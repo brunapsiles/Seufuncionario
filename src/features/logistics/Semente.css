@@ -170,6 +170,14 @@
   word-break: break-word;
 }
 
+.semente-msg > p { margin: 0; }
+.semente-msg > p + p, .semente-msg > p + ul, .semente-msg > p + ol,
+.semente-msg > ul + p, .semente-msg > ol + p, .semente-msg-titulo + p { margin-top: 7px; }
+.semente-msg ul, .semente-msg ol { margin: 6px 0 0; padding-left: 19px; white-space: normal; }
+.semente-msg li + li { margin-top: 3px; }
+.semente-msg a { color: var(--tdg-green, #17624f); font-weight: 700; }
+.semente-msg-titulo { display: block; font-size: 13px; margin-top: 2px; }
+
 .semente-msg--voce {
   background: var(--tdg-green, #17624f);
   border-bottom-right-radius: 5px;
