@@ -14,7 +14,21 @@ describe("inteligência e canais da conta", () => {
     const result = assessAccount({ name: "Empresa", crm: { contacts: [{ id: "1", name: "Carlos", department: "Compras" }] } });
     expect(result.procurementContacts).toHaveLength(1);
     expect(result.logisticsProcurementContacts).toHaveLength(0);
-    expect(result.nextTask).toMatch(/Brasil.*Procurement de Logística/i);
+    expect(result.nextTask).toMatch(/Confirmar com Carlos/i);
+  });
+
+  it("usa o contato cadastrado e avança quando a ação sugerida é concluída", () => {
+    const account = { name: "Empresa", crm: { contacts: [{ id: "1", name: "Marina", department: "Operações" }] } };
+    const first = assessAccount(account);
+    expect(first.nextTask).toMatch(/Pedir a Marina a indicação/i);
+    expect(first.nextTaskKey).toBe("request-procurement-referral");
+
+    const next = assessAccount({
+      ...account,
+      crm: { ...account.crm, completedSuggestedActions: [first.nextTaskKey] },
+    });
+    expect(next.nextTask).not.toBe(first.nextTask);
+    expect(next.nextTask).toMatch(/decisor econômico/i);
   });
 
   it("gera links apenas com os dados fornecidos", () => {

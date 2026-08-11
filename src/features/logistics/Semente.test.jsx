@@ -121,6 +121,19 @@ describe("a pergunta vai para a vertical, com o contexto da tela", () => {
     expect(await screen.findByText(/Consultei: carteira/i)).toBeTruthy();
   });
 
+  it("formata negrito, títulos e listas sem mostrar os símbolos do Markdown", async () => {
+    global.fetch = vi.fn(() => resposta({ resposta: "## Situação\nNão há conta **Quente**.\n- Revisar a carteira" }));
+    render(<Semente pagina="clientes" authHeaders={authHeaders} />);
+    abrir();
+    await perguntarPor("Quais contas estão quentes?");
+    expect(await screen.findByText("Quente")).toBeTruthy();
+    expect(screen.getByText("Quente").tagName).toBe("STRONG");
+    expect(screen.getByText("Situação")).toBeTruthy();
+    expect(screen.getByText("Revisar a carteira").tagName).toBe("LI");
+    expect(screen.queryByText(/\*\*Quente\*\*/)).toBeNull();
+    expect(screen.queryByText(/## Situação/)).toBeNull();
+  });
+
   it("diz que falhou em vez de fingir que respondeu", async () => {
     global.fetch = vi.fn(() => resposta({ error: "Os provedores de IA não responderam agora." }, false));
     render(<Semente pagina="clientes" authHeaders={authHeaders} />);

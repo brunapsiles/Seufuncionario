@@ -55,6 +55,12 @@ const api = async (path, authHeaders, options = {}) => {
   return payload;
 };
 
+const trustedCrmContact = (contact) => {
+  const source = String(contact?.source || "").trim().toLowerCase();
+  if (!source.startsWith("pesquisa web")) return true;
+  return contact?.verifiedBrazil === true && Number(contact?.researchVersion || 0) >= 3 && String(contact?.country || "").toLowerCase() === "brasil";
+};
+
 const accountFromClient = (client) => ({
   ...(client.crm || {}),
   id: client.id,
@@ -66,7 +72,7 @@ const accountFromClient = (client) => ({
   notes: client.notes,
   revision: client.revision,
   ownerId: client.vendedores?.[0]?.email || "",
-  contacts: client.crm?.contacts || [],
+  contacts: (client.crm?.contacts || []).filter(trustedCrmContact),
 });
 
 const opportunityForCrm = (item) => ({
@@ -107,14 +113,15 @@ function ExternalIntelligence({ report, researching, error, onResearch }) {
       <ResearchLinks title="Procurement de Logística e Transportes no Brasil" items={report.procurementPeople} empty="Nenhum contato público passou pelos critérios de empresa, Brasil e escopo logístico." />
       {report.contactSearchQuality && <div className="tdg-crm-research-enrichment"><strong>Filtro de contatos: Brasil + Procurement logístico</strong><small>{report.contactSearchQuality.accepted || 0} aceito(s); {report.contactSearchQuality.foreignRejected || 0} de outros países, {report.contactSearchQuality.noBrazilEvidenceRejected || 0} sem evidência de Brasil e {report.contactSearchQuality.nonLogisticsRejected || 0} sem escopo logístico foram descartados.</small></div>}
       {report.suggestedSegment?.value && <div className="tdg-crm-research-enrichment"><strong>Segmento identificado: {report.suggestedSegment.value}</strong><small>Confiança {report.suggestedSegment.confidence}. {report.autoEnrichment?.segmentFilled ? "Preenchido automaticamente no CRM." : "O CRM já possuía um segmento e foi preservado."}</small></div>}
+      {report.suggestedHeadquarters?.value && <div className="tdg-crm-research-enrichment"><strong>Operação brasileira identificada: {report.suggestedHeadquarters.value}</strong><small>Confiança {report.suggestedHeadquarters.confidence}. {report.autoEnrichment?.headquartersFilled ? "Preenchida automaticamente na conta." : "A conta já possuía uma sede e foi preservada."}</small></div>}
       {report.autoEnrichment?.contactsAdded > 0 && <div className="tdg-crm-research-enrichment"><strong>{report.autoEnrichment.contactsAdded} contato(s) público(s) incluído(s)</strong><small>Vínculo e cargo ficam marcados para confirmação antes da abordagem.</small></div>}
       {report.autoEnrichment?.contactsUpdated > 0 && <div className="tdg-crm-research-enrichment"><strong>{report.autoEnrichment.contactsUpdated} contato(s) cadastrado(s) complementado(s)</strong><small>Os dados existentes foram preservados e somente campos vazios receberam evidência pública.</small></div>}
       {(report.autoEnrichment?.websiteFilled || report.autoEnrichment?.linkedinFilled) && <div className="tdg-crm-research-enrichment"><strong>Dados institucionais preenchidos</strong><small>{[report.autoEnrichment.websiteFilled && "site", report.autoEnrichment.linkedinFilled && "LinkedIn da empresa"].filter(Boolean).join(" e ")} vinculados à conta.</small></div>}
+      {(report.autoEnrichment?.websiteCorrected || report.autoEnrichment?.invalidWebsiteRemoved) && <div className="tdg-crm-research-enrichment"><strong>{report.autoEnrichment.websiteCorrected ? "Site oficial corrigido" : "Site incorreto removido"}</strong><small>{report.autoEnrichment.websiteCorrected ? "O endereço anterior era de uma fonte externa e foi substituído pelo domínio da própria empresa." : "O endereço anterior era de uma fonte externa e nenhuma página oficial segura foi encontrada para substituí-lo."}</small></div>}
+      {report.autoEnrichment?.legacyContactsRemoved > 0 && <div className="tdg-crm-research-enrichment"><strong>{report.autoEnrichment.legacyContactsRemoved} contato(s) antigo(s) descartado(s)</strong><small>Resultados web sem comprovação de atuação no Brasil foram removidos da conta.</small></div>}
       <ResearchLinks title="Sinais ESG" items={report.esg?.signals} empty="Nenhuma evidência pública suficiente." />
       <ResearchLinks title="Notícias da empresa" items={report.companyNews} empty="Nenhuma notícia relevante encontrada." />
       <ResearchLinks title="Notícias e tendências do segmento" items={report.segmentNews} empty="Nenhuma notícia setorial relevante encontrada." />
-      {report.rfqWatchlist?.length > 0 && <details><summary>Sinais de compras ainda não acionáveis ({report.rfqWatchlist.length})</summary><ResearchLinks title="Exigem confirmação" items={report.rfqWatchlist} empty="" /></details>}
-      {report.supplierWatchlist?.length > 0 && <details><summary>Possíveis portais não confirmados ({report.supplierWatchlist.length})</summary><ResearchLinks title="Domínio não confirmado" items={report.supplierWatchlist} empty="" /></details>}
       <div className="tdg-crm-research-next"><span>Próximas ações sugeridas</span>{report.nextActions?.map((item) => <strong key={item}>{item}</strong>)}</div>
       <small className="tdg-crm-research-note">{report.disclaimer}</small>
     </>}
@@ -421,8 +428,11 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
   const selectedAccount = useMemo(() => selected ? accountFromClient(selected) : null, [selected]);
   const selectedOpportunities = selected ? crmOpportunities.filter((item) => item.clientId === selected.id) : [];
   const selectedSummary = selectedAccount ? crmAccountSummary(selectedAccount, selectedAccount.contacts, crmOpportunities) : null;
-  const selectedIntelligence = selected ? assessAccount(selected) : null;
-  const selectedReport = selected ? researchReports[selected.id] || selected.crm?.intelligence || null : null;
+  const selectedIntelligence = selected && selectedAccount
+    ? assessAccount({ ...selected, crm: { ...(selected.crm || {}), contacts: selectedAccount.contacts } })
+    : null;
+  const selectedReportCandidate = selected ? researchReports[selected.id] || selected.crm?.intelligence || null : null;
+  const selectedReport = Number(selectedReportCandidate?.version || 0) >= 4 ? selectedReportCandidate : null;
   const logisticsProcurementNames = selectedIntelligence
     ? [...new Set(selectedIntelligence.logisticsProcurementContacts.map((item) => item.name).filter(Boolean))]
     : [];
@@ -478,18 +488,48 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
         method: "POST", body: JSON.stringify({ force: true, focus }),
       });
       setResearchReports((current) => ({ ...current, [selected.id]: data.intelligence || null }));
+      if (data.client?.id) setClients((current) => current.map((client) => client.id === data.client.id ? {
+        ...client,
+        segment: data.client.segment ?? client.segment,
+        revision: data.client.revision ?? client.revision,
+        updatedAt: data.client.updatedAt ?? client.updatedAt,
+        crm: { ...(client.crm || {}), ...(data.client.crm || {}) },
+      } : client));
       await load();
       const additions = data.enrichment?.contactsAdded ? ` ${data.enrichment.contactsAdded} contato(s) incluído(s).` : "";
       const updates = data.enrichment?.contactsUpdated ? ` ${data.enrichment.contactsUpdated} contato(s) complementado(s).` : "";
       const segment = data.enrichment?.segmentFilled ? " Segmento preenchido." : "";
       const institutional = data.enrichment?.websiteFilled || data.enrichment?.linkedinFilled ? " Site ou LinkedIn institucional preenchido." : "";
-      setToast?.(`${focus === "contacts" ? "Contatos de Procurement logístico no Brasil pesquisados." : "Empresa pesquisada e ficha atualizada."}${segment}${institutional}${additions}${updates}`);
+      const correctedWebsite = data.enrichment?.websiteCorrected ? " Site oficial corrigido." : data.enrichment?.invalidWebsiteRemoved ? " Site incorreto removido." : "";
+      const headquarters = data.enrichment?.headquartersFilled ? " Operação brasileira preenchida." : "";
+      const removed = data.enrichment?.legacyContactsRemoved ? ` ${data.enrichment.legacyContactsRemoved} contato(s) web sem comprovação brasileira removido(s).` : "";
+      setToast?.(`${focus === "contacts" ? "Contatos de Procurement logístico no Brasil pesquisados." : "Empresa pesquisada e ficha atualizada."}${segment}${institutional}${correctedWebsite}${headquarters}${additions}${updates}${removed}`);
     } catch (reason) { setResearchError(reason.message); }
     finally { setResearching(false); }
   };
   const createTask = async (task) => {
     if (!onCreateTask) throw new Error("Não foi possível conectar a tarefa ao workspace.");
     await onCreateTask(task); setToast?.("Tarefa criada e vinculada ao cliente.");
+  };
+  const completeSuggestedAction = async () => {
+    if (!selected || !selectedIntelligence?.nextTaskKey) return;
+    const completed = [...new Set([
+      ...(selected.crm?.completedSuggestedActions || []),
+      selectedIntelligence.nextTaskKey,
+    ])];
+    try {
+      await api(`clients/${encodeURIComponent(selected.id)}`, authHeaders, {
+        method: "PATCH",
+        body: JSON.stringify({
+          revision: selected.revision,
+          crm: { ...selected.crm, completedSuggestedActions: completed },
+        }),
+      });
+      setToast?.("Ação concluída. A IA selecionou o próximo passo da conta.");
+      await load();
+    } catch (reason) {
+      setError(reason.message);
+    }
   };
 
   const createClient = async (event) => {
@@ -558,7 +598,7 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
       <button className="tdg-crm-back" type="button" onClick={closeClient}><ArrowLeft size={16} />Voltar para a carteira</button>
       <header className="tdg-crm-detail-hero"><div><span>{selected.crm?.tier || "Enterprise"}{selected.crm?.temperature ? ` · ${selected.crm.temperature}` : ""}</span><h2>{selected.name}</h2><p>{selected.segment || "Segmento não informado"} · {selected.crm?.stage || "Mapeamento"}{selected.document ? ` · ${selected.document}` : ""}</p><small>{selected.crm?.source ? `Origem: ${selected.crm.source}` : "Conta da carteira To Do Green"}</small></div><div className="tdg-crm-detail-actions">{access.podeEditar && <button type="button" onClick={() => setEditingId(selected.id)}><Edit3 size={15} />Editar</button>}<button type="button" onClick={() => setTaskClientId(selected.id)}><ListPlus size={15} />Adicionar tarefa</button><button type="button" onClick={() => researchSelected("company")} disabled={researching}><Globe2 size={15} />Pesquisar empresa</button><button type="button" onClick={() => researchSelected("contacts")} disabled={researching}><UserSearch size={15} />Pesquisar contatos</button><button type="button" onClick={() => setPortalPreviewOpen(true)}><Eye size={15} />Ver como cliente</button><button type="button" onClick={() => onNavigate?.(`/todogreen/oportunidades?client=${encodeURIComponent(selected.id)}`)}>Pipeline <ArrowRight size={15} /></button></div></header>
       <div className="tdg-crm-detail-metrics"><article><small>Saúde da conta</small><strong>{selectedSummary.score}</strong><span>{selectedSummary.attention === "healthy" ? "Saudável" : selectedSummary.attention === "critical" ? "Crítica" : "Atenção"}</span></article><article><small>Cobertura de decisores</small><strong>{selectedSummary.coverage}%</strong><span>{selectedAccount.contacts.length} contato(s)</span></article><article><small>Pipeline da conta</small><strong>{BRL.format(selectedSummary.pipeline || 0)}</strong><span>{selectedSummary.openOpportunities || 0} oportunidade(s)</span></article><article><small>Portal do cliente</small><strong>{selected.portalEnabled ? "Liberado" : "Bloqueado"}</strong><span>{selected.portalUserCount || 0} acesso(s) ativo(s)</span></article></div>
-      <section className="tdg-crm-next"><Target size={17} /><div><small>PRÓXIMA MELHOR AÇÃO</small><strong>{selectedSummary.nextAction}</strong></div><button type="button" onClick={() => setTaskClientId(selected.id)}>Transformar em tarefa</button></section>
+      <section className="tdg-crm-next"><Target size={17} /><div><small>PRÓXIMA MELHOR AÇÃO</small><strong>{selectedIntelligence.nextTask}</strong></div><button type="button" onClick={() => setTaskClientId(selected.id)}>Transformar em tarefa</button><button type="button" onClick={completeSuggestedAction} disabled={!selectedIntelligence.nextTaskCanComplete}>Marcar feita e ver próxima</button></section>
       {portalPreviewOpen && <ClientPortalPreview client={selected} authHeaders={authHeaders} open onClose={() => setPortalPreviewOpen(false)} />}
       <div className="tdg-crm-detail-grid"><main>
         <section className="tdg-crm-intelligence"><header><strong>IA · mapa da empresa</strong><small>Leitura dos dados do CRM</small></header><div><span>Relevância ESG</span><strong>{selectedIntelligence.esgRelevance}</strong><small>{selectedIntelligence.esgReason}</small></div><div><span>Próxima tarefa sugerida</span><strong>{selectedIntelligence.nextTask}</strong></div><div><span>Procurement de Logística e Transportes</span><strong>{procurementSummary}</strong></div></section>
