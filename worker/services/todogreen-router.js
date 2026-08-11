@@ -2,6 +2,7 @@ import { handleTodoGreenWorkCenter } from "./todogreen-work-center.js";
 import { exigirAcessoTodoGreen } from "./todogreen-access.js";
 import { handleTodoGreenFleet } from "./todogreen-fleet.js";
 import { handleTodoGreenTracker } from "./todogreen-tracker.js";
+import { handleTodoGreenTrackerReadiness } from "./todogreen-tracker-readiness.js";
 import {
   handleTodoGreenCustomerPortal,
   handleTodoGreenClientPortalPreview,
@@ -82,6 +83,14 @@ export async function routeTodoGreenApi(request, env) {
   if (path.startsWith("/api/todogreen/esg"))
     return guarded("To Do Green ESG error", "Não foi possível processar o cálculo ambiental.",
       () => handleTodoGreenEsg(request, env));
+  if (path.startsWith("/api/todogreen/tracker/")) {
+    const readiness = await guarded(
+      "To Do Green Tracker readiness error",
+      "Não foi possível carregar o diagnóstico do rastreamento.",
+      () => handleTodoGreenTrackerReadiness(request, env),
+    );
+    if (readiness) return readiness;
+  }
   if (path.startsWith("/api/todogreen/tracker"))
     return guarded("To Do Green Tracker error", "Não foi possível processar o rastreamento veicular.",
       () => handleTodoGreenTracker(request, env));
