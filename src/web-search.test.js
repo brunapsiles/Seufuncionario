@@ -120,6 +120,17 @@ describe("web search service", () => {
     expect(result.results).toHaveLength(2);
   });
 
+  it("usa a busca básica do Tavily para preservar a cota gratuita", async () => {
+    const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ results: [] }) });
+    await searchWeb({ TAVILY_API_KEY: "segredo" }, "adidas brasil", { fetcher });
+    const request = fetcher.mock.calls.find(([url]) => String(url).includes("tavily"));
+    expect(JSON.parse(request[1].body)).toEqual(expect.objectContaining({
+      query: "adidas brasil",
+      search_depth: "basic",
+      include_raw_content: false,
+    }));
+  });
+
   it("produz contexto numerado com obrigação de citar", () => {
     const context = webResultsToContext({
       results: [

@@ -1,5 +1,6 @@
 import { recorteDeCarteira, TENANT_ID } from "./todogreen-access.js";
 import { searchWeb, webSearchConfiguration } from "./web-search.js";
+import { normalizedPhone } from "../../src/features/logistics/crmContactNormalizationDomain.js";
 
 const clean = (value, max = 1000) => String(value ?? "").replace(/\s+/g, " ").trim().slice(0, max);
 const parse = (value, fallback) => { try { return JSON.parse(value || ""); } catch { return fallback; } };
@@ -8,13 +9,30 @@ const safeUrl = (value) => { try { const url = new URL(value); return ["http:", 
 const resultKey = (item) => safeUrl(item?.url).replace(/[#?].*$/, "").replace(/\/$/, "");
 const includesAny = (text, terms) => terms.some((term) => text.includes(term));
 
-const VACANCY = ["vaga", "vagas", "career", "carreira", "emprego", "job", "talentos", "recrutamento", "analista de compras", "comprador"];
+const VACANCY = ["vaga", "vagas", "career", "carreira", "emprego", "job", "jobs", "hiring", "we are hiring", "we're looking", "talentos", "recrutamento", "analista de compras", "comprador"];
 const TRANSPORT = ["transporte", "transportadora", "logistica", "frete", "frota", "middle mile", "last mile", "transferencia", "distribuicao", "carrier"];
 const RFQ = ["rfq", "rfp", "request for proposal", "bid", "licitacao", "edital", "concorrencia", "cotacao de frete"];
 const OPEN = ["aberta", "aberto", "inscricoes", "prazo", "participe", "envie sua proposta", "recebimento de propostas", "chamada publica"];
 const SUPPLIER = ["cadastro de fornecedores", "seja fornecedor", "portal do fornecedor", "supplier portal", "supplier registration", "homologacao de fornecedores"];
 const ESG = ["esg", "sustentabilidade", "descarbonizacao", "emissoes", "escopo 3", "scope 3", "net zero", "carbono", "clima"];
 const PROCUREMENT = ["procurement", "compras", "suprimentos", "sourcing", "supply chain"];
+const LOGISTICS_PROCUREMENT = [
+  "logistica", "logistics", "transporte", "transportes", "transportation", "frete",
+  "freight", "carrier", "distribution", "distribuicao", "supply chain", "last mile",
+  "middle mile", "inbound", "outbound",
+];
+const BRAZIL = [
+  "brasil", "brazil", "sao paulo", "campinas", "jundiai", "guarulhos", "osasco",
+  "barueri", "rio de janeiro", "belo horizonte", "curitiba", "porto alegre", "recife",
+  "salvador", "fortaleza", "brasilia", "goiania", "manaus", "parana", "santa catarina",
+  "rio grande do sul", "minas gerais",
+];
+const FOREIGN_PROFILE_HOST = /^(?:ca|ch|uk|de|fr|es|it|nl|au|mx|ar|cl|co)\.linkedin\.com$/i;
+const FOREIGN_LOCATION = [
+  "north america", "united states", "usa", "canada", "ontario", "toronto", "portugal",
+  "porto, portugal", "switzerland", "zurich", "lucerne", "germany", "herzogenaurach",
+  "united kingdom", "london", "spain", "france", "mexico", "argentina", "chile",
+];
 const SEGMENTS = [
   ["E-commerce", ["e-commerce", "marketplace", "comercio eletronico"]],
   ["Varejo", ["varejo", "lojas", "retail"]],
@@ -30,7 +48,7 @@ const SEGMENTS = [
 const source = (item, category, extra = {}) => ({
   title: clean(item?.title, 240),
   url: safeUrl(item?.url),
-  snippet: clean(item?.snippet, 700),
+  snippet: clean(item?.snippet, category === "procurement_contact" ? 380 : 700),
   provider: clean(item?.provider, 60),
   category,
   ...extra,
@@ -48,6 +66,47 @@ const unique = (items, limit = 8) => {
 
 const isVacancy = (item) => includesAny(normalize(`${item.title} ${item.snippet} ${item.url}`), VACANCY);
 
+const resultsByKind = (searches = []) => searches.reduce((groups, item) => {
+  const kind = clean(item?.kind, 40);
+  if (!kind) return groups;
+  groups[kind] = [...(groups[kind] || []), ...(Array.isArray(item?.results) ? item.results : [])];
+  return groups;
+}, {});
+
+const companyTokens = (company) => normalize(company)
+  .split(/\s+/)
+  .filter((item) => item.length > 3 && !["grupo", "brasil"].includes(item));
+
+const mentionsCompany = (item, company) => {
+  const tokens = companyTokens(company);
+  if (!tokens.length) return true;
+  const text = normalize(`${item?.title} ${item?.snippet} ${item?.url}`).slice(0, 900);
+  return tokens.some((token) => text.includes(token));
+};
+
+const profileGeography = (item) => {
+  let host = "";
+  try { host = new URL(safeUrl(item?.url)).hostname.replace(/^www\./, ""); } catch { host = ""; }
+  if (FOREIGN_PROFILE_HOST.test(host)) return "foreign";
+  const leadingEvidence = normalize(`${item?.title} ${item?.snippet}`).slice(0, 650);
+  if (includesAny(leadingEvidence, FOREIGN_LOCATION)) return "foreign";
+  if (host === "br.linkedin.com" || includesAny(leadingEvidence, BRAZIL)) return "brazil";
+  return "unknown";
+};
+
+const classifyContactResult = (item, company) => {
+  if (!/linkedin\.com\/in\//i.test(safeUrl(item?.url))) return "not-profile";
+  if (isVacancy(item)) return "vacancy";
+  if (!mentionsCompany(item, company)) return "other-company";
+  const text = normalize(`${item?.title} ${item?.snippet}`);
+  if (!includesAny(text, PROCUREMENT)) return "not-procurement";
+  if (!includesAny(text, LOGISTICS_PROCUREMENT)) return "not-logistics";
+  const geography = profileGeography(item);
+  if (geography === "foreign") return "foreign";
+  if (geography !== "brazil") return "no-brazil-evidence";
+  return "accepted";
+};
+
 const inferredSegment = (items) => {
   const evidence = unique(items, 12);
   const ranked = SEGMENTS.map(([value, terms]) => ({
@@ -59,30 +118,54 @@ const inferredSegment = (items) => {
   return { value: winner.value, source: source(winner.matches[0], "segment_evidence"), confidence: winner.matches.length > 1 ? "alta" : "moderada" };
 };
 
-const publicContact = (item, index) => {
+const contactEmail = (item, officialHost, company) => {
+  const matches = clean(`${item?.title} ${item?.snippet}`, 1600)
+    .match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || [];
+  const companyToken = companyTokens(company)[0] || "";
+  const allowed = [...new Set(matches.map((value) => value.toLowerCase()))].filter((value) => {
+    const domain = value.split("@")[1] || "";
+    return (officialHost && (domain === officialHost || domain.endsWith(`.${officialHost}`))) ||
+      (companyToken && normalize(domain).includes(companyToken));
+  });
+  return allowed.length === 1 ? allowed[0] : "";
+};
+
+const contactPhone = (item) => {
+  const matches = clean(`${item?.title} ${item?.snippet}`, 1600)
+    .match(/(?:\+?55\s*)?(?:\(?\d{2}\)?[\s.-]*)?9?\d{4}[\s.-]*\d{4}/g) || [];
+  const phones = [...new Set(matches.map(normalizedPhone).filter(Boolean))];
+  return phones.length === 1 ? phones[0] : "";
+};
+
+const publicContact = (item, index, { company, officialHost }) => {
   const parts = clean(item.title, 240).replace(/\s*[|·]\s*LinkedIn.*$/i, "").split(/\s+[–—-]\s+/).map((part) => clean(part, 120)).filter(Boolean);
   const name = parts[0] || "";
   if (name.split(/\s+/).length < 2 || /linkedin|procurement|compras|suprimentos/i.test(name)) return null;
+  const title = parts.slice(1).filter((part) => !companyTokens(company).some((token) => normalize(part).includes(token))).join(" · ");
   return {
     id: `web-contact-${index + 1}`,
     name,
-    title: parts.slice(1).join(" · ") || "Cargo público a confirmar",
-    department: "Compras / Procurement",
+    title: title || "Procurement logístico a confirmar",
+    department: "Procurement de Logística e Transportes",
+    email: contactEmail(item, officialHost, company),
+    phone: contactPhone(item),
     linkedinUrl: safeUrl(item.url),
     relationshipRole: "Influenciador",
     source: "Pesquisa web",
     sourceUrl: safeUrl(item.url),
-    validation: "Contato público encontrado na pesquisa; confirme vínculo e cargo antes da abordagem.",
+    country: "Brasil",
+    specialty: "Procurement logístico",
+    validation: "Perfil público com evidência de atuação no Brasil, vínculo com a empresa e escopo de logística/transportes. Confirme cargo e atualidade antes da abordagem.",
     active: true,
   };
 };
 
 /** Classifica apenas o que está evidenciado no resultado. Não transforma notícia ou vaga em RFQ. */
 export function classifyCompanyResearch({ company, segment, searches, checkedAt = new Date().toISOString() }) {
-  const byKind = Object.fromEntries(searches.map((item) => [item.kind, item.results || []]));
+  const byKind = resultsByKind(searches);
   const all = unique(searches.flatMap((item) => item.results || []), 40);
   const companyToken = normalize(company).split(/\s+/).filter((item) => item.length > 3)[0] || "";
-  const linkedInCompany = all.find((item) => /linkedin\.com\/company\//i.test(item.url));
+  const linkedInCompany = all.find((item) => /linkedin\.com\/company\//i.test(item.url) && mentionsCompany(item, company));
   const officialWebsite = (byKind.identity || []).find((item) => {
     const url = normalize(item.url);
     return !includesAny(url, ["linkedin.com", "facebook.com", "instagram.com", "wikipedia.org", "youtube.com", "jusbrasil.com", "glassdoor."]) &&
@@ -105,8 +188,14 @@ export function classifyCompanyResearch({ company, segment, searches, checkedAt 
   }).filter(trustedForCompany).map((item) => source(item, "rfq", { actionable: true, validation: "O resultado menciona processo aberto e escopo de transporte em domínio compatível; confirme prazo e elegibilidade." }));
   const rfqWatchlist = rfqCandidates.filter((item) => !openRfqs.some((open) => resultKey(open) === resultKey(item))).map((item) => source(item, "rfq_watchlist", { actionable: false, validation: "Sinal de compras encontrado, mas sem evidência suficiente de RFQ de transporte aberta agora." }));
   const esgSignals = unique((byKind.esg || []).filter((item) => includesAny(normalize(`${item.title} ${item.snippet}`), ESG) && !isVacancy(item))).map((item) => source(item, "esg"));
-  const procurementPeople = unique(all.filter((item) => /linkedin\.com\/in\//i.test(item.url) && includesAny(normalize(`${item.title} ${item.snippet}`), PROCUREMENT) && !isVacancy(item))).map((item) => source(item, "procurement_contact", { currentness: "A função deve ser confirmada no perfil antes do contato." }));
-  const contactCandidates = procurementPeople.map(publicContact).filter(Boolean);
+  const profileResults = unique(all.filter((item) => /linkedin\.com\/in\//i.test(item.url)), 20);
+  const classifiedProfiles = profileResults.map((item) => ({ item, reason: classifyContactResult(item, company) }));
+  const acceptedProfiles = classifiedProfiles.filter((item) => item.reason === "accepted").map((item) => item.item);
+  const procurementPeople = acceptedProfiles.map((item) => source(item, "procurement_contact", {
+    currentness: "Perfil compatível com Brasil e procurement logístico; confirme vínculo e cargo antes do contato.",
+    validation: "Resultado filtrado por empresa, Brasil e escopo de logística/transportes.",
+  }));
+  const contactCandidates = acceptedProfiles.map((item, index) => publicContact(item, index, { company, officialHost })).filter(Boolean);
   const companyNews = unique((byKind.news || []).filter((item) => !isVacancy(item))).map((item) => source(item, "company_news"));
   const segmentNews = unique((byKind.segment || []).filter((item) => !isVacancy(item))).map((item) => source(item, "segment_news"));
   const esgRelevance = esgSignals.length ? "Alta" : segment && includesAny(normalize(segment), TRANSPORT.concat(["varejo", "industria", "e-commerce", "alimentos", "energia"])) ? "Provável" : "A validar";
@@ -133,15 +222,49 @@ export function classifyCompanyResearch({ company, segment, searches, checkedAt 
     rfqWatchlist,
     procurementPeople,
     contactCandidates,
+    contactSearchQuality: {
+      accepted: acceptedProfiles.length,
+      foreignRejected: classifiedProfiles.filter((item) => item.reason === "foreign").length,
+      noBrazilEvidenceRejected: classifiedProfiles.filter((item) => item.reason === "no-brazil-evidence").length,
+      nonLogisticsRejected: classifiedProfiles.filter((item) => item.reason === "not-logistics").length,
+      otherCompanyRejected: classifiedProfiles.filter((item) => item.reason === "other-company").length,
+      vacanciesRejected: classifiedProfiles.filter((item) => item.reason === "vacancy").length,
+      policy: "Somente Brasil + empresa confirmada no resultado + Procurement ligado a Logística, Transportes, Frete, Distribuição ou Supply Chain.",
+    },
     companyNews,
     segmentNews,
     nextActions,
     excludedVacancies: all.filter(isVacancy).length,
-    disclaimer: "Resultados públicos verificados na data indicada. Notícia, vaga e expansão não são tratadas como RFQ. Links e cargos podem mudar e devem ser confirmados na fonte.",
+    disclaimer: "Resultados públicos verificados na data indicada. Contatos só são aceitos com evidência de Brasil, vínculo com a empresa e escopo de procurement logístico. Notícias, vagas e expansão não são tratadas como RFQ. Links e cargos podem mudar e devem ser confirmados na fonte.",
   };
 }
 
 const response = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+
+/** Uma pesquisa 360 reaproveita cada resultado em várias classificações. */
+export function buildCompanyResearchPlans({ company, segment, year, focus = "company" }) {
+  const name = clean(company, 200);
+  const market = clean(segment, 120) || "logística e transporte";
+  const plans = [
+    {
+      kinds: ["identity", "esg", "news", "segment"],
+      query: `"${name}" Brasil site oficial LinkedIn empresa segmento ESG sustentabilidade notícias ${year} ${market}`,
+    },
+    {
+      kinds: ["supplier", "rfq"],
+      query: `"${name}" Brasil ("cadastro de fornecedores" OR "seja fornecedor" OR RFQ OR RFP OR licitação OR concorrência) (transporte OR transportadora OR logística OR frete)`,
+    },
+    {
+      kinds: ["contacts"],
+      query: `"${name}" Brasil site:linkedin.com/in (procurement OR compras OR suprimentos OR sourcing) (logística OR transportes OR frete OR distribution OR "supply chain")`,
+    },
+  ];
+  if (focus === "contacts") plans.push({
+    kinds: ["contacts"],
+    query: `"${name}" Brasil site:linkedin.com/in (head OR diretor OR gerente OR manager) (procurement OR compras OR suprimentos OR sourcing) (logística OR transporte OR frete OR distribution OR "supply chain")`,
+  });
+  return plans;
+}
 
 export async function handleTodoGreenClientIntelligence(request, env, access, user) {
   if (!env.DB) return response({ error: "Banco indisponível." }, 503);
@@ -171,21 +294,12 @@ export async function handleTodoGreenClientIntelligence(request, env, access, us
     forcar: body.force === true,
     focus: body.focus === "contacts" ? "contacts" : "company",
   });
-  if (resultado.erro) return response({ error: resultado.erro }, resultado.status || 502);
+  if (resultado.erro) return response({ error: resultado.erro, failures: resultado.failures }, resultado.status || 502);
   if (resultado.doCache) return response({ intelligence: resultado.relatorio, cached: true });
   return response({ intelligence: resultado.relatorio, enrichment: resultado.enrichment, cached: false });
 }
 
-/**
- * A pesquisa em si, separada da rota.
- *
- * Existe como função porque tem dois chamadores: os botões "Pesquisar
- * empresa"/"Pesquisar contatos" da tela do cliente e a ação
- * `pesquisar_empresa` que a Semente propõe. Duplicar as consultas, o
- * enriquecimento e a gravação em dois lugares garantiria que um dia
- * divergissem — e a divergência apareceria como "a pesquisa da Semente acha
- * coisa diferente da pesquisa do botão".
- */
+/** Pesquisa compartilhada pelos botões do CRM e pelas ações confirmadas da Semente. */
 export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = false, focus = "company" }) {
   const fields = parse(linha.fields_json, {});
   const cached = fields.intelligence && typeof fields.intelligence === "object" ? fields.intelligence : null;
@@ -195,32 +309,57 @@ export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = f
   const company = clean(linha.name, 200);
   const segment = clean(linha.segment, 120);
   const year = new Date().getUTCFullYear();
-  const queries = [
-    ["identity", `"${company}" site oficial LinkedIn empresa procurement compras`],
-    ["supplier", `"${company}" ("cadastro de fornecedores" OR "seja fornecedor" OR "supplier portal")`],
-    ["rfq", `"${company}" (RFQ OR RFP OR licitação OR concorrência) (transporte OR transportadora OR logística OR frete)`],
-    ["esg", `"${company}" ESG sustentabilidade descarbonização emissões logística Escopo 3`],
-    ["news", `"${company}" notícias ${year} logística expansão operação`],
-    ["segment", `${segment || "logística e transporte"} notícias tendências ${year} Brasil ESG fornecedores transporte`],
-    ["contacts", `"${company}" site:linkedin.com/in (procurement OR compras OR suprimentos OR sourcing OR logística OR supply chain)`],
-  ];
-  if (focus === "contacts")
-    queries.push(["contacts", `"${company}" site:linkedin.com/in (head OR diretor OR gerente) (procurement OR compras OR suprimentos OR logística)`]);
-  const settled = await Promise.all(queries.map(async ([kind, query]) => ({ kind, ...(await searchWeb(env, query)) })));
-  if (settled.every((item) => !item.configured))
+  const plans = buildCompanyResearchPlans({ company, segment, year, focus });
+  const planResults = await Promise.all(plans.map(async (plan) => ({ ...plan, ...(await searchWeb(env, plan.query)) })));
+  const settled = planResults.flatMap((item) => item.kinds.map((kind) => ({
+    kind, configured: item.configured, results: item.results,
+  })));
+  if (planResults.every((item) => !item.configured))
     return { erro: "Pesquisa web ainda não configurada. Cadastre uma chave do Brave Search, Tavily, Serper, Exa, Jina ou Google Search.", status: 503 };
   const report = classifyCompanyResearch({ company, segment, searches: settled, checkedAt: new Date().toISOString() });
-  report.providers = [...new Set(settled.flatMap((item) => item.providers || []))];
-  report.failures = settled.flatMap((item) => item.failures || []).slice(0, 12);
+  report.providers = [...new Set(planResults.flatMap((item) => item.providers || []))];
+  report.failures = planResults.flatMap((item) => item.failures || []).slice(0, 12);
+  if (!report.providers.length && report.failures.length)
+    return { erro: "A pesquisa web está configurada, mas o provedor não respondeu. Tente novamente em instantes.", failures: report.failures, status: 502 };
   const existingContacts = Array.isArray(fields.contacts) ? fields.contacts : [];
-  const existingIdentities = new Set(existingContacts.flatMap((item) => [normalize(item.linkedinUrl), normalize(item.name)].filter(Boolean)));
-  const discoveredContacts = (report.contactCandidates || []).filter((item) => !existingIdentities.has(normalize(item.linkedinUrl)) && !existingIdentities.has(normalize(item.name)));
+  let contactsUpdated = 0;
+  const matchedCandidates = new Set();
+  const enrichedContacts = existingContacts.map((existing) => {
+    const match = (report.contactCandidates || []).find((candidate) =>
+      (normalize(existing.linkedinUrl) && normalize(existing.linkedinUrl) === normalize(candidate.linkedinUrl)) ||
+      (normalize(existing.email) && normalize(existing.email) === normalize(candidate.email)) ||
+      normalize(existing.name) === normalize(candidate.name));
+    if (!match) return existing;
+    matchedCandidates.add(match.linkedinUrl);
+    const next = {
+      ...existing,
+      title: existing.title || match.title,
+      department: existing.department || match.department,
+      email: existing.email || match.email,
+      phone: existing.phone || match.phone,
+      linkedinUrl: existing.linkedinUrl || match.linkedinUrl,
+      source: existing.source || "Pesquisa web (complemento)",
+      sourceUrl: existing.sourceUrl || match.sourceUrl,
+      validation: existing.validation || match.validation,
+      country: existing.country || match.country,
+      specialty: existing.specialty || match.specialty,
+    };
+    if (JSON.stringify(next) !== JSON.stringify(existing)) contactsUpdated += 1;
+    return next;
+  });
+  const existingIdentities = new Set(enrichedContacts.flatMap((item) => [normalize(item.linkedinUrl), normalize(item.email), normalize(item.name)].filter(Boolean)));
+  const discoveredContacts = (report.contactCandidates || []).filter((item) => !matchedCandidates.has(item.linkedinUrl) && !existingIdentities.has(normalize(item.linkedinUrl)) && !existingIdentities.has(normalize(item.email)) && !existingIdentities.has(normalize(item.name)));
   const filledSegment = !clean(linha.segment, 120) && report.suggestedSegment?.value ? report.suggestedSegment.value : clean(linha.segment, 120);
+  const filledWebsite = !clean(fields.website, 1000) && report.officialWebsite?.url ? report.officialWebsite.url : clean(fields.website, 1000);
+  const filledLinkedin = !clean(fields.linkedinUrl, 1000) && report.linkedinCompany?.url ? report.linkedinCompany.url : clean(fields.linkedinUrl, 1000);
   report.autoEnrichment = {
     segmentFilled: !clean(linha.segment, 120) && Boolean(filledSegment),
+    websiteFilled: !clean(fields.website, 1000) && Boolean(filledWebsite),
+    linkedinFilled: !clean(fields.linkedinUrl, 1000) && Boolean(filledLinkedin),
     contactsAdded: discoveredContacts.length,
+    contactsUpdated,
   };
-  const nextFields = { ...fields, contacts: [...existingContacts, ...discoveredContacts], intelligence: report };
+  const nextFields = { ...fields, website: filledWebsite, linkedinUrl: filledLinkedin, contacts: [...enrichedContacts, ...discoveredContacts], intelligence: report };
   await env.DB.prepare(
     `UPDATE todogreen_clients SET segment=?,fields_json=?,revision=revision+1,updated_by=?,updated_at=?
       WHERE id=? AND tenant_id=? AND workspace_owner_id=?`,

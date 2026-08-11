@@ -91,6 +91,14 @@ const safeExternalUrl = (value) => {
   } catch { return ""; }
 };
 
+const safeLinkedinUrl = (value) => {
+  const url = safeExternalUrl(value);
+  if (!url) return "";
+  try {
+    return /(^|\.)linkedin\.com$/i.test(new URL(url).hostname) ? url : "";
+  } catch { return ""; }
+};
+
 const intelligenceSource = (item = {}) => ({
   title: clean(item.title, 240),
   url: safeExternalUrl(item.url),
@@ -138,16 +146,42 @@ const intelligenceFields = (input) => {
           name: clean(contact?.name, 160),
           title: clean(contact?.title, 160),
           department: clean(contact?.department, 120),
-          linkedinUrl: safeExternalUrl(contact?.linkedinUrl),
+          email: normalizeEmail(contact?.email),
+          phone: clean(contact?.phone, 80),
+          linkedinUrl: safeLinkedinUrl(contact?.linkedinUrl),
+          relationshipRole: clean(contact?.relationshipRole, 60),
           source: clean(contact?.source, 80),
+          sourceUrl: safeExternalUrl(contact?.sourceUrl),
+          country: clean(contact?.country, 80),
+          specialty: clean(contact?.specialty, 120),
           validation: clean(contact?.validation, 500),
         })).filter((contact) => contact.name && contact.linkedinUrl)
       : [],
+    contactSearchQuality: input.contactSearchQuality && typeof input.contactSearchQuality === "object"
+      ? {
+          accepted: finite(input.contactSearchQuality.accepted, 0, 1000),
+          foreignRejected: finite(input.contactSearchQuality.foreignRejected, 0, 1000),
+          noBrazilEvidenceRejected: finite(input.contactSearchQuality.noBrazilEvidenceRejected, 0, 1000),
+          nonLogisticsRejected: finite(input.contactSearchQuality.nonLogisticsRejected, 0, 1000),
+          otherCompanyRejected: finite(input.contactSearchQuality.otherCompanyRejected, 0, 1000),
+          vacanciesRejected: finite(input.contactSearchQuality.vacanciesRejected, 0, 1000),
+          policy: clean(input.contactSearchQuality.policy, 500),
+        }
+      : null,
     companyNews: intelligenceSources(input.companyNews),
     segmentNews: intelligenceSources(input.segmentNews),
     nextActions: Array.isArray(input.nextActions) ? input.nextActions.slice(0, 12).map((item) => clean(item, 500)).filter(Boolean) : [],
     providers: Array.isArray(input.providers) ? input.providers.slice(0, 8).map((item) => clean(item, 60)).filter(Boolean) : [],
     failures: Array.isArray(input.failures) ? input.failures.slice(0, 12).map((item) => ({ provider: clean(item?.provider, 60), error: clean(item?.error, 180) })) : [],
+    autoEnrichment: input.autoEnrichment && typeof input.autoEnrichment === "object"
+      ? {
+          segmentFilled: input.autoEnrichment.segmentFilled === true,
+          websiteFilled: input.autoEnrichment.websiteFilled === true,
+          linkedinFilled: input.autoEnrichment.linkedinFilled === true,
+          contactsAdded: finite(input.autoEnrichment.contactsAdded, 0, 100),
+          contactsUpdated: finite(input.autoEnrichment.contactsUpdated, 0, 100),
+        }
+      : null,
     excludedVacancies: finite(input.excludedVacancies, 0, 1000),
     disclaimer: clean(input.disclaimer, 1000),
   };
@@ -160,6 +194,8 @@ const crmFields = (value = {}) => {
     temperature: CRM_TEMPERATURES.has(clean(input.temperature, 20)) ? clean(input.temperature, 20) : "",
     stage: clean(input.stage, 60),
     headquarters: clean(input.headquarters, 160),
+    website: safeExternalUrl(input.website),
+    linkedinUrl: safeLinkedinUrl(input.linkedinUrl),
     strategicPotential: finite(input.strategicPotential),
     relationshipStrength: finite(input.relationshipStrength),
     operationalFit: finite(input.operationalFit),
@@ -183,7 +219,7 @@ const crmFields = (value = {}) => {
           department: clean(contact?.department, 120),
           email: normalizeEmail(contact?.email),
           phone: clean(contact?.phone, 500),
-          linkedinUrl: /^https:\/\/(www\.)?linkedin\.com\//i.test(clean(contact?.linkedinUrl, 500)) ? clean(contact?.linkedinUrl, 500) : "",
+          linkedinUrl: safeLinkedinUrl(contact?.linkedinUrl),
           relationshipRole: clean(contact?.relationshipRole, 60) || "Influenciador",
           influence: finite(contact?.influence),
           supportLevel: finite(contact?.supportLevel, -100, 100),
@@ -193,6 +229,8 @@ const crmFields = (value = {}) => {
           source: clean(contact?.source, 80),
           sourceUrl: safeExternalUrl(contact?.sourceUrl),
           validation: clean(contact?.validation, 500),
+          country: clean(contact?.country, 80),
+          specialty: clean(contact?.specialty, 120),
           active: contact?.active !== false,
         })).filter((contact) => contact.name))
       : [],

@@ -45,4 +45,20 @@ describe("página de clientes", () => {
     expect(screen.getAllByText("Mapear e acessar o decisor econômico.").length).toBeGreaterThan(0);
     expect(screen.getByText("Reunião com compras")).toBeInTheDocument();
   });
+
+  it("reconhece os contatos salvos sem fingir que são procurement logístico", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      clientes: [{
+        id: "adidas", name: "Adidas", segment: "Varejo", status: "ativo", revision: 2,
+        vendedores: [], crm: { contacts: [{ id: "1", name: "Thiago Souza", department: "Operações", email: "fernanda.pereira@adidas.com", phone: "+5519982414440" }] },
+      }],
+      acesso: { podeGerenciar: true, podeEditar: true, somenteCarteira: false },
+    }), { status: 200 })));
+
+    render(<ClientsPage authHeaders={() => ({})} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Adidas/ }));
+    expect(await screen.findByText("1 contato(s) cadastrado(s); nenhum de Procurement logístico confirmado.")).toBeInTheDocument();
+    expect(screen.getByText("Thiago Souza")).toBeInTheDocument();
+    expect(screen.queryByText("Contato ainda não mapeado")).not.toBeInTheDocument();
+  });
 });
