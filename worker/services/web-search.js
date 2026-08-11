@@ -110,7 +110,7 @@ async function tavilySearch(query, key, fetcher) {
     body: JSON.stringify({
       query,
       topic: "general",
-      search_depth: "advanced",
+      search_depth: "basic",
       max_results: MAX_RESULTS,
       include_answer: false,
       include_raw_content: false,

@@ -63,6 +63,8 @@ export const INSTRUCAO = `Você é a Semente, a inteligência comercial da To Do
 
 Você responde sobre a carteira de quem está perguntando, e só sobre ela. Nunca cite conta que não apareça nos dados recebidos.
 
+IDIOMA OBRIGATÓRIO: responda sempre em português do Brasil. Fontes, cargos e notícias em inglês são dados para interpretar; traduza e explique em português, preservando nomes próprios, links e siglas. Nunca devolva parágrafos em inglês para a pessoa.
+
 REGRA QUE NÃO SE QUEBRA: se faltar dado para concluir, diga qual falta. Nunca estime, complete ou suponha número, nome, cargo, telefone ou e-mail. Um dado inventado sobre a carteira de um cliente vale menos que dizer "não sei".
 
 Você trabalha DENTRO do CRM da To Do Green. Nunca recomende planilha, Google Sheets, HubSpot ou qualquer ferramenta externa: os dados vivem aqui. Se algo não está cadastrado, diga em qual tela da vertical cadastrar (Clientes, Oportunidades, Central de Trabalho) — ou proponha uma das suas ações. Nunca mencione outro negócio que não seja a To Do Green e as contas desta carteira.
@@ -133,6 +135,34 @@ export function lerDecisao(texto) {
     }
   }
   return { resposta: clean(bruto, 6000), consultar: null, acao: null };
+}
+
+const MARCADORES_INGLES = /\b(the|and|with|from|for|across|we|our|their|this|that|company|manager|procurement|supply|chain|transportation|distribution|reports|growth|emissions|business|opportunity|available)\b/gi;
+const MARCADORES_PORTUGUES = /\b(o|a|os|as|de|do|da|dos|das|com|para|por|empresa|compras|logística|transporte|emissões|crescimento|oportunidade|disponível)\b/gi;
+
+export function respostaPareceEmIngles(value) {
+  const texto = String(value || "").trim();
+  if (texto.length < 30) return false;
+  const ingles = texto.match(MARCADORES_INGLES)?.length || 0;
+  const portugues = texto.match(MARCADORES_PORTUGUES)?.length || 0;
+  return ingles >= 4 && ingles > portugues * 2;
+}
+
+async function garantirRespostaEmPortugues(env, decisao) {
+  if (!respostaPareceEmIngles(decisao?.resposta)) return decisao;
+  const revisao = await runWithFallback(env, {
+    system: "Você é revisora de idioma. Traduza integralmente para português do Brasil sem acrescentar, remover ou alterar fatos, nomes, números, links ou siglas. Responda somente com JSON no formato {\"resposta\":\"texto traduzido\"}.",
+    prompt: JSON.stringify({ resposta: decisao.resposta }),
+    deep: false,
+  });
+  if (revisao.ok) {
+    const traduzida = lerDecisao(revisao.result?.content).resposta;
+    if (traduzida && !respostaPareceEmIngles(traduzida)) return { ...decisao, resposta: traduzida };
+  }
+  return {
+    ...decisao,
+    resposta: "A resposta veio em outro idioma e não foi possível traduzi-la com segurança agora. Tente novamente em instantes.",
+  };
 }
 
 // ===== Índice da carteira =====
@@ -475,6 +505,8 @@ export async function handleTodoGreenSemente(request, env, access, user) {
       decisao = { ...nova, consultar: null };
     }
   }
+
+  decisao = await garantirRespostaEmPortugues(env, decisao);
 
   return response({
     resposta: decisao.resposta || "Não consegui formular uma resposta com os dados desta carteira.",

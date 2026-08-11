@@ -79,9 +79,19 @@ const opportunityForCrm = (item) => ({
 
 const formatCheckedAt = (value) => value ? new Date(value).toLocaleString("pt-BR") : "Ainda não pesquisado";
 
+const ENGLISH_WORDS = /\b(the|and|with|from|for|across|we|our|their|this|that|company|manager|procurement|supply|chain|transportation|distribution|reports|growth|emissions|business)\b/gi;
+const PORTUGUESE_WORDS = /\b(o|a|os|as|de|do|da|dos|das|com|para|por|empresa|compras|logística|transporte|emissões|crescimento)\b/gi;
+const sourceHost = (url) => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "fonte externa"; } };
+const isEnglishSource = (item) => {
+  const text = `${item?.title || ""} ${item?.snippet || ""}`;
+  const english = text.match(ENGLISH_WORDS)?.length || 0;
+  const portuguese = text.match(PORTUGUESE_WORDS)?.length || 0;
+  return english >= 4 && english > portuguese * 2;
+};
+
 function ResearchLinks({ title, items = [], empty }) {
   return <div className="tdg-crm-research-group"><span>{title}</span>{items.length
-    ? <ul>{items.map((item) => <li key={item.url}><a href={item.url} target="_blank" rel="noreferrer">{item.title}</a>{item.snippet && <small>{item.snippet}</small>}{item.validation && <em>{item.validation}</em>}</li>)}</ul>
+    ? <ul>{items.map((item) => { const english = isEnglishSource(item); return <li key={item.url}><a href={item.url} target="_blank" rel="noreferrer">{english ? `Fonte internacional · ${sourceHost(item.url)}` : item.title}</a>{item.snippet && <small>{english ? "Conteúdo original em inglês. A evidência foi classificada pelo CRM, e o link permanece disponível para conferência." : item.snippet}</small>}{item.validation && <em>{item.validation}</em>}</li>; })}</ul>
     : <small>{empty}</small>}</div>;
 }
 
@@ -94,9 +104,12 @@ function ExternalIntelligence({ report, researching, error, onResearch }) {
       <div className="tdg-crm-research-identity">{report.officialWebsite && <a href={report.officialWebsite.url} target="_blank" rel="noreferrer">Site provável <ExternalLink size={13} /></a>}{report.linkedinCompany && <a href={report.linkedinCompany.url} target="_blank" rel="noreferrer">LinkedIn da empresa <ExternalLink size={13} /></a>}<b>ESG: {report.esg?.relevance || "A validar"}</b></div>
       <ResearchLinks title="RFQs de transporte abertas" items={report.openRfqs} empty="Nenhuma RFQ acionável comprovada nesta pesquisa." />
       <ResearchLinks title="Cadastro de fornecedores" items={report.supplierLinks} empty="Nenhum portal oficial identificado." />
-      <ResearchLinks title="Procurement no LinkedIn" items={report.procurementPeople} empty="Nenhum contato público confirmado." />
+      <ResearchLinks title="Procurement de Logística e Transportes no Brasil" items={report.procurementPeople} empty="Nenhum contato público passou pelos critérios de empresa, Brasil e escopo logístico." />
+      {report.contactSearchQuality && <div className="tdg-crm-research-enrichment"><strong>Filtro de contatos: Brasil + Procurement logístico</strong><small>{report.contactSearchQuality.accepted || 0} aceito(s); {report.contactSearchQuality.foreignRejected || 0} de outros países, {report.contactSearchQuality.noBrazilEvidenceRejected || 0} sem evidência de Brasil e {report.contactSearchQuality.nonLogisticsRejected || 0} sem escopo logístico foram descartados.</small></div>}
       {report.suggestedSegment?.value && <div className="tdg-crm-research-enrichment"><strong>Segmento identificado: {report.suggestedSegment.value}</strong><small>Confiança {report.suggestedSegment.confidence}. {report.autoEnrichment?.segmentFilled ? "Preenchido automaticamente no CRM." : "O CRM já possuía um segmento e foi preservado."}</small></div>}
       {report.autoEnrichment?.contactsAdded > 0 && <div className="tdg-crm-research-enrichment"><strong>{report.autoEnrichment.contactsAdded} contato(s) público(s) incluído(s)</strong><small>Vínculo e cargo ficam marcados para confirmação antes da abordagem.</small></div>}
+      {report.autoEnrichment?.contactsUpdated > 0 && <div className="tdg-crm-research-enrichment"><strong>{report.autoEnrichment.contactsUpdated} contato(s) cadastrado(s) complementado(s)</strong><small>Os dados existentes foram preservados e somente campos vazios receberam evidência pública.</small></div>}
+      {(report.autoEnrichment?.websiteFilled || report.autoEnrichment?.linkedinFilled) && <div className="tdg-crm-research-enrichment"><strong>Dados institucionais preenchidos</strong><small>{[report.autoEnrichment.websiteFilled && "site", report.autoEnrichment.linkedinFilled && "LinkedIn da empresa"].filter(Boolean).join(" e ")} vinculados à conta.</small></div>}
       <ResearchLinks title="Sinais ESG" items={report.esg?.signals} empty="Nenhuma evidência pública suficiente." />
       <ResearchLinks title="Notícias da empresa" items={report.companyNews} empty="Nenhuma notícia relevante encontrada." />
       <ResearchLinks title="Notícias e tendências do segmento" items={report.segmentNews} empty="Nenhuma notícia setorial relevante encontrada." />
@@ -175,10 +188,10 @@ function ClientPortalPreview({ client, authHeaders, open, onClose }) {
 }
 
 function ContactCard({ contact, clientName }) {
-  const details = [...new Set([contact.title, contact.department, contact.relationshipRole].filter(Boolean))];
+  const details = [...new Set([contact.title, contact.department, contact.specialty, contact.country, contact.relationshipRole].filter(Boolean))];
   const whatsapp = whatsappUrl(contact.phone);
   return <article>
-    <div><b>{contact.name}</b><small>{details.join(" · ") || "Função ainda não informada"}</small>{contact.source && <em className="tdg-crm-contact-source">{contact.source} · confirmar vínculo</em>}</div>
+    <div><b>{contact.name}</b><small>{details.join(" · ") || "Função ainda não informada"}</small>{contact.source && <em className="tdg-crm-contact-source">{contact.source} · confirmar vínculo</em>}{contact.validation && <em className="tdg-crm-contact-source">{contact.validation}</em>}</div>
     <div className="tdg-crm-contact-channels">{contact.email && <a href={`mailto:${contact.email}`}><Mail size={13} />{contact.email}</a>}{contact.phone && <a href={`tel:${contact.phone}`}>{contact.phone}</a>}</div>
     <div className="tdg-crm-contact-actions">{whatsapp && <a href={whatsapp} target="_blank" rel="noreferrer"><MessageCircle size={14} />WhatsApp</a>}{contact.email && <><a href={gmailComposeUrl(contact.email, `To Do Green · ${clientName}`)} target="_blank" rel="noreferrer">Gmail</a><a href={outlookComposeUrl(contact.email, `To Do Green · ${clientName}`)} target="_blank" rel="noreferrer">Outlook</a></>}{contact.linkedinUrl && <a href={contact.linkedinUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} />LinkedIn</a>}</div>
   </article>;
@@ -196,6 +209,8 @@ const accountForm = (client) => {
     temperature: crm.temperature || "",
     stage: crm.stage || "Mapeamento",
     headquarters: crm.headquarters || "",
+    website: crm.website || "",
+    linkedinUrl: crm.linkedinUrl || "",
     strategicPotential: crm.strategicPotential || 0,
     relationshipStrength: crm.relationshipStrength || 0,
     operationalFit: crm.operationalFit || 0,
@@ -238,6 +253,8 @@ function AccountEditor({ client, onClose, onSave }) {
           temperature: form.temperature,
           stage: form.stage,
           headquarters: form.headquarters,
+          website: form.website,
+          linkedinUrl: form.linkedinUrl,
           strategicPotential: Number(form.strategicPotential || 0),
           relationshipStrength: Number(form.relationshipStrength || 0),
           operationalFit: Number(form.operationalFit || 0),
@@ -269,6 +286,8 @@ function AccountEditor({ client, onClose, onSave }) {
             <label><span>Temperatura</span><select value={form.temperature} onChange={field("temperature")}><option value="">Não classificada</option>{TODO_GREEN_ACCOUNT_TEMPERATURES.map((item) => <option key={item}>{item}</option>)}</select></label>
             <label><span>Momento da conta</span><select value={form.stage} onChange={field("stage")}>{TODO_GREEN_ACCOUNT_STAGES.map((item) => <option key={item}>{item}</option>)}</select></label>
             <label><span>Sede / região</span><input value={form.headquarters} onChange={field("headquarters")} /></label>
+            <label><span>Site da empresa</span><input type="url" placeholder="https://empresa.com.br" value={form.website} onChange={field("website")} /></label>
+            <label><span>LinkedIn da empresa</span><input type="url" placeholder="https://linkedin.com/company/..." value={form.linkedinUrl} onChange={field("linkedinUrl")} /></label>
             <label><span>Próxima ação</span><input value={form.nextAction} onChange={field("nextAction")} /></label>
             <label><span>Prazo da próxima ação</span><input type="date" value={form.nextActionAt} onChange={field("nextActionAt")} /></label>
           </div>
@@ -314,7 +333,7 @@ function AccountEditor({ client, onClose, onSave }) {
 
 const clientIdFromLocation = () => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("client") || "";
 
-export default function ClientsPage({ authHeaders, opportunities = [], onNavigate, setToast, onCreateTask, currentUserId }) {
+export default function ClientsPage({ authHeaders, opportunities = [], onNavigate, setToast, onCreateTask, currentUserId, onClientContextChange }) {
   const [clients, setClients] = useState([]);
   const [access, setAccess] = useState({ podeGerenciar: false, podeEditar: true, somenteCarteira: true });
   const [query, setQuery] = useState("");
@@ -399,14 +418,49 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
   }), [clients, contactFilter, filter, ownerFilter, query, sortBy, stageFilter, summaryById, temperatureFilter]);
   const renderedClients = visible.slice(0, visibleLimit);
   const selected = clients.find((client) => client.id === selectedId) || null;
-  const selectedAccount = selected ? accountFromClient(selected) : null;
+  const selectedAccount = useMemo(() => selected ? accountFromClient(selected) : null, [selected]);
   const selectedOpportunities = selected ? crmOpportunities.filter((item) => item.clientId === selected.id) : [];
   const selectedSummary = selectedAccount ? crmAccountSummary(selectedAccount, selectedAccount.contacts, crmOpportunities) : null;
   const selectedIntelligence = selected ? assessAccount(selected) : null;
   const selectedReport = selected ? researchReports[selected.id] || selected.crm?.intelligence || null : null;
+  const logisticsProcurementNames = selectedIntelligence
+    ? [...new Set(selectedIntelligence.logisticsProcurementContacts.map((item) => item.name).filter(Boolean))]
+    : [];
   const procurementNames = selectedIntelligence
     ? [...new Set(selectedIntelligence.procurementContacts.map((item) => item.name).filter(Boolean))]
     : [];
+  const procurementSummary = logisticsProcurementNames.length
+    ? logisticsProcurementNames.join(", ")
+    : procurementNames.length
+      ? `${procurementNames.join(", ")} (Compras cadastrado; escopo logístico a confirmar)`
+      : selectedAccount?.contacts.length
+        ? `${selectedAccount.contacts.length} contato(s) cadastrado(s); nenhum de Procurement logístico confirmado.`
+        : "Nenhum contato cadastrado.";
+
+  useEffect(() => {
+    if (!onClientContextChange) return;
+    if (!selected) { onClientContextChange(null); return; }
+    onClientContextChange({
+      id: selected.id,
+      nome: selected.name,
+      segmento: selected.segment || "",
+      temperatura: selected.crm?.temperature || "",
+      etapa: selected.crm?.stage || "",
+      proximaAcao: selectedIntelligence?.nextTask || selected.crm?.nextAction || "",
+      pesquisaExterna: selectedReport ? {
+        consultadaEm: selectedReport.checkedAt,
+        relevanciaEsg: selectedReport.esg?.relevance || "A validar",
+        contatosProcurementLogistico: selectedReport.procurementPeople?.map((item) => ({ titulo: item.title, url: item.url })) || [],
+        fontes: [selectedReport.officialWebsite, selectedReport.linkedinCompany, ...(selectedReport.companyNews || [])].filter(Boolean).slice(0, 8),
+      } : null,
+      contatos: selectedAccount.contacts.slice(0, 20).map((contact) => ({
+        nome: contact.name, cargo: contact.title, area: contact.department,
+        email: contact.email, telefone: contact.phone, linkedin: contact.linkedinUrl,
+        validacao: contact.validation,
+      })),
+    });
+  }, [onClientContextChange, selected, selectedAccount, selectedIntelligence, selectedReport]);
+  useEffect(() => () => onClientContextChange?.(null), [onClientContextChange]);
 
   const openClient = (clientId) => {
     setSelectedId(clientId); setPortalPreviewOpen(false); setResearchError("");
@@ -426,8 +480,10 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
       setResearchReports((current) => ({ ...current, [selected.id]: data.intelligence || null }));
       await load();
       const additions = data.enrichment?.contactsAdded ? ` ${data.enrichment.contactsAdded} contato(s) incluído(s).` : "";
+      const updates = data.enrichment?.contactsUpdated ? ` ${data.enrichment.contactsUpdated} contato(s) complementado(s).` : "";
       const segment = data.enrichment?.segmentFilled ? " Segmento preenchido." : "";
-      setToast?.(`${focus === "contacts" ? "Contatos e procurement pesquisados." : "Empresa pesquisada e ficha atualizada."}${segment}${additions}`);
+      const institutional = data.enrichment?.websiteFilled || data.enrichment?.linkedinFilled ? " Site ou LinkedIn institucional preenchido." : "";
+      setToast?.(`${focus === "contacts" ? "Contatos de Procurement logístico no Brasil pesquisados." : "Empresa pesquisada e ficha atualizada."}${segment}${institutional}${additions}${updates}`);
     } catch (reason) { setResearchError(reason.message); }
     finally { setResearching(false); }
   };
@@ -505,14 +561,14 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
       <section className="tdg-crm-next"><Target size={17} /><div><small>PRÓXIMA MELHOR AÇÃO</small><strong>{selectedSummary.nextAction}</strong></div><button type="button" onClick={() => setTaskClientId(selected.id)}>Transformar em tarefa</button></section>
       {portalPreviewOpen && <ClientPortalPreview client={selected} authHeaders={authHeaders} open onClose={() => setPortalPreviewOpen(false)} />}
       <div className="tdg-crm-detail-grid"><main>
-        <section className="tdg-crm-intelligence"><header><strong>IA · mapa da empresa</strong><small>Leitura dos dados do CRM</small></header><div><span>Relevância ESG</span><strong>{selectedIntelligence.esgRelevance}</strong><small>{selectedIntelligence.esgReason}</small></div><div><span>Próxima tarefa sugerida</span><strong>{selectedIntelligence.nextTask}</strong></div><div><span>Compras / procurement</span><strong>{procurementNames.length ? procurementNames.join(", ") : "Contato ainda não mapeado"}</strong></div></section>
+        <section className="tdg-crm-intelligence"><header><strong>IA · mapa da empresa</strong><small>Leitura dos dados do CRM</small></header><div><span>Relevância ESG</span><strong>{selectedIntelligence.esgRelevance}</strong><small>{selectedIntelligence.esgReason}</small></div><div><span>Próxima tarefa sugerida</span><strong>{selectedIntelligence.nextTask}</strong></div><div><span>Procurement de Logística e Transportes</span><strong>{procurementSummary}</strong></div></section>
         <ExternalIntelligence report={selectedReport} researching={researching} error={researchError} onResearch={researchSelected} />
         <section className="tdg-crm-detail-section"><header><strong>Relacionamento</strong><small>{selectedAccount.contacts.length} contato(s)</small></header><div className="tdg-crm-roles">{selectedAccount.contacts.map((contact) => <ContactCard key={contact.id} contact={contact} clientName={selected.name} />)}{selectedAccount.contacts.length === 0 && <p>Nenhum decisor ou patrocinador mapeado.</p>}</div></section>
       </main><aside>
         {selectedSummary.alerts.length > 0 && <section className="tdg-crm-alerts"><strong><AlertTriangle size={15} />Pontos de atenção</strong>{selectedSummary.alerts.map((alert) => <span key={alert}>{alert}</span>)}</section>}
         <section className="tdg-crm-detail-section"><header><strong>Oportunidades</strong><button type="button" onClick={() => onNavigate?.(`/todogreen/oportunidades?client=${encodeURIComponent(selected.id)}`)}>Abrir pipeline <ArrowRight size={13} /></button></header>{selectedOpportunities.length === 0 ? <p>Nenhuma oportunidade ligada a esta conta.</p> : <div className="tdg-crm-opps">{selectedOpportunities.slice(0, 6).map((opp) => <article key={opp.id}><span><strong>{opp.stage}</strong><small>{opp.nextStep || "Próximo passo não definido"}</small></span><b>{BRL.format(opp.value || 0)}</b></article>)}</div>}</section>
         <section className="tdg-crm-detail-section"><header><strong>Responsáveis</strong></header><div className="tdg-client-sellers">{(selected.vendedores || []).length === 0 && <small>Sem responsável comercial</small>}{(selected.vendedores || []).map((seller) => <span key={seller.email}>{seller.email}{access.podeGerenciar && <button type="button" aria-label={`Remover ${seller.email}`} onClick={() => unassign(selected.id, seller.email)}><X size={12} /></button>}</span>)}</div>{access.podeGerenciar && <form className="tdg-crm-assign" onSubmit={assign}><input required type="email" aria-label="E-mail do vendedor" placeholder="vendedor@empresa.com" value={assignment.clientId === selected.id ? assignment.sellerEmail : ""} onChange={(e) => setAssignment({ clientId: selected.id, sellerEmail: e.target.value, note: "" })} /><button type="submit"><UserPlus size={14} />Atribuir</button></form>}</section>
-        <section className="tdg-crm-detail-section"><header><strong>Dados da conta</strong></header><dl className="tdg-crm-account-data"><div><dt>Razão social</dt><dd>{selected.legalName || "Não informada"}</dd></div><div><dt>Sede</dt><dd>{selected.crm?.headquarters || "Não informada"}</dd></div><div><dt>Última atualização</dt><dd>{selected.updatedAt ? new Date(selected.updatedAt).toLocaleString("pt-BR") : "Não informada"}</dd></div></dl></section>
+        <section className="tdg-crm-detail-section"><header><strong>Dados da conta</strong></header><dl className="tdg-crm-account-data"><div><dt>Razão social</dt><dd>{selected.legalName || "Não informada"}</dd></div><div><dt>Sede</dt><dd>{selected.crm?.headquarters || "Não informada"}</dd></div><div><dt>Site</dt><dd>{selected.crm?.website ? <a href={selected.crm.website} target="_blank" rel="noreferrer">Abrir site <ExternalLink size={12} /></a> : "Não informado"}</dd></div><div><dt>LinkedIn</dt><dd>{selected.crm?.linkedinUrl ? <a href={selected.crm.linkedinUrl} target="_blank" rel="noreferrer">Abrir empresa <ExternalLink size={12} /></a> : "Não informado"}</dd></div><div><dt>Última atualização</dt><dd>{selected.updatedAt ? new Date(selected.updatedAt).toLocaleString("pt-BR") : "Não informada"}</dd></div></dl></section>
       </aside></div>
     </div>}
     {editingId && <AccountEditor client={clients.find((item) => item.id === editingId)} onClose={() => setEditingId("")} onSave={(payload) => saveClient(clients.find((item) => item.id === editingId), payload)} />}
