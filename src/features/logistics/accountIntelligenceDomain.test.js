@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assessAccount, gmailComposeUrl, outlookComposeUrl, whatsappUrl } from "./accountIntelligenceDomain.js";
+import { assessAccount, gmailComposeUrl, isTrustedCrmContact, outlookComposeUrl, whatsappUrl } from "./accountIntelligenceDomain.js";
 
 describe("inteligência e canais da conta", () => {
   it("prioriza procurement e sugere tarefa sem inventar contatos", () => {
@@ -35,5 +35,11 @@ describe("inteligência e canais da conta", () => {
     expect(whatsappUrl("11 98839-5335")).toBe("https://wa.me/5511988395335");
     expect(gmailComposeUrl("fevasco@amazon.com", "Amazon")).toContain("fevasco%40amazon.com");
     expect(outlookComposeUrl("fevasco@amazon.com", "Amazon")).toContain("fevasco%40amazon.com");
+  });
+
+  it("aceita contatos salvos e bloqueia pesquisa web sem Brasil comprovado", () => {
+    expect(isTrustedCrmContact({ name: "Fernanda", email: "fevasco@amazon.com" })).toBe(true);
+    expect(isTrustedCrmContact({ source: "Pesquisa web", verifiedBrazil: false, country: "Canadá", researchVersion: 5 })).toBe(false);
+    expect(isTrustedCrmContact({ source: "Pesquisa web", verifiedBrazil: true, country: "Brasil", researchVersion: 5 })).toBe(true);
   });
 });

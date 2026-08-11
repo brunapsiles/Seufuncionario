@@ -1,0 +1,27 @@
+.tdg-work-center-react { display: grid; gap: 18px; }
+.tdg-work-center-actions button { display: inline-flex; align-items: center; gap: 7px; }
+.tdg-work-view-tabs { display: flex; gap: 6px; padding-bottom: 10px; border-bottom: 1px solid rgba(31,67,52,.12); }
+.tdg-work-view-tabs button { border: 0; border-radius: 10px; background: transparent; color: #526a60; display: inline-flex; align-items: center; gap: 6px; padding: 9px 12px; cursor: pointer; }
+.tdg-work-view-tabs button.active { background: #eaf7ef; color: #123c2b; font-weight: 700; }
+.tdg-board-toolbar > svg { color: #61766d; }
+.tdg-work-kanban { display: grid; grid-template-columns: repeat(5,minmax(220px,1fr)); gap: 12px; overflow-x: auto; padding-bottom: 8px; }
+.tdg-work-kanban > section { background: #f6faf8; border: 1px solid rgba(31,67,52,.12); border-radius: 14px; padding: 10px; display: grid; align-content: start; gap: 8px; min-height: 280px; }
+.tdg-work-kanban > section > header { display: flex; align-items: center; justify-content: space-between; text-transform: capitalize; }
+.tdg-work-kanban > section > header span { background: #e7f1eb; border-radius: 999px; padding: 3px 8px; font-size: 12px; }
+.tdg-work-kanban article { background: #fff; border: 1px solid rgba(31,67,52,.12); border-radius: 12px; padding: 11px; display: grid; gap: 6px; }
+.tdg-work-kanban article small,.tdg-work-kanban article time { color: #61766d; font-size: 12px; }
+.tdg-work-kanban article select { border: 1px solid rgba(31,67,52,.16); border-radius: 8px; padding: 7px; background: #fff; text-transform: capitalize; }
+.tdg-work-calendar-head { display: grid; grid-template-columns: 40px 1fr 40px; align-items: center; text-align: center; }
+.tdg-work-calendar-head button { border: 1px solid rgba(31,67,52,.14); border-radius: 9px; background: #fff; height: 36px; display: grid; place-items: center; cursor: pointer; }
+.tdg-work-calendar-head strong { text-transform: capitalize; }
+.tdg-work-calendar-week,.tdg-work-calendar { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); }
+.tdg-work-calendar-week span { text-align: center; color: #61766d; font-size: 12px; font-weight: 700; padding: 7px; }
+.tdg-work-calendar { border: 1px solid rgba(31,67,52,.12); border-radius: 14px; overflow: hidden; }
+.tdg-work-calendar > button { border: 0; border-right: 1px solid rgba(31,67,52,.1); border-bottom: 1px solid rgba(31,67,52,.1); background: #fff; min-height: 108px; padding: 8px; display: flex; flex-direction: column; align-items: stretch; gap: 4px; text-align: left; cursor: pointer; min-width: 0; }
+.tdg-work-calendar > button.outside { background: #f7f9f8; color: #93a29b; }
+.tdg-work-calendar > button > b { font-size: 12px; }
+.tdg-work-calendar > button > span { background: #eaf7ef; color: #174d36; border-radius: 6px; padding: 4px 5px; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tdg-work-calendar > button > span.done { text-decoration: line-through; opacity: .65; }
+.tdg-work-calendar > button > small { font-size: 10px; color: #61766d; }
+@media (max-width: 1180px) { .tdg-work-kanban { grid-template-columns: repeat(5,minmax(240px,1fr)); } }
+@media (max-width: 560px) { .tdg-work-view-tabs { overflow-x: auto; } .tdg-work-calendar,.tdg-work-calendar-week { min-width: 680px; } .tdg-board-main { overflow-x: auto; } }

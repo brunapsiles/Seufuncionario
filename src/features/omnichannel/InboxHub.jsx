@@ -204,7 +204,7 @@ function InboxThread({ thread, onMarkRead }) {
   );
 }
 
-function InboxPage({ setToast, authHeaders, inboxUrl, logInteraction }) {
+export function InboxPage({ setToast, authHeaders, inboxUrl, logInteraction }) {
   const [items, setItems] = useState(null);
   const [filter, setFilter] = useState("todos");
   const [registering, setRegistering] = useState(false);

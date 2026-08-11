@@ -24,6 +24,8 @@ import { recorteDeCarteira, podeNaVertical, TENANT_ID } from "./todogreen-access
 import { runWithFallback } from "./ai.js";
 import { webSearchConfiguration } from "./web-search.js";
 import { pesquisarEmpresa } from "./todogreen-client-intelligence.js";
+import { insertInteraction } from "./omnichannel.js";
+import { isTrustedCrmContact } from "../../src/features/logistics/accountIntelligenceDomain.js";
 
 const response = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -39,6 +41,13 @@ const clean = (value, max = 500) => String(value ?? "").replace(/\s+/g, " ").tri
 const parse = (value, fallback) => { try { return JSON.parse(value || ""); } catch { return fallback; } };
 const semAcento = (value) =>
   clean(value, 300).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const chaveDeCanal = (value) => {
+  const normalized = clean(value, 300).toLowerCase();
+  if (!normalized) return "";
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) return `email:${normalized}`;
+  const digits = normalized.replace(/\D/g, "");
+  return digits.length >= 8 ? `phone:${digits}` : `other:${semAcento(normalized)}`;
+};
 
 // ===== As ferramentas =====
 //
@@ -51,12 +60,14 @@ export const FERRAMENTAS = Object.freeze({
   contatos: "procura pessoas em toda a carteira por cargo, área ou nome. Requer {\"termo\":\"compras\"}.",
   inteligencia: "devolve a pesquisa externa já feita de uma conta: site oficial, LinkedIn, portais de fornecedor, RFQs, sinais ESG e notícias, com as fontes. Requer {\"cliente\":\"nome ou id\"}.",
   tarefas: "lista as tarefas abertas da Central de Trabalho, com responsável, prazo e situação.",
+  interacoes: "lista o histórico comercial registrado de uma conta, incluindo WhatsApp, e-mail, ligação, formulário e notas. Requer {\"cliente\":\"nome ou id\"}.",
 });
 
 export const ACOES = Object.freeze({
   criar_tarefa: "cria uma tarefa na Central de Trabalho. Campos: titulo (obrigatório), descricao, cliente, prazo (AAAA-MM-DD), prioridade (baixa|media|alta|critica).",
   definir_proxima_acao: "grava a próxima ação de uma conta. Campos: cliente (obrigatório), acao (obrigatório), prazo (AAAA-MM-DD).",
   pesquisar_empresa: "dispara a pesquisa externa de uma conta na web. Campo: cliente (obrigatório).",
+  registrar_interacao: "registra uma conversa já realizada no histórico da conta, somente após confirmação. Campos: cliente (obrigatório), contato, canal (whatsapp|email|phone|note), sentido (in|out) e resumo (obrigatório).",
 });
 
 export const INSTRUCAO = `Você é a Semente, a inteligência comercial da To Do Green — transportadora de logística sustentável.
@@ -245,7 +256,7 @@ const contaCompleta = (linha) => {
       qualidadeDoDado: campos.dataQuality ?? null,
       riscoDePerda: campos.churnRisk ?? null,
     },
-    contatos: contatos.filter((item) => item?.name).map(contatoPublico),
+    contatos: contatos.filter((item) => item?.name && isTrustedCrmContact(item)).map(contatoPublico),
     pesquisaExternaEm: campos.intelligence?.checkedAt || null,
   };
 };
@@ -339,6 +350,37 @@ export async function executarFerramenta(env, { access, pedido, linhas }) {
     };
   }
 
+  if (ferramenta === "interacoes") {
+    const { linha, ambiguidade } = escolherCliente(linhas, pedido?.cliente);
+    if (ambiguidade.length)
+      return { ferramenta, erro: "Mais de uma conta corresponde a esse nome.", candidatas: ambiguidade };
+    if (!linha) return { ferramenta, erro: "Nenhuma conta da carteira corresponde a esse nome." };
+    const conta = contaCompleta(linha);
+    const handles = new Set(
+      conta.contatos.flatMap((contato) => [contato.email, contato.telefone].map(chaveDeCanal).filter(Boolean)),
+    );
+    const rows = await env.DB.prepare(
+      `SELECT id,contact_id,contact_name,contact_handle,channel,direction,subject,body,created_at,read_at
+         FROM interactions
+        WHERE workspace_owner_id=?
+        ORDER BY created_at DESC LIMIT 300`,
+    ).bind(access.ownerId).all();
+    const interacoes = (rows.results || []).filter((item) => {
+      if (item.contact_id === linha.id) return true;
+      if (semAcento(item.contact_name).includes(semAcento(linha.name))) return true;
+      const handle = chaveDeCanal(item.contact_handle);
+      return handle && handles.has(handle);
+    }).slice(0, 60).map((item) => ({
+      contato: item.contact_name || null,
+      canal: item.channel,
+      sentido: item.direction,
+      assunto: item.subject || null,
+      resumo: item.body,
+      data: item.created_at,
+    }));
+    return { ferramenta, conta: linha.name, total: interacoes.length, interacoes };
+  }
+
   return { ferramenta, erro: "Ferramenta desconhecida." };
 }
 
@@ -360,7 +402,8 @@ export async function executarAcao(env, { access, user, email, acao, linhas }) {
     if (titulo.length < 3) return { erro: "A tarefa precisa de um título.", status: 400 };
     const quadro = await env.DB.prepare(
       `SELECT id FROM todogreen_work_boards
-        WHERE workspace_owner_id=? AND status='active' ORDER BY display_order LIMIT 1`,
+        WHERE workspace_owner_id=? AND status='active'
+        ORDER BY CASE WHEN id LIKE '%:comercial-deal-desk' THEN 0 ELSE 1 END, display_order LIMIT 1`,
     ).bind(access.ownerId).first();
     if (!quadro)
       return { erro: "Não há quadro ativo na Central de Trabalho para receber a tarefa.", status: 409 };
@@ -383,6 +426,7 @@ export async function executarAcao(env, { access, user, email, acao, linhas }) {
   }
 
   if (tipo === "definir_proxima_acao") {
+    if (!podeEscrever(access)) return { erro: "Seu papel não pode alterar a carteira.", status: 403 };
     const { linha, ambiguidade } = escolherCliente(linhas, acao?.cliente);
     if (ambiguidade.length) return { erro: `Mais de uma conta corresponde: ${ambiguidade.join(", ")}.`, status: 409 };
     if (!linha) return { erro: "Conta não encontrada na sua carteira.", status: 404 };
@@ -404,7 +448,34 @@ export async function executarAcao(env, { access, user, email, acao, linhas }) {
     };
   }
 
+  if (tipo === "registrar_interacao") {
+    if (!podeEscrever(access)) return { erro: "Seu papel não pode registrar interações na carteira.", status: 403 };
+    const { linha, ambiguidade } = escolherCliente(linhas, acao?.cliente);
+    if (ambiguidade.length) return { erro: `Mais de uma conta corresponde: ${ambiguidade.join(", ")}.`, status: 409 };
+    if (!linha) return { erro: "Conta não encontrada na sua carteira.", status: 404 };
+    const resumo = clean(acao?.resumo, 4000);
+    if (resumo.length < 3) return { erro: "Descreva o que foi conversado.", status: 400 };
+    const channel = ["whatsapp", "email", "phone", "note"].includes(clean(acao?.canal, 20)) ? clean(acao?.canal, 20) : "note";
+    const direction = clean(acao?.sentido, 10) === "out" ? "out" : "in";
+    const contato = clean(acao?.contato, 160) || linha.name;
+    const fields = parse(linha.fields_json, {}) || {};
+    const known = (Array.isArray(fields.contacts) ? fields.contacts : []).find((item) => semAcento(item?.name) === semAcento(contato));
+    const handle = clean(known?.email || known?.phone, 160);
+    const saved = await insertInteraction(env, access.ownerId, user.id, {
+      contactId: linha.id,
+      contactName: contato,
+      contactHandle: handle,
+      channel,
+      direction,
+      subject: linha.name,
+      body: resumo,
+      meta: { tenant: TENANT_ID, clientId: linha.id, source: "semente-confirmed" },
+    });
+    return { ok: true, tipo, resumo: `Interação com ${contato}, da conta ${linha.name}, registrada no histórico.`, id: saved.id };
+  }
+
   // pesquisar_empresa
+  if (!podeEscrever(access)) return { erro: "Seu papel não pode enriquecer dados da carteira.", status: 403 };
   const { linha, ambiguidade } = escolherCliente(linhas, acao?.cliente);
   if (ambiguidade.length) return { erro: `Mais de uma conta corresponde: ${ambiguidade.join(", ")}.`, status: 409 };
   if (!linha) return { erro: "Conta não encontrada na sua carteira.", status: 404 };

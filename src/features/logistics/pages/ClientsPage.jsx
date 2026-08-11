@@ -36,7 +36,7 @@ import {
   buildCrmCommandCenter,
   crmAccountSummary,
 } from "../todoGreenCrmDomain.js";
-import { assessAccount, gmailComposeUrl, outlookComposeUrl, whatsappUrl } from "../accountIntelligenceDomain.js";
+import { assessAccount, gmailComposeUrl, isTrustedCrmContact, outlookComposeUrl, whatsappUrl } from "../accountIntelligenceDomain.js";
 import "./TodoGreenPages.css";
 
 const BRL = new Intl.NumberFormat("pt-BR", {
@@ -55,12 +55,6 @@ const api = async (path, authHeaders, options = {}) => {
   return payload;
 };
 
-const trustedCrmContact = (contact) => {
-  const source = String(contact?.source || "").trim().toLowerCase();
-  if (!source.startsWith("pesquisa web")) return true;
-  return contact?.verifiedBrazil === true && Number(contact?.researchVersion || 0) >= 3 && String(contact?.country || "").toLowerCase() === "brasil";
-};
-
 const accountFromClient = (client) => ({
   ...(client.crm || {}),
   id: client.id,
@@ -72,7 +66,7 @@ const accountFromClient = (client) => ({
   notes: client.notes,
   revision: client.revision,
   ownerId: client.vendedores?.[0]?.email || "",
-  contacts: (client.crm?.contacts || []).filter(trustedCrmContact),
+  contacts: (client.crm?.contacts || []).filter(isTrustedCrmContact),
 });
 
 const opportunityForCrm = (item) => ({

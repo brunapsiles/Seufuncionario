@@ -2,7 +2,6 @@ import "./LogisticsVerticalSalesPerformance.css";
 import "./LogisticsVerticalRecovery.css";
 import "./LogisticsVerticalRecovery.js";
 import "./LogisticsVerticalCredentials.js";
-import "./LogisticsVerticalWorkCenterV2.js";
 import "./LogisticsVerticalFleet.js";
 
 const SALES_BLOCKS = [

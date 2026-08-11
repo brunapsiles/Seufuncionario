@@ -181,6 +181,8 @@ describe("o contrato com o modelo", () => {
     const texto = catalogoTextual();
     for (const nome of Object.keys(FERRAMENTAS)) expect(texto).toContain(`- ${nome}:`);
     for (const nome of Object.keys(ACOES)) expect(texto).toContain(`- ${nome}:`);
+    expect(FERRAMENTAS).toHaveProperty("interacoes");
+    expect(ACOES).toHaveProperty("registrar_interacao");
   });
 
   it("a instrução proíbe inventar e exige confirmação humana", () => {

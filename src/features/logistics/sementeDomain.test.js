@@ -159,6 +159,9 @@ describe("a proposta dita em português", () => {
     expect(textoDaProposta({ tipo: "pesquisar_empresa", cliente: "Rede Alfa" })).toBe(
       "Pesquisar Rede Alfa na web agora",
     );
+    expect(textoDaProposta({ tipo: "registrar_interacao", cliente: "Rede Alfa", resumo: "Compras pediu uma nova proposta" })).toBe(
+      'Registrar no histórico de Rede Alfa: "Compras pediu uma nova proposta"',
+    );
   });
 
   it("tipo desconhecido manda não confirmar em vez de fingir que entendeu", () => {

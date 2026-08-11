@@ -158,12 +158,23 @@ export async function handleTodoGreenWorkCenter(request, env) {
     const body = await request.json().catch(() => ({}));
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
-    const normalizedBoardId = clean(body.boardId, 160);
-    if (!normalizedBoardId || !clean(body.title, 240))
-      return response({ error: "Informe quadro e título." }, 400);
-    const board = await env.DB.prepare(
-      "SELECT id FROM todogreen_work_boards WHERE id = ? AND workspace_owner_id = ? AND status = 'active'",
-    ).bind(normalizedBoardId, access.ownerId).first();
+    let normalizedBoardId = clean(body.boardId, 160);
+    if (!clean(body.title, 240)) return response({ error: "Informe o título." }, 400);
+    let board = normalizedBoardId
+      ? await env.DB.prepare(
+        "SELECT id FROM todogreen_work_boards WHERE id = ? AND workspace_owner_id = ? AND status = 'active'",
+      ).bind(normalizedBoardId, access.ownerId).first()
+      : null;
+    if (!board) {
+      const boardKey = clean(body.boardKey, 80) || "comercial-deal-desk";
+      board = await env.DB.prepare(
+        `SELECT id FROM todogreen_work_boards
+          WHERE workspace_owner_id = ? AND status = 'active'
+          ORDER BY CASE WHEN id LIKE ? THEN 0 ELSE 1 END, display_order
+          LIMIT 1`,
+      ).bind(access.ownerId, `%:${boardKey}`).first();
+      normalizedBoardId = board?.id || "";
+    }
     if (!board) return response({ error: "Quadro inválido." }, 400);
     await env.DB.prepare(
       `INSERT INTO todogreen_work_items

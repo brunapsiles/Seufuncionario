@@ -5,6 +5,14 @@ const PROCUREMENT = ["procurement", "compras", "suprimentos", "sourcing", "suppl
 const LOGISTICS = ["logística", "logistica", "transporte", "transportes", "frete", "freight", "distribution", "distribuição", "carrier", "supply chain", "last mile", "middle mile"];
 const DECISION_ROLES = ["patrocinador", "decisor econômico", "compras"];
 
+export const isTrustedCrmContact = (contact) => {
+  const source = lower(contact?.source);
+  if (!source.startsWith("pesquisa web")) return true;
+  return contact?.verifiedBrazil === true &&
+    Number(contact?.researchVersion || 0) >= 3 &&
+    lower(contact?.country) === "brasil";
+};
+
 export function assessAccount(account = {}) {
   const contacts = account.crm?.contacts || [];
   const activeContacts = contacts.filter((contact) => contact.active !== false);

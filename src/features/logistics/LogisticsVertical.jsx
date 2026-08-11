@@ -9,6 +9,7 @@ import {
   BookOpen,
   Boxes,
   Calculator,
+  CalendarDays,
   CheckCircle2,
   DollarSign,
   ExternalLink,
@@ -24,6 +25,7 @@ import {
   ListChecks,
   ListTodo,
   LockKeyhole,
+  MessageCircle,
   Network,
   PackageCheck,
   Plus,
@@ -89,6 +91,9 @@ const ReportsPage = lazy(() => import("./pages/ReportsPage.jsx"));
 const TripViabilityPage = lazy(() => import("./pages/TripViabilityPage.jsx"));
 const DealDeskPage = lazy(() => import("./pages/DealDeskPage.jsx"));
 const DocumentVaultPage = lazy(() => import("./pages/DocumentVaultPage.jsx"));
+const WorkCenterPage = lazy(() => import("./pages/WorkCenterPage.jsx"));
+const CommunicationsPage = lazy(() => import("./pages/CommunicationsPage.jsx"));
+const VerticalIntegrationsPage = lazy(() => import("./pages/VerticalIntegrationsPage.jsx"));
 
 const iconMap = {
   Activity,
@@ -100,6 +105,7 @@ const iconMap = {
   BookOpen,
   Boxes,
   Calculator,
+  CalendarDays,
   CheckCircle2,
   DollarSign,
   FileCheck,
@@ -114,6 +120,7 @@ const iconMap = {
   ListChecks,
   ListTodo,
   LockKeyhole,
+  MessageCircle,
   Network,
   PackageCheck,
   Route,
@@ -208,6 +215,13 @@ const IMPLEMENTED_MODULE_IDS = new Set([
   "performance-comercial",
   "rastreamento",
   "solicitacoes",
+  "central-trabalho",
+  "comunicacoes",
+  "tarefas",
+  "agenda",
+  "reunioes",
+  "inbox",
+  "integracoes",
 ]);
 
 const MODULE_IMPLEMENTATION = Object.freeze({
@@ -218,6 +232,30 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     area: "gestao",
     status: "functional",
     description: "Visibilidade comercial e estratégica sobre clientes, oportunidades, preços, resultados, operação e ESG, sem substituir a gestão das áreas responsáveis.",
+  },
+  "central-trabalho": {
+    title: "Central de Trabalho",
+    navLabel: "Trabalho",
+    route: "/todogreen/central-trabalho",
+    area: "gestao",
+    status: "functional",
+    description: "Tarefas, reuniões, aprovações e rotinas em lista, Kanban e agenda, ligadas aos clientes e operações.",
+  },
+  comunicacoes: {
+    title: "Comunicação com clientes",
+    navLabel: "Comunicação",
+    route: "/todogreen/comunicacoes",
+    area: "comercial",
+    status: "functional",
+    description: "Contatos do CRM, canais de abordagem e histórico compartilhado de relacionamento.",
+  },
+  integracoes: {
+    title: "Integrações da vertical",
+    navLabel: "Integrações",
+    route: "/todogreen/integracoes",
+    area: "gestao",
+    status: "functional",
+    description: "Saúde da pesquisa web, canais comerciais, TMS Tracker, agenda e portal do cliente.",
   },
   dashboards: {
     title: "Painéis personalizados",
@@ -676,9 +714,11 @@ const TODO_GREEN_PAGE_ALIASES = Object.freeze({
   produtividade: "dashboard",
   energia: "esg",
   ocorrencias: "operacoes",
-  tarefas: "dashboard",
-  notificacoes: "dashboard",
-  inbox: "dashboard",
+  tarefas: "central-trabalho",
+  agenda: "central-trabalho",
+  reunioes: "central-trabalho",
+  notificacoes: "comunicacoes",
+  inbox: "comunicacoes",
   exportacoes: "relatorios",
   usuarios: "acessos",
   permissoes: "acessos",
@@ -1569,7 +1609,7 @@ function AccessPanel({ role, authHeaders, setToast }) {
   );
 }
 
-export default function LogisticsVertical({ db, update, setToast, access = {}, authHeaders }) {
+export default function LogisticsVertical({ db, setToast, access = {}, authHeaders }) {
   const [path, setPath] = useState(todoGreenPath());
   const [query, setQuery] = useState("");
   // `access` chega vazio hoje; se um dia vier preenchido, ainda precisa passar
@@ -1645,6 +1685,27 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
       .catch(() => {});
     return () => { vivo = false; };
   }, [allowed, authHeaders]);
+  const criarTarefaDoCliente = useCallback(async (task) => {
+    const response = await fetch("/api/todogreen/work-center", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(authHeaders?.() || {}) },
+      body: JSON.stringify({
+        boardKey: "comercial-deal-desk",
+        type: "tarefa",
+        title: task.title,
+        description: task.description || "",
+        priority: String(task.priority || "media").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(),
+        responsibleUserId: task.assigneeId || db?.user?.id || "",
+        responsible: task.assignee || db?.user?.email || "",
+        client: task.clientName || "",
+        dueDate: task.due || "",
+        fields: { clientId: task.clientId || "", source: task.source || "crm" },
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "Não foi possível criar a tarefa na Central de Trabalho.");
+    return payload.item;
+  }, [authHeaders, db?.user?.email, db?.user?.id]);
   const verticalData = useMemo(
     () => montarDadosDaVertical(registros, clientes, db, remoteAccess),
     [registros, clientes, db, remoteAccess],
@@ -1706,11 +1767,14 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
 
       {!verticalData.demo && dashboard.receitaPrevista === 0 && dashboard.receitaRealizada === 0 && verticalData.clients.length === 0 && page === "dashboard" && <EmptyState onCreate={openPricing} />}
       {page === "dashboard" && <DashboardPanel data={verticalData} dashboard={dashboard} />}
+      {page === "central-trabalho" && <Suspense fallback={<section className="tdg-panel">Carregando Central de Trabalho...</section>}><WorkCenterPage authHeaders={authHeaders} clients={clientes} setToast={setToast} /></Suspense>}
+      {page === "comunicacoes" && <Suspense fallback={<section className="tdg-panel">Carregando comunicação...</section>}><CommunicationsPage authHeaders={authHeaders} clients={clientes} onNavigate={navigate} setToast={setToast} /></Suspense>}
+      {page === "integracoes" && <Suspense fallback={<section className="tdg-panel">Carregando integrações...</section>}><VerticalIntegrationsPage authHeaders={authHeaders} clients={clientes} onNavigate={navigate} /></Suspense>}
       {page === "dashboards" && <Suspense fallback={<section className="tdg-panel">Carregando seus painéis...</section>}><DashboardBuilderPage authHeaders={authHeaders} summary={dashboard} setToast={setToast} /></Suspense>}
       {page === "metas" && <Suspense fallback={<section className="tdg-panel">Carregando metas...</section>}><GoalsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "performance-comercial" && <Suspense fallback={<section className="tdg-panel">Carregando performance comercial...</section>}><SalesPerformancePage authHeaders={authHeaders} onNavigate={navigate} /></Suspense>}
       {page === "solicitacoes" && <Suspense fallback={<section className="tdg-panel">Carregando solicitações...</section>}><ClientRequestsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
-      {page === "clientes" && <Suspense fallback={<section className="tdg-panel">Carregando clientes...</section>}><ClientsPage authHeaders={authHeaders} opportunities={verticalData.opportunities} onNavigate={navigate} setToast={setToast} currentUserId={db?.user?.id} onCreateTask={(task) => update?.((current) => ({ ...current, tasks: [task, ...(current.tasks || [])] }))} /></Suspense>}
+      {page === "clientes" && <Suspense fallback={<section className="tdg-panel">Carregando clientes...</section>}><ClientsPage authHeaders={authHeaders} opportunities={verticalData.opportunities} onNavigate={navigate} setToast={setToast} currentUserId={db?.user?.id} onCreateTask={criarTarefaDoCliente} /></Suspense>}
       {page === "oportunidades" && <Suspense fallback={<section className="tdg-panel">Carregando oportunidades...</section>}><OpportunitiesPage clients={clientes} opportunities={verticalData.opportunities} scenarios={verticalData.pricingScenarios} onCreate={(registro) => criar("opportunities", registro)} onUpdate={(id, alteracoes) => atualizar("opportunities", id, alteracoes)} onNavigate={navigate} setToast={setToast} /></Suspense>}
       {page === "propostas" && <ProposalPanel data={verticalData} criar={criar} pedidosDeAprovacao={pedidosDeAprovacao} setToast={setToast} />}
       {page === "precificacao" && <PricingPanel key={new URLSearchParams(path.split("?")[1] || "").get("opportunity") || "nova"} role={role} criar={criar} db={db} authHeaders={authHeaders} setToast={setToast} opportunities={verticalData.opportunities} />}

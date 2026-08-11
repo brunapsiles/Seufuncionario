@@ -5,8 +5,10 @@ import {
   WORK_CENTER_OBJECT_TYPES,
   WORK_CENTER_VIEWS,
   buildWorkCenterAiRequest,
+  buildWorkCenterCalendar,
   createWorkCenterObject,
   evaluateAutomationRule,
+  filterWorkCenterItems,
   summarizeWorkCenter,
   validateWorkCenterField,
 } from "./todoGreenWorkCenterDomain.js";
@@ -83,5 +85,26 @@ describe("To Do Green Central de Trabalho", () => {
     expect(summary.overdue).toBe(1);
     expect(summary.blocked).toBe(1);
     expect(summary.pendingApprovals).toBe(1);
+  });
+
+  it("filtra por quadro, status e busca sem perder acentos", () => {
+    const items = [
+      { id: "1", boardId: "comercial", title: "Reunião com Compras", client: "Adidas", status: "novo", dueDate: "2026-08-20" },
+      { id: "2", boardId: "operacoes", title: "Validar rota", client: "Amazon", status: "novo", dueDate: "2026-08-19" },
+      { id: "3", boardId: "comercial", title: "Proposta", client: "Renner", status: "concluido", dueDate: "2026-08-18" },
+    ];
+    expect(filterWorkCenterItems(items, { boardId: "comercial", status: "novo", search: "reuniao" }).map((item) => item.id)).toEqual(["1"]);
+  });
+
+  it("monta seis semanas de agenda e prioriza o trabalho crítico", () => {
+    const calendar = buildWorkCenterCalendar("2026-08", [
+      { id: "baixa", title: "Depois", dueDate: "2026-08-11", priority: "baixa" },
+      { id: "critica", title: "Agora", dueDate: "2026-08-11", priority: "critica" },
+    ]);
+    expect(calendar).toHaveLength(42);
+    const day = calendar.find((cell) => cell.date === "2026-08-11");
+    expect(day.currentMonth).toBe(true);
+    expect(day.items.map((item) => item.id)).toEqual(["critica", "baixa"]);
+    expect(buildWorkCenterCalendar("2026-13", [])).toEqual([]);
   });
 });

@@ -1,6 +1,7 @@
 import {
   LOGISTICS_PRODUCTS,
   TODO_GREEN_MODULE_CATALOG,
+  TODO_GREEN_PERMISSIONS,
   TODO_GREEN_ROLES,
   TODO_GREEN_TENANT,
   centralPricingEngine,
@@ -119,7 +120,7 @@ export async function handleTodoGreenCore(request, env, user, url, dependencies)
       const role = TODO_GREEN_ROLES.includes(body.role) ? body.role : "admin";
       const permissions = Array.isArray(body.permissions)
         ? body.permissions.map((item) => String(item).slice(0,80)).slice(0,30)
-        : ["owner","admin"].includes(role) ? ["*"] : ["read"];
+        : [...(TODO_GREEN_PERMISSIONS[role] || ["read"])];
       const now = new Date().toISOString();
       await env.DB.prepare(
         `INSERT INTO todogreen_access_emails

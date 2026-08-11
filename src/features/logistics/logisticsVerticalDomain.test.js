@@ -32,6 +32,19 @@ describe("logistics vertical domain", () => {
     expect(LOGISTICS_PRODUCTS.find((item) => item.id === "bulk").requiredFields).toContain("materialType");
   });
 
+  it("mantém PIX fora da vertical e inclui os módulos integrados", () => {
+    const searchable = TODO_GREEN_MODULE_CATALOG.map((item) => `${item.id} ${item.name} ${item.route} ${item.workspaceRoute}`).join(" ").toLowerCase();
+    expect(searchable).not.toMatch(/\bpix\b/);
+    expect(TODO_GREEN_MODULE_CATALOG.some((item) => item.id === "central-trabalho")).toBe(true);
+    expect(TODO_GREEN_MODULE_CATALOG.some((item) => item.id === "comunicacoes")).toBe(true);
+    expect(TODO_GREEN_MODULE_CATALOG.some((item) => item.id === "integracoes")).toBe(true);
+  });
+
+  it("permite que vendedores operem a Central de Trabalho", () => {
+    expect(hasTodoGreenPermission("vendedor", "work:item:write")).toBe(true);
+    expect(hasTodoGreenPermission("lideranca_comercial", "work:item:write")).toBe(true);
+  });
+
   it("does not let read access imply sensitive To Do Green permissions", () => {
     expect(hasTodoGreenPermission("vendedor", "read")).toBe(true);
     expect(hasTodoGreenPermission("vendedor", "pricing:simulate")).toBe(true);

@@ -262,7 +262,10 @@ export function buildWorkCenterAiRequest({ action, specialist, item, boardContex
 
 export function summarizeWorkCenter(items = []) {
   const active = items.filter((item) => !item.archivedAt);
-  const overdue = active.filter((item) => item.fields?.dueDate && item.fields.dueDate < new Date().toISOString().slice(0, 10) && item.status !== "concluido");
+  const overdue = active.filter((item) => {
+    const dueDate = item.dueDate || item.fields?.dueDate;
+    return dueDate && dueDate < new Date().toISOString().slice(0, 10) && item.status !== "concluido";
+  });
   const blocked = active.filter((item) => item.status === "bloqueado" || item.dependencies?.some((dependency) => dependency.status === "pending"));
   const approvals = active.filter((item) => item.type === "aprovacao" && item.status === "pendente");
   return {
@@ -273,4 +276,56 @@ export function summarizeWorkCenter(items = []) {
     byType: active.reduce((acc, item) => ({ ...acc, [item.type]: (acc[item.type] || 0) + 1 }), {}),
     byStatus: active.reduce((acc, item) => ({ ...acc, [item.status]: (acc[item.status] || 0) + 1 }), {}),
   };
+}
+
+export function filterWorkCenterItems(items = [], filters = {}) {
+  const search = String(filters.search || "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const status = String(filters.status || "todos");
+  const boardId = String(filters.boardId || "");
+  return (Array.isArray(items) ? items : [])
+    .filter((item) => !item?.archivedAt)
+    .filter((item) => !boardId || item.boardId === boardId)
+    .filter((item) => status === "todos" || item.status === status)
+    .filter((item) => {
+      if (!search) return true;
+      return [item.title, item.description, item.responsible, item.client, item.type]
+        .some((value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().includes(search));
+    })
+    .sort((a, b) =>
+      String(a.dueDate || "9999-12-31").localeCompare(String(b.dueDate || "9999-12-31")) ||
+      String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")),
+    );
+}
+
+const ymd = (date) => date.toISOString().slice(0, 10);
+
+export function buildWorkCenterCalendar(yearMonth, items = []) {
+  const match = String(yearMonth || "").match(/^(\d{4})-(\d{2})$/);
+  if (!match) return [];
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  if (month < 0 || month > 11) return [];
+  const first = new Date(Date.UTC(year, month, 1));
+  const start = new Date(first);
+  start.setUTCDate(1 - first.getUTCDay());
+  const byDate = new Map();
+  for (const item of items || []) {
+    if (!item?.dueDate || item.archivedAt) continue;
+    if (!byDate.has(item.dueDate)) byDate.set(item.dueDate, []);
+    byDate.get(item.dueDate).push(item);
+  }
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(start);
+    date.setUTCDate(start.getUTCDate() + index);
+    const dateKey = ymd(date);
+    return {
+      date: dateKey,
+      day: date.getUTCDate(),
+      currentMonth: date.getUTCMonth() === month,
+      items: (byDate.get(dateKey) || []).slice().sort((a, b) => {
+        const rank = { critica: 0, alta: 1, media: 2, baixa: 3 };
+        return (rank[a.priority] ?? 9) - (rank[b.priority] ?? 9);
+      }),
+    };
+  });
 }

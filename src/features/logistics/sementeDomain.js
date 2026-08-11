@@ -37,6 +37,7 @@ export const ESPECIALISTA_POR_TELA = Object.freeze({
   oportunidades: "Especialista Comercial",
   propostas: "Especialista Comercial",
   "performance-comercial": "Especialista Comercial",
+  comunicacoes: "Especialista Comercial",
 
   precificacao: "Especialista em Precificação Logística",
   regua: "Especialista em Precificação Logística",
@@ -62,8 +63,10 @@ export const ESPECIALISTA_POR_TELA = Object.freeze({
   auditoria: "Especialista em Dados",
   relatorios: "Especialista em Dados",
   dashboards: "Especialista em Dados",
+  integracoes: "Especialista em Dados",
 
   metas: "Especialista em Projetos",
+  "central-trabalho": "Especialista em Projetos",
 });
 
 // Sem tela conhecida, quem atende é o comercial: é a porta de entrada da
@@ -164,5 +167,7 @@ export const textoDaProposta = (proposta = {}) => {
   }
   if (tipo === "pesquisar_empresa")
     return `Pesquisar ${proposta.cliente || "a empresa"} na web agora`;
+  if (tipo === "registrar_interacao")
+    return `Registrar no histórico de ${proposta.cliente || "a conta"}: "${proposta.resumo || ""}"`;
   return "Ação desconhecida — não confirme.";
 };
