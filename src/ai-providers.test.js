@@ -4,6 +4,7 @@ import {
   configuredAiProviders,
   publicAiResult,
 } from "../worker.js";
+import { providerChain, runWithFallback } from "../worker/services/ai.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -92,5 +93,46 @@ describe("rede gratuita de IA", () => {
         system: "Ajude",
       }),
     ).rejects.toThrow("Provedor teste indisponível (429)");
+  });
+
+  it("tenta o próximo provedor quando o anterior falha", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      if (String(url).includes("api.groq.com")) return new Response("limite", { status: 429 });
+      return new Response(JSON.stringify({
+        model: "gpt-oss-120b",
+        choices: [{ message: { content: "Resposta pela contingência" } }],
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    const result = await runWithFallback(
+      { GROQ_API_KEY: "groq", SAMBANOVA_API_KEY: "samba" },
+      { prompt: "Analise", system: "Contexto isolado", deep: true },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.result.provider).toBe("SambaNova Free");
+    expect(result.errors[0]).toContain("groq");
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      "https://api.groq.com/openai/v1/chat/completions",
+      "https://api.sambanova.ai/v1/chat/completions",
+    ]);
+  });
+
+  it("mantém os nove provedores gratuitos na cascata", () => {
+    const env = {
+      GEMINI_API_KEY: "g",
+      AI: { run: vi.fn() },
+      GROQ_API_KEY: "g",
+      SAMBANOVA_API_KEY: "s",
+      CEREBRAS_API_KEY: "c",
+      MISTRAL_API_KEY: "m",
+      OPENROUTER_API_KEY: "o",
+      GITHUB_MODELS_TOKEN: "gh",
+      HF_TOKEN: "hf",
+    };
+    const ids = providerChain(env, { deep: true }).map(([id]) => id);
+    expect(ids).toEqual(expect.arrayContaining([
+      "groq", "sambanova", "cerebras", "gemini-flash", "openrouter",
+      "github", "gpt-oss", "mistral", "huggingface",
+    ]));
+    expect(ids).not.toContain("xai");
   });
 });

@@ -3797,12 +3797,14 @@ async function handleMedia(request, env, url) {
       : prompt;
   if (env.AI) {
     try {
+      const seedBytes = new Uint32Array(1);
+      crypto.getRandomValues(seedBytes);
       const freeResult = await env.AI.run(
         "@cf/black-forest-labs/flux-1-schnell",
         {
           prompt: finalPrompt.slice(0, 2048),
           steps: 4,
-          seed: Math.floor(Math.random() * 1_000_000),
+          seed: seedBytes[0] % 1_000_000,
         },
       );
       if (freeResult?.image)

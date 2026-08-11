@@ -5,9 +5,12 @@ import {
   INSTRUCAO,
   catalogoTextual,
   escolherCliente,
+  consultaWebDaSemente,
   executarFerramenta,
   lerDecisao,
   montarIndice,
+  pesquisaParaSemente,
+  resolverPesquisaExplicita,
   respostaPareceEmIngles,
 } from "../../../worker/services/todogreen-semente.js";
 
@@ -130,6 +133,47 @@ describe("achar a conta pelo que a pessoa escreveu", () => {
   });
 });
 
+describe("pesquisa web pedida no chat", () => {
+  const linhas = [
+    linha("c1", "Adidas", {}, { segment: "Varejo" }),
+    linha("c2", "Amazon Brasil"),
+  ];
+
+  it("reconhece a empresa citada e o foco de contatos", () => {
+    expect(resolverPesquisaExplicita("Pesquise contatos de procurement da Adidas", linhas, null))
+      .toMatchObject({ linha: { id: "c1" }, focus: "contacts" });
+  });
+
+  it("usa a conta aberta quando a pessoa diz essa empresa", () => {
+    expect(resolverPesquisaExplicita("Busque na web notícias dessa empresa", linhas, linhas[1]))
+      .toMatchObject({ linha: { id: "c2" }, focus: "company" });
+  });
+
+  it("não confunde consulta interna da carteira com busca externa", () => {
+    expect(resolverPesquisaExplicita("Busque as contas quentes", linhas, null)).toBeNull();
+  });
+
+  it("força o recorte Brasil na consulta genérica", () => {
+    expect(consultaWebDaSemente("RFQ de transporte da Adidas")).toContain("Brasil");
+    expect(consultaWebDaSemente("Notícias da Adidas Brasil")).toBe("Notícias da Adidas Brasil");
+  });
+
+  it("leva ao modelo um resumo limpo da pesquisa, não o despejo bruto do site", () => {
+    const resumo = pesquisaParaSemente({
+      company: "Adidas",
+      checkedAt: "2026-08-11T12:00:00Z",
+      companyNews: [{ title: "Notícia", url: "https://example.com/n", snippet: `### ${"texto ".repeat(100)}` }],
+      openRfqs: [],
+      contactCandidates: [],
+      esg: { signals: [] },
+    });
+    expect(resumo.empresa).toBe("Adidas");
+    expect(resumo.noticiasDaEmpresa[0].resumo.length).toBeLessThanOrEqual(320);
+    expect(resumo.noticiasDaEmpresa[0].resumo).not.toContain("###");
+    expect(resumo).not.toHaveProperty("segmentNews");
+  });
+});
+
 describe("ferramentas que não tocam banco", () => {
   const linhas = [
     linha("c1", "Rede Alfa", {
@@ -174,6 +218,25 @@ describe("ferramentas que não tocam banco", () => {
     const resultado = await executarFerramenta({}, { access: {}, pedido: { ferramenta: "hackear" }, linhas });
     expect(resultado.erro).toBe("Ferramenta desconhecida.");
   });
+
+  it("pesquisa a web com fontes e recorte Brasil", async () => {
+    const fetcher = async () => new Response(JSON.stringify({
+      results: [{ title: "Adidas Brasil", url: "https://example.com/adidas", content: "Operação brasileira." }],
+    }), { status: 200 });
+    const resultado = await executarFerramenta(
+      { TAVILY_API_KEY: "teste" },
+      {
+        access: {},
+        pedido: { ferramenta: "pesquisa_web", consulta: "notícias da Adidas" },
+        linhas,
+        fetcher,
+      },
+    );
+    expect(resultado.consulta).toContain("Brasil");
+    expect(resultado.total).toBe(1);
+    expect(resultado.fontes[0].url).toBe("https://example.com/adidas");
+    expect(resultado.contextoSeguro).toContain("FONTE_EXTERNA");
+  });
 });
 
 describe("o contrato com o modelo", () => {
@@ -182,6 +245,7 @@ describe("o contrato com o modelo", () => {
     for (const nome of Object.keys(FERRAMENTAS)) expect(texto).toContain(`- ${nome}:`);
     for (const nome of Object.keys(ACOES)) expect(texto).toContain(`- ${nome}:`);
     expect(FERRAMENTAS).toHaveProperty("interacoes");
+    expect(FERRAMENTAS).toHaveProperty("pesquisa_web");
     expect(ACOES).toHaveProperty("registrar_interacao");
   });
 

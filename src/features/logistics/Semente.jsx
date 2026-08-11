@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Send, X } from "lucide-react";
+import { Check, ImagePlus, Mic, Send, X } from "lucide-react";
 import SementeAvatar from "./SementeAvatar.jsx";
 import {
   HABILIDADES,
@@ -34,6 +34,18 @@ const CHAVE_ABERTA = "todogreen:semente:aberta";
 
 let contador = 0;
 const proximoId = () => (contador += 1);
+
+const lerArquivoComoBase64 = (arquivo) => new Promise((resolve, reject) => {
+  const leitor = new FileReader();
+  leitor.onload = () => resolve(String(leitor.result || "").split(",")[1] || "");
+  leitor.onerror = () => reject(new Error("Não consegui ler o áudio."));
+  leitor.readAsDataURL(arquivo);
+});
+
+const imagemSegura = (value) => {
+  const url = String(value || "");
+  return /^data:image\/(?:png|jpe?g|webp);base64,/i.test(url) || /^https:\/\//i.test(url) ? url : "";
+};
 
 const partesInline = (texto, prefixo) => {
   const partes = [];
@@ -106,7 +118,11 @@ export default function Semente({ pagina, clienteId, authHeaders, aoAgir }) {
   const [mensagens, setMensagens] = useState([]);
   const [pensando, setPensando] = useState(false);
   const [executando, setExecutando] = useState("");
+  const [transcrevendo, setTranscrevendo] = useState(false);
+  const [modoImagem, setModoImagem] = useState(false);
+  const [erroMidia, setErroMidia] = useState("");
   const conversa = useRef(null);
+  const arquivoAudio = useRef(null);
 
   const especialista = especialistaDaTela(pagina);
   const atalhos = atalhosDaTela(pagina);
@@ -209,6 +225,76 @@ export default function Semente({ pagina, clienteId, authHeaders, aoAgir }) {
     [aoAgir, chamar],
   );
 
+  const transcrever = useCallback(async (arquivo) => {
+    if (!arquivo || transcrevendo) return;
+    setErroMidia("");
+    if (!String(arquivo.type || "").startsWith("audio/")) {
+      setErroMidia("Escolha um arquivo de áudio.");
+      return;
+    }
+    if (arquivo.size > 6_000_000) {
+      setErroMidia("O áudio deve ter no máximo 6 MB.");
+      return;
+    }
+    setTranscrevendo(true);
+    try {
+      const audio = await lerArquivoComoBase64(arquivo);
+      const resposta = await fetch("/api/transcribe", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...(authHeaders?.() || {}) },
+        body: JSON.stringify({ audio, language: "pt" }),
+      });
+      const dados = await resposta.json().catch(() => ({}));
+      if (!resposta.ok) throw new Error(dados.error || "Não consegui transcrever o áudio.");
+      setModoImagem(false);
+      setPergunta(String(dados.text || "").trim());
+    } catch (erro) {
+      setErroMidia(erro.message || "Não consegui transcrever o áudio.");
+    } finally {
+      setTranscrevendo(false);
+      if (arquivoAudio.current) arquivoAudio.current.value = "";
+    }
+  }, [authHeaders, transcrevendo]);
+
+  const gerarImagem = useCallback(async (texto) => {
+    const descricao = String(texto || "").trim();
+    if (descricao.length < 5 || pensando) return;
+    setMensagens((atual) => [...atual, { id: `voce-${proximoId()}`, de: "voce", texto: `Imagem: ${descricao}` }]);
+    setPergunta("");
+    setErroMidia("");
+    setPensando(true);
+    try {
+      const resposta = await fetch("/api/media", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...(authHeaders?.() || {}) },
+        body: JSON.stringify({
+          type: "image",
+          prompt: `Material visual institucional da To Do Green, logística sustentável no Brasil, identidade executiva em verde profundo, verde claro, grafite e fundo off-white, sem gradiente e sem marca de outra empresa. ${descricao}`,
+        }),
+      });
+      const dados = await resposta.json().catch(() => ({}));
+      if (!resposta.ok) throw new Error(dados.error || "Não consegui gerar a imagem.");
+      const url = imagemSegura(dados.url);
+      if (!url) throw new Error("A geração terminou sem uma imagem válida.");
+      setMensagens((atual) => [...atual, {
+        id: `semente-${proximoId()}`,
+        de: "semente",
+        texto: "Imagem criada para a To Do Green. Revise antes de usar externamente.",
+        imagemUrl: url,
+      }]);
+    } catch (erro) {
+      setMensagens((atual) => [...atual, {
+        id: `erro-${proximoId()}`,
+        de: "semente",
+        texto: erro.message || "Não consegui gerar a imagem.",
+        falhou: true,
+      }]);
+    } finally {
+      setPensando(false);
+      setModoImagem(false);
+    }
+  }, [authHeaders, pensando]);
+
   if (!aberta) {
     return (
       <button
@@ -259,6 +345,7 @@ export default function Semente({ pagina, clienteId, authHeaders, aoAgir }) {
             {item.de === "semente" && !item.falhou
               ? <MensagemSemente texto={item.texto} classe="semente-msg semente-msg--semente" />
               : <p className={`semente-msg semente-msg--${item.de}${item.falhou ? " semente-msg--erro" : ""}`}>{item.texto}</p>}
+            {item.imagemUrl && <div className="semente-imagem"><img src={item.imagemUrl} alt="Imagem criada pela Semente para a To Do Green" /><a href={item.imagemUrl} download="todogreen-imagem.jpg">Baixar imagem</a></div>}
             {item.proposta && (
               <div className="semente-proposta">
                 <strong>{textoDaProposta(item.proposta)}</strong>
@@ -297,19 +384,27 @@ export default function Semente({ pagina, clienteId, authHeaders, aoAgir }) {
         className="semente-campo"
         onSubmit={(evento) => {
           evento.preventDefault();
-          perguntar(pergunta);
+          if (modoImagem) gerarImagem(pergunta);
+          else perguntar(pergunta);
         }}
       >
+        <div className="semente-midias">
+          <button type="button" onClick={() => arquivoAudio.current?.click()} disabled={transcrevendo || pensando} aria-label="Transcrever áudio com Whisper"><Mic size={15} />{transcrevendo ? "Transcrevendo" : "Áudio"}</button>
+          <input ref={arquivoAudio} type="file" accept="audio/*" hidden onChange={(evento) => transcrever(evento.target.files?.[0])} />
+          <button type="button" className={modoImagem ? "ativo" : ""} onClick={() => { setModoImagem((atual) => !atual); setErroMidia(""); }} disabled={pensando} aria-label="Gerar imagem para a To Do Green"><ImagePlus size={15} />Imagem</button>
+        </div>
+        {modoImagem && <small className="semente-modo">Modo imagem ativo. Descreva o material que precisa.</small>}
+        {erroMidia && <small className="semente-aviso">{erroMidia}</small>}
         <input
           value={pergunta}
           onChange={(evento) => setPergunta(evento.target.value)}
-          placeholder="Pergunte sobre a sua carteira..."
+          placeholder={modoImagem ? "Descreva a imagem..." : "Pergunte sobre a sua carteira ou peça uma pesquisa..."}
           aria-label={`Perguntar para a ${SEMENTE.nome}`}
         />
         <button
           type="submit"
-          disabled={pensando || pergunta.trim().length < 3}
-          aria-label="Enviar pergunta"
+          disabled={pensando || pergunta.trim().length < (modoImagem ? 5 : 3)}
+          aria-label={modoImagem ? "Gerar imagem" : "Enviar pergunta"}
         >
           <Send size={16} />
         </button>

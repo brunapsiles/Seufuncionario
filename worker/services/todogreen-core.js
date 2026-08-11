@@ -11,6 +11,8 @@ import {
 
 import { resolveTodoGreenAccess } from "./todogreen-access.js";
 import { handleTodoGreenGoals } from "./todogreen-goals.js";
+import { configuredAiProviders } from "./ai.js";
+import { webSearchConfiguration } from "./web-search.js";
 
 const response = (data, status = 200) => new Response(JSON.stringify(data), {
   status,
@@ -42,6 +44,50 @@ async function resolveCoreAccess(env, user, ownerId) {
 }
 
 const canManage = (access) => ["owner", "admin"].includes(access?.role) || access?.permissions?.includes("*");
+
+const AUTOMATION_CONNECTORS = Object.freeze([
+  ["n8n", "n8n Community", "N8N_WEBHOOK_URL"],
+  ["node-red", "Node-RED", "NODE_RED_WEBHOOK_URL"],
+  ["activepieces", "Activepieces", "ACTIVEPIECES_WEBHOOK_URL"],
+  ["windmill", "Windmill", "WINDMILL_WEBHOOK_URL"],
+  ["temporal", "Temporal", "TEMPORAL_API_URL"],
+  ["airflow", "Apache Airflow", "AIRFLOW_API_URL"],
+  ["kestra", "Kestra", "KESTRA_API_URL"],
+  ["huginn", "Huginn", "HUGINN_WEBHOOK_URL"],
+]);
+
+export function todoGreenIntegrationStatus(env = {}) {
+  const search = webSearchConfiguration(env);
+  return {
+    ai: {
+      cascade: true,
+      isolation: "todogreen",
+      providers: configuredAiProviders(env),
+    },
+    web: {
+      configured: search.configured,
+      providers: Object.entries(search.providers).map(([id, configured]) => ({ id, configured })),
+      openSource: {
+        searxng: Boolean(env.SEARXNG_URL),
+        extractor: Boolean(env.CRAWL4AI_URL),
+      },
+    },
+    media: {
+      whisper: Boolean(env.AI),
+      imageGeneration: Boolean(env.AI),
+      paidFallback: false,
+    },
+    automations: AUTOMATION_CONNECTORS.map(([id, name, envKey]) => ({
+      id,
+      name,
+      configured: Boolean(env[envKey]),
+    })),
+    browser: {
+      runtimeConfigured: Boolean(env.BROWSER_AUTOMATION_URL),
+      testRunner: "Playwright",
+    },
+  };
+}
 
 async function seedCatalog(env) {
   const now = new Date().toISOString();
@@ -102,6 +148,9 @@ export async function handleTodoGreenCore(request, env, user, url, dependencies)
   if (request.method === "GET" && resource === "access")
     return response({ tenant: TODO_GREEN_TENANT, role: access.role, permissions: access.permissions,
       ownerId: access.ownerId, source: access.source });
+
+  if (request.method === "GET" && resource === "integrations")
+    return response(todoGreenIntegrationStatus(env));
 
   if (resource === "access-list") {
     if (!canManage(access)) return response({ error: "Você não pode gerenciar acessos da To Do Green." }, 403);

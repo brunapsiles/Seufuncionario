@@ -514,7 +514,7 @@ export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = f
     })),
   })));
   if (planResults.every((item) => !item.configured))
-    return { erro: "Pesquisa web ainda não configurada. Cadastre uma chave do Brave Search, Tavily, Serper, Exa, Jina ou Google Search.", status: 503 };
+    return { erro: "Pesquisa web ainda não configurada. Conecte um SearXNG próprio ou cadastre uma chave do Brave Search, Tavily, Serper, Exa, Jina ou Google Search.", status: 503 };
   const report = classifyCompanyResearch({ company, segment, searches: settled, checkedAt: new Date().toISOString() });
   report.providers = [...new Set(planResults.flatMap((item) => item.providers || []))];
   report.failures = planResults.flatMap((item) => item.failures || []).slice(0, 12);

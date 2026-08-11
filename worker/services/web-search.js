@@ -192,6 +192,25 @@ async function jinaSearch(query, key, fetcher) {
   return normalizeSearchResults(items, "Jina Search");
 }
 
+async function searxngSearch(query, baseUrl, fetcher) {
+  let endpoint;
+  try {
+    endpoint = new URL("search", `${String(baseUrl || "").replace(/\/+$/, "")}/`);
+  } catch {
+    throw new Error("SearXNG com endereço inválido");
+  }
+  if (!["http:", "https:"].includes(endpoint.protocol))
+    throw new Error("SearXNG com endereço inválido");
+  endpoint.searchParams.set("q", query);
+  endpoint.searchParams.set("format", "json");
+  endpoint.searchParams.set("language", "pt-BR");
+  endpoint.searchParams.set("safesearch", "1");
+  const response = await fetcher(endpoint, { headers: { accept: "application/json" } });
+  if (!response.ok) throw new Error(`SearXNG indisponível (${response.status})`);
+  const data = await response.json();
+  return normalizeSearchResults(data?.results, "SearXNG");
+}
+
 function deduplicateResults(groups) {
   const seen = new Set();
   const combined = [];
@@ -213,6 +232,7 @@ export function webSearchConfiguration(env = {}) {
       (env.SEARCH_API_KEY && !env.SEARCH_ENGINE_ID),
   );
   const providers = {
+    searxng: Boolean(env.SEARXNG_URL),
     brave,
     tavily: Boolean(env.TAVILY_API_KEY),
     serper: Boolean(env.SERPER_API_KEY),
@@ -239,6 +259,10 @@ export async function searchWeb(env, rawQuery, { fetcher = fetch } = {}) {
     (env.SEARCH_API_KEY && !env.SEARCH_ENGINE_ID ? env.SEARCH_API_KEY : "");
   const googleKey = env.GOOGLE_SEARCH_API_KEY || env.SEARCH_API_KEY;
   const configured = [
+    env.SEARXNG_URL && {
+      name: "SearXNG",
+      run: () => searxngSearch(query, env.SEARXNG_URL, fetcher),
+    },
     env.TAVILY_API_KEY && {
       name: "Tavily",
       run: () => tavilySearch(query, env.TAVILY_API_KEY, fetcher),

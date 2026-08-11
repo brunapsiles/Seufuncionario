@@ -180,7 +180,8 @@ describe("identidade da Semente", () => {
 
   it("anuncia só o que ela realmente faz", () => {
     expect(HABILIDADES).toContain("Analisa empresas");
+    expect(HABILIDADES).toContain("Pesquisa a web com fontes");
     expect(HABILIDADES).toContain("Avalia riscos ESG");
-    expect(HABILIDADES.length).toBe(6);
+    expect(HABILIDADES.length).toBe(7);
   });
 });

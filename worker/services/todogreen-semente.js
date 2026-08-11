@@ -22,7 +22,7 @@
 
 import { recorteDeCarteira, podeNaVertical, TENANT_ID } from "./todogreen-access.js";
 import { runWithFallback } from "./ai.js";
-import { webSearchConfiguration } from "./web-search.js";
+import { searchWeb, webResultsToContext, webSearchConfiguration } from "./web-search.js";
 import { pesquisarEmpresa } from "./todogreen-client-intelligence.js";
 import { insertInteraction } from "./omnichannel.js";
 import { isTrustedCrmContact } from "../../src/features/logistics/accountIntelligenceDomain.js";
@@ -61,6 +61,7 @@ export const FERRAMENTAS = Object.freeze({
   inteligencia: "devolve a pesquisa externa já feita de uma conta: site oficial, LinkedIn, portais de fornecedor, RFQs, sinais ESG e notícias, com as fontes. Requer {\"cliente\":\"nome ou id\"}.",
   tarefas: "lista as tarefas abertas da Central de Trabalho, com responsável, prazo e situação.",
   interacoes: "lista o histórico comercial registrado de uma conta, incluindo WhatsApp, e-mail, ligação, formulário e notas. Requer {\"cliente\":\"nome ou id\"}.",
+  pesquisa_web: "pesquisa informações atuais na web e devolve fontes públicas verificáveis. Use para notícias, mercado, empresas ainda não cadastradas e fatos atuais. Requer {\"consulta\":\"o que pesquisar\"}. Para contatos, procurement, RFQ, logística ou transportes, inclua a empresa e o Brasil na consulta.",
 });
 
 export const ACOES = Object.freeze({
@@ -72,13 +73,15 @@ export const ACOES = Object.freeze({
 
 export const INSTRUCAO = `Você é a Semente, a inteligência comercial da To Do Green — transportadora de logística sustentável.
 
-Você responde sobre a carteira de quem está perguntando, e só sobre ela. Nunca cite conta que não apareça nos dados recebidos.
+ISOLAMENTO OBRIGATÓRIO: você está na vertical To Do Green. Use somente dados do CRM, portal, pesquisa e conversa desta vertical. Nunca use perfil, memória, cliente, conversa ou dado do Seu Funcionário geral. Para perguntas sobre a carteira, nunca trate como cliente uma empresa que não apareça nos dados recebidos. Em pesquisa explícita de prospecção, você pode citar empresa externa encontrada, mas deve rotulá-la como prospect pesquisado, nunca como cliente cadastrado, e não pode gravá-la sem ação confirmada.
 
 IDIOMA OBRIGATÓRIO: responda sempre em português do Brasil. Fontes, cargos e notícias em inglês são dados para interpretar; traduza e explique em português, preservando nomes próprios, links e siglas. Nunca devolva parágrafos em inglês para a pessoa.
 
 REGRA QUE NÃO SE QUEBRA: se faltar dado para concluir, diga qual falta. Nunca estime, complete ou suponha número, nome, cargo, telefone ou e-mail. Um dado inventado sobre a carteira de um cliente vale menos que dizer "não sei".
 
-Você trabalha DENTRO do CRM da To Do Green. Nunca recomende planilha, Google Sheets, HubSpot ou qualquer ferramenta externa: os dados vivem aqui. Se algo não está cadastrado, diga em qual tela da vertical cadastrar (Clientes, Oportunidades, Central de Trabalho) — ou proponha uma das suas ações. Nunca mencione outro negócio que não seja a To Do Green e as contas desta carteira.
+PESQUISA WEB: quando a pergunta depender de informação atual ou a pessoa pedir para pesquisar, use a ferramenta pesquisa_web. Não responda com conhecimento antigo como se fosse pesquisa. Diferencie uma fonte que apenas explica RFQ de uma RFQ de transporte realmente aberta. Para contatos, aceite somente pessoas com evidência de vínculo atual com a empresa, atuação no Brasil e relação com Procurement de Logística, Transportes, Fretes, Distribuição ou Supply Chain. Não copie blocos crus de sites, títulos com # ou marcações como **: sintetize em português e cite os links encontrados.
+
+Você trabalha DENTRO do CRM da To Do Green. Nunca recomende planilha, Google Sheets, HubSpot ou outro CRM externo: os dados vivem aqui. Se algo não está cadastrado, diga em qual tela da vertical cadastrar (Clientes, Oportunidades, Central de Trabalho) — ou proponha uma das suas ações. Não misture dados de outro workspace ou negócio do Seu Funcionário.
 
 Você responde SEMPRE com um único objeto JSON, sem texto fora dele, em um destes três formatos:
 
@@ -216,6 +219,79 @@ export function escolherCliente(linhas, termo) {
   return { linha: candidatos[0], ambiguidade: [] };
 }
 
+const PEDIDO_EXPLICITO_DE_PESQUISA = /(?:^|[^\p{L}])(pesquis(?:e|ar)|bus(?:ca|car|que)|procur(?:e|ar)|investig(?:ue|ar)|rastre(?:ie|ar))(?![\p{L}])/iu;
+const ESCOPO_DE_CONTATOS = /(?:^|[^\p{L}])(contatos?|linkedin|procurement|compras|suprimentos|supply\s*chain|log[ií]stica|transportes?|fretes?)(?![\p{L}])/iu;
+
+const nomeMencionado = (pergunta, linha) => {
+  const texto = semAcento(pergunta);
+  const nomes = [linha?.name, linha?.legal_name]
+    .map(semAcento)
+    .filter((nome) => nome.length >= 3);
+  return nomes.some((nome) => texto.includes(nome));
+};
+
+/**
+ * Um pedido explícito no chat já é autorização para a pesquisa solicitada.
+ * A confirmação separada continua valendo para uma sugestão espontânea do
+ * modelo, mas não faz a pessoa pedir "pesquise" e clicar "confirmar" depois.
+ */
+export function resolverPesquisaExplicita(pergunta, linhas, emFoco = null) {
+  if (!PEDIDO_EXPLICITO_DE_PESQUISA.test(String(pergunta || ""))) return null;
+  const mencionadas = (Array.isArray(linhas) ? linhas : []).filter((linha) => nomeMencionado(pergunta, linha));
+  if (mencionadas.length > 1) return { erro: "Mais de uma conta foi citada. Pesquise uma empresa por vez." };
+  const linha = mencionadas[0] || emFoco || null;
+  if (!linha) return null;
+  return {
+    linha,
+    focus: ESCOPO_DE_CONTATOS.test(String(pergunta || "")) ? "contacts" : "company",
+  };
+}
+
+export function consultaWebDaSemente(value) {
+  const consulta = clean(value, 420);
+  if (!consulta) return "";
+  return /(?:^|[^\p{L}])(brasil|brasileir[oa]s?|s[aã]o paulo|\bsp\b)(?![\p{L}])/iu.test(consulta)
+    ? consulta
+    : `${consulta} Brasil`;
+}
+
+const limparMarcacaoWeb = (value, max) => clean(value, max)
+  .replace(/(^|\s)#{1,6}\s*/g, "$1")
+  .replace(/\*{1,2}/g, "")
+  .trim();
+
+const fonteCompacta = (item) => item ? {
+  titulo: clean(item.title || item.name, 180) || null,
+  url: clean(item.url || item.linkedinUrl || item.sourceUrl, 700) || null,
+  resumo: limparMarcacaoWeb(item.snippet || item.validation || item.currentness, 320) || null,
+} : null;
+
+export function pesquisaParaSemente(report = {}) {
+  return {
+    empresa: clean(report.company, 200),
+    verificadaEm: report.checkedAt || null,
+    siteOficial: fonteCompacta(report.officialWebsite),
+    linkedinDaEmpresa: fonteCompacta(report.linkedinCompany),
+    segmentoSugerido: report.suggestedSegment || null,
+    sedeSugerida: report.suggestedHeadquarters || null,
+    contatosBrasileirosDeLogistica: (report.contactCandidates || []).slice(0, 8).map((item) => ({
+      nome: clean(item.name, 160),
+      cargo: clean(item.title, 160) || null,
+      area: clean(item.department, 120) || null,
+      linkedin: clean(item.linkedinUrl, 700) || null,
+      fonte: clean(item.sourceUrl, 700) || null,
+      validacao: clean(item.validation, 260) || null,
+    })),
+    qualidadeDosContatos: report.contactSearchQuality || null,
+    rfqsDeTransporteAbertas: (report.openRfqs || []).slice(0, 5).map(fonteCompacta),
+    portaisDeFornecedor: (report.supplierLinks || []).slice(0, 5).map(fonteCompacta),
+    sinaisEsg: (report.esg?.signals || []).slice(0, 5).map(fonteCompacta),
+    noticiasDaEmpresa: (report.companyNews || []).slice(0, 5).map(fonteCompacta),
+    proximasAcoes: (report.nextActions || []).slice(0, 5),
+    aviso: report.disclaimer || null,
+  };
+}
+
 // Um contato por pessoa, com os canais dela. Nada é concatenado aqui: o que
 // entra separado sai separado.
 const contatoPublico = (contato) => ({
@@ -282,8 +358,29 @@ async function responsaveis(env, clienteId) {
   return (rows.results || []).map((item) => ({ email: item.seller_email, observacao: item.note || null }));
 }
 
-export async function executarFerramenta(env, { access, pedido, linhas }) {
+export async function executarFerramenta(env, { access, pedido, linhas, fetcher }) {
   const ferramenta = clean(pedido?.ferramenta, 40);
+
+  if (ferramenta === "pesquisa_web") {
+    if (!webSearchConfiguration(env).configured)
+      return {
+        ferramenta,
+        erro: "Pesquisa web ainda não configurada. Conecte um SearXNG próprio ou cadastre uma chave do Brave Search, Tavily, Serper, Exa, Jina ou Google Search.",
+      };
+    const consulta = consultaWebDaSemente(pedido?.consulta);
+    if (consulta.length < 3) return { ferramenta, erro: "Informe o que deve ser pesquisado na web." };
+    const busca = await searchWeb(env, consulta, fetcher ? { fetcher } : undefined);
+    if (!busca.providers?.length && busca.failures?.length)
+      return { ferramenta, erro: "Os provedores de pesquisa não responderam agora.", falhas: busca.failures };
+    return {
+      ferramenta,
+      consulta: busca.query,
+      total: busca.results.length,
+      provedores: busca.providers,
+      fontes: busca.results,
+      contextoSeguro: webResultsToContext(busca),
+    };
+  }
 
   if (ferramenta === "carteira") {
     const indice = montarIndice(linhas);
@@ -481,7 +578,7 @@ export async function executarAcao(env, { access, user, email, acao, linhas }) {
   if (!linha) return { erro: "Conta não encontrada na sua carteira.", status: 404 };
   if (!webSearchConfiguration(env).configured)
     return {
-      erro: "Pesquisa web ainda não configurada. Cadastre uma chave do Brave Search, Tavily, Serper, Exa, Jina ou Google Search.",
+      erro: "Pesquisa web ainda não configurada. Conecte um SearXNG próprio ou cadastre uma chave do Brave Search, Tavily, Serper, Exa, Jina ou Google Search.",
       status: 503,
     };
   const pesquisa = await pesquisarEmpresa(env, {
@@ -513,7 +610,7 @@ export async function handleTodoGreenSemente(request, env, access, user) {
 
   const body = await request.json().catch(() => ({}));
   const email = String(user?.email || "").trim().toLowerCase();
-  const linhas = await lerCarteira(env, access, email);
+  let linhas = await lerCarteira(env, access, email);
 
   // Caminho da execução: a pessoa já leu a proposta e clicou. Nenhum modelo é
   // consultado aqui — o texto que gerou a proposta não decide mais nada.
@@ -526,7 +623,6 @@ export async function handleTodoGreenSemente(request, env, access, user) {
   const pergunta = clean(body.pergunta, 2000);
   if (pergunta.length < 3) return response({ error: "Explique um pouco mais sobre o que precisa." }, 400);
 
-  const indice = montarIndice(linhas);
   const historico = (Array.isArray(body.historico) ? body.historico : [])
     .filter((item) => ["user", "assistant"].includes(item?.role) && typeof item.content === "string")
     .slice(-8)
@@ -535,7 +631,37 @@ export async function handleTodoGreenSemente(request, env, access, user) {
   // A conta aberta na tela entra no cabeçalho: "essa empresa" numa página de
   // cliente quer dizer aquela empresa, e obrigar a pessoa a repetir o nome é
   // fazer o produto esquecer o que está na frente dele.
-  const emFoco = linhas.find((linha) => linha.id === clean(body.clienteId, 60)) || null;
+  let emFoco = linhas.find((linha) => linha.id === clean(body.clienteId, 60)) || null;
+  const pesquisaExplicita = resolverPesquisaExplicita(pergunta, linhas, emFoco);
+  if (pesquisaExplicita?.erro) return response({ error: pesquisaExplicita.erro }, 409);
+
+  let pesquisaExecutada = null;
+  if (pesquisaExplicita?.linha) {
+    if (!webSearchConfiguration(env).configured)
+      return response({ error: "Pesquisa web ainda não configurada. Conecte um SearXNG próprio ou cadastre uma chave do Brave Search, Tavily, Serper, Exa, Jina ou Google Search." }, 503);
+    const pesquisa = await pesquisarEmpresa(env, {
+      linha: pesquisaExplicita.linha,
+      ownerId: access.ownerId,
+      userId: user.id,
+      forcar: true,
+      focus: pesquisaExplicita.focus,
+    });
+    if (pesquisa.erro) return response({ error: pesquisa.erro, failures: pesquisa.failures }, pesquisa.status || 502);
+    pesquisaExecutada = {
+      ferramenta: "pesquisa_web",
+      conta: pesquisaExplicita.linha.name,
+      foco: pesquisaExplicita.focus,
+      relatorio: pesquisaParaSemente(pesquisa.relatorio),
+      enriquecimento: pesquisa.enrichment || {},
+    };
+    // A pesquisa pode preencher segmento, site, sede e contatos. Recarregar a
+    // carteira impede a resposta seguinte de analisar o retrato anterior.
+    linhas = await lerCarteira(env, access, email);
+    emFoco = linhas.find((linha) => linha.id === clean(body.clienteId, 60)) ||
+      linhas.find((linha) => linha.id === pesquisaExplicita.linha.id) || null;
+  }
+
+  const indice = montarIndice(linhas);
   const cabecalho = [
     `Tela em que a pessoa está: ${clean(body.tela, 60) || "não informada"}.`,
     emFoco ? `Conta aberta na tela agora: ${emFoco.name} (id ${emFoco.id}).` : "",
@@ -545,6 +671,9 @@ export async function handleTodoGreenSemente(request, env, access, user) {
     catalogoTextual(),
     "",
     `ÍNDICE DA CARTEIRA (resumo; use as ferramentas para o detalhe):\n${JSON.stringify(indice.slice(0, 200), null, 1)}`,
+    pesquisaExecutada
+      ? `\nPESQUISA WEB EXECUTADA AGORA A PEDIDO DA PESSOA. Responda com os achados úteis, fontes e campos preenchidos; não proponha pesquisar novamente:\n${JSON.stringify(pesquisaExecutada, null, 1)}`
+      : "",
     historico.length ? `\nCONVERSA ATÉ AQUI:\n${historico.join("\n")}` : "",
     `\nPERGUNTA: ${pergunta}`,
   ].join("\n");
@@ -561,11 +690,12 @@ export async function handleTodoGreenSemente(request, env, access, user) {
   if (decisao.consultar) {
     const dados = await executarFerramenta(env, { access, pedido: decisao.consultar, linhas });
     consultou = { ferramenta: dados.ferramenta, pedido: decisao.consultar };
+    const resultadoDaFerramenta = dados.contextoSeguro || JSON.stringify(dados, null, 1);
     const segunda = await runWithFallback(env, {
       prompt: [
         cabecalho,
-        `\nVocê pediu a ferramenta "${dados.ferramenta}". Resultado real, vindo do banco:`,
-        JSON.stringify(dados, null, 1),
+        `\nVocê pediu a ferramenta "${dados.ferramenta}". Resultado real:`,
+        resultadoDaFerramenta,
         "\nAgora responda. Não peça outra ferramenta: responda com o que tem e diga o que falta, se faltar.",
       ].join("\n"),
       system: INSTRUCAO,
@@ -581,7 +711,9 @@ export async function handleTodoGreenSemente(request, env, access, user) {
 
   return response({
     resposta: decisao.resposta || "Não consegui formular uma resposta com os dados desta carteira.",
-    consultou,
+    consultou: pesquisaExecutada
+      ? { ferramenta: "pesquisa_web", pedido: { cliente: pesquisaExecutada.conta, foco: pesquisaExecutada.foco } }
+      : consultou,
     proposta: decisao.acao || null,
     carteira: indice.length,
   });

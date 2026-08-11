@@ -13,6 +13,7 @@ describe("web search service", () => {
     expect(webSearchConfiguration({ SEARCH_API_KEY: "segredo" })).toEqual({
       configured: true,
       providers: {
+        searxng: false,
         brave: true,
         tavily: false,
         serper: false,
@@ -21,6 +22,25 @@ describe("web search service", () => {
         google: false,
       },
     });
+  });
+
+  it("usa uma instância própria do SearXNG sem chave de busca", async () => {
+    const fetcher = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        results: [{ title: "Fonte brasileira", url: "https://example.com.br/fonte", content: "Resumo" }],
+      }),
+    });
+    const result = await searchWeb(
+      { SEARXNG_URL: "https://busca.exemplo.com" },
+      "logística sustentável Brasil",
+      { fetcher },
+    );
+    expect(result.providers).toEqual(["SearXNG"]);
+    expect(result.results[0].url).toBe("https://example.com.br/fonte");
+    const endpoint = new URL(fetcher.mock.calls[0][0]);
+    expect(endpoint.pathname).toBe("/search");
+    expect(endpoint.searchParams.get("format")).toBe("json");
   });
 
   it("detecta pedido de informação atual sem forçar busca em toda conversa", () => {

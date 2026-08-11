@@ -201,3 +201,37 @@ describe("proposta não é execução", () => {
     expect(screen.getByRole("button", { name: /Confirmar e executar/i })).toBeTruthy();
   });
 });
+
+describe("mídia de IA dentro da vertical", () => {
+  it("gera imagem da To Do Green sem autorizar fallback pago", async () => {
+    global.fetch = vi.fn(() => resposta({
+      status: "done",
+      url: "data:image/jpeg;base64,AAAA",
+      freeTier: true,
+    }));
+    render(<Semente pagina="clientes" authHeaders={authHeaders} />);
+    abrir();
+    fireEvent.click(screen.getByRole("button", { name: /Gerar imagem para a To Do Green/i }));
+    fireEvent.change(screen.getByPlaceholderText("Descreva a imagem..."), {
+      target: { value: "Caminhão elétrico em operação urbana" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Gerar imagem" }));
+    expect(await screen.findByAltText(/Imagem criada pela Semente/i)).toBeTruthy();
+    expect(global.fetch.mock.calls[0][0]).toBe("/api/media");
+    const corpo = corpoEnviado(0);
+    expect(corpo.type).toBe("image");
+    expect(corpo.prompt).toContain("To Do Green");
+    expect(corpo.confirmPaid).toBeUndefined();
+  });
+
+  it("transcreve áudio com Whisper e coloca o texto no campo para revisão", async () => {
+    global.fetch = vi.fn(() => resposta({ text: "Pesquisar contatos brasileiros da Adidas" }));
+    const { container } = render(<Semente pagina="clientes" authHeaders={authHeaders} />);
+    abrir();
+    const input = container.querySelector('input[type="file"][accept="audio/*"]');
+    const arquivo = new File([new Uint8Array([1, 2, 3])], "nota.webm", { type: "audio/webm" });
+    fireEvent.change(input, { target: { files: [arquivo] } });
+    expect(await screen.findByDisplayValue("Pesquisar contatos brasileiros da Adidas")).toBeTruthy();
+    expect(global.fetch.mock.calls[0][0]).toBe("/api/transcribe");
+  });
+});

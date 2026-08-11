@@ -10,15 +10,27 @@ describe("Integrações da vertical", () => {
   it("mostra o estado real da pesquisa, Tracker e canais sem incluir PIX", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url) => {
       if (url === "/api/status") return new Response(JSON.stringify({ capabilities: { webSearch: { configured: true } } }), { status: 200 });
-      return new Response(JSON.stringify({ integration: { status: "active" }, summary: { linkedVehicles: 4 } }), { status: 200 });
+      if (url === "/api/todogreen/tracker") return new Response(JSON.stringify({ integration: { status: "active" }, summary: { linkedVehicles: 4 } }), { status: 200 });
+      return new Response(JSON.stringify({
+        ai: { providers: [
+          { id: "cloudflare", name: "Cloudflare Workers AI", configured: true },
+          { id: "groq", name: "Groq Free", configured: false },
+        ] },
+        media: { whisper: true, imageGeneration: true },
+        automations: [],
+        browser: { runtimeConfigured: false },
+      }), { status: 200 });
     }));
     const { container } = render(<VerticalIntegrationsPage authHeaders={() => ({})} clients={[
       { id: "1", portalEnabled: true, crm: { contacts: [{ name: "Ana", phone: "+5511999999999" }] } },
     ]} />);
 
-    expect(await screen.findByText("Operacional")).toBeInTheDocument();
+    expect((await screen.findAllByText("Operacional")).length).toBeGreaterThanOrEqual(3);
     expect(screen.getByText("4 veículo(s) conectado(s).")).toBeInTheDocument();
     expect(screen.getByText("1 contato(s) com canal")).toBeInTheDocument();
+    expect(screen.getByText("1 de 2 configurados")).toBeInTheDocument();
+    expect(screen.getByText("Cloudflare Workers AI: configurado")).toBeInTheDocument();
+    expect(screen.getAllByText("Operacional").length).toBeGreaterThanOrEqual(3);
     expect(container.textContent.toLowerCase()).not.toMatch(/\bpix\b/);
   });
 });

@@ -282,9 +282,29 @@
   align-items: center;
   border-top: 1px solid var(--tdg-line, #d6e8df);
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 10px 12px;
 }
+
+.semente-midias { display: flex; gap: 6px; width: 100%; }
+.semente-midias button {
+  align-items: center;
+  background: #f3f8f5;
+  border: 1px solid var(--tdg-line, #d6e8df);
+  border-radius: 9px;
+  color: var(--tdg-green, #17624f);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 700;
+  gap: 5px;
+  padding: 6px 8px;
+}
+.semente-midias button.ativo { background: #dff3e7; border-color: #8fc8a8; }
+.semente-midias button:disabled { cursor: wait; opacity: .55; }
+.semente-modo { color: var(--tdg-muted, #62766f); width: 100%; }
+.semente-campo > .semente-aviso { width: 100%; }
 
 .semente-campo input {
   background: var(--tdg-bg, #f3f8f5);
@@ -312,6 +332,10 @@
 }
 .semente-campo button[type="submit"]:disabled { cursor: not-allowed; opacity: 0.45; }
 .semente-campo button[type="submit"]:focus-visible { outline: 2px solid var(--tdg-lime, #92c83e); outline-offset: 2px; }
+
+.semente-imagem { display: grid; gap: 7px; margin-top: 5px; }
+.semente-imagem img { border: 1px solid var(--tdg-line, #d6e8df); border-radius: 12px; display: block; max-height: 260px; max-width: 100%; object-fit: contain; }
+.semente-imagem a { color: var(--tdg-green, #17624f); font-size: 11px; font-weight: 750; }
 
 /* Em telas estreitas o painel encosta nas bordas em vez de sobrar meio dedo
  * de cada lado, e a altura cede espaço para o teclado virtual. */
