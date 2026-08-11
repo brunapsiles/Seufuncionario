@@ -111,6 +111,7 @@ function ExternalIntelligence({ report, researching, error, onResearch }) {
       <ResearchLinks title="RFQs de transporte abertas" items={report.openRfqs} empty="Nenhuma RFQ acionável comprovada nesta pesquisa." />
       <ResearchLinks title="Cadastro de fornecedores" items={report.supplierLinks} empty="Nenhum portal oficial identificado." />
       <ResearchLinks title="Procurement de Logística e Transportes no Brasil" items={report.procurementPeople} empty="Nenhum contato público passou pelos critérios de empresa, Brasil e escopo logístico." />
+      <ResearchLinks title="LinkedIn dos contatos cadastrados" items={report.knownContactProfiles} empty="Nenhum LinkedIn adicional foi confirmado para os contatos já cadastrados." />
       {report.contactSearchQuality && <div className="tdg-crm-research-enrichment"><strong>Filtro de contatos: Brasil + Procurement logístico</strong><small>{report.contactSearchQuality.accepted || 0} aceito(s); {report.contactSearchQuality.foreignRejected || 0} de outros países, {report.contactSearchQuality.noBrazilEvidenceRejected || 0} sem evidência de Brasil e {report.contactSearchQuality.nonLogisticsRejected || 0} sem escopo logístico foram descartados.</small></div>}
       {report.suggestedSegment?.value && <div className="tdg-crm-research-enrichment"><strong>Segmento identificado: {report.suggestedSegment.value}</strong><small>Confiança {report.suggestedSegment.confidence}. {report.autoEnrichment?.segmentFilled ? "Preenchido automaticamente no CRM." : "O CRM já possuía um segmento e foi preservado."}</small></div>}
       {report.suggestedHeadquarters?.value && <div className="tdg-crm-research-enrichment"><strong>Operação brasileira identificada: {report.suggestedHeadquarters.value}</strong><small>Confiança {report.suggestedHeadquarters.confidence}. {report.autoEnrichment?.headquartersFilled ? "Preenchida automaticamente na conta." : "A conta já possuía uma sede e foi preservada."}</small></div>}
@@ -432,7 +433,7 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
     ? assessAccount({ ...selected, crm: { ...(selected.crm || {}), contacts: selectedAccount.contacts } })
     : null;
   const selectedReportCandidate = selected ? researchReports[selected.id] || selected.crm?.intelligence || null : null;
-  const selectedReport = Number(selectedReportCandidate?.version || 0) >= 4 ? selectedReportCandidate : null;
+  const selectedReport = Number(selectedReportCandidate?.version || 0) >= 5 ? selectedReportCandidate : null;
   const logisticsProcurementNames = selectedIntelligence
     ? [...new Set(selectedIntelligence.logisticsProcurementContacts.map((item) => item.name).filter(Boolean))]
     : [];
