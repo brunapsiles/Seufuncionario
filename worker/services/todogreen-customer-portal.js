@@ -131,7 +131,7 @@ const intelligenceSources = (items, limit = 10) => Array.isArray(items)
 const intelligenceFields = (input) => {
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;
   const version = finite(input.version, 1, 10);
-  if (version < 4) return null;
+  if (version < 5) return null;
   return {
     version,
     company: clean(input.company, 200),
@@ -162,6 +162,7 @@ const intelligenceFields = (input) => {
     openRfqs: intelligenceSources(input.openRfqs),
     rfqRejected: finite(input.rfqRejected, 0, 1000),
     procurementPeople: intelligenceSources(input.procurementPeople),
+    knownContactProfiles: intelligenceSources(input.knownContactProfiles),
     contactCandidates: Array.isArray(input.contactCandidates)
       ? input.contactCandidates.slice(0, 20).map((contact) => ({
           id: clean(contact?.id, 80),
@@ -184,6 +185,7 @@ const intelligenceFields = (input) => {
     contactSearchQuality: input.contactSearchQuality && typeof input.contactSearchQuality === "object"
       ? {
           accepted: finite(input.contactSearchQuality.accepted, 0, 1000),
+          scopedAccepted: finite(input.contactSearchQuality.scopedAccepted, 0, 1000),
           foreignRejected: finite(input.contactSearchQuality.foreignRejected, 0, 1000),
           noBrazilEvidenceRejected: finite(input.contactSearchQuality.noBrazilEvidenceRejected, 0, 1000),
           nonLogisticsRejected: finite(input.contactSearchQuality.nonLogisticsRejected, 0, 1000),

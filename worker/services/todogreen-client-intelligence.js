@@ -8,7 +8,7 @@ const normalize = (value) => clean(value, 1200).normalize("NFD").replace(/[\u030
 const safeUrl = (value) => { try { const url = new URL(value); return ["http:", "https:"].includes(url.protocol) ? url.href : ""; } catch { return ""; } };
 const resultKey = (item) => safeUrl(item?.url).replace(/[#?].*$/, "").replace(/\/$/, "");
 const includesAny = (text, terms) => terms.some((term) => text.includes(term));
-export const COMPANY_RESEARCH_VERSION = 4;
+export const COMPANY_RESEARCH_VERSION = 5;
 
 const VACANCY = ["vaga", "vagas", "career", "carreira", "emprego", "job", "jobs", "hiring", "we are hiring", "we're looking", "talentos", "recrutamento", "analista de compras", "comprador"];
 const TRANSPORT = ["transporte", "transportadora", "logistica", "frete", "frota", "middle mile", "last mile", "transferencia", "distribuicao", "carrier"];
@@ -24,13 +24,18 @@ const LOGISTICS_PROCUREMENT = [
   "freight", "carrier", "distribution", "distribuicao", "supply chain", "last mile",
   "middle mile", "inbound", "outbound",
 ];
+const LOGISTICS_DECISION = [
+  "gerente de logistica", "gerente logistica", "gerente de transportes", "gerente transportes",
+  "gerente sr de transportes", "diretor de supply chain", "diretora de supply chain",
+  "responsavel pela area de transportes", "gestor de logistica", "outbound manager",
+  "transportadoras", "contratacao de transportadoras", "parceiros de transporte",
+];
 const BRAZIL = [
   "brasil", "brazil", "sao paulo", "campinas", "jundiai", "guarulhos", "osasco",
   "barueri", "rio de janeiro", "belo horizonte", "curitiba", "porto alegre", "recife",
   "salvador", "fortaleza", "brasilia", "goiania", "manaus", "parana", "santa catarina",
   "rio grande do sul", "minas gerais",
 ];
-const FOREIGN_PROFILE_HOST = /^(?:ca|ch|uk|de|fr|es|it|nl|au|mx|ar|cl|co)\.linkedin\.com$/i;
 const FOREIGN_LOCATION = [
   "north america", "united states", "usa", "canada", "ontario", "toronto", "portugal",
   "porto, portugal", "switzerland", "zurich", "lucerne", "germany", "herzogenaurach",
@@ -141,10 +146,12 @@ const mentionsCompany = (item, company) => {
 const profileGeography = (item) => {
   let host = "";
   try { host = new URL(safeUrl(item?.url)).hostname.replace(/^www\./, ""); } catch { host = ""; }
-  if (FOREIGN_PROFILE_HOST.test(host)) return "foreign";
+  const linkedinLocale = host.match(/^([a-z]{2})\.linkedin\.com$/i)?.[1]?.toLowerCase() || "";
+  if (linkedinLocale && linkedinLocale !== "br") return "foreign";
   const leadingEvidence = normalize(`${item?.title} ${item?.snippet}`).slice(0, 650);
   if (includesAny(leadingEvidence, FOREIGN_LOCATION)) return "foreign";
   if (host === "br.linkedin.com" || includesAny(leadingEvidence, BRAZIL)) return "brazil";
+  if (normalize(item?.searchScope).includes("brazil")) return "brazil-scoped";
   return "unknown";
 };
 
@@ -153,12 +160,12 @@ const classifyContactResult = (item, company) => {
   if (isVacancy(item)) return "vacancy";
   if (!mentionsCompany(item, company)) return "other-company";
   const text = normalize(`${item?.title} ${item?.snippet}`);
-  if (!includesAny(text, PROCUREMENT)) return "not-procurement";
-  if (!includesAny(text, LOGISTICS_PROCUREMENT)) return "not-logistics";
   const geography = profileGeography(item);
   if (geography === "foreign") return "foreign";
-  if (geography !== "brazil") return "no-brazil-evidence";
-  return "accepted";
+  if (!includesAny(text, PROCUREMENT) && !includesAny(text, LOGISTICS_DECISION)) return "not-procurement";
+  if (!includesAny(text, LOGISTICS_PROCUREMENT) && !normalize(item?.searchScope).includes("logistics")) return "not-logistics";
+  if (!["brazil", "brazil-scoped"].includes(geography)) return "no-brazil-evidence";
+  return geography === "brazil" && includesAny(text, LOGISTICS_PROCUREMENT) ? "accepted" : "accepted-scoped";
 };
 
 const inferredSegment = (items) => {
@@ -202,16 +209,22 @@ const contactPhone = (item) => {
   return phones.length === 1 ? phones[0] : "";
 };
 
-const publicContact = (item, index, { company, officialHost }) => {
+const profileParts = (item, company) => {
   const parts = clean(item.title, 240).replace(/\s*[|·]\s*LinkedIn.*$/i, "").split(/\s+[–—-]\s+/).map((part) => clean(part, 120)).filter(Boolean);
   const name = parts[0] || "";
   if (name.split(/\s+/).length < 2 || /linkedin|procurement|compras|suprimentos/i.test(name)) return null;
   const title = parts.slice(1).filter((part) => !companyTokens(company).some((token) => normalize(part).includes(token))).join(" · ");
+  return { name, title };
+};
+
+const publicContact = (item, index, { company, officialHost, scoped = false }) => {
+  const profile = profileParts(item, company);
+  if (!profile) return null;
   return {
     id: `web-contact-${index + 1}`,
-    name,
-    title: title || "Procurement logístico a confirmar",
-    department: "Procurement de Logística e Transportes",
+    name: profile.name,
+    title: profile.title || "Atuação logística a confirmar",
+    department: scoped ? "Compras / Logística no Brasil · escopo a confirmar" : "Procurement de Logística e Transportes",
     email: contactEmail(item, officialHost, company),
     phone: contactPhone(item),
     linkedinUrl: safeUrl(item.url),
@@ -219,8 +232,42 @@ const publicContact = (item, index, { company, officialHost }) => {
     source: "Pesquisa web",
     sourceUrl: safeUrl(item.url),
     country: "Brasil",
-    specialty: "Procurement logístico",
-    validation: "Perfil público com evidência de atuação no Brasil, vínculo com a empresa e escopo de logística/transportes. Confirme cargo e atualidade antes da abordagem.",
+    specialty: scoped ? "Resultado de busca brasileira direcionada" : "Procurement logístico",
+    validation: scoped
+      ? "Perfil encontrado em consulta restrita ao LinkedIn Brasil para Compras/Logística. O vínculo está indicado no resultado; confirme cargo e escopo atual antes da abordagem."
+      : "Perfil público com evidência de atuação no Brasil, vínculo com a empresa e escopo de logística/transportes. Confirme cargo e atualidade antes da abordagem.",
+    verifiedBrazil: true,
+    researchVersion: COMPANY_RESEARCH_VERSION,
+    active: true,
+  };
+};
+
+const knownContactCandidate = (item, index, company) => {
+  const names = Array.isArray(item?.knownContactNames) ? item.knownContactNames : [item?.knownContactName];
+  const evidence = normalize(`${item?.title} ${item?.snippet}`);
+  const name = names.map((value) => clean(value, 160)).find((value) => {
+    const tokens = normalize(value).split(/\s+/).filter((token) => token.length > 2);
+    return tokens.length >= 2 && tokens.every((token) => evidence.includes(token));
+  }) || "";
+  if (!name) return null;
+  const profile = profileParts(item, company);
+  if (!profile) return null;
+  const geography = profileGeography(item);
+  if (geography === "foreign" || !["brazil", "brazil-scoped"].includes(geography)) return null;
+  return {
+    id: `known-web-contact-${index + 1}`,
+    name,
+    title: profile.title,
+    department: "",
+    email: "",
+    phone: "",
+    linkedinUrl: safeUrl(item.url),
+    relationshipRole: "Influenciador",
+    source: "Pesquisa web (LinkedIn do contato)",
+    sourceUrl: safeUrl(item.url),
+    country: "Brasil",
+    specialty: "Contato já cadastrado",
+    validation: "LinkedIn localizado pelo nome do contato cadastrado, empresa e consulta restrita ao Brasil. Confirme se o perfil ainda corresponde à pessoa antes da abordagem.",
     verifiedBrazil: true,
     researchVersion: COMPANY_RESEARCH_VERSION,
     active: true,
@@ -269,12 +316,31 @@ export function classifyCompanyResearch({ company, segment, searches, checkedAt 
   const esgSignals = unique((byKind.esg || []).filter((item) => mentionsCompany(item, company) && includesAny(normalize(`${item.title} ${item.snippet}`), ESG) && !isVacancy(item))).map((item) => source(item, "esg"));
   const profileResults = unique(all.filter((item) => /linkedin\.com\/in\//i.test(item.url)), 20);
   const classifiedProfiles = profileResults.map((item) => ({ item, reason: classifyContactResult(item, company) }));
-  const acceptedProfiles = classifiedProfiles.filter((item) => item.reason === "accepted").map((item) => item.item);
-  const procurementPeople = acceptedProfiles.map((item) => source(item, "procurement_contact", {
-    currentness: "Perfil compatível com Brasil e procurement logístico; confirme vínculo e cargo antes do contato.",
-    validation: "Resultado filtrado por empresa, Brasil e escopo de logística/transportes.",
+  const acceptedProfiles = classifiedProfiles.filter((item) => item.reason.startsWith("accepted"));
+  const procurementPeople = acceptedProfiles.map(({ item, reason }) => source(item, "procurement_contact", {
+    currentness: reason === "accepted"
+      ? "Perfil compatível com Brasil e procurement/logística; confirme vínculo e cargo antes do contato."
+      : "Perfil encontrado em busca restrita ao LinkedIn Brasil; confirme cargo e escopo logístico antes do contato.",
+    validation: reason === "accepted"
+      ? "Resultado filtrado por empresa, Brasil e escopo de logística/transportes."
+      : "Resultado sem sinal estrangeiro, recuperado por consulta direcionada ao Brasil e a Compras/Logística.",
   }));
-  const contactCandidates = acceptedProfiles.map((item, index) => publicContact(item, index, { company, officialHost })).filter(Boolean);
+  const procurementCandidates = acceptedProfiles.map(({ item, reason }, index) => publicContact(item, index, { company, officialHost, scoped: reason === "accepted-scoped" })).filter(Boolean);
+  const knownContactResults = unique((byKind.known_contacts || []).filter((item) => /linkedin\.com\/in\//i.test(item.url) && mentionsCompany(item, company) && !isVacancy(item)), 12);
+  const knownContactCandidates = knownContactResults.map((item, index) => knownContactCandidate(item, index, company)).filter(Boolean);
+  const seenCandidateProfiles = new Set();
+  const contactCandidates = [...procurementCandidates, ...knownContactCandidates].filter((item) => {
+    const key = normalize(item.linkedinUrl);
+    if (!key || seenCandidateProfiles.has(key)) return false;
+    seenCandidateProfiles.add(key);
+    return true;
+  });
+  const knownContactProfiles = knownContactCandidates.map((item) => source({
+    title: item.name,
+    url: item.linkedinUrl,
+    snippet: item.validation,
+    provider: "Pesquisa web",
+  }, "known_contact_profile", { validation: item.validation }));
   const officialWebsiteKey = officialWebsite ? resultKey(officialWebsite) : "";
   const companyNewsResults = unique((byKind.news || []).filter((item) =>
     mentionsCompany(item, company) && !isVacancy(item) && !isCompanyProfileNoise(item) &&
@@ -314,9 +380,11 @@ export function classifyCompanyResearch({ company, segment, searches, checkedAt 
     openRfqs,
     rfqRejected: rejectedRfqCandidates,
     procurementPeople,
+    knownContactProfiles,
     contactCandidates,
     contactSearchQuality: {
       accepted: acceptedProfiles.length,
+      scopedAccepted: classifiedProfiles.filter((item) => item.reason === "accepted-scoped").length,
       foreignRejected: classifiedProfiles.filter((item) => item.reason === "foreign").length,
       noBrazilEvidenceRejected: classifiedProfiles.filter((item) => item.reason === "no-brazil-evidence").length,
       nonLogisticsRejected: classifiedProfiles.filter((item) => item.reason === "not-logistics").length,
@@ -335,7 +403,7 @@ export function classifyCompanyResearch({ company, segment, searches, checkedAt 
 const response = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 
 /** Uma pesquisa 360 reaproveita cada resultado em várias classificações. */
-export function buildCompanyResearchPlans({ company, segment, year, focus = "company" }) {
+export function buildCompanyResearchPlans({ company, segment, year, focus = "company", knownContacts = [] }) {
   const name = clean(company, 200);
   const market = clean(segment, 120) || "logística e transporte";
   const plans = [
@@ -357,13 +425,35 @@ export function buildCompanyResearchPlans({ company, segment, year, focus = "com
     },
     {
       kinds: ["contacts"],
-      query: `"${name}" Brasil site:linkedin.com/in (procurement OR compras OR suprimentos OR sourcing) (logística OR transportes OR frete OR distribution OR "supply chain")`,
+      contactScope: "brazil-procurement-logistics",
+      query: `site:br.linkedin.com/in "${name}" Brasil procurement compras logística transportes frete supply chain`,
+    },
+    {
+      kinds: ["contacts"],
+      contactScope: "brazil-procurement-logistics",
+      query: `"${name}" Brasil LinkedIn gerente compras suprimentos transportes logística`,
     },
   ];
   if (focus === "contacts") plans.push({
     kinds: ["contacts"],
-    query: `"${name}" Brasil site:linkedin.com/in (head OR diretor OR gerente OR manager) (procurement OR compras OR suprimentos OR sourcing) (logística OR transporte OR frete OR distribution OR "supply chain")`,
+    contactScope: "brazil-procurement-logistics",
+    query: `site:br.linkedin.com/in "${name}" Brasil diretor gerente supply chain transportes distribuição outbound`,
   });
+  if (focus === "contacts") {
+    const contactsToFind = (Array.isArray(knownContacts) ? knownContacts : [])
+      .filter((item) => clean(item?.name, 160).split(/\s+/).length >= 2 && !safeUrl(item?.linkedinUrl))
+      .slice(0, 8)
+      .map((item) => clean(item.name, 160));
+    for (let index = 0; index < contactsToFind.length; index += 4) {
+      const names = contactsToFind.slice(index, index + 4);
+      plans.push({
+        kinds: ["known_contacts"],
+        contactScope: "brazil-known-contact",
+        knownContactNames: names,
+        query: `site:br.linkedin.com/in "${name}" Brasil LinkedIn ${names.map((contactName) => `"${contactName}"`).join(" OR ")}`,
+      });
+    }
+  }
   return plans;
 }
 
@@ -410,10 +500,18 @@ export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = f
   const company = clean(linha.name, 200);
   const segment = clean(linha.segment, 120);
   const year = new Date().getUTCFullYear();
-  const plans = buildCompanyResearchPlans({ company, segment, year, focus });
+  const knownContacts = Array.isArray(fields.contacts) ? fields.contacts : [];
+  const plans = buildCompanyResearchPlans({ company, segment, year, focus, knownContacts });
   const planResults = await Promise.all(plans.map(async (plan) => ({ ...plan, ...(await searchWeb(env, plan.query)) })));
   const settled = planResults.flatMap((item) => item.kinds.map((kind) => ({
-    kind, configured: item.configured, results: item.results,
+    kind,
+    configured: item.configured,
+    results: (item.results || []).map((result) => ({
+      ...result,
+      searchScope: item.contactScope || "",
+      knownContactName: item.knownContactName || "",
+      knownContactNames: item.knownContactNames || [],
+    })),
   })));
   if (planResults.every((item) => !item.configured))
     return { erro: "Pesquisa web ainda não configurada. Cadastre uma chave do Brave Search, Tavily, Serper, Exa, Jina ou Google Search.", status: 503 };

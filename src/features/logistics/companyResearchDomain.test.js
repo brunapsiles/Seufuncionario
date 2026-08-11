@@ -4,12 +4,23 @@ import { buildCompanyResearchPlans, classifyCompanyResearch, resolveWebsiteEnric
 const result = (title, url, snippet = "") => ({ title, url, snippet, provider: "teste" });
 
 describe("inteligência externa comercial", () => {
-  it("separa identidade, notícias e tendências em cinco chamadas com foco brasileiro", () => {
+  it("separa inteligência e faz duas buscas brasileiras de contatos", () => {
     const plans = buildCompanyResearchPlans({ company: "Adidas", segment: "Varejo", year: 2026 });
-    expect(plans).toHaveLength(5);
+    expect(plans).toHaveLength(6);
     expect(new Set(plans.flatMap((item) => item.kinds))).toEqual(new Set(["identity", "supplier", "rfq", "esg", "news", "segment", "contacts"]));
     expect(plans.every((item) => item.query.includes("Brasil"))).toBe(true);
-    expect(buildCompanyResearchPlans({ company: "Adidas", segment: "Varejo", year: 2026, focus: "contacts" })).toHaveLength(6);
+    expect(buildCompanyResearchPlans({ company: "Adidas", segment: "Varejo", year: 2026, focus: "contacts" })).toHaveLength(7);
+    const focused = buildCompanyResearchPlans({
+      company: "Adidas", segment: "Varejo", year: 2026, focus: "contacts",
+      knownContacts: [{ name: "Thiago Souza" }, { name: "Fernanda Vasco" }],
+    });
+    expect(focused).toHaveLength(8);
+    expect(focused.filter((item) => item.kinds.includes("known_contacts"))).toEqual([
+      expect.objectContaining({
+        knownContactNames: ["Thiago Souza", "Fernanda Vasco"],
+        query: expect.stringMatching(/"Adidas".*"Thiago Souza" OR "Fernanda Vasco"/),
+      }),
+    ]);
   });
   it("não confunde vaga com RFQ e só confirma oportunidade aberta de transporte", () => {
     const report = classifyCompanyResearch({ company: "Empresa X", segment: "Varejo", searches: [
@@ -60,9 +71,9 @@ describe("inteligência externa comercial", () => {
       source: "Pesquisa web",
       country: "Brasil",
       verifiedBrazil: true,
-      researchVersion: 4,
+      researchVersion: 5,
     })]);
-    expect(report.version).toBe(4);
+    expect(report.version).toBe(5);
     expect(report.suggestedHeadquarters?.value).toBe("São Paulo, SP");
   });
 
@@ -110,6 +121,34 @@ describe("inteligência externa comercial", () => {
       { kind: "contacts", results: [result("Bruno Lima - Gerente de Suprimentos - Empresa Brasil | LinkedIn", "https://br.linkedin.com/in/bruno", "Curitiba, Brasil. Supply chain e contratação de transportadoras na Empresa Brasil.")] },
     ] });
     expect(report.contactCandidates.map((item) => item.name)).toEqual(["Ana Souza", "Bruno Lima"]);
+  });
+
+  it("encontra lideranças brasileiras de logística mesmo sem a palavra procurement", () => {
+    const report = classifyCompanyResearch({ company: "Adidas", segment: "Varejo", searches: [
+      { kind: "contacts", results: [
+        { ...result("Nadiah Maluf - Gerente Logistica / Transportes - adidas", "https://br.linkedin.com/in/nadiah-maluf", "Responsável pela área de transportes da adidas e pela relação com transportadoras."), searchScope: "brazil-procurement-logistics" },
+        { ...result("Mikaelly M. - Gerente de Compras na adidas", "https://www.linkedin.com/in/mikaellym", "Gestão estratégica de compras, supply chain e varejo na adidas."), searchScope: "brazil-procurement-logistics" },
+      ] },
+    ] });
+    expect(report.contactCandidates.map((item) => item.name)).toEqual(["Nadiah Maluf", "Mikaelly M."]);
+    expect(report.contactSearchQuality.accepted).toBe(2);
+    expect(report.contactSearchQuality.scopedAccepted).toBe(1);
+  });
+
+  it("localiza o LinkedIn de um contato já cadastrado sem recriá-lo", () => {
+    const report = classifyCompanyResearch({ company: "Amazon", segment: "E-commerce", searches: [
+      { kind: "known_contacts", results: [{
+        ...result("Fernanda Vasco - Amazon | LinkedIn", "https://www.linkedin.com/in/fernanda-vasco", "Fernanda Vasco trabalha na Amazon."),
+        searchScope: "brazil-known-contact",
+        knownContactNames: ["Fernanda Vasco"],
+      }] },
+    ] });
+    expect(report.knownContactProfiles).toEqual([expect.objectContaining({ title: "Fernanda Vasco", url: "https://www.linkedin.com/in/fernanda-vasco" })]);
+    expect(report.contactCandidates).toEqual([expect.objectContaining({
+      name: "Fernanda Vasco",
+      linkedinUrl: "https://www.linkedin.com/in/fernanda-vasco",
+      source: "Pesquisa web (LinkedIn do contato)",
+    })]);
   });
 
   it("não repete perfil corporativo como notícia nem duplica a empresa nas tendências", () => {
