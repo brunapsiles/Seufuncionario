@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCompanyResearchPlans, classifyCompanyResearch } from "../../../worker/services/todogreen-client-intelligence.js";
+import { buildCompanyResearchPlans, classifyCompanyResearch, resolveWebsiteEnrichment } from "../../../worker/services/todogreen-client-intelligence.js";
 
 const result = (title, url, snippet = "") => ({ title, url, snippet, provider: "teste" });
 
@@ -25,6 +25,18 @@ describe("inteligência externa comercial", () => {
     expect(report.excludedVacancies).toBe(1);
   });
 
+  it("não transforma conteúdo educativo ou modelo de RFP em oportunidade comercial", () => {
+    const report = classifyCompanyResearch({ company: "Adidas", segment: "Varejo", searches: [
+      { kind: "rfq", results: [
+        result("BID, RFI, RFQ, RFP: afinal o que significa?", "https://abrafac.org.br/rfq", "Guia sobre compras estratégicas e transporte."),
+        result("Adidas RFP solution template", "https://scribd.com/adidas-rfp", "Modelo de RFP em inglês."),
+        result("RFI, RFP e RFQ: diferenças", "https://pipefy.com/pt-br/blog/rfq", "Como funciona cada solicitação."),
+      ] },
+    ] });
+    expect(report.openRfqs).toHaveLength(0);
+    expect(report).not.toHaveProperty("rfqWatchlist");
+  });
+
   it("separa notícias da empresa e do segmento", () => {
     const report = classifyCompanyResearch({ company: "Amazon", segment: "E-commerce", searches: [
       { kind: "news", results: [result("Amazon amplia operação", "https://news.example.com/amazon")] },
@@ -37,7 +49,7 @@ describe("inteligência externa comercial", () => {
 
   it("sugere segmento e transforma perfil público de procurement em contato verificável", () => {
     const report = classifyCompanyResearch({ company: "Loja Exemplo", segment: "", searches: [
-      { kind: "identity", results: [result("Loja Exemplo | LinkedIn", "https://www.linkedin.com/company/loja-exemplo", "Rede brasileira de varejo com lojas físicas")] },
+      { kind: "identity", results: [result("Loja Exemplo | LinkedIn", "https://www.linkedin.com/company/loja-exemplo", "Rede brasileira de varejo com sede em São Paulo, Brasil")] },
       { kind: "contacts", results: [result("Ana Souza - Gerente de Procurement - Loja Exemplo | LinkedIn", "https://br.linkedin.com/in/ana-souza", "São Paulo, Brasil. Procurement de logística, transportes e supply chain na Loja Exemplo.")] },
       { kind: "supplier", results: [] }, { kind: "rfq", results: [] }, { kind: "esg", results: [] }, { kind: "news", results: [] }, { kind: "segment", results: [] },
     ] });
@@ -47,7 +59,33 @@ describe("inteligência externa comercial", () => {
       linkedinUrl: "https://br.linkedin.com/in/ana-souza",
       source: "Pesquisa web",
       country: "Brasil",
+      verifiedBrazil: true,
+      researchVersion: 3,
     })]);
+    expect(report.version).toBe(3);
+    expect(report.suggestedHeadquarters?.value).toBe("São Paulo, SP");
+  });
+
+  it("não usa matéria da Mundo Logística como site da Amazon e corrige o preenchimento antigo", () => {
+    const report = classifyCompanyResearch({ company: "Amazon", segment: "E-commerce", searches: [
+      { kind: "identity", results: [
+        result("Amazon amplia malha logística", "https://mundologistica.com.br/noticias/amazon-amplia-malha", "Notícia sobre a operação da Amazon no Brasil."),
+        result("Amazon Brasil", "https://www.amazon.com.br/", "Site da Amazon Brasil."),
+      ] },
+    ] });
+    expect(report.officialWebsite?.url).toBe("https://www.amazon.com.br/");
+
+    expect(resolveWebsiteEnrichment({
+      company: "Amazon",
+      existingWebsite: "https://mundologistica.com.br/noticias/amazon-amplia-malha",
+      previousResearchWebsite: "https://mundologistica.com.br/noticias/amazon-amplia-malha",
+      officialWebsite: report.officialWebsite.url,
+    })).toEqual({
+      value: "https://www.amazon.com.br/",
+      filled: false,
+      corrected: true,
+      removed: false,
+    });
   });
 
   it("descarta os perfis globais retornados na pesquisa da Adidas", () => {

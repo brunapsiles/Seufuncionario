@@ -53,6 +53,7 @@ describe("página de clientes", () => {
         vendedores: [], crm: {
           contacts: [{ id: "1", name: "Thiago Souza", department: "Operações", email: "fernanda.pereira@adidas.com", phone: "+5519982414440" }],
           intelligence: {
+            version: 3,
             checkedAt: "2026-08-11T00:00:00.000Z", esg: { relevance: "Alta", signals: [] },
             companyNews: [{ title: "adidas records strong start to the year", url: "https://www.adidas-group.com/news", snippet: "Continued operating working capital investments and strong business growth across the company." }],
             segmentNews: [], procurementPeople: [], supplierLinks: [], openRfqs: [], nextActions: [],
@@ -69,5 +70,32 @@ describe("página de clientes", () => {
     expect(screen.queryByText("Contato ainda não mapeado")).not.toBeInTheDocument();
     expect(screen.getByText("Fonte internacional · adidas-group.com")).toBeInTheDocument();
     expect(screen.queryByText(/Continued operating working capital/)).not.toBeInTheDocument();
+  });
+
+  it("não reapresenta pesquisa antiga nem contatos web sem comprovação brasileira", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      clientes: [{
+        id: "adidas", name: "Adidas", segment: "Varejo", status: "ativo", revision: 3,
+        vendedores: [], crm: {
+          contacts: [
+            { id: "historico", name: "Contato salvo", department: "Operações", email: "salvo@adidas.com" },
+            { id: "web-contact-1", name: "Ian Aranjo", source: "Pesquisa web", linkedinUrl: "https://ca.linkedin.com/in/ian-aranjo" },
+          ],
+          intelligence: {
+            version: 1, checkedAt: "2026-08-10T00:00:00.000Z", esg: { relevance: "Alta", signals: [] },
+            procurementPeople: [{ title: "Ian Aranjo", url: "https://ca.linkedin.com/in/ian-aranjo" }],
+            rfqWatchlist: [{ title: "O que é RFQ", url: "https://example.com/o-que-e-rfq" }],
+          },
+        },
+      }],
+      acesso: { podeGerenciar: true, podeEditar: true, somenteCarteira: false },
+    }), { status: 200 })));
+
+    render(<ClientsPage authHeaders={() => ({})} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Adidas/ }));
+    expect(await screen.findByText("Contato salvo")).toBeInTheDocument();
+    expect(screen.queryByText("Ian Aranjo")).not.toBeInTheDocument();
+    expect(screen.queryByText("O que é RFQ")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Pesquisar empresa/ }).length).toBeGreaterThan(0);
   });
 });

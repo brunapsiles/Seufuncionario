@@ -8,11 +8,14 @@ const normalize = (value) => clean(value, 1200).normalize("NFD").replace(/[\u030
 const safeUrl = (value) => { try { const url = new URL(value); return ["http:", "https:"].includes(url.protocol) ? url.href : ""; } catch { return ""; } };
 const resultKey = (item) => safeUrl(item?.url).replace(/[#?].*$/, "").replace(/\/$/, "");
 const includesAny = (text, terms) => terms.some((term) => text.includes(term));
+export const COMPANY_RESEARCH_VERSION = 3;
 
 const VACANCY = ["vaga", "vagas", "career", "carreira", "emprego", "job", "jobs", "hiring", "we are hiring", "we're looking", "talentos", "recrutamento", "analista de compras", "comprador"];
 const TRANSPORT = ["transporte", "transportadora", "logistica", "frete", "frota", "middle mile", "last mile", "transferencia", "distribuicao", "carrier"];
 const RFQ = ["rfq", "rfp", "request for proposal", "bid", "licitacao", "edital", "concorrencia", "cotacao de frete"];
-const OPEN = ["aberta", "aberto", "inscricoes", "prazo", "participe", "envie sua proposta", "recebimento de propostas", "chamada publica"];
+const OPEN = ["aberta", "aberto", "inscricoes", "prazo", "participe", "envie sua proposta", "recebimento de propostas", "chamada publica", "submission deadline", "open tender"];
+const ACTION_CHANNEL = ["inscreva", "cadastre", "envie", "submeta", "formulario", "portal", "documentos", "propostas ate", "recebimento de propostas", "submission", "apply", "register"];
+const RFQ_EDUCATIONAL = ["o que e", "what is", "significa", "diferencas", "afinal", "sopa de letrinhas", "guia", "glossario", "template", "modelo de rfp", "como funciona"];
 const SUPPLIER = ["cadastro de fornecedores", "seja fornecedor", "portal do fornecedor", "supplier portal", "supplier registration", "homologacao de fornecedores"];
 const ESG = ["esg", "sustentabilidade", "descarbonizacao", "emissoes", "escopo 3", "scope 3", "net zero", "carbono", "clima"];
 const PROCUREMENT = ["procurement", "compras", "suprimentos", "sourcing", "supply chain"];
@@ -32,6 +35,14 @@ const FOREIGN_LOCATION = [
   "north america", "united states", "usa", "canada", "ontario", "toronto", "portugal",
   "porto, portugal", "switzerland", "zurich", "lucerne", "germany", "herzogenaurach",
   "united kingdom", "london", "spain", "france", "mexico", "argentina", "chile",
+];
+const BRAZIL_HEADQUARTERS = [
+  ["sao paulo", "São Paulo, SP"], ["campinas", "Campinas, SP"], ["jundiai", "Jundiaí, SP"],
+  ["guarulhos", "Guarulhos, SP"], ["osasco", "Osasco, SP"], ["barueri", "Barueri, SP"],
+  ["rio de janeiro", "Rio de Janeiro, RJ"], ["belo horizonte", "Belo Horizonte, MG"],
+  ["curitiba", "Curitiba, PR"], ["porto alegre", "Porto Alegre, RS"], ["recife", "Recife, PE"],
+  ["salvador", "Salvador, BA"], ["fortaleza", "Fortaleza, CE"], ["brasilia", "Brasília, DF"],
+  ["goiania", "Goiânia, GO"], ["manaus", "Manaus, AM"],
 ];
 const SEGMENTS = [
   ["E-commerce", ["e-commerce", "marketplace", "comercio eletronico"]],
@@ -77,6 +88,27 @@ const companyTokens = (company) => normalize(company)
   .split(/\s+/)
   .filter((item) => item.length > 3 && !["grupo", "brasil"].includes(item));
 
+const websiteBelongsToCompany = (value, company) => {
+  let host = "";
+  try { host = normalize(new URL(safeUrl(value)).hostname.replace(/^www\./, "")); } catch { return false; }
+  const tokens = companyTokens(company);
+  return Boolean(host && tokens.length && tokens.some((token) => host.includes(token)));
+};
+
+export function resolveWebsiteEnrichment({ existingWebsite, previousResearchWebsite, officialWebsite, company }) {
+  const existing = safeUrl(existingWebsite);
+  const previous = safeUrl(previousResearchWebsite);
+  const official = safeUrl(officialWebsite);
+  const wasAutoFilled = Boolean(existing && previous && resultKey({ url: existing }) === resultKey({ url: previous }));
+  const shouldCorrect = Boolean(existing && !websiteBelongsToCompany(existing, company) && wasAutoFilled);
+  return {
+    value: shouldCorrect ? official : (!existing && official ? official : existing),
+    filled: !existing && Boolean(official),
+    corrected: shouldCorrect && Boolean(official),
+    removed: shouldCorrect && !official,
+  };
+}
+
 const mentionsCompany = (item, company) => {
   const tokens = companyTokens(company);
   if (!tokens.length) return true;
@@ -118,6 +150,17 @@ const inferredSegment = (items) => {
   return { value: winner.value, source: source(winner.matches[0], "segment_evidence"), confidence: winner.matches.length > 1 ? "alta" : "moderada" };
 };
 
+const inferredHeadquarters = (items) => {
+  const evidence = unique(items, 12);
+  for (const item of evidence) {
+    const text = normalize(`${item.title} ${item.snippet}`);
+    if (!includesAny(text, ["brasil", "brazil"])) continue;
+    const city = BRAZIL_HEADQUARTERS.find(([term]) => text.includes(term));
+    if (city) return { value: city[1], source: source(item, "headquarters_evidence"), confidence: "moderada" };
+  }
+  return null;
+};
+
 const contactEmail = (item, officialHost, company) => {
   const matches = clean(`${item?.title} ${item?.snippet}`, 1600)
     .match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || [];
@@ -156,38 +199,52 @@ const publicContact = (item, index, { company, officialHost }) => {
     country: "Brasil",
     specialty: "Procurement logístico",
     validation: "Perfil público com evidência de atuação no Brasil, vínculo com a empresa e escopo de logística/transportes. Confirme cargo e atualidade antes da abordagem.",
+    verifiedBrazil: true,
+    researchVersion: COMPANY_RESEARCH_VERSION,
     active: true,
   };
 };
+
+const isLegacyUnverifiedWebContact = (contact) =>
+  normalize(contact?.source).startsWith("pesquisa web") &&
+  (Number(contact?.researchVersion || 0) < COMPANY_RESEARCH_VERSION || contact?.verifiedBrazil !== true);
 
 /** Classifica apenas o que está evidenciado no resultado. Não transforma notícia ou vaga em RFQ. */
 export function classifyCompanyResearch({ company, segment, searches, checkedAt = new Date().toISOString() }) {
   const byKind = resultsByKind(searches);
   const all = unique(searches.flatMap((item) => item.results || []), 40);
-  const companyToken = normalize(company).split(/\s+/).filter((item) => item.length > 3)[0] || "";
+  const companyToken = companyTokens(company)[0] || "";
   const linkedInCompany = all.find((item) => /linkedin\.com\/company\//i.test(item.url) && mentionsCompany(item, company));
-  const officialWebsite = (byKind.identity || []).find((item) => {
-    const url = normalize(item.url);
-    return !includesAny(url, ["linkedin.com", "facebook.com", "instagram.com", "wikipedia.org", "youtube.com", "jusbrasil.com", "glassdoor."]) &&
-      (!companyToken || url.includes(companyToken));
+  const officialWebsiteResult = (byKind.identity || []).find((item) => {
+    const url = normalize(safeUrl(item.url));
+    return Boolean(url) && !includesAny(url, ["linkedin.com", "facebook.com", "instagram.com", "wikipedia.org", "youtube.com", "jusbrasil.com", "glassdoor."]) &&
+      websiteBelongsToCompany(item.url, company);
   });
+  const officialWebsite = officialWebsiteResult ? {
+    ...officialWebsiteResult,
+    url: new URL(officialWebsiteResult.url).origin,
+  } : null;
   const officialHost = officialWebsite ? new URL(officialWebsite.url).hostname.replace(/^www\./, "") : "";
   const trustedForCompany = (item) => {
-    const host = new URL(item.url).hostname.replace(/^www\./, "");
+    let host = "";
+    try { host = new URL(safeUrl(item.url)).hostname.replace(/^www\./, ""); } catch { return false; }
     return (officialHost && (host === officialHost || host.endsWith(`.${officialHost}`))) ||
       (companyToken && normalize(host).includes(companyToken)) ||
       /(?:^|\.)(gov\.br|sp\.gov\.br)$/.test(host);
   };
-  const supplierCandidates = unique((byKind.supplier || []).filter((item) => includesAny(normalize(`${item.title} ${item.snippet} ${item.url}`), SUPPLIER) && !isVacancy(item)));
+  const supplierCandidates = unique((byKind.supplier || []).filter((item) => includesAny(normalize(`${item.title} ${item.snippet} ${item.url}`), SUPPLIER) && mentionsCompany(item, company) && !isVacancy(item)));
   const supplierLinks = supplierCandidates.filter(trustedForCompany).map((item) => source(item, "supplier", { actionable: true, validation: "Link compatível com o domínio da empresa ou portal público; confirme os requisitos da homologação." }));
-  const supplierWatchlist = supplierCandidates.filter((item) => !trustedForCompany(item)).map((item) => source(item, "supplier_watchlist", { actionable: false, validation: "O domínio não foi confirmado como oficial da empresa." }));
-  const rfqCandidates = unique((byKind.rfq || []).filter((item) => includesAny(normalize(`${item.title} ${item.snippet} ${item.url}`), RFQ) && !isVacancy(item)));
+  const supplierRejected = supplierCandidates.length - supplierLinks.length;
+  const rfqCandidates = unique((byKind.rfq || []).filter((item) => {
+    const text = normalize(`${item.title} ${item.snippet} ${item.url}`);
+    return includesAny(text, RFQ) && !includesAny(text, RFQ_EDUCATIONAL) && !isVacancy(item) && mentionsCompany(item, company);
+  }));
   const openRfqs = rfqCandidates.filter((item) => {
     const text = normalize(`${item.title} ${item.snippet} ${item.url}`);
-    return includesAny(text, TRANSPORT) && includesAny(text, OPEN);
+    return includesAny(text, TRANSPORT) && includesAny(text, OPEN) && includesAny(text, ACTION_CHANNEL);
   }).filter(trustedForCompany).map((item) => source(item, "rfq", { actionable: true, validation: "O resultado menciona processo aberto e escopo de transporte em domínio compatível; confirme prazo e elegibilidade." }));
-  const rfqWatchlist = rfqCandidates.filter((item) => !openRfqs.some((open) => resultKey(open) === resultKey(item))).map((item) => source(item, "rfq_watchlist", { actionable: false, validation: "Sinal de compras encontrado, mas sem evidência suficiente de RFQ de transporte aberta agora." }));
-  const esgSignals = unique((byKind.esg || []).filter((item) => includesAny(normalize(`${item.title} ${item.snippet}`), ESG) && !isVacancy(item))).map((item) => source(item, "esg"));
+  const rejectedRfqCandidates = rfqCandidates.length - openRfqs.length;
+  const esgSignals = unique((byKind.esg || []).filter((item) => mentionsCompany(item, company) && includesAny(normalize(`${item.title} ${item.snippet}`), ESG) && !isVacancy(item))).map((item) => source(item, "esg"));
   const profileResults = unique(all.filter((item) => /linkedin\.com\/in\//i.test(item.url)), 20);
   const classifiedProfiles = profileResults.map((item) => ({ item, reason: classifyContactResult(item, company) }));
   const acceptedProfiles = classifiedProfiles.filter((item) => item.reason === "accepted").map((item) => item.item);
@@ -196,7 +253,7 @@ export function classifyCompanyResearch({ company, segment, searches, checkedAt 
     validation: "Resultado filtrado por empresa, Brasil e escopo de logística/transportes.",
   }));
   const contactCandidates = acceptedProfiles.map((item, index) => publicContact(item, index, { company, officialHost })).filter(Boolean);
-  const companyNews = unique((byKind.news || []).filter((item) => !isVacancy(item))).map((item) => source(item, "company_news"));
+  const companyNews = unique((byKind.news || []).filter((item) => mentionsCompany(item, company) && !isVacancy(item))).map((item) => source(item, "company_news"));
   const segmentNews = unique((byKind.segment || []).filter((item) => !isVacancy(item))).map((item) => source(item, "segment_news"));
   const esgRelevance = esgSignals.length ? "Alta" : segment && includesAny(normalize(segment), TRANSPORT.concat(["varejo", "industria", "e-commerce", "alimentos", "energia"])) ? "Provável" : "A validar";
 
@@ -208,18 +265,19 @@ export function classifyCompanyResearch({ company, segment, searches, checkedAt 
   if (!nextActions.length) nextActions.push("Completar o mapa de procurement e monitorar sinais públicos; nenhuma oportunidade acionável foi comprovada nesta pesquisa.");
 
   return {
-    version: 1,
+    version: COMPANY_RESEARCH_VERSION,
     company: clean(company, 200),
     segment: clean(segment, 120),
-    suggestedSegment: inferredSegment([...(byKind.identity || []), ...(byKind.news || [])]),
+    suggestedSegment: inferredSegment([...(byKind.identity || []), ...(byKind.news || [])].filter((item) => mentionsCompany(item, company))),
+    suggestedHeadquarters: inferredHeadquarters([...(byKind.identity || []), ...(byKind.news || [])].filter((item) => mentionsCompany(item, company))),
     checkedAt,
     officialWebsite: officialWebsite ? source(officialWebsite, "official_candidate", { verification: "Candidato a site oficial; confirme o domínio antes de usar." }) : null,
     linkedinCompany: linkedInCompany ? source(linkedInCompany, "linkedin_company") : null,
     esg: { relevance: esgRelevance, signals: esgSignals },
     supplierLinks,
-    supplierWatchlist,
+    supplierRejected,
     openRfqs,
-    rfqWatchlist,
+    rfqRejected: rejectedRfqCandidates,
     procurementPeople,
     contactCandidates,
     contactSearchQuality: {
@@ -235,7 +293,7 @@ export function classifyCompanyResearch({ company, segment, searches, checkedAt 
     segmentNews,
     nextActions,
     excludedVacancies: all.filter(isVacancy).length,
-    disclaimer: "Resultados públicos verificados na data indicada. Contatos só são aceitos com evidência de Brasil, vínculo com a empresa e escopo de procurement logístico. Notícias, vagas e expansão não são tratadas como RFQ. Links e cargos podem mudar e devem ser confirmados na fonte.",
+    disclaimer: "Resultados públicos verificados na data indicada. Contatos só são aceitos com evidência de Brasil, vínculo com a empresa e escopo de procurement logístico. RFQ só aparece quando há empresa-alvo, transporte, processo aberto e canal real de participação. Links e cargos podem mudar e devem ser confirmados na fonte.",
   };
 }
 
@@ -252,7 +310,7 @@ export function buildCompanyResearchPlans({ company, segment, year, focus = "com
     },
     {
       kinds: ["supplier", "rfq"],
-      query: `"${name}" Brasil ("cadastro de fornecedores" OR "seja fornecedor" OR RFQ OR RFP OR licitação OR concorrência) (transporte OR transportadora OR logística OR frete)`,
+      query: `"${name}" Brasil ("cadastro de fornecedores" OR "seja fornecedor" OR "RFQ aberta" OR "RFP aberta" OR licitação OR concorrência) (transporte OR transportadora OR logística OR frete) (inscrições OR prazo OR proposta OR portal)`,
     },
     {
       kinds: ["contacts"],
@@ -280,7 +338,7 @@ export async function handleTodoGreenClientIntelligence(request, env, access, us
   ).bind(clientId, TENANT_ID, access.ownerId, ...scope.params).first();
   if (!row) return response({ error: "Cliente não encontrado na sua carteira." }, 404);
   const fields = parse(row.fields_json, {});
-  const cached = fields.intelligence && typeof fields.intelligence === "object" ? fields.intelligence : null;
+  const cached = fields.intelligence && typeof fields.intelligence === "object" && Number(fields.intelligence.version || 0) >= COMPANY_RESEARCH_VERSION ? fields.intelligence : null;
   if (request.method === "GET")
     return response({
       intelligence: cached,
@@ -296,13 +354,13 @@ export async function handleTodoGreenClientIntelligence(request, env, access, us
   });
   if (resultado.erro) return response({ error: resultado.erro, failures: resultado.failures }, resultado.status || 502);
   if (resultado.doCache) return response({ intelligence: resultado.relatorio, cached: true });
-  return response({ intelligence: resultado.relatorio, enrichment: resultado.enrichment, cached: false });
+  return response({ intelligence: resultado.relatorio, enrichment: resultado.enrichment, client: resultado.clientPatch, cached: false });
 }
 
 /** Pesquisa compartilhada pelos botões do CRM e pelas ações confirmadas da Semente. */
 export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = false, focus = "company" }) {
   const fields = parse(linha.fields_json, {});
-  const cached = fields.intelligence && typeof fields.intelligence === "object" ? fields.intelligence : null;
+  const cached = fields.intelligence && typeof fields.intelligence === "object" && Number(fields.intelligence.version || 0) >= COMPANY_RESEARCH_VERSION ? fields.intelligence : null;
   const idadeDoCache = cached?.checkedAt ? Date.now() - Date.parse(cached.checkedAt) : Infinity;
   if (!forcar && idadeDoCache < 24 * 60 * 60 * 1000) return { relatorio: cached, doCache: true };
 
@@ -321,7 +379,9 @@ export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = f
   report.failures = planResults.flatMap((item) => item.failures || []).slice(0, 12);
   if (!report.providers.length && report.failures.length)
     return { erro: "A pesquisa web está configurada, mas o provedor não respondeu. Tente novamente em instantes.", failures: report.failures, status: 502 };
-  const existingContacts = Array.isArray(fields.contacts) ? fields.contacts : [];
+  const allExistingContacts = Array.isArray(fields.contacts) ? fields.contacts : [];
+  const existingContacts = allExistingContacts.filter((contact) => !isLegacyUnverifiedWebContact(contact));
+  const legacyContactsRemoved = allExistingContacts.length - existingContacts.length;
   let contactsUpdated = 0;
   const matchedCandidates = new Set();
   const enrichedContacts = existingContacts.map((existing) => {
@@ -350,19 +410,42 @@ export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = f
   const existingIdentities = new Set(enrichedContacts.flatMap((item) => [normalize(item.linkedinUrl), normalize(item.email), normalize(item.name)].filter(Boolean)));
   const discoveredContacts = (report.contactCandidates || []).filter((item) => !matchedCandidates.has(item.linkedinUrl) && !existingIdentities.has(normalize(item.linkedinUrl)) && !existingIdentities.has(normalize(item.email)) && !existingIdentities.has(normalize(item.name)));
   const filledSegment = !clean(linha.segment, 120) && report.suggestedSegment?.value ? report.suggestedSegment.value : clean(linha.segment, 120);
-  const filledWebsite = !clean(fields.website, 1000) && report.officialWebsite?.url ? report.officialWebsite.url : clean(fields.website, 1000);
+  const websiteEnrichment = resolveWebsiteEnrichment({
+    existingWebsite: fields.website,
+    previousResearchWebsite: fields.intelligence?.officialWebsite?.url,
+    officialWebsite: report.officialWebsite?.url,
+    company,
+  });
+  const filledWebsite = websiteEnrichment.value;
   const filledLinkedin = !clean(fields.linkedinUrl, 1000) && report.linkedinCompany?.url ? report.linkedinCompany.url : clean(fields.linkedinUrl, 1000);
+  const filledHeadquarters = !clean(fields.headquarters, 160) && report.suggestedHeadquarters?.value ? report.suggestedHeadquarters.value : clean(fields.headquarters, 160);
   report.autoEnrichment = {
     segmentFilled: !clean(linha.segment, 120) && Boolean(filledSegment),
-    websiteFilled: !clean(fields.website, 1000) && Boolean(filledWebsite),
+    websiteFilled: websiteEnrichment.filled,
+    websiteCorrected: websiteEnrichment.corrected,
+    invalidWebsiteRemoved: websiteEnrichment.removed,
     linkedinFilled: !clean(fields.linkedinUrl, 1000) && Boolean(filledLinkedin),
+    headquartersFilled: !clean(fields.headquarters, 160) && Boolean(filledHeadquarters),
     contactsAdded: discoveredContacts.length,
     contactsUpdated,
+    legacyContactsRemoved,
   };
-  const nextFields = { ...fields, website: filledWebsite, linkedinUrl: filledLinkedin, contacts: [...enrichedContacts, ...discoveredContacts], intelligence: report };
+  const nextContacts = [...enrichedContacts, ...discoveredContacts];
+  const nextFields = { ...fields, website: filledWebsite, linkedinUrl: filledLinkedin, headquarters: filledHeadquarters, contacts: nextContacts, intelligence: report };
   await env.DB.prepare(
     `UPDATE todogreen_clients SET segment=?,fields_json=?,revision=revision+1,updated_by=?,updated_at=?
       WHERE id=? AND tenant_id=? AND workspace_owner_id=?`,
   ).bind(filledSegment, JSON.stringify(nextFields), userId, report.checkedAt, linha.id, TENANT_ID, ownerId).run();
-  return { relatorio: report, enrichment: report.autoEnrichment, doCache: false };
+  return {
+    relatorio: report,
+    enrichment: report.autoEnrichment,
+    clientPatch: {
+      id: linha.id,
+      segment: filledSegment,
+      revision: Number(linha.revision || 0) + 1,
+      updatedAt: report.checkedAt,
+      crm: { website: filledWebsite, linkedinUrl: filledLinkedin, headquarters: filledHeadquarters, intelligence: report },
+    },
+    doCache: false,
+  };
 }

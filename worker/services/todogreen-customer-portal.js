@@ -70,6 +70,7 @@ const sha256 = async (value) => {
 };
 
 const clean = (value, max = 500) => String(value ?? "").trim().slice(0, max);
+const normalizeText = (value) => clean(value, 500).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 const finite = (value, min = 0, max = 100) => {
   const number = Number(value);
@@ -99,6 +100,18 @@ const safeLinkedinUrl = (value) => {
   } catch { return ""; }
 };
 
+const websiteBelongsToCompany = (value, company) => {
+  let host = "";
+  try { host = normalizeText(new URL(safeExternalUrl(value)).hostname.replace(/^www\./, "")); } catch { return false; }
+  const tokens = normalizeText(company).split(/\s+/).filter((item) => item.length > 3 && !["grupo", "brasil"].includes(item));
+  return Boolean(host && tokens.length && tokens.some((token) => host.includes(token)));
+};
+
+const sameExternalUrl = (left, right) => {
+  const canonical = (value) => safeExternalUrl(value).replace(/[#?].*$/, "").replace(/\/$/, "");
+  return Boolean(canonical(left) && canonical(left) === canonical(right));
+};
+
 const intelligenceSource = (item = {}) => ({
   title: clean(item.title, 240),
   url: safeExternalUrl(item.url),
@@ -117,8 +130,10 @@ const intelligenceSources = (items, limit = 10) => Array.isArray(items)
 
 const intelligenceFields = (input) => {
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const version = finite(input.version, 1, 10);
+  if (version < 3) return null;
   return {
-    version: finite(input.version, 1, 10),
+    version,
     company: clean(input.company, 200),
     segment: clean(input.segment, 120),
     suggestedSegment: input.suggestedSegment && typeof input.suggestedSegment === "object"
@@ -126,6 +141,13 @@ const intelligenceFields = (input) => {
           value: clean(input.suggestedSegment.value, 120),
           confidence: clean(input.suggestedSegment.confidence, 40),
           source: input.suggestedSegment.source ? intelligenceSource(input.suggestedSegment.source) : null,
+        }
+      : null,
+    suggestedHeadquarters: input.suggestedHeadquarters && typeof input.suggestedHeadquarters === "object"
+      ? {
+          value: clean(input.suggestedHeadquarters.value, 160),
+          confidence: clean(input.suggestedHeadquarters.confidence, 40),
+          source: input.suggestedHeadquarters.source ? intelligenceSource(input.suggestedHeadquarters.source) : null,
         }
       : null,
     checkedAt: clean(input.checkedAt, 40),
@@ -136,9 +158,9 @@ const intelligenceFields = (input) => {
       signals: intelligenceSources(input.esg?.signals),
     },
     supplierLinks: intelligenceSources(input.supplierLinks),
-    supplierWatchlist: intelligenceSources(input.supplierWatchlist),
+    supplierRejected: finite(input.supplierRejected, 0, 1000),
     openRfqs: intelligenceSources(input.openRfqs),
-    rfqWatchlist: intelligenceSources(input.rfqWatchlist),
+    rfqRejected: finite(input.rfqRejected, 0, 1000),
     procurementPeople: intelligenceSources(input.procurementPeople),
     contactCandidates: Array.isArray(input.contactCandidates)
       ? input.contactCandidates.slice(0, 20).map((contact) => ({
@@ -155,6 +177,8 @@ const intelligenceFields = (input) => {
           country: clean(contact?.country, 80),
           specialty: clean(contact?.specialty, 120),
           validation: clean(contact?.validation, 500),
+          verifiedBrazil: contact?.verifiedBrazil === true,
+          researchVersion: finite(contact?.researchVersion, 0, 10),
         })).filter((contact) => contact.name && contact.linkedinUrl)
       : [],
     contactSearchQuality: input.contactSearchQuality && typeof input.contactSearchQuality === "object"
@@ -177,9 +201,13 @@ const intelligenceFields = (input) => {
       ? {
           segmentFilled: input.autoEnrichment.segmentFilled === true,
           websiteFilled: input.autoEnrichment.websiteFilled === true,
+          websiteCorrected: input.autoEnrichment.websiteCorrected === true,
+          invalidWebsiteRemoved: input.autoEnrichment.invalidWebsiteRemoved === true,
           linkedinFilled: input.autoEnrichment.linkedinFilled === true,
+          headquartersFilled: input.autoEnrichment.headquartersFilled === true,
           contactsAdded: finite(input.autoEnrichment.contactsAdded, 0, 100),
           contactsUpdated: finite(input.autoEnrichment.contactsUpdated, 0, 100),
+          legacyContactsRemoved: finite(input.autoEnrichment.legacyContactsRemoved, 0, 100),
         }
       : null,
     excludedVacancies: finite(input.excludedVacancies, 0, 1000),
@@ -187,14 +215,46 @@ const intelligenceFields = (input) => {
   };
 };
 
-const crmFields = (value = {}) => {
+const crmFields = (value = {}, companyName = "") => {
   const input = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const storedWebsite = safeExternalUrl(input.website);
+  const legacyResearchWebsite = safeExternalUrl(input.intelligence?.officialWebsite?.url);
+  const website = Number(input.intelligence?.version || 0) < 3 && sameExternalUrl(storedWebsite, legacyResearchWebsite) && !websiteBelongsToCompany(storedWebsite, companyName)
+    ? ""
+    : storedWebsite;
+  const normalizedContacts = Array.isArray(input.contacts)
+    ? normalizeCrmContacts(input.contacts.slice(0, 100).map((contact) => ({
+        id: clean(contact?.id, 80) || crypto.randomUUID(),
+        name: clean(contact?.name, 160),
+        title: clean(contact?.title, 120),
+        department: clean(contact?.department, 120),
+        email: normalizeEmail(contact?.email),
+        phone: clean(contact?.phone, 500),
+        linkedinUrl: safeLinkedinUrl(contact?.linkedinUrl),
+        relationshipRole: clean(contact?.relationshipRole, 60) || "Influenciador",
+        influence: finite(contact?.influence),
+        supportLevel: finite(contact?.supportLevel, -100, 100),
+        accessLevel: finite(contact?.accessLevel),
+        priorities: clean(contact?.priorities, 1000),
+        objections: clean(contact?.objections, 1000),
+        source: clean(contact?.source, 80),
+        sourceUrl: safeExternalUrl(contact?.sourceUrl),
+        validation: clean(contact?.validation, 500),
+        country: clean(contact?.country, 80),
+        specialty: clean(contact?.specialty, 120),
+        verifiedBrazil: contact?.verifiedBrazil === true,
+        researchVersion: finite(contact?.researchVersion, 0, 10),
+        active: contact?.active !== false,
+      })).filter((contact) => contact.name))
+      .filter((contact) => !normalizeText(contact.source).startsWith("pesquisa web") ||
+        (contact.verifiedBrazil === true && contact.researchVersion >= 3 && normalizeText(contact.country) === "brasil"))
+    : [];
   return {
     tier: clean(input.tier, 40),
     temperature: CRM_TEMPERATURES.has(clean(input.temperature, 20)) ? clean(input.temperature, 20) : "",
     stage: clean(input.stage, 60),
     headquarters: clean(input.headquarters, 160),
-    website: safeExternalUrl(input.website),
+    website,
     linkedinUrl: safeLinkedinUrl(input.linkedinUrl),
     strategicPotential: finite(input.strategicPotential),
     relationshipStrength: finite(input.relationshipStrength),
@@ -211,29 +271,7 @@ const crmFields = (value = {}) => {
       input.qualification && typeof input.qualification === "object" && !Array.isArray(input.qualification)
         ? Object.fromEntries(Object.entries(input.qualification).slice(0, 40).map(([key, item]) => [clean(key, 80), clean(item, 1000)]))
         : {},
-    contacts: Array.isArray(input.contacts)
-      ? normalizeCrmContacts(input.contacts.slice(0, 100).map((contact) => ({
-          id: clean(contact?.id, 80) || crypto.randomUUID(),
-          name: clean(contact?.name, 160),
-          title: clean(contact?.title, 120),
-          department: clean(contact?.department, 120),
-          email: normalizeEmail(contact?.email),
-          phone: clean(contact?.phone, 500),
-          linkedinUrl: safeLinkedinUrl(contact?.linkedinUrl),
-          relationshipRole: clean(contact?.relationshipRole, 60) || "Influenciador",
-          influence: finite(contact?.influence),
-          supportLevel: finite(contact?.supportLevel, -100, 100),
-          accessLevel: finite(contact?.accessLevel),
-          priorities: clean(contact?.priorities, 1000),
-          objections: clean(contact?.objections, 1000),
-          source: clean(contact?.source, 80),
-          sourceUrl: safeExternalUrl(contact?.sourceUrl),
-          validation: clean(contact?.validation, 500),
-          country: clean(contact?.country, 80),
-          specialty: clean(contact?.specialty, 120),
-          active: contact?.active !== false,
-        })).filter((contact) => contact.name))
-      : [],
+    contacts: normalizedContacts,
     intelligence:
       input.intelligence && typeof input.intelligence === "object" && !Array.isArray(input.intelligence)
         ? intelligenceFields(input.intelligence)
@@ -1217,7 +1255,7 @@ export async function handleTodoGreenClients(request, env, access, user) {
         revision: cliente.revision,
         createdAt: cliente.created_at,
         updatedAt: cliente.updated_at,
-        crm: crmFields(parse(cliente.fields_json, {})),
+        crm: crmFields(parse(cliente.fields_json, {}), cliente.name),
         vendedores: atribuicoes
           .filter((item) => item.client_id === cliente.id)
           .map((item) => ({ email: item.seller_email, observacao: item.note, atualizadoEm: item.updated_at })),
@@ -1241,7 +1279,7 @@ export async function handleTodoGreenClients(request, env, access, user) {
     const revisao = Number(body.revision);
     if (!Number.isFinite(revisao) || revisao <= 0)
       return response({ error: "Informe a revisão do cliente que você leu." }, 400);
-    const crm = crmFields({ ...parse(atual.fields_json, {}), ...(body.crm || {}) });
+    const crm = crmFields({ ...parse(atual.fields_json, {}), ...(body.crm || {}) }, clean(body.name ?? atual.name, 200));
     const { meta } = await env.DB.prepare(
       `UPDATE todogreen_clients
           SET name = ?, legal_name = ?, document = ?, segment = ?, status = ?, notes = ?,
@@ -1279,7 +1317,7 @@ export async function handleTodoGreenClients(request, env, access, user) {
       segmento: clean(item?.segmento ?? item?.segment, 80),
       status: clean(item?.status, 20) || "ativo",
       observacoes: clean(item?.observacoes ?? item?.notes, 1000),
-      crm: crmFields(item?.crm || {}),
+      crm: crmFields(item?.crm || {}, clean(item?.nome ?? item?.name, 200)),
     }));
     if (preparados.some((item) => !item.id || item.nome.length < 2))
       return response({ error: "Cada cliente precisa de identificador estável e nome válido." }, 400);
@@ -1376,7 +1414,7 @@ export async function handleTodoGreenClients(request, env, access, user) {
         clean(body.status, 20) || "ativo",
         body.portalLiberado === true || body.portalEnabled === true ? 1 : 0,
         clean(body.observacoes ?? body.notes, 1000),
-        JSON.stringify(crmFields(body.crm || {})),
+        JSON.stringify(crmFields(body.crm || {}, nome)),
         user.id,
         user.id,
         agora,
