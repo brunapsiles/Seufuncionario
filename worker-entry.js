@@ -2,15 +2,10 @@ import appWorker from "./worker.js";
 import {
   runTodoGreenTrackerScheduled,
 } from "./worker/services/todogreen-tracker.js";
-import {
-  handleTodoGreenTrackerReadiness,
-} from "./worker/services/todogreen-tracker-readiness.js";
 import { routeTodoGreenApi } from "./worker/services/todogreen-router.js";
 
 export default {
   async fetch(request, env, ctx) {
-    const trackerReadinessResponse = await handleTodoGreenTrackerReadiness(request, env);
-    if (trackerReadinessResponse) return trackerReadinessResponse;
     const todoGreenResponse = await routeTodoGreenApi(request, env);
     if (todoGreenResponse) return todoGreenResponse;
     return appWorker.fetch(request, env, ctx);
