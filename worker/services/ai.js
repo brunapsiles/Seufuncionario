@@ -762,6 +762,38 @@ export async function runWithFallback(env, { prompt, system, ...opcoes } = {}) {
   return { ok: false, result: null, errors };
 }
 
+const providerProbeAlias = {
+  google: "gemini-lite",
+  cloudflare: "llama",
+  groq: "groq",
+  sambanova: "sambanova",
+  cerebras: "cerebras",
+  mistral: "mistral",
+  openrouter: "openrouter",
+  github: "github",
+  huggingface: "huggingface",
+};
+
+/** Testa um único provedor configurado sem deixar a cascata mascarar a falha. */
+export async function probeAiProvider(env, providerId) {
+  const alias = providerProbeAlias[String(providerId || "")];
+  if (!alias) throw new Error("Provedor de IA desconhecido");
+  const provider = providerChain(env, { preferredProvider: alias })
+    .find(([name]) => name === alias);
+  if (!provider) throw new Error("Provedor de IA não configurado");
+  const startedAt = Date.now();
+  const result = await provider[1](
+    "Responda somente OK.",
+    "Você está executando um teste técnico de disponibilidade. Não acrescente explicações.",
+  );
+  return {
+    id: providerId,
+    ok: Boolean(result?.content),
+    latencyMs: Date.now() - startedAt,
+    provider: String(result?.provider || "").slice(0, 80),
+  };
+}
+
 export async function handleAiStream(request, env, user) {
   const ip = request.headers.get("cf-connecting-ip") || "local";
   if (!allowed(ip) || !allowed(`ai-user:${user.id}`, 12))

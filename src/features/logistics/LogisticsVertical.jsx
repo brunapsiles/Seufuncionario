@@ -89,6 +89,7 @@ const ReportsPage = lazy(() => import("./pages/ReportsPage.jsx"));
 const TripViabilityPage = lazy(() => import("./pages/TripViabilityPage.jsx"));
 const DealDeskPage = lazy(() => import("./pages/DealDeskPage.jsx"));
 const DocumentVaultPage = lazy(() => import("./pages/DocumentVaultPage.jsx"));
+const IntegrationsPage = lazy(() => import("./pages/IntegrationsPage.jsx"));
 
 const iconMap = {
   Activity,
@@ -391,6 +392,15 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     // não a presença da palavra "admin" em algum lugar da tela.
     permission: "access:manage",
     description: "Gestão de e-mails autorizados e papéis privados da vertical.",
+  },
+  integracoes: {
+    title: "Integrações de IA, busca e automação",
+    navLabel: "Integrações",
+    route: "/todogreen/integracoes",
+    area: "gestao",
+    status: "functional",
+    permission: "integration:manage",
+    description: "Estado da cascata de IA, pesquisa web e automações autohospedadas, sem expor credenciais.",
   },
 });
 
@@ -835,7 +845,9 @@ const operacaoDaApi = (item) => ({
 
 const propostaDaApi = (item) => ({
   id: item.id,
+  clientId: item.clientId,
   client: item.cliente,
+  opportunityId: item.oportunidadeId,
   title: item.titulo,
   scope: item.escopo,
   commercialTerms: item.condicoes,
@@ -843,6 +855,24 @@ const propostaDaApi = (item) => ({
   proposalText: item.texto,
   scenarioId: item.cenarioId,
   status: item.situacao,
+  revision: item.revision,
+  createdAt: item.criadoEm,
+});
+
+const contratoDaApi = (item) => ({
+  id: item.id,
+  clientId: item.clientId,
+  client: item.cliente,
+  opportunityId: item.oportunidadeId,
+  proposalId: item.propostaId,
+  scenarioId: item.cenarioId,
+  title: item.titulo,
+  startAt: item.inicioEm,
+  endAt: item.fimEm,
+  monthlyValue: item.valorMensal,
+  totalValue: item.valorTotal,
+  status: item.situacao,
+  terms: item.termos,
   revision: item.revision,
   createdAt: item.criadoEm,
 });
@@ -860,6 +890,7 @@ const montarDadosDaVertical = (registros = {}, clientes = [], db = {}, access = 
     clients: clientes,
     opportunities: registros.opportunities || [],
     proposals: (registros.proposals || []).map(propostaDaApi),
+    contracts: (registros.contracts || []).map(contratoDaApi),
     pricingScenarios: confirmados.length ? confirmados : demo ? [seedScenario, seedLastMile] : [],
     simulacoesSemProcedencia: salvos.length - confirmados.length,
     revenueEntries: financeiro.filter((item) => item.kind === "revenue"),
@@ -1317,27 +1348,50 @@ function PricingPanel({ role, criar, db, authHeaders, setToast, opportunities = 
   );
 }
 
-function ProposalPanel({ data, criar, pedidosDeAprovacao = [], setToast }) {
+const rotuloDoCenario = (item, clients = []) => {
+  const nome = clients.find((client) => client.id === item.clientId)?.name || item.inputs?.client || item.clientId || "Cliente não identificado";
+  const produto = item.result?.productName || item.productId || "Produto não informado";
+  const dateValue = item.criadoEm || item.createdAt;
+  const dataCriacao = dateValue && !Number.isNaN(Date.parse(dateValue))
+    ? new Date(dateValue).toLocaleDateString("pt-BR")
+    : "sem data";
+  return `${nome} · ${produto} · ${dataCriacao}`;
+};
+
+const propostaAceita = (proposal) => ["accepted", "approved", "aceita", "aprovada"].includes(String(proposal?.status || "").toLowerCase());
+
+function ProposalPanel({ data, criar, atualizar, pedidosDeAprovacao = [], setToast }) {
   // A proposta é o documento que sai da empresa. Ela só pode nascer de uma
   // simulação cujas premissas alguém declarou como vindas do cliente ou de
   // medição — não da última simulação qualquer que passou pela tela.
   // `data.pricingScenarios` já chega filtrado: só entra ali o que tem
   // procedência. O que sobrou de fora vem contado à parte, para a tela poder
   // dizer por que a proposta não sai em vez de fingir que não há simulação.
-  const latest = (data.pricingScenarios || []).find(cenarioConfirmado);
+  const cenariosDisponiveis = (data.pricingScenarios || []).filter(cenarioConfirmado);
+  const [cenarioId, setCenarioId] = useState("");
+  const latest = cenariosDisponiveis.find((item) => item.id === cenarioId) || cenariosDisponiveis[0];
+  const oportunidade = (data.opportunities || []).find((item) => item.id === latest?.opportunityId);
+  const clienteId = latest?.clientId || oportunidade?.clientId || "";
+  const cliente = (data.clients || []).find((item) => item.id === clienteId);
+  const nomeCliente = cliente?.name || oportunidade?.cliente || oportunidade?.clientName || "";
   const existemNaoConfirmadas = !latest && Number(data.simulacoesSemProcedencia || 0) > 0;
   // O Deal Desk manda por cima da confirmação de premissas: premissa
   // confirmada com condição fora da régua ainda depende de aprovação.
   const liberacao = liberacaoDaProposta(latest?.id, pedidosDeAprovacao);
   const podeSalvar = Boolean(latest) && liberacao.liberada;
   const translated = esgTranslator(latest?.result?.impact?.co2AvoidedKg || 0);
-  const [form, setForm] = useState({ client: "", title: "Proposta logística sustentável", scope: "", commercialTerms: "", risks: "" });
+  const [form, setForm] = useState({ title: "Proposta logística sustentável", scope: "", commercialTerms: "", risks: "" });
   const proposalText = latest
     ? `Proposta ${latest.result.productName}: preço recomendado ${BRL.format(latest.result.recommendedPrice)}, margem estimada ${number.format(latest.result.marginPercent)}%, CO2 evitado estimado de ${number.format(latest.result.impact.co2AvoidedKg / 1000)} tCO2e. ${translated.proposalText}`
     : existemNaoConfirmadas
       ? "As simulações existentes ainda estão como hipótese. Abra Precificação, confirme as premissas e salve — só então o preço e o ESG podem virar proposta."
       : "Crie uma simulação de precificação antes de gerar uma proposta com preço e ESG.";
   const [salvando, setSalvando] = useState(false);
+  const propostasAceitas = (data.proposals || []).filter(propostaAceita);
+  const [propostaContratoId, setPropostaContratoId] = useState("");
+  const propostaContrato = propostasAceitas.find((item) => item.id === propostaContratoId) || propostasAceitas[0];
+  const [contrato, setContrato] = useState({ titulo: "Contrato de operação logística", inicioEm: "", fimEm: "", valorMensal: "", valorTotal: "", termos: "" });
+  const [salvandoContrato, setSalvandoContrato] = useState(false);
   const save = async (event) => {
     event.preventDefault();
     if (!latest) {
@@ -1353,7 +1407,9 @@ function ProposalPanel({ data, criar, pedidosDeAprovacao = [], setToast }) {
     setSalvando(true);
     try {
       await criar("proposals", {
-        cliente: form.client,
+        clientId: clienteId,
+        cliente: nomeCliente,
+        oportunidadeId: latest.opportunityId || "",
         titulo: form.title,
         escopo: form.scope,
         condicoes: form.commercialTerms,
@@ -1361,7 +1417,7 @@ function ProposalPanel({ data, criar, pedidosDeAprovacao = [], setToast }) {
         texto: proposalText,
         cenarioId: latest.id,
       });
-      setForm({ client: "", title: "Proposta logística sustentável", scope: "", commercialTerms: "", risks: "" });
+      setForm({ title: "Proposta logística sustentável", scope: "", commercialTerms: "", risks: "" });
       setToast?.("Proposta To Do Green salva");
     } catch (razao) {
       setToast?.(razao.message);
@@ -1369,9 +1425,42 @@ function ProposalPanel({ data, criar, pedidosDeAprovacao = [], setToast }) {
       setSalvando(false);
     }
   };
+  const aceitarProposta = async (proposal) => {
+    try {
+      await atualizar("proposals", proposal.id, { situacao: "accepted", revision: proposal.revision });
+      setToast?.("Proposta marcada como aceita. O contrato já pode ser gerado.");
+    } catch (error) { setToast?.(error.message); }
+  };
+  const salvarContrato = async (event) => {
+    event.preventDefault();
+    if (!propostaContrato) { setToast?.("Aceite uma proposta antes de gerar o contrato."); return; }
+    setSalvandoContrato(true);
+    try {
+      await criar("contracts", {
+        clientId: propostaContrato.clientId,
+        cliente: propostaContrato.client,
+        oportunidadeId: propostaContrato.opportunityId,
+        propostaId: propostaContrato.id,
+        cenarioId: propostaContrato.scenarioId,
+        ...contrato,
+        valorMensal: Number(contrato.valorMensal || 0),
+        valorTotal: Number(contrato.valorTotal || 0),
+        situacao: "draft",
+      });
+      setContrato({ titulo: "Contrato de operação logística", inicioEm: "", fimEm: "", valorMensal: "", valorTotal: "", termos: "" });
+      setToast?.("Contrato criado e vinculado à proposta, oportunidade e cliente.");
+    } catch (error) { setToast?.(error.message); }
+    finally { setSalvandoContrato(false); }
+  };
   return (
     <section className="tdg-panel"><div className="tdg-section-head"><div><span className="tdg-kicker">PROPOSTAS</span><h2>Proposta comercial com preço, operação e ROI ambiental</h2></div><strong>{data.proposals.length} proposta(s)</strong></div>
-      <form className="tdg-access-form" onSubmit={save}>{[["client", "Cliente"], ["title", "Título"], ["scope", "O que está incluído na operação"], ["commercialTerms", "Condições comerciais"], ["risks", "Riscos e ressalvas"]].map(([key, label]) => <label key={key}><span>{label}</span><input value={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} /></label>)}<button className="tdg-action" type="submit" disabled={!podeSalvar || salvando}><Plus size={17} />{salvando ? "Salvando..." : "Salvar proposta"}</button></form>
+      <form className="tdg-access-form" onSubmit={save}>
+        <label><span>Simulação confirmada</span><select value={latest?.id || ""} onChange={(event) => setCenarioId(event.target.value)} disabled={!cenariosDisponiveis.length}><option value="">Selecione</option>{cenariosDisponiveis.map((item) => <option value={item.id} key={item.id}>{rotuloDoCenario(item, data.clients || [])}</option>)}</select></label>
+        <label><span>Cliente vinculado</span><input value={nomeCliente || "Cliente não identificado"} readOnly /></label>
+        {[ ["title", "Título"], ["scope", "O que está incluído na operação"], ["commercialTerms", "Condições comerciais"], ["risks", "Riscos e ressalvas"]].map(([key, label]) => <label key={key}><span>{label}</span><input value={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} /></label>)}
+        <button className="tdg-action" type="submit" disabled={!podeSalvar || !clienteId || !nomeCliente || salvando}><Plus size={17} />{salvando ? "Salvando..." : "Salvar proposta"}</button>
+      </form>
+      {latest && (!clienteId || !nomeCliente) && <div className="tdg-alert" role="alert"><AlertTriangle size={18} /><span>A simulação não está vinculada a um cliente válido. Abra a oportunidade, confirme o cliente e gere uma nova simulação.</span></div>}
       {latest && !liberacao.liberada && (
         <div className="tdg-alert" role="alert"><AlertTriangle size={18} /><span>{liberacao.motivo}</span></div>
       )}
@@ -1379,7 +1468,19 @@ function ProposalPanel({ data, criar, pedidosDeAprovacao = [], setToast }) {
         <p className="tdg-esg-nota">{liberacao.motivo}</p>
       )}
       <div className="tdg-method"><strong>Texto gerado</strong><p>{proposalText}</p><small>{translated.disclaimer}</small></div>
-      <div className="tdg-access-list">{data.proposals.map((item) => <div className="tdg-access-row" key={item.id}><span><strong>{item.title}</strong><small>{item.client || "cliente não informado"}</small></span><span>{item.scenarioId ? "com simulação" : "rascunho"}</span></div>)}</div>
+      <div className="tdg-access-list">{data.proposals.map((item) => <div className="tdg-access-row" key={item.id}><span><strong>{item.title}</strong><small>{item.client || "cliente não informado"}</small></span><span>{propostaAceita(item) ? "aceita" : item.scenarioId ? "com simulação" : "rascunho"}</span>{!propostaAceita(item) && <button type="button" onClick={() => aceitarProposta(item)}>Registrar aceite</button>}</div>)}</div>
+      <div className="tdg-section-head"><div><span className="tdg-kicker">CONTRATOS</span><h2>Gerar contrato a partir de proposta aceita</h2></div><strong>{data.contracts.length} contrato(s)</strong></div>
+      <form className="tdg-access-form" onSubmit={salvarContrato}>
+        <label><span>Proposta aceita</span><select value={propostaContrato?.id || ""} onChange={(event) => setPropostaContratoId(event.target.value)}><option value="">Selecione</option>{propostasAceitas.map((item) => <option key={item.id} value={item.id}>{item.client || "Cliente"} · {item.title}</option>)}</select></label>
+        <label><span>Título</span><input value={contrato.titulo} onChange={(event) => setContrato((current) => ({ ...current, titulo: event.target.value }))} /></label>
+        <label><span>Início</span><input type="date" value={contrato.inicioEm} onChange={(event) => setContrato((current) => ({ ...current, inicioEm: event.target.value }))} /></label>
+        <label><span>Fim</span><input type="date" value={contrato.fimEm} onChange={(event) => setContrato((current) => ({ ...current, fimEm: event.target.value }))} /></label>
+        <label><span>Valor mensal</span><input type="number" value={contrato.valorMensal} onChange={(event) => setContrato((current) => ({ ...current, valorMensal: event.target.value }))} /></label>
+        <label><span>Valor total</span><input type="number" value={contrato.valorTotal} onChange={(event) => setContrato((current) => ({ ...current, valorTotal: event.target.value }))} /></label>
+        <label><span>Termos e condições</span><input value={contrato.termos} onChange={(event) => setContrato((current) => ({ ...current, termos: event.target.value }))} /></label>
+        <button className="tdg-action" type="submit" disabled={!propostaContrato || salvandoContrato}><FileCheck size={17} />{salvandoContrato ? "Gerando..." : "Gerar contrato"}</button>
+      </form>
+      <div className="tdg-access-list">{data.contracts.map((item) => <div className="tdg-access-row" key={item.id}><span><strong>{item.title}</strong><small>{item.client || "cliente não informado"} · {item.startAt || "início pendente"}</small></span><span>{item.status}</span></div>)}</div>
     </section>
   );
 }
@@ -1712,7 +1813,7 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
       {page === "solicitacoes" && <Suspense fallback={<section className="tdg-panel">Carregando solicitações...</section>}><ClientRequestsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "clientes" && <Suspense fallback={<section className="tdg-panel">Carregando clientes...</section>}><ClientsPage authHeaders={authHeaders} opportunities={verticalData.opportunities} onNavigate={navigate} setToast={setToast} currentUserId={db?.user?.id} onCreateTask={(task) => update?.((current) => ({ ...current, tasks: [task, ...(current.tasks || [])] }))} /></Suspense>}
       {page === "oportunidades" && <Suspense fallback={<section className="tdg-panel">Carregando oportunidades...</section>}><OpportunitiesPage clients={clientes} opportunities={verticalData.opportunities} scenarios={verticalData.pricingScenarios} onCreate={(registro) => criar("opportunities", registro)} onUpdate={(id, alteracoes) => atualizar("opportunities", id, alteracoes)} onNavigate={navigate} setToast={setToast} /></Suspense>}
-      {page === "propostas" && <ProposalPanel data={verticalData} criar={criar} pedidosDeAprovacao={pedidosDeAprovacao} setToast={setToast} />}
+      {page === "propostas" && <ProposalPanel data={verticalData} criar={criar} atualizar={atualizar} pedidosDeAprovacao={pedidosDeAprovacao} setToast={setToast} />}
       {page === "precificacao" && <PricingPanel key={new URLSearchParams(path.split("?")[1] || "").get("opportunity") || "nova"} role={role} criar={criar} db={db} authHeaders={authHeaders} setToast={setToast} opportunities={verticalData.opportunities} />}
       {["esg", "green-score", "calculadora-ambiental", "tradutor-esg", "escopo-3"].includes(page) && <EsgPanel dashboard={dashboard} data={verticalData} />}
       {page === "regua" && (
@@ -1748,6 +1849,7 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
       )}
       {page === "auditoria" && <GovernancePanel role={role} />}
       {page === "acessos" && <AccessPanel role={role} authHeaders={authHeaders} setToast={setToast} />}
+      {page === "integracoes" && <Suspense fallback={<section className="tdg-panel">Carregando integrações...</section>}><IntegrationsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {!Object.keys(MODULE_IMPLEMENTATION).includes(page) && !["green-score", "calculadora-ambiental", "tradutor-esg", "escopo-3", "custos", "comissoes"].includes(page) && <DashboardPanel data={verticalData} dashboard={dashboard} />}
 
       {isHome && (

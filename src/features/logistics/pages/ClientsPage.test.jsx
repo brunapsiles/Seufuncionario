@@ -54,7 +54,7 @@ describe("página de clientes", () => {
         vendedores: [], crm: {
           contacts: [{ id: "1", name: "Thiago Souza", department: "Operações", email: "fernanda.pereira@adidas.com", phone: "+5519982414440" }],
           intelligence: {
-            version: 5,
+            version: 6,
             checkedAt: "2026-08-11T00:00:00.000Z", esg: { relevance: "Alta", signals: [] },
             companyNews: [{ title: "adidas records strong start to the year", url: "https://www.adidas-group.com/news", snippet: "Continued operating working capital investments and strong business growth across the company." }],
             segmentNews: [], procurementPeople: [], supplierLinks: [], openRfqs: [], nextActions: [],

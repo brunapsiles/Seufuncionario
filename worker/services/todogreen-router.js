@@ -18,6 +18,7 @@ import { handleTodoGreenDealDesk } from "./todogreen-deal-desk.js";
 import { entregarArquivo, handleTodoGreenEvidences } from "./todogreen-evidences.js";
 import { handleTodoGreenClientIntelligence } from "./todogreen-client-intelligence.js";
 import { handleTodoGreenSemente } from "./todogreen-semente.js";
+import { handleTodoGreenIntegrations } from "./todogreen-integrations.js";
 
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
   status,
@@ -141,6 +142,14 @@ export async function routeTodoGreenApi(request, env) {
       const resolved = await internalAccess(request, env);
       if (resolved.response) return resolved.response;
       return handleTodoGreenSemente(request, env, resolved.access, resolved.user);
+    });
+  }
+
+  if (path.startsWith("/api/todogreen/integrations")) {
+    return guarded("To Do Green integrations error", "Não foi possível carregar as integrações.", async () => {
+      const resolved = await internalAccess(request, env);
+      if (resolved.response) return resolved.response;
+      return handleTodoGreenIntegrations(request, env, resolved.access);
     });
   }
 

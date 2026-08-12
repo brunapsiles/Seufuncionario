@@ -322,6 +322,42 @@ describe("proposta precisa da simulação que gerou o preço", () => {
   });
 });
 
+describe("contrato nasce de proposta aceita", () => {
+  it("preserva cliente, oportunidade e simulação e impede duplicidade", async () => {
+    const clienteId = `cli-contrato-${crypto.randomUUID()}`;
+    await criarCliente(gestora, clienteId, "Cliente Contrato");
+    const proposalResponse = await pedir("/api/todogreen/records/proposals", {
+      metodo: "POST", token: gestora.token,
+      corpo: { clientId: clienteId, cliente: "Cliente Contrato", oportunidadeId: "opp-c", titulo: "Proposta aceita", cenarioId: "cen-c", situacao: "accepted" },
+    });
+    const proposal = (await proposalResponse.json()).registro;
+    const body = { clientId: clienteId, propostaId: proposal.id, titulo: "Contrato logístico", valorTotal: 120000 };
+    const contractResponse = await pedir("/api/todogreen/records/contracts", { metodo: "POST", token: gestora.token, corpo: body });
+    expect(contractResponse.status).toBe(201);
+    expect((await contractResponse.json()).registro).toEqual(expect.objectContaining({
+      clientId: clienteId, oportunidadeId: "opp-c", cenarioId: "cen-c", propostaId: proposal.id,
+    }));
+    const duplicated = await pedir("/api/todogreen/records/contracts", { metodo: "POST", token: gestora.token, corpo: body });
+    expect(duplicated.status).toBe(409);
+  });
+});
+
+describe("oportunidade ganha abre handoff operacional", () => {
+  it("cria um único item na Central de Trabalho", async () => {
+    const { registro } = await (await pedir("/api/todogreen/records/opportunities", {
+      metodo: "POST", token: gestora.token, corpo: { cliente: "Cliente Handoff", estagio: "Negociação" },
+    })).json();
+    const won = await pedir(`/api/todogreen/records/opportunities/${registro.id}`, {
+      metodo: "PATCH", token: gestora.token, corpo: { estagio: "Fechada ganha", revision: registro.revision },
+    });
+    expect(won.status).toBe(200);
+    const item = await env.DB.prepare(
+      "SELECT type,status,client_label FROM todogreen_work_items WHERE id=? AND workspace_owner_id=?",
+    ).bind(`todogreen-handoff-opportunity-${registro.id}`, gestora.id).first();
+    expect(item).toEqual(expect.objectContaining({ type: "handoff", status: "novo", client_label: "Cliente Handoff" }));
+  });
+});
+
 // A tela recusa gerar a proposta quando o Deal Desk não liberou a simulação —
 // mas isso morava só no componente React. Estes testes existem para que uma
 // chamada direta ao endpoint não passe por cima do mesmo controle.
@@ -497,6 +533,7 @@ describe("a vertical inteira numa chamada só", () => {
     expect(r.status).toBe(200);
     const corpo = await r.json();
     expect(Object.keys(corpo).sort()).toEqual([
+      "contracts",
       "financial",
       "operations",
       "opportunities",
