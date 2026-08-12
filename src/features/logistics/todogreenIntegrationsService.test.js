@@ -5,14 +5,23 @@ describe("integrações da vertical", () => {
   it("mostra somente disponibilidade e não expõe credenciais", () => {
     const status = todoGreenIntegrationStatus({
       AI: { run: vi.fn() },
+      DB: { prepare: vi.fn() },
       GROQ_API_KEY: "segredo-groq",
       SEARXNG_BASE_URL: "https://busca.example.com",
-      N8N_BASE_URL: "https://n8n.example.com",
     });
     expect(status.ai.find((item) => item.id === "cloudflare")?.configured).toBe(true);
     expect(status.ai.find((item) => item.id === "groq")?.configured).toBe(true);
     expect(status.search.providers.find((item) => item.id === "searxng")?.configured).toBe(true);
-    expect(status.automation.find((item) => item.id === "n8n")?.configured).toBe(true);
+    expect(status.automationEngine).toEqual(expect.objectContaining({
+      id: "cloudflare-native",
+      configured: true,
+      requiresExternalServer: false,
+    }));
+    expect(status.automation.every((item) => item.configured)).toBe(true);
+    expect(status.automation.map((item) => item.id)).toEqual([
+      "cloudflare-cron", "tasks-reminders", "weekly-summary",
+    ]);
+    expect(JSON.stringify(status)).not.toMatch(/n8n|node-red|activepieces|windmill|temporal|airflow|kestra|huginn/i);
     expect(JSON.stringify(status)).not.toContain("segredo-groq");
   });
 

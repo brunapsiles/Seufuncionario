@@ -8,7 +8,7 @@ const ProviderList = ({ title, icon: Icon, items = [], testing, onTest }) => (
     <div className="tdg-access-list">
       {items.map((item) => (
         <div className="tdg-access-row" key={item.id}>
-          <span>{item.configured ? <CheckCircle2 size={16} /> : <CircleDashed size={16} />}<strong>{item.name || item.id}</strong><small>{item.configured ? "Configurado" : "Pendente de credencial ou endpoint"}</small></span>
+          <span>{item.configured ? <CheckCircle2 size={16} /> : <CircleDashed size={16} />}<strong>{item.name || item.id}</strong><small>{item.detail || (item.configured ? "Configurado" : "Pendente de credencial")}</small></span>
           {onTest && <button type="button" disabled={!item.configured || testing === item.id} onClick={() => onTest(item.id)}>{testing === item.id ? "Testando..." : "Testar"}</button>}
         </div>
       ))}
@@ -55,10 +55,10 @@ export default function IntegrationsPage({ authHeaders, setToast }) {
   const searchItems = (status?.search?.providers || []).map((item) => ({ ...item, name: item.id === "searxng" ? "SearXNG" : item.id }));
   return (
     <div className="tdg-page">
-      <header className="tdg-page-title"><div><span>CONFIABILIDADE</span><h2>Integrações de IA, busca e automação</h2><p>A Semente usa uma cascata de provedores gratuitos. Se um falhar, o próximo configurado assume. Esta tela mostra configuração sem expor nenhuma chave.</p></div><button className="tdg-action" type="button" onClick={load}><RefreshCw size={16} />Atualizar</button></header>
+      <header className="tdg-page-title"><div><span>CONFIABILIDADE</span><h2>Integrações de IA, busca e automação</h2><p>A Semente usa uma cascata de provedores. As automações essenciais rodam na própria Cloudflare, sem exigir n8n ou servidores externos.</p></div><button className="tdg-action" type="button" onClick={load}><RefreshCw size={16} />Atualizar</button></header>
       <ProviderList title="Cascata de IA" icon={Zap} items={status?.ai} testing={testing} onTest={test} />
       <ProviderList title="Busca web" icon={Search} items={searchItems} />
-      <ProviderList title="Automação autohospedada" icon={Workflow} items={status?.automation} />
+      <ProviderList title="Automação ativa na Cloudflare" icon={Workflow} items={status?.automation} />
       <section className="tdg-panel"><h2>Fora da vertical</h2><p>Whisper e geração de imagens permanecem desligados porque não fazem parte da jornada comercial, logística ou ESG.</p></section>
     </div>
   );
