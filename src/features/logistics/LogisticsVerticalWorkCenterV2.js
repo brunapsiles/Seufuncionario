@@ -34,6 +34,8 @@ let state = {
   showForm: false,
   aiBusy: false,
   aiResult: "",
+  automationRules: [],
+  showAutomationForm: false,
 };
 
 const authHeaders = () => {
@@ -89,6 +91,7 @@ const sync = async () => {
     const payload = await api("?limit=200");
     state.boards = payload.boards || [];
     state.items = payload.items || [];
+    state.automationRules = payload.automationRules || [];
     state.canWrite = !!payload.access?.canWrite;
     if (!state.boards.some((board) => board.id === state.activeBoardId)) state.activeBoardId = state.boards[0]?.id || "";
     saveCache();
@@ -107,6 +110,78 @@ const upsertItem = (item) => {
   if (index >= 0) state.items[index] = item;
   else state.items.unshift(item);
   saveCache();
+};
+
+const upsertAutomationRule = (rule) => {
+  const index = state.automationRules.findIndex((current) => current.id === rule.id);
+  if (index >= 0) state.automationRules[index] = rule;
+  else state.automationRules.unshift(rule);
+};
+
+const createAutomationRule = async (formElement) => {
+  if (!state.canWrite) return;
+  const values = new FormData(formElement);
+  const actionType = values.get("actionType");
+  const actionValue = actionType === "change-status"
+    ? values.get("statusValue")
+    : actionType === "change-priority"
+      ? values.get("priorityValue")
+      : actionType === "move-item"
+        ? values.get("targetBoardId")
+        : values.get("responsibleValue");
+  state.notice = "Salvando automação...";
+  renderWorkCenter();
+  try {
+    const payload = await api("/automations", {
+      method: "POST",
+      body: JSON.stringify({
+        name: values.get("name"),
+        boardId: values.get("boardId"),
+        trigger: values.get("trigger"),
+        conditionField: values.get("conditionField"),
+        conditionOperator: values.get("conditionOperator"),
+        conditionValue: values.get("conditionValue"),
+        actionType,
+        actionValue,
+      }),
+    });
+    upsertAutomationRule(payload.automationRule);
+    state.showAutomationForm = false;
+    state.notice = "Automação ativa. Ela será executada no servidor quando a condição acontecer.";
+  } catch (error) {
+    state.error = error.message;
+  } finally {
+    renderWorkCenter();
+  }
+};
+
+const toggleAutomationRule = async (rule) => {
+  if (!state.canWrite) return;
+  try {
+    const payload = await api(`/automations/${encodeURIComponent(rule.id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ enabled: !rule.enabled, revision: rule.revision }),
+    });
+    upsertAutomationRule(payload.automationRule);
+    state.notice = payload.automationRule.enabled ? "Automação ativada." : "Automação pausada.";
+  } catch (error) {
+    state.error = error.message;
+  } finally {
+    renderWorkCenter();
+  }
+};
+
+const deleteAutomationRule = async (rule) => {
+  if (!state.canWrite || !confirm(`Excluir a automação “${rule.name}”?`)) return;
+  try {
+    await api(`/automations/${encodeURIComponent(rule.id)}`, { method: "DELETE" });
+    state.automationRules = state.automationRules.filter((current) => current.id !== rule.id);
+    state.notice = "Automação excluída.";
+  } catch (error) {
+    state.error = error.message;
+  } finally {
+    renderWorkCenter();
+  }
 };
 
 const patchItem = async (item, patch) => {
@@ -199,6 +274,31 @@ const formHtml = () => {
   </form>`;
 };
 
+const automationFormHtml = () => {
+  if (!state.showAutomationForm || !state.canWrite) return "";
+  return `<form class="tdg-work-form tdg-automation-form" data-automation-form>
+    <label class="full"><span>Nome da automação</span><input name="name" required maxlength="160" placeholder="Ex.: Escalar item bloqueado para Operações"></label>
+    <label><span>Aplicar em</span><select name="boardId"><option value="">Todos os quadros</option>${state.boards.map((board) => `<option value="${esc(board.id)}" ${board.id === state.activeBoardId ? "selected" : ""}>${esc(board.name)}</option>`).join("")}</select></label>
+    <label><span>Quando</span><select name="trigger"><option value="item-created">um item for criado</option><option value="status-changed">o status mudar</option><option value="item-updated">um item for atualizado</option><option value="field-changed">um campo mudar</option><option value="date-overdue">o prazo estiver vencido</option></select></label>
+    <label><span>Campo da condição</span><select name="conditionField"><option value="">Sem condição adicional</option><option value="status">Status</option><option value="priority">Prioridade</option><option value="responsible">Responsável</option><option value="client">Cliente/operação</option><option value="type">Tipo</option><option value="dueDate">Prazo</option></select></label>
+    <label><span>Comparação</span><select name="conditionOperator"><option value="equals">é igual a</option><option value="not-equals">é diferente de</option><option value="contains">contém</option><option value="is-empty">está vazio</option><option value="is-not-empty">não está vazio</option></select></label>
+    <label class="full"><span>Valor da condição</span><input name="conditionValue" maxlength="240" placeholder="Ex.: bloqueado, Adidas ou crítica"></label>
+    <label><span>Ação</span><select name="actionType"><option value="change-status">Alterar status</option><option value="change-priority">Alterar prioridade</option><option value="assign-person">Atribuir responsável</option><option value="move-item">Mover para outro quadro</option></select></label>
+    <label data-action-value="change-status"><span>Novo status</span><select name="statusValue">${statuses.map((value) => `<option value="${value}">${label(value)}</option>`).join("")}</select></label>
+    <label data-action-value="change-priority"><span>Nova prioridade</span><select name="priorityValue">${priorities.map((value) => `<option value="${value}">${label(value)}</option>`).join("")}</select></label>
+    <label data-action-value="assign-person"><span>Novo responsável</span><input name="responsibleValue" maxlength="160" placeholder="Nome ou equipe"></label>
+    <label data-action-value="move-item"><span>Quadro de destino</span><select name="targetBoardId">${state.boards.map((board) => `<option value="${esc(board.id)}">${esc(board.name)}</option>`).join("")}</select></label>
+    <div class="tdg-work-center-actions full"><button class="tdg-action" type="submit">Ativar automação</button><button class="tdg-login-secondary" type="button" data-automation-cancel>Cancelar</button></div>
+  </form>`;
+};
+
+const automationRulesHtml = () => {
+  const rules = state.automationRules.filter((rule) => !rule.boardId || rule.boardId === state.activeBoardId);
+  const boardName = (id) => state.boards.find((board) => board.id === id)?.name || "Todos os quadros";
+  if (!rules.length) return '<p class="tdg-work-empty">Nenhuma regra personalizada neste quadro.</p>';
+  return `<div class="tdg-automation-rules">${rules.map((rule) => `<article class="${rule.enabled ? "" : "paused"}" data-rule-id="${esc(rule.id)}"><div><strong>${esc(rule.name)}</strong><small>${esc(boardName(rule.boardId))} · ${esc(label(rule.trigger))} · ${esc(label(rule.action.type))}: ${esc(rule.action.value)}</small>${rule.lastRunAt ? `<em>Última execução: ${esc(new Date(rule.lastRunAt).toLocaleString("pt-BR"))}</em>` : ""}</div><div><button type="button" data-rule-toggle>${rule.enabled ? "Pausar" : "Ativar"}</button><button type="button" data-rule-delete>Excluir</button></div></article>`).join("")}</div>`;
+};
+
 const rowHtml = (item) => {
   const overdue = item.dueDate && item.dueDate < today() && item.status !== "concluido";
   const disabled = !state.canWrite || state.saving.has(item.id) ? "disabled" : "";
@@ -253,7 +353,8 @@ const renderWorkCenter = () => {
     <div class="tdg-board-main"><div class="tdg-work-metrics"><span><small>Ativos</small><strong>${summary.total}</strong></span><span><small>Atrasados</small><strong>${summary.overdue}</strong></span><span><small>Bloqueados</small><strong>${summary.blocked}</strong></span><span><small>Aprovações</small><strong>${summary.pendingApprovals}</strong></span></div>
     <div class="tdg-board-toolbar"><input data-work-search value="${esc(state.search)}" placeholder="Buscar título, cliente, operação ou responsável"><select data-work-filter><option value="todos">Todos os status</option>${statuses.map((value) => `<option value="${value}" ${value === state.status ? "selected" : ""}>${label(value)}</option>`).join("")}</select></div>
     <div class="tdg-work-view-switch" aria-label="Visualização do quadro">${[["table", "Tabela"], ["kanban", "Kanban"], ["calendar", "Calendário"], ["timeline", "Cronograma"]].map(([id, text]) => `<button type="button" data-work-view="${id}" class="${state.view === id ? "active" : ""}">${text}</button>`).join("")}</div>
-    <div class="tdg-work-automation"><strong>Automações ativas</strong><span>Bloqueio eleva a prioridade · prazo vencido eleva a prioridade · conclusão registra data e responsável</span></div>
+    <section class="tdg-work-automation"><div><strong>Automações</strong><span>As regras são executadas no servidor e registradas no histórico do item.</span></div>${state.canWrite ? '<button class="tdg-login-secondary" type="button" data-automation-new>+ Criar regra</button>' : ""}</section>
+    ${automationFormHtml()}${automationRulesHtml()}
     ${formHtml()}${itemsViewHtml()}
     <div class="tdg-ai-panel"><strong>Assistente da Central</strong><small>Analisa somente os registros carregados e usa o roteador de IA do Seu Funcionário.</small><textarea readonly placeholder="A análise aparecerá aqui.">${esc(state.aiResult)}</textarea>${state.aiBusy ? "<small>Analisando...</small>" : ""}</div></div></div></section>`;
 
@@ -261,6 +362,27 @@ const renderWorkCenter = () => {
   root.querySelector("[data-work-new]")?.addEventListener("click", () => { state.showForm = true; renderWorkCenter(); });
   root.querySelector("[data-work-cancel]")?.addEventListener("click", () => { state.showForm = false; renderWorkCenter(); });
   root.querySelector("[data-work-form]")?.addEventListener("submit", (event) => { event.preventDefault(); createItem(event.currentTarget); });
+  root.querySelector("[data-automation-new]")?.addEventListener("click", () => { state.showAutomationForm = true; renderWorkCenter(); });
+  root.querySelector("[data-automation-cancel]")?.addEventListener("click", () => { state.showAutomationForm = false; renderWorkCenter(); });
+  root.querySelector("[data-automation-form]")?.addEventListener("submit", (event) => { event.preventDefault(); createAutomationRule(event.currentTarget); });
+  const automationForm = root.querySelector("[data-automation-form]");
+  const syncAutomationFields = () => {
+    if (!automationForm) return;
+    const selected = automationForm.elements.actionType?.value;
+    automationForm.querySelectorAll("[data-action-value]").forEach((field) => {
+      const active = field.dataset.actionValue === selected;
+      field.hidden = !active;
+      field.querySelectorAll("input,select").forEach((control) => { control.disabled = !active; });
+    });
+  };
+  automationForm?.elements.actionType?.addEventListener("change", syncAutomationFields);
+  syncAutomationFields();
+  root.querySelectorAll("[data-rule-id]").forEach((row) => {
+    const rule = state.automationRules.find((candidate) => candidate.id === row.dataset.ruleId);
+    if (!rule) return;
+    row.querySelector("[data-rule-toggle]")?.addEventListener("click", () => toggleAutomationRule(rule));
+    row.querySelector("[data-rule-delete]")?.addEventListener("click", () => deleteAutomationRule(rule));
+  });
   root.querySelectorAll("[data-board-id]").forEach((button) => button.addEventListener("click", () => { state.activeBoardId = button.dataset.boardId; state.search = ""; state.status = "todos"; state.aiResult = ""; renderWorkCenter(); }));
   root.querySelector("[data-work-search]")?.addEventListener("input", (event) => { state.search = event.target.value; renderWorkCenter(); });
   root.querySelector("[data-work-filter]")?.addEventListener("change", (event) => { state.status = event.target.value; renderWorkCenter(); });

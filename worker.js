@@ -81,6 +81,7 @@ import {
 } from "./worker/services/omnichannel.js";
 import { createQuoteHandlers } from "./worker/services/quotes.js";
 import { createWebhookHandlers } from "./worker/services/webhooks.js";
+import { runTodoGreenScheduledWorkAutomations } from "./worker/services/todogreen-work-center.js";
 
 
 
@@ -4244,6 +4245,11 @@ export default {
     ctx.waitUntil(
       runScheduledAutomations(env, now).catch((error) =>
         console.error("scheduled automations", error),
+      ),
+    );
+    ctx.waitUntil(
+      runTodoGreenScheduledWorkAutomations(env, now).catch((error) =>
+        console.error("scheduled To Do Green work automations", error),
       ),
     );
   },

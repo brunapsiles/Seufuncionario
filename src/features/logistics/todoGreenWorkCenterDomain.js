@@ -139,6 +139,7 @@ export const WORK_CENTER_AUTOMATION_ACTIONS = [
   "create-subitem",
   "update-field",
   "change-status",
+  "change-priority",
   "assign-person",
   "assign-team",
   "move-item",

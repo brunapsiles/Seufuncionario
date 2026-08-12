@@ -23,6 +23,12 @@ const nativeAutomations = (env) => {
       detail: "Executados no Worker e registrados no D1.",
     },
     {
+      id: "custom-workflow-rules",
+      name: "Regras configuráveis da Central",
+      configured,
+      detail: "Gatilhos, condições e ações definidos pela equipe e executados no servidor.",
+    },
+    {
       id: "weekly-summary",
       name: "Resumo semanal",
       configured,

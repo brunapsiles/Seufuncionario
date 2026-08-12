@@ -202,6 +202,16 @@ gratuito da Cloudflare. O workflow `Publicar` do GitHub é apenas uma contingên
   nome quando houver identificador. Vendedor pode atualizar a visão 360º
   somente da própria carteira e toda alteração exige `revision`; o portal não
   recebe scores, pipeline, forecast, responsáveis ou observações internas.
+- **Automações configuráveis da Central To Do Green**: regras ficam na tabela
+  `todogreen_work_automation_rules` (migração `0049`) e são sempre isoladas por
+  `workspace_owner_id`. A interface da Central permite escolher quadro,
+  gatilho, condição e uma ação segura do catálogo fechado: mudar status,
+  prioridade, responsável ou quadro. Atualizações executam no próprio request;
+  `date-overdue` roda também no cron horário por
+  `runTodoGreenScheduledWorkAutomations`, sem depender de navegador aberto.
+  Ação idempotente que não muda o item não conta como execução, evitando que o
+  cron aumente a revisão a cada hora. Não ampliar o catálogo para envio externo
+  sem confirmação, auditoria e credencial do canal.
 - **Hierarquia universal de trabalho (v124)**: lógica pura em
   `src/features/work/hierarchyDomain.js` e interface lazy em
   `src/features/work/WorkStructure.jsx`. A organização raiz é sempre derivada
