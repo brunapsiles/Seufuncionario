@@ -305,6 +305,7 @@ describe("LogisticsVertical", () => {
     window.history.pushState({}, "", "/todogreen/propostas");
     const gravadas = [];
     stubDeRede({
+      "/api/todogreen/clients": () => jsonOk({ clientes: [{ id: "c1", name: "Cliente Alfa" }] }),
       "/api/todogreen/records/proposals": (_caminho, opcoes) => {
         gravadas.push(JSON.parse(opcoes.body));
         return jsonOk({ registro: { id: "p1" } });
@@ -315,6 +316,8 @@ describe("LogisticsVertical", () => {
           scenarios: [
             {
               id: "s1",
+              clientId: "c1",
+              opportunityId: "o1",
               premissas: { confirmadas: true },
               result: { productName: "Middle Mile", recommendedPrice: 1000, marginPercent: 22, impact: { co2AvoidedKg: 500 } },
             },
@@ -329,6 +332,33 @@ describe("LogisticsVertical", () => {
     await waitFor(() => expect(gravadas.length).toBe(1));
     // A proposta carrega a simulação que gerou o preço.
     expect(gravadas[0].cenarioId).toBe("s1");
+    expect(gravadas[0]).toEqual(expect.objectContaining({ clientId: "c1", cliente: "Cliente Alfa", oportunidadeId: "o1" }));
+  });
+
+  it("gera contrato somente a partir de proposta aceita e preserva os vínculos", async () => {
+    window.history.pushState({}, "", "/todogreen/propostas");
+    const contracts = [];
+    stubDeRede({
+      "/api/todogreen/records/contracts": (_path, options) => {
+        contracts.push(JSON.parse(options.body));
+        return jsonOk({ registro: { id: "ct-1" } });
+      },
+      "/api/todogreen/records": () => jsonOk({
+        ...REGISTROS,
+        proposals: [{
+          id: "p1", clientId: "c1", cliente: "Cliente Alfa", oportunidadeId: "o1",
+          cenarioId: "s1", titulo: "Proposta Alfa", situacao: "accepted", revision: 1,
+        }],
+      }),
+    });
+    await renderarAutorizada();
+    const button = await screen.findByRole("button", { name: /Gerar contrato/ });
+    expect(button.disabled).toBe(false);
+    fireEvent.click(button);
+    await waitFor(() => expect(contracts).toHaveLength(1));
+    expect(contracts[0]).toEqual(expect.objectContaining({
+      clientId: "c1", propostaId: "p1", oportunidadeId: "o1", cenarioId: "s1",
+    }));
   });
 
   it("salvar uma simulação não grava nada no estado genérico do espaço", async () => {
@@ -410,6 +440,7 @@ describe("LogisticsVertical", () => {
   it("proposta com premissa confirmada ainda não sai se o Deal Desk está pendente", async () => {
     window.history.pushState({}, "", "/todogreen/propostas");
     stubDeRede({
+      "/api/todogreen/clients": () => jsonOk({ clientes: [{ id: "c1", name: "Cliente Alfa" }] }),
       "/api/todogreen/deal-desk": () =>
         jsonOk({
           pedidos: [
@@ -431,6 +462,7 @@ describe("LogisticsVertical", () => {
           scenarios: [
             {
               id: "s1",
+              clientId: "c1",
               premissas: { confirmadas: true },
               result: { productName: "Middle Mile", recommendedPrice: 1000, marginPercent: 15, impact: { co2AvoidedKg: 10 } },
             },
@@ -448,6 +480,7 @@ describe("LogisticsVertical", () => {
   it("com o Deal Desk aprovado, a proposta sai e diz quem aprovou", async () => {
     window.history.pushState({}, "", "/todogreen/propostas");
     stubDeRede({
+      "/api/todogreen/clients": () => jsonOk({ clientes: [{ id: "c1", name: "Cliente Alfa" }] }),
       "/api/todogreen/deal-desk": () =>
         jsonOk({
           pedidos: [
@@ -470,6 +503,7 @@ describe("LogisticsVertical", () => {
           scenarios: [
             {
               id: "s1",
+              clientId: "c1",
               premissas: { confirmadas: true },
               result: { productName: "Middle Mile", recommendedPrice: 1000, marginPercent: 15, impact: { co2AvoidedKg: 10 } },
             },

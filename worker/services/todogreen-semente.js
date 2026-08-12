@@ -410,7 +410,7 @@ export async function executarAcao(env, { access, user, email, acao, linhas }) {
   if (!linha) return { erro: "Conta não encontrada na sua carteira.", status: 404 };
   if (!webSearchConfiguration(env).configured)
     return {
-      erro: "Pesquisa web ainda não configurada. Cadastre uma chave do Brave Search, Tavily, Serper, Exa, Jina ou Google Search.",
+      erro: "Pesquisa web ainda não configurada. Configure o SearXNG autohospedado ou uma chave do Brave Search, Tavily, Serper, Exa, Jina ou Google Search.",
       status: 503,
     };
   const pesquisa = await pesquisarEmpresa(env, {

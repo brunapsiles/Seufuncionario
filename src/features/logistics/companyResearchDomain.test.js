@@ -6,21 +6,23 @@ const result = (title, url, snippet = "") => ({ title, url, snippet, provider: "
 describe("inteligência externa comercial", () => {
   it("separa inteligência e faz duas buscas brasileiras de contatos", () => {
     const plans = buildCompanyResearchPlans({ company: "Adidas", segment: "Varejo", year: 2026 });
-    expect(plans).toHaveLength(6);
+    expect(plans).toHaveLength(7);
     expect(new Set(plans.flatMap((item) => item.kinds))).toEqual(new Set(["identity", "supplier", "rfq", "esg", "news", "segment", "contacts"]));
     expect(plans.every((item) => item.query.includes("Brasil"))).toBe(true);
-    expect(buildCompanyResearchPlans({ company: "Adidas", segment: "Varejo", year: 2026, focus: "contacts" })).toHaveLength(7);
+    expect(buildCompanyResearchPlans({ company: "Adidas", segment: "Varejo", year: 2026, focus: "contacts" })).toHaveLength(8);
     const focused = buildCompanyResearchPlans({
       company: "Adidas", segment: "Varejo", year: 2026, focus: "contacts",
       knownContacts: [{ name: "Thiago Souza" }, { name: "Fernanda Vasco" }],
     });
-    expect(focused).toHaveLength(8);
+    expect(focused).toHaveLength(10);
     expect(focused.filter((item) => item.kinds.includes("known_contacts"))).toEqual([
       expect.objectContaining({
-        knownContactNames: ["Thiago Souza", "Fernanda Vasco"],
-        query: expect.stringMatching(/"Adidas".*"Thiago Souza" OR "Fernanda Vasco"/),
+        knownContactNames: ["Thiago Souza"],
+        query: expect.stringMatching(/"Thiago Souza".*"Adidas"/),
       }),
+      expect.objectContaining({ knownContactNames: ["Fernanda Vasco"] }),
     ]);
+    expect(focused.filter((item) => item.kinds.includes("contacts")).every((item) => /linkedin\.com\/in|LinkedIn/.test(item.query))).toBe(true);
   });
   it("não confunde vaga com RFQ e só confirma oportunidade aberta de transporte", () => {
     const report = classifyCompanyResearch({ company: "Empresa X", segment: "Varejo", searches: [
@@ -71,9 +73,9 @@ describe("inteligência externa comercial", () => {
       source: "Pesquisa web",
       country: "Brasil",
       verifiedBrazil: true,
-      researchVersion: 5,
+      researchVersion: 6,
     })]);
-    expect(report.version).toBe(5);
+    expect(report.version).toBe(6);
     expect(report.suggestedHeadquarters?.value).toBe("São Paulo, SP");
   });
 
@@ -123,20 +125,32 @@ describe("inteligência externa comercial", () => {
     expect(report.contactCandidates.map((item) => item.name)).toEqual(["Ana Souza", "Bruno Lima"]);
   });
 
-  it("encontra lideranças brasileiras de logística mesmo sem a palavra procurement", () => {
+  it("só inclui lideranças de logística com evidência pública de Brasil", () => {
     const report = classifyCompanyResearch({ company: "Adidas", segment: "Varejo", searches: [
       { kind: "contacts", results: [
         { ...result("Nadiah Maluf - Gerente Logistica / Transportes - adidas", "https://br.linkedin.com/in/nadiah-maluf", "Responsável pela área de transportes da adidas e pela relação com transportadoras."), searchScope: "brazil-procurement-logistics" },
-        { ...result("Mikaelly M. - Gerente de Compras na adidas", "https://www.linkedin.com/in/mikaellym", "Gestão estratégica de compras, supply chain e varejo na adidas."), searchScope: "brazil-procurement-logistics" },
+        { ...result("Mikaelly M. - Gerente de Compras na adidas", "https://www.linkedin.com/in/mikaellym", "São Paulo, Brasil. Gestão estratégica de compras, supply chain e varejo na adidas."), searchScope: "brazil-procurement-logistics" },
       ] },
     ] });
     expect(report.contactCandidates.map((item) => item.name)).toEqual(["Nadiah Maluf", "Mikaelly M."]);
     expect(report.contactSearchQuality.accepted).toBe(2);
-    expect(report.contactSearchQuality.scopedAccepted).toBe(1);
+  });
+
+  it("não usa o texto da consulta como prova de atuação no Brasil", () => {
+    const report = classifyCompanyResearch({ company: "Adidas", segment: "Varejo", searches: [
+      { kind: "contacts", results: [{
+        ...result("Mikaelly M. - Gerente de Compras na adidas", "https://www.linkedin.com/in/mikaellym", "Gestão estratégica de compras e supply chain na adidas."),
+        searchScope: "brazil-procurement-logistics",
+      }] },
+    ] });
+    expect(report.contactCandidates).toHaveLength(0);
+    expect(report.reviewCandidates).toEqual([expect.objectContaining({ rejectionReason: "no-brazil-evidence" })]);
   });
 
   it("localiza o LinkedIn de um contato já cadastrado sem recriá-lo", () => {
-    const report = classifyCompanyResearch({ company: "Amazon", segment: "E-commerce", searches: [
+    const report = classifyCompanyResearch({ company: "Amazon", segment: "E-commerce", knownContacts: [
+      { name: "Fernanda Vasco", phone: "+55 11 98839-5335", email: "fevasco@amazon.com" },
+    ], searches: [
       { kind: "known_contacts", results: [{
         ...result("Fernanda Vasco - Amazon | LinkedIn", "https://www.linkedin.com/in/fernanda-vasco", "Fernanda Vasco trabalha na Amazon."),
         searchScope: "brazil-known-contact",
@@ -149,6 +163,16 @@ describe("inteligência externa comercial", () => {
       linkedinUrl: "https://www.linkedin.com/in/fernanda-vasco",
       source: "Pesquisa web (LinkedIn do contato)",
     })]);
+  });
+
+  it("não associa perfil sem evidência brasileira a contato salvo sem país ou telefone", () => {
+    const report = classifyCompanyResearch({ company: "Amazon", segment: "E-commerce", knownContacts: [
+      { name: "Fernanda Vasco", email: "fevasco@amazon.com" },
+    ], searches: [{ kind: "known_contacts", results: [{
+      ...result("Fernanda Vasco - Amazon | LinkedIn", "https://www.linkedin.com/in/fernanda-vasco", "Fernanda Vasco trabalha na Amazon."),
+      knownContactNames: ["Fernanda Vasco"],
+    }] }] });
+    expect(report.contactCandidates).toHaveLength(0);
   });
 
   it("não repete perfil corporativo como notícia nem duplica a empresa nas tendências", () => {

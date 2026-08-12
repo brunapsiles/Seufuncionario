@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState } from "react";
 const VAZIO = Object.freeze({
   opportunities: [],
   proposals: [],
+  contracts: [],
   operations: [],
   financial: [],
   scenarios: [],

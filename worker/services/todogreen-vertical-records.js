@@ -51,6 +51,46 @@ const parse = (valor, alternativa) => {
   }
 };
 const objeto = (valor) => (valor && typeof valor === "object" && !Array.isArray(valor) ? valor : {});
+const etapaGanha = (valor) => texto(valor, 80).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === "fechada ganha";
+export const deveCriarHandoff = (anterior, proxima) => !etapaGanha(anterior) && etapaGanha(proxima);
+
+const criarHandoffOperacional = async (env, access, user, oportunidade) => {
+  const agora = new Date().toISOString();
+  const boardId = `todogreen-handoff-${access.ownerId}`;
+  const itemId = `todogreen-handoff-opportunity-${oportunidade.id}`;
+  const prazo = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO todogreen_work_boards
+       (id,tenant_id,workspace_owner_id,name,description,specialist,object_types_json,
+        permissions_json,status,display_order,created_by,created_at,updated_at)
+     VALUES (?,? ,?, 'Implantação de contratos',
+       'Transição automática do comercial para operação após oportunidade ganha.',
+       'operations','["oportunidade","cliente","contrato"]','{}','active',30,?,?,?)`,
+  ).bind(boardId, TENANT_ID, access.ownerId, user.id, agora, agora).run();
+  const relations = [
+    { type: "opportunity", id: oportunidade.id },
+    ...(oportunidade.clientId ? [{ type: "client", id: oportunidade.clientId }] : []),
+  ];
+  const { meta } = await env.DB.prepare(
+    `INSERT OR IGNORE INTO todogreen_work_items
+       (id,tenant_id,workspace_owner_id,board_id,type,title,description,status,priority,
+        responsible_user_id,responsible_label,client_label,due_date,fields_json,relations_json,
+        dependencies_json,revision,created_by,updated_by,created_at,updated_at,archived_at)
+     VALUES (?,?,?,?, 'handoff', ?, ?, 'novo','alta',NULL,'Operações',?,?,?,?,'[]',1,?,?,?,?,NULL)`,
+  ).bind(
+    itemId, TENANT_ID, access.ownerId, boardId,
+    `Implantar operação de ${oportunidade.cliente || "cliente"}`,
+    "Validar contrato, kick-off, responsáveis, integrações, frota, indicadores e data de início.",
+    oportunidade.cliente || "", prazo,
+    JSON.stringify({ source: "opportunity_won", opportunityId: oportunidade.id, clientId: oportunidade.clientId || "" }),
+    JSON.stringify(relations), user.id, user.id, agora, agora,
+  ).run();
+  if (meta?.changes) await env.DB.prepare(
+    `INSERT INTO todogreen_work_item_events
+       (id,workspace_owner_id,board_id,item_id,actor_user_id,action,before_json,after_json,created_at)
+     VALUES (?,?,?,?,?,'created_from_won_opportunity','{}',?,?)`,
+  ).bind(crypto.randomUUID(), access.ownerId, boardId, itemId, user.id, JSON.stringify({ opportunityId: oportunidade.id }), agora).run();
+};
 
 // Cada coleção declara como uma linha vira registro e como um registro vira
 // linha. Sem essa tabela, cada endpoint reescreveria o mesmo mapeamento com
@@ -161,6 +201,54 @@ const COLECOES = {
       texto(corpo.cenarioId)
         ? ""
         : "A proposta precisa apontar para a simulação que gerou o preço.",
+  },
+
+  contracts: {
+    tabela: "todogreen_contracts",
+    permissao: "proposal:manage",
+    ordem: "updated_at DESC",
+    daLinha: (row) => ({
+      id: row.id,
+      clientId: row.client_id,
+      cliente: row.client_name,
+      oportunidadeId: row.opportunity_id,
+      propostaId: row.proposal_id,
+      cenarioId: row.scenario_id,
+      titulo: row.title,
+      inicioEm: row.start_date || "",
+      fimEm: row.end_date || "",
+      valorMensal: row.monthly_value,
+      valorTotal: row.total_value,
+      situacao: row.status,
+      termos: row.terms,
+      campos: parse(row.fields_json, {}),
+      revision: row.revision,
+      criadoEm: row.created_at,
+      atualizadoEm: row.updated_at,
+    }),
+    colunas: (corpo) => ({
+      client_id: texto(corpo.clientId, 120),
+      client_name: texto(corpo.cliente || corpo.clientName, 200),
+      opportunity_id: texto(corpo.oportunidadeId, 120),
+      proposal_id: texto(corpo.propostaId, 120),
+      scenario_id: texto(corpo.cenarioId, 120),
+      title: texto(corpo.titulo, 240),
+      start_date: texto(corpo.inicioEm, 20) || null,
+      end_date: texto(corpo.fimEm, 20) || null,
+      monthly_value: numero(corpo.valorMensal),
+      total_value: numero(corpo.valorTotal),
+      status: texto(corpo.situacao, 40) || "draft",
+      terms: texto(corpo.termos, 8000),
+      fields_json: JSON.stringify(objeto(corpo.campos)),
+    }),
+    exigido: (corpo) =>
+      !texto(corpo.clientId)
+        ? "O contrato precisa de um cliente."
+        : !texto(corpo.propostaId)
+          ? "O contrato precisa apontar para a proposta aceita."
+          : !texto(corpo.titulo)
+            ? "Informe o título do contrato."
+            : "",
   },
 
   operations: {
@@ -394,6 +482,31 @@ const criar = async (env, colecao, access, user, corpo) => {
     if (!liberacao.liberada) return json({ error: liberacao.motivo }, 409);
   }
 
+  if (colecao === COLECOES.contracts) {
+    const propostaId = texto(corpo.propostaId, 120);
+    const proposta = await env.DB.prepare(
+      `SELECT id,client_id,client_name,opportunity_id,scenario_id,status
+         FROM todogreen_proposals
+        WHERE id=? AND tenant_id=? AND workspace_owner_id=? AND archived_at IS NULL`,
+    ).bind(propostaId, TENANT_ID, access.ownerId).first();
+    if (!proposta) return json({ error: "Proposta não encontrada neste espaço." }, 404);
+    if (!new Set(["accepted", "approved", "aceita", "aprovada"]).has(texto(proposta.status).toLowerCase()))
+      return json({ error: "Aceite a proposta antes de gerar o contrato." }, 409);
+    if (texto(corpo.clientId) !== texto(proposta.client_id))
+      return json({ error: "O cliente do contrato não corresponde ao da proposta." }, 409);
+    const existente = await env.DB.prepare(
+      `SELECT id FROM todogreen_contracts
+        WHERE tenant_id=? AND workspace_owner_id=? AND proposal_id=? AND archived_at IS NULL`,
+    ).bind(TENANT_ID, access.ownerId, propostaId).first();
+    if (existente) return json({ error: "Esta proposta já possui contrato ativo." }, 409);
+    corpo = {
+      ...corpo,
+      cliente: corpo.cliente || proposta.client_name,
+      oportunidadeId: corpo.oportunidadeId || proposta.opportunity_id,
+      cenarioId: corpo.cenarioId || proposta.scenario_id,
+    };
+  }
+
   if (colecao === COLECOES.operations) {
     const cliente = await env.DB.prepare(
       `SELECT id FROM todogreen_clients
@@ -484,6 +597,8 @@ const atualizar = async (env, colecao, access, user, id, corpo) => {
   )
     .bind(id, TENANT_ID, access.ownerId)
     .first();
+  if (colecao === COLECOES.opportunities && deveCriarHandoff(atual.stage, row.stage))
+    await criarHandoffOperacional(env, access, user, colecao.daLinha(row));
   return json({ registro: colecao.daLinha(row) });
 };
 

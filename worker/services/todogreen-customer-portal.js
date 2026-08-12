@@ -163,6 +163,7 @@ const intelligenceFields = (input) => {
     rfqRejected: finite(input.rfqRejected, 0, 1000),
     procurementPeople: intelligenceSources(input.procurementPeople),
     knownContactProfiles: intelligenceSources(input.knownContactProfiles),
+    reviewCandidates: intelligenceSources(input.reviewCandidates, 12),
     contactCandidates: Array.isArray(input.contactCandidates)
       ? input.contactCandidates.slice(0, 20).map((contact) => ({
           id: clean(contact?.id, 80),
@@ -185,7 +186,7 @@ const intelligenceFields = (input) => {
     contactSearchQuality: input.contactSearchQuality && typeof input.contactSearchQuality === "object"
       ? {
           accepted: finite(input.contactSearchQuality.accepted, 0, 1000),
-          scopedAccepted: finite(input.contactSearchQuality.scopedAccepted, 0, 1000),
+          candidatesForReview: finite(input.contactSearchQuality.candidatesForReview, 0, 1000),
           foreignRejected: finite(input.contactSearchQuality.foreignRejected, 0, 1000),
           noBrazilEvidenceRejected: finite(input.contactSearchQuality.noBrazilEvidenceRejected, 0, 1000),
           nonLogisticsRejected: finite(input.contactSearchQuality.nonLogisticsRejected, 0, 1000),
@@ -210,6 +211,7 @@ const intelligenceFields = (input) => {
           contactsAdded: finite(input.autoEnrichment.contactsAdded, 0, 100),
           contactsUpdated: finite(input.autoEnrichment.contactsUpdated, 0, 100),
           legacyContactsRemoved: finite(input.autoEnrichment.legacyContactsRemoved, 0, 100),
+          legacyContactsRetained: finite(input.autoEnrichment.legacyContactsRetained, 0, 100),
         }
       : null,
     excludedVacancies: finite(input.excludedVacancies, 0, 1000),
@@ -248,8 +250,6 @@ const crmFields = (value = {}, companyName = "") => {
         researchVersion: finite(contact?.researchVersion, 0, 10),
         active: contact?.active !== false,
       })).filter((contact) => contact.name))
-      .filter((contact) => !normalizeText(contact.source).startsWith("pesquisa web") ||
-        (contact.verifiedBrazil === true && contact.researchVersion >= 3 && normalizeText(contact.country) === "brasil"))
     : [];
   return {
     tier: clean(input.tier, 40),
@@ -282,6 +282,28 @@ const crmFields = (value = {}, companyName = "") => {
         ? intelligenceFields(input.intelligence)
         : null,
   };
+};
+
+export const mergeImportedCrm = (existing = {}, incoming = {}, companyName = "") => {
+  const oldSource = clean(existing?.source, 100);
+  const newSource = clean(incoming?.source, 100);
+  const fromPortfolio = /carteira\s+to\s+do\s+green/i.test(newSource);
+  const fromLegacyCrm = /crm|total\s+express/i.test(newSource);
+  const temperature = fromPortfolio || existing?.temperature === "Morno"
+    ? "Morno"
+    : fromLegacyCrm
+      ? "Frio"
+      : incoming?.temperature || existing?.temperature || "";
+  const sources = [...new Set([oldSource, newSource].filter(Boolean))].join(" + ");
+  return crmFields({
+    ...existing,
+    ...incoming,
+    temperature,
+    source: sources,
+    qualification: { ...(existing?.qualification || {}), ...(incoming?.qualification || {}) },
+    contacts: [...(Array.isArray(existing?.contacts) ? existing.contacts : []), ...(Array.isArray(incoming?.contacts) ? incoming.contacts : [])],
+    intelligence: existing?.intelligence || incoming?.intelligence || null,
+  }, companyName);
 };
 
 // Mesma sessão do resto do produto: o portal não tem login próprio.
@@ -1322,10 +1344,21 @@ export async function handleTodoGreenClients(request, env, access, user) {
       segmento: clean(item?.segmento ?? item?.segment, 80),
       status: clean(item?.status, 20) || "ativo",
       observacoes: clean(item?.observacoes ?? item?.notes, 1000),
-      crm: crmFields(item?.crm || {}, clean(item?.nome ?? item?.name, 200)),
+      crm: item?.crm || {},
     }));
     if (preparados.some((item) => !item.id || item.nome.length < 2))
       return response({ error: "Cada cliente precisa de identificador estável e nome válido." }, 400);
+
+    const placeholders = preparados.map(() => "?").join(",");
+    const existentes = preparados.length
+      ? await env.DB.prepare(
+          `SELECT id,fields_json FROM todogreen_clients
+            WHERE tenant_id = ? AND workspace_owner_id = ? AND id IN (${placeholders})`,
+        ).bind(TENANT_ID, access.ownerId || user.id, ...preparados.map((item) => item.id)).all().catch(() => ({ results: [] }))
+      : { results: [] };
+    const crmExistente = new Map((existentes.results || []).map((item) => [item.id, parse(item.fields_json, {})]));
+    for (const item of preparados)
+      item.crm = mergeImportedCrm(crmExistente.get(item.id) || {}, item.crm, item.nome);
 
     for (let inicio = 0; inicio < preparados.length; inicio += 40) {
       const lote = preparados.slice(inicio, inicio + 40);

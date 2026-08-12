@@ -8,7 +8,7 @@ const normalize = (value) => clean(value, 1200).normalize("NFD").replace(/[\u030
 const safeUrl = (value) => { try { const url = new URL(value); return ["http:", "https:"].includes(url.protocol) ? url.href : ""; } catch { return ""; } };
 const resultKey = (item) => safeUrl(item?.url).replace(/[#?].*$/, "").replace(/\/$/, "");
 const includesAny = (text, terms) => terms.some((term) => text.includes(term));
-export const COMPANY_RESEARCH_VERSION = 5;
+export const COMPANY_RESEARCH_VERSION = 6;
 
 const VACANCY = ["vaga", "vagas", "career", "carreira", "emprego", "job", "jobs", "hiring", "we are hiring", "we're looking", "talentos", "recrutamento", "analista de compras", "comprador"];
 const TRANSPORT = ["transporte", "transportadora", "logistica", "frete", "frota", "middle mile", "last mile", "transferencia", "distribuicao", "carrier"];
@@ -151,7 +151,6 @@ const profileGeography = (item) => {
   const leadingEvidence = normalize(`${item?.title} ${item?.snippet}`).slice(0, 650);
   if (includesAny(leadingEvidence, FOREIGN_LOCATION)) return "foreign";
   if (host === "br.linkedin.com" || includesAny(leadingEvidence, BRAZIL)) return "brazil";
-  if (normalize(item?.searchScope).includes("brazil")) return "brazil-scoped";
   return "unknown";
 };
 
@@ -163,9 +162,9 @@ const classifyContactResult = (item, company) => {
   const geography = profileGeography(item);
   if (geography === "foreign") return "foreign";
   if (!includesAny(text, PROCUREMENT) && !includesAny(text, LOGISTICS_DECISION)) return "not-procurement";
-  if (!includesAny(text, LOGISTICS_PROCUREMENT) && !normalize(item?.searchScope).includes("logistics")) return "not-logistics";
-  if (!["brazil", "brazil-scoped"].includes(geography)) return "no-brazil-evidence";
-  return geography === "brazil" && includesAny(text, LOGISTICS_PROCUREMENT) ? "accepted" : "accepted-scoped";
+  if (!includesAny(text, LOGISTICS_PROCUREMENT)) return "not-logistics";
+  if (geography !== "brazil") return "no-brazil-evidence";
+  return "accepted";
 };
 
 const inferredSegment = (items) => {
@@ -217,14 +216,14 @@ const profileParts = (item, company) => {
   return { name, title };
 };
 
-const publicContact = (item, index, { company, officialHost, scoped = false }) => {
+const publicContact = (item, index, { company, officialHost }) => {
   const profile = profileParts(item, company);
   if (!profile) return null;
   return {
     id: `web-contact-${index + 1}`,
     name: profile.name,
     title: profile.title || "Atuação logística a confirmar",
-    department: scoped ? "Compras / Logística no Brasil · escopo a confirmar" : "Procurement de Logística e Transportes",
+    department: "Procurement de Logística e Transportes",
     email: contactEmail(item, officialHost, company),
     phone: contactPhone(item),
     linkedinUrl: safeUrl(item.url),
@@ -232,17 +231,22 @@ const publicContact = (item, index, { company, officialHost, scoped = false }) =
     source: "Pesquisa web",
     sourceUrl: safeUrl(item.url),
     country: "Brasil",
-    specialty: scoped ? "Resultado de busca brasileira direcionada" : "Procurement logístico",
-    validation: scoped
-      ? "Perfil encontrado em consulta restrita ao LinkedIn Brasil para Compras/Logística. O vínculo está indicado no resultado; confirme cargo e escopo atual antes da abordagem."
-      : "Perfil público com evidência de atuação no Brasil, vínculo com a empresa e escopo de logística/transportes. Confirme cargo e atualidade antes da abordagem.",
+    specialty: "Procurement logístico",
+    validation: "Perfil público com evidência explícita de atuação no Brasil, vínculo com a empresa e escopo de logística/transportes. Confirme cargo e atualidade antes da abordagem.",
     verifiedBrazil: true,
     researchVersion: COMPANY_RESEARCH_VERSION,
     active: true,
   };
 };
 
-const knownContactCandidate = (item, index, company) => {
+const brazilEvidenceFromSavedContact = (contact) => {
+  if (!contact) return false;
+  if (normalize(contact.country) === "brasil" || contact.verifiedBrazil === true) return true;
+  const digits = String(contact.phone || "").replace(/\D/g, "");
+  return digits.startsWith("55") ? digits.length === 12 || digits.length === 13 : digits.length === 10 || digits.length === 11;
+};
+
+const knownContactCandidate = (item, index, company, knownContacts = []) => {
   const names = Array.isArray(item?.knownContactNames) ? item.knownContactNames : [item?.knownContactName];
   const evidence = normalize(`${item?.title} ${item?.snippet}`);
   const name = names.map((value) => clean(value, 160)).find((value) => {
@@ -253,7 +257,8 @@ const knownContactCandidate = (item, index, company) => {
   const profile = profileParts(item, company);
   if (!profile) return null;
   const geography = profileGeography(item);
-  if (geography === "foreign" || !["brazil", "brazil-scoped"].includes(geography)) return null;
+  const savedContact = knownContacts.find((contact) => normalize(contact?.name) === normalize(name));
+  if (geography === "foreign" || (geography !== "brazil" && !brazilEvidenceFromSavedContact(savedContact))) return null;
   return {
     id: `known-web-contact-${index + 1}`,
     name,
@@ -267,7 +272,9 @@ const knownContactCandidate = (item, index, company) => {
     sourceUrl: safeUrl(item.url),
     country: "Brasil",
     specialty: "Contato já cadastrado",
-    validation: "LinkedIn localizado pelo nome do contato cadastrado, empresa e consulta restrita ao Brasil. Confirme se o perfil ainda corresponde à pessoa antes da abordagem.",
+    validation: geography === "brazil"
+      ? "LinkedIn localizado pelo nome do contato cadastrado, empresa e evidência pública de atuação no Brasil. Confirme se o perfil ainda corresponde à pessoa antes da abordagem."
+      : "LinkedIn localizado pelo nome e empresa. A atuação no Brasil foi confirmada pelo telefone ou país já cadastrado no CRM; confirme o vínculo atual antes da abordagem.",
     verifiedBrazil: true,
     researchVersion: COMPANY_RESEARCH_VERSION,
     active: true,
@@ -279,7 +286,16 @@ const isLegacyUnverifiedWebContact = (contact) =>
   (Number(contact?.researchVersion || 0) < 3 || contact?.verifiedBrazil !== true);
 
 /** Classifica apenas o que está evidenciado no resultado. Não transforma notícia ou vaga em RFQ. */
-export function classifyCompanyResearch({ company, segment, searches, checkedAt = new Date().toISOString() }) {
+const reviewReason = (reason) => ({
+  "no-brazil-evidence": "Sem evidência pública de atuação no Brasil",
+  "not-logistics": "Sem evidência de responsabilidade por Logística ou Transportes",
+  "not-procurement": "Sem evidência de Compras, Procurement ou decisão logística",
+  "other-company": "Vínculo com a empresa-alvo não comprovado",
+  foreign: "Atuação indicada fora do Brasil",
+  vacancy: "O resultado é uma vaga, não um contato",
+}[reason] || "Resultado insuficiente para cadastro automático");
+
+export function classifyCompanyResearch({ company, segment, searches, knownContacts = [], checkedAt = new Date().toISOString() }) {
   const byKind = resultsByKind(searches);
   const all = unique(searches.flatMap((item) => item.results || []), 40);
   const companyToken = companyTokens(company)[0] || "";
@@ -317,17 +333,21 @@ export function classifyCompanyResearch({ company, segment, searches, checkedAt 
   const profileResults = unique(all.filter((item) => /linkedin\.com\/in\//i.test(item.url)), 20);
   const classifiedProfiles = profileResults.map((item) => ({ item, reason: classifyContactResult(item, company) }));
   const acceptedProfiles = classifiedProfiles.filter((item) => item.reason.startsWith("accepted"));
-  const procurementPeople = acceptedProfiles.map(({ item, reason }) => source(item, "procurement_contact", {
-    currentness: reason === "accepted"
-      ? "Perfil compatível com Brasil e procurement/logística; confirme vínculo e cargo antes do contato."
-      : "Perfil encontrado em busca restrita ao LinkedIn Brasil; confirme cargo e escopo logístico antes do contato.",
-    validation: reason === "accepted"
-      ? "Resultado filtrado por empresa, Brasil e escopo de logística/transportes."
-      : "Resultado sem sinal estrangeiro, recuperado por consulta direcionada ao Brasil e a Compras/Logística.",
+  const procurementPeople = acceptedProfiles.map(({ item }) => source(item, "procurement_contact", {
+    currentness: "Perfil compatível com Brasil e procurement/logística; confirme vínculo e cargo antes do contato.",
+    validation: "Resultado com evidência explícita de empresa, Brasil e escopo de logística/transportes.",
   }));
-  const procurementCandidates = acceptedProfiles.map(({ item, reason }, index) => publicContact(item, index, { company, officialHost, scoped: reason === "accepted-scoped" })).filter(Boolean);
+  const procurementCandidates = acceptedProfiles.map(({ item }, index) => publicContact(item, index, { company, officialHost })).filter(Boolean);
+  const reviewCandidates = classifiedProfiles
+    .filter(({ reason }) => !["accepted", "vacancy", "foreign", "other-company", "not-profile"].includes(reason))
+    .map(({ item, reason }) => source(item, "contact_review", {
+      validation: reviewReason(reason),
+      rejectionReason: reason,
+      actionable: false,
+    }))
+    .slice(0, 12);
   const knownContactResults = unique((byKind.known_contacts || []).filter((item) => /linkedin\.com\/in\//i.test(item.url) && mentionsCompany(item, company) && !isVacancy(item)), 12);
-  const knownContactCandidates = knownContactResults.map((item, index) => knownContactCandidate(item, index, company)).filter(Boolean);
+  const knownContactCandidates = knownContactResults.map((item, index) => knownContactCandidate(item, index, company, knownContacts)).filter(Boolean);
   const seenCandidateProfiles = new Set();
   const contactCandidates = [...procurementCandidates, ...knownContactCandidates].filter((item) => {
     const key = normalize(item.linkedinUrl);
@@ -382,9 +402,10 @@ export function classifyCompanyResearch({ company, segment, searches, checkedAt 
     procurementPeople,
     knownContactProfiles,
     contactCandidates,
+    reviewCandidates,
     contactSearchQuality: {
       accepted: acceptedProfiles.length,
-      scopedAccepted: classifiedProfiles.filter((item) => item.reason === "accepted-scoped").length,
+      candidatesForReview: reviewCandidates.length,
       foreignRejected: classifiedProfiles.filter((item) => item.reason === "foreign").length,
       noBrazilEvidenceRejected: classifiedProfiles.filter((item) => item.reason === "no-brazil-evidence").length,
       nonLogisticsRejected: classifiedProfiles.filter((item) => item.reason === "not-logistics").length,
@@ -426,7 +447,12 @@ export function buildCompanyResearchPlans({ company, segment, year, focus = "com
     {
       kinds: ["contacts"],
       contactScope: "brazil-procurement-logistics",
-      query: `site:br.linkedin.com/in "${name}" Brasil procurement compras logística transportes frete supply chain`,
+      query: `site:linkedin.com/in "${name}" (Brasil OR Brazil OR "São Paulo") (procurement OR compras OR suprimentos) (logística OR transportes OR frete OR "supply chain")`,
+    },
+    {
+      kinds: ["contacts"],
+      contactScope: "brazil-procurement-logistics",
+      query: `site:br.linkedin.com/in "${name}" Brasil (compras OR procurement OR logística OR transportes OR "supply chain")`,
     },
     {
       kinds: ["contacts"],
@@ -437,20 +463,19 @@ export function buildCompanyResearchPlans({ company, segment, year, focus = "com
   if (focus === "contacts") plans.push({
     kinds: ["contacts"],
     contactScope: "brazil-procurement-logistics",
-    query: `site:br.linkedin.com/in "${name}" Brasil diretor gerente supply chain transportes distribuição outbound`,
+    query: `site:linkedin.com/in "${name}" (Brasil OR Brazil OR "São Paulo") (diretor OR gerente OR head) ("supply chain" OR transportes OR distribuição OR outbound)`,
   });
   if (focus === "contacts") {
     const contactsToFind = (Array.isArray(knownContacts) ? knownContacts : [])
       .filter((item) => clean(item?.name, 160).split(/\s+/).length >= 2 && !safeUrl(item?.linkedinUrl))
       .slice(0, 8)
       .map((item) => clean(item.name, 160));
-    for (let index = 0; index < contactsToFind.length; index += 4) {
-      const names = contactsToFind.slice(index, index + 4);
+    for (const contactName of contactsToFind) {
       plans.push({
         kinds: ["known_contacts"],
         contactScope: "brazil-known-contact",
-        knownContactNames: names,
-        query: `site:br.linkedin.com/in "${name}" Brasil LinkedIn ${names.map((contactName) => `"${contactName}"`).join(" OR ")}`,
+        knownContactNames: [contactName],
+        query: `site:linkedin.com/in "${contactName}" "${name}" (Brasil OR Brazil OR "São Paulo")`,
       });
     }
   }
@@ -495,7 +520,9 @@ export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = f
   const fields = parse(linha.fields_json, {});
   const cached = fields.intelligence && typeof fields.intelligence === "object" && Number(fields.intelligence.version || 0) >= COMPANY_RESEARCH_VERSION ? fields.intelligence : null;
   const idadeDoCache = cached?.checkedAt ? Date.now() - Date.parse(cached.checkedAt) : Infinity;
-  if (!forcar && idadeDoCache < 24 * 60 * 60 * 1000) return { relatorio: cached, doCache: true };
+  const cachedHasContacts = Number(cached?.contactSearchQuality?.accepted || 0) > 0 || Number(cached?.knownContactProfiles?.length || 0) > 0;
+  if (!forcar && focus !== "contacts" && idadeDoCache < 24 * 60 * 60 * 1000 && cachedHasContacts)
+    return { relatorio: cached, doCache: true };
 
   const company = clean(linha.name, 200);
   const segment = clean(linha.segment, 120);
@@ -514,15 +541,18 @@ export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = f
     })),
   })));
   if (planResults.every((item) => !item.configured))
-    return { erro: "Pesquisa web ainda não configurada. Cadastre uma chave do Brave Search, Tavily, Serper, Exa, Jina ou Google Search.", status: 503 };
-  const report = classifyCompanyResearch({ company, segment, searches: settled, checkedAt: new Date().toISOString() });
+    return { erro: "Pesquisa web ainda não configurada. Configure o SearXNG autohospedado ou uma chave do Brave Search, Tavily, Serper, Exa, Jina ou Google Search.", status: 503 };
+  const report = classifyCompanyResearch({ company, segment, searches: settled, knownContacts, checkedAt: new Date().toISOString() });
   report.providers = [...new Set(planResults.flatMap((item) => item.providers || []))];
   report.failures = planResults.flatMap((item) => item.failures || []).slice(0, 12);
   if (!report.providers.length && report.failures.length)
     return { erro: "A pesquisa web está configurada, mas o provedor não respondeu. Tente novamente em instantes.", failures: report.failures, status: 502 };
   const allExistingContacts = Array.isArray(fields.contacts) ? fields.contacts : [];
-  const existingContacts = allExistingContacts.filter((contact) => !isLegacyUnverifiedWebContact(contact));
-  const legacyContactsRemoved = allExistingContacts.length - existingContacts.length;
+  // Pesquisa nunca apaga cadastro. Contatos web antigos sem evidência ficam
+  // preservados para revisão manual, mas não ganham selo de Brasil nem entram
+  // na leitura automática de decisores.
+  const existingContacts = allExistingContacts;
+  const legacyContactsRetained = allExistingContacts.filter(isLegacyUnverifiedWebContact).length;
   let contactsUpdated = 0;
   const matchedCandidates = new Set();
   const enrichedContacts = existingContacts.map((existing) => {
@@ -569,7 +599,8 @@ export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = f
     headquartersFilled: !clean(fields.headquarters, 160) && Boolean(filledHeadquarters),
     contactsAdded: discoveredContacts.length,
     contactsUpdated,
-    legacyContactsRemoved,
+    legacyContactsRemoved: 0,
+    legacyContactsRetained,
   };
   const nextContacts = [...enrichedContacts, ...discoveredContacts];
   const nextFields = { ...fields, website: filledWebsite, linkedinUrl: filledLinkedin, headquarters: filledHeadquarters, contacts: nextContacts, intelligence: report };
@@ -585,7 +616,7 @@ export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = f
       segment: filledSegment,
       revision: Number(linha.revision || 0) + 1,
       updatedAt: report.checkedAt,
-      crm: { website: filledWebsite, linkedinUrl: filledLinkedin, headquarters: filledHeadquarters, intelligence: report },
+      crm: { website: filledWebsite, linkedinUrl: filledLinkedin, headquarters: filledHeadquarters, contacts: nextContacts, intelligence: report },
     },
     doCache: false,
   };
