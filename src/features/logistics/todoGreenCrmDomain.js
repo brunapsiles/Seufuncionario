@@ -95,6 +95,11 @@ export const createTodoGreenAccount = (input = {}) => ({
   nextAction: asText(input.nextAction),
   nextActionAt: asText(input.nextActionAt),
   lastInteractionAt: asText(input.lastInteractionAt),
+  contractRenewalDate: asText(input.contractRenewalDate),
+  potentialAnnual: asNumber(input.potentialAnnual),
+  productPotential: input.productPotential && typeof input.productPotential === "object" ? input.productPotential : {},
+  geographicExpansion: asText(input.geographicExpansion),
+  accountPlan: input.accountPlan && typeof input.accountPlan === "object" ? input.accountPlan : {},
   source: asText(input.source),
   tags: Array.isArray(input.tags) ? [...new Set(input.tags.map(asText).filter(Boolean))] : [],
   createdAt: input.createdAt || new Date().toISOString(),
@@ -280,5 +285,94 @@ export const crmAccountSummary = (account = {}, contacts = [], opportunities = [
     coverage: health.relationshipCoverage.score,
     alerts: health.alerts,
     nextAction: recommendNextCommercialAction({ account, contacts, opportunities }),
+  };
+};
+
+const PRODUCT_LABELS = Object.freeze({
+  "middle-mile": "Middle mile",
+  "last-mile": "Last mile",
+  dedicated: "Operação dedicada",
+});
+
+const daysSince = (value, now = new Date()) => {
+  const time = Date.parse(value || "");
+  return Number.isFinite(time)
+    ? Math.max(0, Math.floor((now.getTime() - time) / 86400000))
+    : null;
+};
+
+const contactGroup = (contacts, roles, terms = []) => contacts.filter((contact) => {
+  const role = lowerRole(contact.relationshipRole);
+  const profile = lowerRole(`${contact.title} ${contact.department} ${contact.specialty}`);
+  return roles.includes(role) || terms.some((term) => profile.includes(term));
+});
+
+const lowerRole = (value) => asText(value).toLocaleLowerCase("pt-BR");
+
+export const buildAccountIntelligence = ({ account = {}, contacts = [], opportunities = [], now = new Date() } = {}) => {
+  const accountOpportunities = opportunities.filter((item) =>
+    item.accountId === account.id || item.clientId === account.id,
+  );
+  const open = accountOpportunities.filter((item) =>
+    !CLOSED_STAGES.has(item.stage || item.estagio),
+  );
+  const usedProducts = new Set(accountOpportunities.map((item) => item.productId).filter(Boolean));
+  const qualification = account.qualification || {};
+  const annual = asNumber(account.potentialAnnual);
+  const productPotential = account.productPotential || {};
+  const lastContactDays = daysSince(account.lastInteractionAt, now);
+  const renewalDays = account.contractRenewalDate
+    ? Math.ceil((Date.parse(account.contractRenewalDate) - now.getTime()) / 86400000)
+    : null;
+  const stalledProposal = open.find((item) => {
+    const stage = lowerRole(item.stage || item.estagio);
+    const age = daysSince(item.updatedAt || item.createdAt, now);
+    return stage.includes("proposta") && age !== null && age >= 21;
+  });
+  const withoutNextStep = open.filter((item) => !asText(item.nextStep || item.proximoPasso));
+  const health = [];
+  if (lastContactDays === null) health.push("Último contato não registrado");
+  else if (lastContactDays >= 30) health.push(`Sem contato há ${lastContactDays} dias`);
+  if (stalledProposal) health.push("Proposta parada há pelo menos 21 dias");
+  if (renewalDays !== null && renewalDays >= 0 && renewalDays <= 90)
+    health.push(`Contrato vence em ${renewalDays} dias`);
+  if (withoutNextStep.length)
+    health.push(`${withoutNextStep.length} oportunidade(s) sem próxima ação`);
+  if (!health.length) health.push("Nenhum alerta comercial objetivo com os dados atuais");
+
+  const buyers = contactGroup(contacts, ["compras", "decisor econômico"], ["procurement", "compras", "suprimentos", "sourcing"]);
+  const influencers = contactGroup(contacts, ["influenciador", "patrocinador", "decisor técnico"]);
+  const blockers = contactGroup(contacts, ["bloqueador"]);
+  const users = contactGroup(contacts, ["usuário", "operações"], ["operações", "logística", "transportes"]);
+  const uniqueNames = (items) => [...new Set(items.map((item) => item.name).filter(Boolean))];
+  const plan = account.accountPlan || {};
+
+  return {
+    potential: {
+      annual: annual || null,
+      middleMile: asNumber(productPotential.middleMile) || null,
+      lastMile: asNumber(productPotential.lastMile) || null,
+      dedicated: asNumber(productPotential.dedicated) || null,
+      geographicExpansion: asText(account.geographicExpansion || qualification.geographicExpansion),
+      missing: !annual,
+    },
+    relationshipMap: {
+      buyers: uniqueNames(buyers),
+      influencers: uniqueNames(influencers),
+      blockers: uniqueNames(blockers),
+      users: uniqueNames(users),
+    },
+    whiteSpace: Object.entries(PRODUCT_LABELS)
+      .filter(([id]) => !usedProducts.has(id))
+      .map(([, label]) => label),
+    commercialHealth: health,
+    accountPlan: {
+      objective: asText(plan.objective),
+      barriers: asText(plan.barriers),
+      competitors: asText(plan.competitors || qualification.currentSuppliers),
+      plan30: asText(plan.plan30),
+      plan60: asText(plan.plan60),
+      plan90: asText(plan.plan90),
+    },
   };
 };

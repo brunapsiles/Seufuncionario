@@ -34,6 +34,7 @@ import {
   TODO_GREEN_ACCOUNT_TIERS,
   TODO_GREEN_RELATIONSHIP_ROLES,
   buildCrmCommandCenter,
+  buildAccountIntelligence,
   crmAccountSummary,
 } from "../todoGreenCrmDomain.js";
 import { assessAccount, gmailComposeUrl, outlookComposeUrl, whatsappUrl } from "../accountIntelligenceDomain.js";
@@ -86,19 +87,20 @@ const opportunityForCrm = (item) => ({
 
 const formatCheckedAt = (value) => value ? new Date(value).toLocaleString("pt-BR") : "Ainda não pesquisado";
 
-const ENGLISH_WORDS = /\b(the|and|with|from|for|across|we|our|their|this|that|company|manager|procurement|supply|chain|transportation|distribution|reports|growth|emissions|business)\b/gi;
-const PORTUGUESE_WORDS = /\b(o|a|os|as|de|do|da|dos|das|com|para|por|empresa|compras|logística|transporte|emissões|crescimento)\b/gi;
+const ENGLISH_WORDS = /\b(the|and|with|from|for|across|we|our|their|this|that|company|manager|procurement|supply|chain|transportation|distribution|reports|growth|emissions|business|opportunity|available|current|global|senior|experience|responsible|leading|services|solutions|customers|market|team|role|operations)\b/gi;
+const PORTUGUESE_WORDS = /\b(o|a|os|as|um|uma|de|do|da|dos|das|no|na|nos|nas|em|com|para|por|empresa|compras|logística|transporte|transportes|emissões|crescimento|operação|fornecedor|fornecedores|sustentabilidade|resultados|notícias|amplia|brasil|brasileira|brasileiro)\b/gi;
 const sourceHost = (url) => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "fonte externa"; } };
-const isEnglishSource = (item) => {
+const isPortugueseSource = (item) => {
   const text = `${item?.title || ""} ${item?.snippet || ""}`;
   const english = text.match(ENGLISH_WORDS)?.length || 0;
   const portuguese = text.match(PORTUGUESE_WORDS)?.length || 0;
-  return english >= 4 && english > portuguese * 2;
+  if (english >= 2 && english > portuguese) return false;
+  return portuguese >= 2 || (portuguese >= 1 && /[áàâãéêíóôõúç]|\.br\b/i.test(text));
 };
 
 function ResearchLinks({ title, items = [], empty }) {
   return <div className="tdg-crm-research-group"><span>{title}</span>{items.length
-    ? <ul>{items.map((item) => { const english = isEnglishSource(item); return <li key={item.url}><a href={item.url} target="_blank" rel="noreferrer">{english ? `Fonte internacional · ${sourceHost(item.url)}` : item.title}</a>{item.snippet && <small>{english ? "Conteúdo original em inglês. A evidência foi classificada pelo CRM, e o link permanece disponível para conferência." : item.snippet}</small>}{item.validation && <em>{item.validation}</em>}</li>; })}</ul>
+    ? <ul>{items.map((item) => { const portuguese = isPortugueseSource(item); return <li key={item.url}><a href={item.url} target="_blank" rel="noreferrer">{portuguese ? item.title : `Fonte pública · ${sourceHost(item.url)}`}</a>{item.snippet && <small>{portuguese ? item.snippet : "Fonte mantida apenas para conferência. Conteúdo em outro idioma não é reproduzido na ficha."}</small>}{item.validation && <em>{item.validation}</em>}</li>; })}</ul>
     : <small>{empty}</small>}</div>;
 }
 
@@ -115,11 +117,11 @@ function ExternalIntelligence({ report, researching, error, onResearch }) {
       <ResearchLinks title="LinkedIn dos contatos cadastrados" items={report.knownContactProfiles} empty="Nenhum LinkedIn adicional foi confirmado para os contatos já cadastrados." />
       <ResearchLinks title="Candidatos para validação" items={report.reviewCandidates} empty="Nenhum candidato pendente de validação." />
       {report.contactSearchQuality && <div className="tdg-crm-research-enrichment"><strong>Resultado da busca de contatos</strong><small>{report.contactSearchQuality.accepted || 0} incluído(s), {report.contactSearchQuality.candidatesForReview || 0} candidato(s) para validação, {report.contactSearchQuality.foreignRejected || 0} estrangeiro(s), {report.contactSearchQuality.noBrazilEvidenceRejected || 0} sem evidência de Brasil e {report.contactSearchQuality.nonLogisticsRejected || 0} sem escopo logístico.</small></div>}
-      {Array.isArray(report.providers) && <div className="tdg-crm-research-enrichment"><strong>Provedores consultados</strong><small>{report.providers.length ? report.providers.join(", ") : "Nenhum provedor respondeu."}{report.failures?.length ? ` · ${report.failures.length} falha(s) registrada(s).` : ""}</small></div>}
       {report.suggestedSegment?.value && <div className="tdg-crm-research-enrichment"><strong>Segmento identificado: {report.suggestedSegment.value}</strong><small>Confiança {report.suggestedSegment.confidence}. {report.autoEnrichment?.segmentFilled ? "Preenchido automaticamente no CRM." : "O CRM já possuía um segmento e foi preservado."}</small></div>}
       {report.suggestedHeadquarters?.value && <div className="tdg-crm-research-enrichment"><strong>Operação brasileira identificada: {report.suggestedHeadquarters.value}</strong><small>Confiança {report.suggestedHeadquarters.confidence}. {report.autoEnrichment?.headquartersFilled ? "Preenchida automaticamente na conta." : "A conta já possuía uma sede e foi preservada."}</small></div>}
       {report.autoEnrichment?.contactsAdded > 0 && <div className="tdg-crm-research-enrichment"><strong>{report.autoEnrichment.contactsAdded} contato(s) público(s) incluído(s)</strong><small>Vínculo e cargo ficam marcados para confirmação antes da abordagem.</small></div>}
       {report.autoEnrichment?.contactsUpdated > 0 && <div className="tdg-crm-research-enrichment"><strong>{report.autoEnrichment.contactsUpdated} contato(s) cadastrado(s) complementado(s)</strong><small>Os dados existentes foram preservados e somente campos vazios receberam evidência pública.</small></div>}
+      {report.autoEnrichment?.qualificationFilled?.length > 0 && <div className="tdg-crm-research-enrichment"><strong>Qualificação comercial complementada</strong><small>{report.autoEnrichment.qualificationFilled.join(", ")} preenchido(s) com evidências vinculadas.</small></div>}
       {(report.autoEnrichment?.websiteFilled || report.autoEnrichment?.linkedinFilled) && <div className="tdg-crm-research-enrichment"><strong>Dados institucionais preenchidos</strong><small>{[report.autoEnrichment.websiteFilled && "site", report.autoEnrichment.linkedinFilled && "LinkedIn da empresa"].filter(Boolean).join(" e ")} vinculados à conta.</small></div>}
       {(report.autoEnrichment?.websiteCorrected || report.autoEnrichment?.invalidWebsiteRemoved) && <div className="tdg-crm-research-enrichment"><strong>{report.autoEnrichment.websiteCorrected ? "Site oficial corrigido" : "Site incorreto removido"}</strong><small>{report.autoEnrichment.websiteCorrected ? "O endereço anterior era de uma fonte externa e foi substituído pelo domínio da própria empresa." : "O endereço anterior era de uma fonte externa e nenhuma página oficial segura foi encontrada para substituí-lo."}</small></div>}
       {report.autoEnrichment?.legacyContactsRemoved > 0 && <div className="tdg-crm-research-enrichment"><strong>{report.autoEnrichment.legacyContactsRemoved} contato(s) antigo(s) descartado(s)</strong><small>Resultados web sem comprovação de atuação no Brasil foram removidos da conta.</small></div>}
@@ -231,6 +233,19 @@ const accountForm = (client) => {
     churnRisk: crm.churnRisk || 0,
     nextAction: crm.nextAction || "",
     nextActionAt: crm.nextActionAt || "",
+    lastInteractionAt: crm.lastInteractionAt || "",
+    contractRenewalDate: crm.contractRenewalDate || "",
+    potentialAnnual: crm.potentialAnnual || 0,
+    middleMilePotential: crm.productPotential?.middleMile || 0,
+    lastMilePotential: crm.productPotential?.lastMile || 0,
+    dedicatedPotential: crm.productPotential?.dedicated || 0,
+    geographicExpansion: crm.geographicExpansion || "",
+    accountPlanObjective: crm.accountPlan?.objective || "",
+    accountPlanBarriers: crm.accountPlan?.barriers || "",
+    accountPlanCompetitors: crm.accountPlan?.competitors || "",
+    accountPlan30: crm.accountPlan?.plan30 || "",
+    accountPlan60: crm.accountPlan?.plan60 || "",
+    accountPlan90: crm.accountPlan?.plan90 || "",
     contacts: crm.contacts || [],
   };
 };
@@ -275,6 +290,23 @@ function AccountEditor({ client, onClose, onSave }) {
           churnRisk: Number(form.churnRisk || 0),
           nextAction: form.nextAction,
           nextActionAt: form.nextActionAt,
+          lastInteractionAt: form.lastInteractionAt,
+          contractRenewalDate: form.contractRenewalDate,
+          potentialAnnual: Number(form.potentialAnnual || 0),
+          productPotential: {
+            middleMile: Number(form.middleMilePotential || 0),
+            lastMile: Number(form.lastMilePotential || 0),
+            dedicated: Number(form.dedicatedPotential || 0),
+          },
+          geographicExpansion: form.geographicExpansion,
+          accountPlan: {
+            objective: form.accountPlanObjective,
+            barriers: form.accountPlanBarriers,
+            competitors: form.accountPlanCompetitors,
+            plan30: form.accountPlan30,
+            plan60: form.accountPlan60,
+            plan90: form.accountPlan90,
+          },
           contacts: form.contacts,
         },
       });
@@ -302,8 +334,29 @@ function AccountEditor({ client, onClose, onSave }) {
             <label><span>LinkedIn da empresa</span><input type="url" placeholder="https://linkedin.com/company/..." value={form.linkedinUrl} onChange={field("linkedinUrl")} /></label>
             <label><span>Próxima ação</span><input value={form.nextAction} onChange={field("nextAction")} /></label>
             <label><span>Prazo da próxima ação</span><input type="date" value={form.nextActionAt} onChange={field("nextActionAt")} /></label>
+            <label><span>Última interação</span><input type="date" value={form.lastInteractionAt} onChange={field("lastInteractionAt")} /></label>
+            <label><span>Renovação do contrato</span><input type="date" value={form.contractRenewalDate} onChange={field("contractRenewalDate")} /></label>
           </div>
           <label><span>Contexto e observações</span><textarea value={form.notes} onChange={field("notes")} /></label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Potencial e plano da conta</legend>
+          <div className="tdg-crm-form-grid">
+            <label><span>Potencial anual (R$)</span><input type="number" min="0" value={form.potentialAnnual} onChange={field("potentialAnnual")} /></label>
+            <label><span>Potencial middle mile (R$)</span><input type="number" min="0" value={form.middleMilePotential} onChange={field("middleMilePotential")} /></label>
+            <label><span>Potencial last mile (R$)</span><input type="number" min="0" value={form.lastMilePotential} onChange={field("lastMilePotential")} /></label>
+            <label><span>Potencial dedicada (R$)</span><input type="number" min="0" value={form.dedicatedPotential} onChange={field("dedicatedPotential")} /></label>
+          </div>
+          <label><span>Expansão geográfica</span><textarea value={form.geographicExpansion} onChange={field("geographicExpansion")} /></label>
+          <div className="tdg-crm-form-grid">
+            <label><span>Objetivo da conta</span><textarea value={form.accountPlanObjective} onChange={field("accountPlanObjective")} /></label>
+            <label><span>Barreiras</span><textarea value={form.accountPlanBarriers} onChange={field("accountPlanBarriers")} /></label>
+            <label><span>Concorrentes</span><textarea value={form.accountPlanCompetitors} onChange={field("accountPlanCompetitors")} /></label>
+            <label><span>Plano 30 dias</span><textarea value={form.accountPlan30} onChange={field("accountPlan30")} /></label>
+            <label><span>Plano 60 dias</span><textarea value={form.accountPlan60} onChange={field("accountPlan60")} /></label>
+            <label><span>Plano 90 dias</span><textarea value={form.accountPlan90} onChange={field("accountPlan90")} /></label>
+          </div>
         </fieldset>
 
         <fieldset>
@@ -436,8 +489,15 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
   const selectedIntelligence = selected && selectedAccount
     ? assessAccount({ ...selected, crm: { ...(selected.crm || {}), contacts: selectedAccount.contacts } })
     : null;
+  const selectedStrategy = selectedAccount
+    ? buildAccountIntelligence({
+        account: selectedAccount,
+        contacts: selectedAccount.contacts,
+        opportunities: crmOpportunities,
+      })
+    : null;
   const selectedReportCandidate = selected ? researchReports[selected.id] || selected.crm?.intelligence || null : null;
-  const selectedReport = Number(selectedReportCandidate?.version || 0) >= 6 ? selectedReportCandidate : null;
+  const selectedReport = Number(selectedReportCandidate?.version || 0) >= 7 ? selectedReportCandidate : null;
   const logisticsProcurementNames = selectedIntelligence
     ? [...new Set(selectedIntelligence.logisticsProcurementContacts.map((item) => item.name).filter(Boolean))]
     : [];
@@ -507,8 +567,11 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
       const institutional = data.enrichment?.websiteFilled || data.enrichment?.linkedinFilled ? " Site ou LinkedIn institucional preenchido." : "";
       const correctedWebsite = data.enrichment?.websiteCorrected ? " Site oficial corrigido." : data.enrichment?.invalidWebsiteRemoved ? " Site incorreto removido." : "";
       const headquarters = data.enrichment?.headquartersFilled ? " Operação brasileira preenchida." : "";
+      const qualification = data.enrichment?.qualificationFilled?.length
+        ? ` Qualificação preenchida: ${data.enrichment.qualificationFilled.join(", ")}.`
+        : "";
       const removed = data.enrichment?.legacyContactsRemoved ? ` ${data.enrichment.legacyContactsRemoved} contato(s) web sem comprovação brasileira removido(s).` : "";
-      setToast?.(`${focus === "contacts" ? "Contatos de Procurement logístico no Brasil pesquisados." : "Empresa pesquisada e ficha atualizada."}${segment}${institutional}${correctedWebsite}${headquarters}${additions}${updates}${removed}`);
+      setToast?.(`${focus === "contacts" ? "Contatos de Procurement logístico no Brasil pesquisados." : "Empresa pesquisada e ficha atualizada."}${segment}${institutional}${correctedWebsite}${headquarters}${qualification}${additions}${updates}${removed}`);
     } catch (reason) { setResearchError(reason.message); }
     finally { setResearching(false); }
   };
@@ -605,13 +668,18 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
       {portalPreviewOpen && <ClientPortalPreview client={selected} authHeaders={authHeaders} open onClose={() => setPortalPreviewOpen(false)} />}
       <div className="tdg-crm-detail-grid"><main>
         <section className="tdg-crm-intelligence"><header><strong>IA · mapa da empresa</strong><small>Leitura dos dados do CRM</small></header><div><span>Relevância ESG</span><strong>{selectedIntelligence.esgRelevance}</strong><small>{selectedIntelligence.esgReason}</small></div><div><span>Próxima tarefa sugerida</span><strong>{selectedIntelligence.nextTask}</strong></div><div><span>Procurement de Logística e Transportes</span><strong>{procurementSummary}</strong></div></section>
+        <section className="tdg-crm-detail-section tdg-crm-account-strategy"><header><strong>Potencial de carteira</strong><small>Somente valores cadastrados</small></header><div className="tdg-crm-strategy-grid"><span><small>Potencial anual</small><strong>{selectedStrategy.potential.annual ? BRL.format(selectedStrategy.potential.annual) : "Não calculado"}</strong></span><span><small>Middle mile</small><strong>{selectedStrategy.potential.middleMile ? BRL.format(selectedStrategy.potential.middleMile) : "Não informado"}</strong></span><span><small>Last mile</small><strong>{selectedStrategy.potential.lastMile ? BRL.format(selectedStrategy.potential.lastMile) : "Não informado"}</strong></span><span><small>Dedicada</small><strong>{selectedStrategy.potential.dedicated ? BRL.format(selectedStrategy.potential.dedicated) : "Não informado"}</strong></span></div><p><strong>Expansão geográfica:</strong> {selectedStrategy.potential.geographicExpansion || "Ainda não mapeada."}</p>{selectedStrategy.potential.missing && <small>Informe volume, frequência, rotas e ticket para calcular o potencial sem inventar receita.</small>}</section>
+        <section className="tdg-crm-detail-section tdg-crm-account-strategy"><header><strong>Relationship Map</strong><small>Papéis associados às pessoas</small></header><div className="tdg-crm-relationship-map">{[["Quem compra", selectedStrategy.relationshipMap.buyers], ["Quem influencia", selectedStrategy.relationshipMap.influencers], ["Quem bloqueia", selectedStrategy.relationshipMap.blockers], ["Usuário operacional", selectedStrategy.relationshipMap.users]].map(([label, names]) => <div key={label}><span>{label}</span><strong>{names.length ? names.join(", ") : "Não mapeado"}</strong></div>)}</div></section>
+        <section className="tdg-crm-detail-section tdg-crm-account-strategy"><header><strong>White Space</strong><small>Produtos sem oportunidade vinculada</small></header><div className="tdg-crm-chip-list">{selectedStrategy.whiteSpace.length ? selectedStrategy.whiteSpace.map((item) => <span key={item}>{item}</span>) : <span>Portfólio principal já coberto</span>}</div></section>
+        <section className="tdg-crm-detail-section tdg-crm-account-strategy"><header><strong>Account Plan</strong><small>Plano 30/60/90</small></header><dl className="tdg-crm-account-data"><div><dt>Objetivo</dt><dd>{selectedStrategy.accountPlan.objective || "Não definido"}</dd></div><div><dt>Barreiras</dt><dd>{selectedStrategy.accountPlan.barriers || "Não mapeadas"}</dd></div><div><dt>Concorrentes</dt><dd>{selectedStrategy.accountPlan.competitors || "Não mapeados"}</dd></div><div><dt>30 dias</dt><dd>{selectedStrategy.accountPlan.plan30 || "Não definido"}</dd></div><div><dt>60 dias</dt><dd>{selectedStrategy.accountPlan.plan60 || "Não definido"}</dd></div><div><dt>90 dias</dt><dd>{selectedStrategy.accountPlan.plan90 || "Não definido"}</dd></div></dl></section>
         <ExternalIntelligence report={selectedReport} researching={researching} error={researchError} onResearch={researchSelected} />
         <section className="tdg-crm-detail-section"><header><strong>Relacionamento</strong><small>{selectedAccount.contacts.length} contato(s)</small></header><div className="tdg-crm-roles">{selectedAccount.contacts.map((contact) => <ContactCard key={contact.id} contact={contact} clientName={selected.name} />)}{selectedAccount.contacts.length === 0 && <p>Nenhum decisor ou patrocinador mapeado.</p>}</div></section>
       </main><aside>
+        <section className="tdg-crm-alerts"><strong><AlertTriangle size={15} />Health comercial</strong>{selectedStrategy.commercialHealth.map((alert) => <span key={alert}>{alert}</span>)}</section>
         {selectedSummary.alerts.length > 0 && <section className="tdg-crm-alerts"><strong><AlertTriangle size={15} />Pontos de atenção</strong>{selectedSummary.alerts.map((alert) => <span key={alert}>{alert}</span>)}</section>}
         <section className="tdg-crm-detail-section"><header><strong>Oportunidades</strong><button type="button" onClick={() => onNavigate?.(`/todogreen/oportunidades?client=${encodeURIComponent(selected.id)}`)}>Abrir pipeline <ArrowRight size={13} /></button></header>{selectedOpportunities.length === 0 ? <p>Nenhuma oportunidade ligada a esta conta.</p> : <div className="tdg-crm-opps">{selectedOpportunities.slice(0, 6).map((opp) => <article key={opp.id}><span><strong>{opp.stage}</strong><small>{opp.nextStep || "Próximo passo não definido"}</small></span><b>{BRL.format(opp.value || 0)}</b></article>)}</div>}</section>
         <section className="tdg-crm-detail-section"><header><strong>Responsáveis</strong></header><div className="tdg-client-sellers">{(selected.vendedores || []).length === 0 && <small>Sem responsável comercial</small>}{(selected.vendedores || []).map((seller) => <span key={seller.email}>{seller.email}{access.podeGerenciar && <button type="button" aria-label={`Remover ${seller.email}`} onClick={() => unassign(selected.id, seller.email)}><X size={12} /></button>}</span>)}</div>{access.podeGerenciar && <form className="tdg-crm-assign" onSubmit={assign}><input required type="email" aria-label="E-mail do vendedor" placeholder="vendedor@empresa.com" value={assignment.clientId === selected.id ? assignment.sellerEmail : ""} onChange={(e) => setAssignment({ clientId: selected.id, sellerEmail: e.target.value, note: "" })} /><button type="submit"><UserPlus size={14} />Atribuir</button></form>}</section>
-        <section className="tdg-crm-detail-section"><header><strong>Dados da conta</strong></header><dl className="tdg-crm-account-data"><div><dt>Razão social</dt><dd>{selected.legalName || "Não informada"}</dd></div><div><dt>Sede</dt><dd>{selected.crm?.headquarters || "Não informada"}</dd></div><div><dt>Site</dt><dd>{selected.crm?.website ? <a href={selected.crm.website} target="_blank" rel="noreferrer">Abrir site <ExternalLink size={12} /></a> : "Não informado"}</dd></div><div><dt>LinkedIn</dt><dd>{selected.crm?.linkedinUrl ? <a href={selected.crm.linkedinUrl} target="_blank" rel="noreferrer">Abrir empresa <ExternalLink size={12} /></a> : "Não informado"}</dd></div><div><dt>Última atualização</dt><dd>{selected.updatedAt ? new Date(selected.updatedAt).toLocaleString("pt-BR") : "Não informada"}</dd></div></dl></section>
+        <section className="tdg-crm-detail-section"><header><strong>Dados da conta</strong><small>Cadastro e preenchimento público</small></header><dl className="tdg-crm-account-data"><div><dt>Razão social</dt><dd>{selected.legalName || "Não informada"}</dd></div><div><dt>Sede</dt><dd>{selected.crm?.headquarters || "Não informada"}</dd></div><div><dt>Site</dt><dd>{selected.crm?.website ? <a href={selected.crm.website} target="_blank" rel="noreferrer">Abrir site <ExternalLink size={12} /></a> : "Não informado"}</dd></div><div><dt>LinkedIn</dt><dd>{selected.crm?.linkedinUrl ? <a href={selected.crm.linkedinUrl} target="_blank" rel="noreferrer">Abrir empresa <ExternalLink size={12} /></a> : "Não informado"}</dd></div><div><dt>Perfil público</dt><dd>{selected.crm?.qualification?.publicProfile || "Ainda não identificado"}</dd></div><div><dt>Sinais logísticos</dt><dd>{selected.crm?.qualification?.logisticsSignals || "Ainda não identificados"}</dd></div><div><dt>Compromissos ESG</dt><dd>{selected.crm?.qualification?.esgCommitments || "Ainda não identificados"}</dd></div><div><dt>Última atualização</dt><dd>{selected.updatedAt ? new Date(selected.updatedAt).toLocaleString("pt-BR") : "Não informada"}</dd></div></dl></section>
       </aside></div>
     </div>}
     {editingId && <AccountEditor client={clients.find((item) => item.id === editingId)} onClose={() => setEditingId("")} onSave={(payload) => saveClient(clients.find((item) => item.id === editingId), payload)} />}

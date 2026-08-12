@@ -4,6 +4,7 @@ import {
   calculateAccountScore,
   calculateRelationshipCoverage,
   buildCrmCommandCenter,
+  buildAccountIntelligence,
   createTodoGreenAccount,
   createTodoGreenContact,
   crmAccountSummary,
@@ -148,5 +149,33 @@ describe("To Do Green enterprise CRM", () => {
     expect(result.openOpportunities).toBe(1);
     expect(result.overdueActions).toBe(1);
     expect(result.accounts[0].name).toBe("Conta atrasada");
+  });
+
+  it("builds an account plan, relationship map, white space and objective health alerts", () => {
+    const account = createTodoGreenAccount({
+      id: "account-strategy",
+      potentialAnnual: 3_000_000,
+      productPotential: { middleMile: 1_200_000, lastMile: 900_000 },
+      geographicExpansion: "Sul e Sudeste",
+      lastInteractionAt: "2026-06-01T00:00:00.000Z",
+      contractRenewalDate: "2026-09-15",
+      accountPlan: { objective: "Abrir operação dedicada", plan30: "Validar malha" },
+    });
+    const result = buildAccountIntelligence({
+      account,
+      contacts: [
+        createTodoGreenContact({ name: "Ana Compras", relationshipRole: "Compras" }),
+        createTodoGreenContact({ name: "Bruno Operação", relationshipRole: "Operações" }),
+      ],
+      opportunities: [{ accountId: account.id, productId: "middle-mile", stage: "Proposta", updatedAt: "2026-07-01" }],
+      now: new Date("2026-08-12T00:00:00.000Z"),
+    });
+    expect(result.potential.annual).toBe(3_000_000);
+    expect(result.relationshipMap.buyers).toEqual(["Ana Compras"]);
+    expect(result.relationshipMap.users).toEqual(["Bruno Operação"]);
+    expect(result.whiteSpace).toEqual(["Last mile", "Operação dedicada"]);
+    expect(result.commercialHealth).toContain("Sem contato há 72 dias");
+    expect(result.commercialHealth).toContain("Proposta parada há pelo menos 21 dias");
+    expect(result.accountPlan.objective).toBe("Abrir operação dedicada");
   });
 });

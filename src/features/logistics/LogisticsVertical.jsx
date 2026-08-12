@@ -56,6 +56,7 @@ import {
   getProductPricingBlueprint,
   hasTodoGreenPermission,
   productSpecificOutputs,
+  pricingDecisionSummary,
   summarizeTodoGreenDashboard,
 } from "./logisticsVerticalDomain.js";
 import {
@@ -403,6 +404,23 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     description: "Estado da cascata de IA, pesquisa web e automações autohospedadas, sem expor credenciais.",
   },
 });
+
+const PRIMARY_NAVIGATION = Object.freeze([
+  { id: "overview", label: "Visão Geral", route: "/todogreen/dashboard", pages: ["dashboard", "acessos", "integracoes"] },
+  { id: "commercial", label: "Comercial", route: "/todogreen/oportunidades", pages: ["oportunidades", "propostas", "metas", "performance-comercial"] },
+  { id: "pricing", label: "Pricing", route: "/todogreen/precificacao", pages: ["precificacao", "regua", "deal-desk", "custos", "receita"] },
+  { id: "operations", label: "Operação", route: "/todogreen/operacoes", pages: ["operacoes", "rastreamento", "solicitacoes"] },
+  { id: "esg", label: "ESG", route: "/todogreen/central-esg", pages: ["central-esg", "esg", "metodologia", "documentos"] },
+  { id: "clients", label: "Clientes", route: "/todogreen/clientes", pages: ["clientes"] },
+  { id: "reports", label: "Relatórios", route: "/todogreen/relatorios", pages: ["relatorios", "auditoria"] },
+  { id: "dashboards", label: "Dashboards", route: "/todogreen/dashboards", pages: ["dashboards"] },
+  { id: "projects", label: "Projetos", route: "/todogreen/central-trabalho", pages: ["central-trabalho"] },
+]);
+
+const navigationFor = (page, path) => {
+  if (String(path || "").includes("/central-trabalho")) return PRIMARY_NAVIGATION.at(-1);
+  return PRIMARY_NAVIGATION.find((item) => item.pages.includes(page)) || PRIMARY_NAVIGATION[0];
+};
 
 // O nome que a aba já usa para cada tela. É ele que dá nome ao cartão: se a
 // aba se chama "Operações", o cartão não pode se chamar "Rotas".
@@ -1134,6 +1152,7 @@ function PricingPanel({ role, criar, db, authHeaders, setToast, opportunities = 
     [inputs, productId, regua],
   );
   const outputs = productSpecificOutputs(productId, result);
+  const decision = pricingDecisionSummary(result);
   const hasEnvironmentalInputs = Number(inputs.distanceKm || inputs.kmPerRoute || 0) > 0;
   const selectProduct = (nextProductId) => {
     setProductId(nextProductId);
@@ -1281,8 +1300,9 @@ function PricingPanel({ role, criar, db, authHeaders, setToast, opportunities = 
           }
         >
           <div><span>Custo mensal</span><strong>{BRL.format(result.loadedCost)}</strong><small>custo estimado da operação</small></div>
-          <div><span>Menor preço recomendado</span><strong>{BRL.format(result.minimumPrice)}</strong><small>abaixo deste valor, revise a operação</small></div>
-          <div className="featured"><span>Preço recomendado</span><strong>{BRL.format(result.recommendedPrice)}</strong><small>considera margem e riscos</small></div>
+          <div><span>Piso</span><strong>{BRL.format(decision.floor)}</strong><small>abaixo disso perde margem ou viola regra</small></div>
+          <div className="featured"><span>Preço recomendado</span><strong>{BRL.format(decision.recommended)}</strong><small>preço que devemos defender</small></div>
+          <div><span>Preço estratégico</span><strong>{BRL.format(decision.strategic)}</strong><small>limite com justificativa comercial</small></div>
           <div className={result.marginPercent < 18 ? "risk" : "good"}><span>Margem estimada</span><strong>{number.format(result.marginPercent)}%</strong><small>{BRL.format(result.marginValue)} por mês</small></div>
         </div>
       </div>
@@ -1293,9 +1313,9 @@ function PricingPanel({ role, criar, db, authHeaders, setToast, opportunities = 
       </div>
       <section className="tdg-price-guidance">
         <div>
-          <span className="tdg-kicker">RECOMENDAÇÃO COMERCIAL</span>
-          <h3>{friendlyCommercialText(result.recommendation.decision)}</h3>
-          <p>O preço recomendado para esta operação é <strong>{BRL.format(result.recommendedPrice)}</strong>. Abaixo de <strong>{BRL.format(result.minimumPrice)}</strong>, revise custos, serviços ou margem antes de apresentar a proposta.</p>
+          <span className="tdg-kicker">RECOMENDAÇÃO: {decision.decision}</span>
+          <h3>{BRL.format(decision.recommended)}</h3>
+          <p>Defenda o preço recomendado. Abaixo de <strong>{BRL.format(decision.floor)}</strong>, a condição perde sustentação. O preço estratégico de <strong>{BRL.format(decision.strategic)}</strong> exige justificativa comercial.</p>
           {result.recommendation.reasons.length > 0 && <ul>{result.recommendation.reasons.map((reason) => <li key={reason}>{friendlyCommercialText(reason)}</li>)}</ul>}
         </div>
         <div className="tdg-environmental-summary">
@@ -1303,6 +1323,14 @@ function PricingPanel({ role, criar, db, authHeaders, setToast, opportunities = 
           {hasEnvironmentalInputs ? <><strong>{number.format(result.impact.co2AvoidedKg / 1000)} t de CO₂ evitadas</strong><small>{number.format(result.impact.reductionPercent)}% de redução em relação à referência informada</small></> : <><strong>Aguardando dados da rota</strong><small>Informe a quilometragem e o veículo de referência para calcular a redução de emissões.</small></>}
         </div>
       </section>
+      <div className="tdg-price-details" aria-label="Indicadores da decisão comercial">
+        <span><small>Margem</small><strong>{number.format(decision.marginPercent)}%</strong></span>
+        <span><small>Payback</small><strong>{decision.paybackMonths ? `${number.format(decision.paybackMonths)} meses` : "Não aplicável"}</strong></span>
+        <span><small>Capacidade</small><strong>{decision.capacity}</strong></span>
+        <span><small>Risco principal</small><strong>{friendlyCommercialText(decision.risk)}</strong></span>
+        <span><small>CO₂</small><strong>{hasEnvironmentalInputs ? `${number.format(decision.co2AvoidedKg / 1000)} t evitadas` : "Aguardando rota"}</strong></span>
+        <span><small>Aprovação necessária</small><strong>{friendlyCommercialText(decision.approval)}</strong></span>
+      </div>
       <details className="tdg-calculation-details"><summary>Ver documentos necessários e detalhes do cálculo</summary><div className="tdg-method"><strong>Documentos necessários</strong><p>{blueprint.requiredEvidence.join(" · ")}</p><small>Relatórios disponíveis: {blueprint.executiveOutputs.join(" · ")}</small></div></details>
       {result.approval.required && (
         // Antes isto era só um aviso: a tela dizia que precisava de aprovação e
@@ -1716,6 +1744,7 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
   const allowed = estadoDoAcesso === ACESSO.liberado;
   const role = allowed ? remoteAccess.role || "" : "";
   const page = todoGreenRouteToPage(path);
+  const primaryNavigation = navigationFor(page, path);
   const isHome = /^\/todogreen\/?$/.test(path);
   // A vertical inteira numa chamada só, e só depois que o acesso foi
   // confirmado: pedir os registros antes disso seria bater no servidor para
@@ -1785,10 +1814,31 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
       </section>
 
       <nav className="tdg-tabs" aria-label="Navegação To Do Green">
-        {Object.entries(MODULE_IMPLEMENTATION)
-          .filter(([, item]) => !item.permission || hasTodoGreenPermission(role, item.permission))
-          .map(([id, item]) => <button type="button" className={page === id ? "active" : ""} onClick={() => navigate(item.route)} key={id}>{item.navLabel}</button>)}
+        {PRIMARY_NAVIGATION.map((item) => (
+          <button
+            type="button"
+            className={primaryNavigation.id === item.id ? "active" : ""}
+            data-tdg-work-center-tab={item.id === "projects" ? "true" : undefined}
+            onClick={() => navigate(item.route)}
+            key={item.id}
+          >
+            {item.label}
+          </button>
+        ))}
       </nav>
+
+      {primaryNavigation.id !== "projects" && primaryNavigation.pages.length > 1 && (
+        <nav className="tdg-subtabs" aria-label={`Seções de ${primaryNavigation.label}`}>
+          {primaryNavigation.pages
+            .map((id) => [id, MODULE_IMPLEMENTATION[id]])
+            .filter(([, item]) => item && (!item.permission || hasTodoGreenPermission(role, item.permission)))
+            .map(([id, item]) => (
+              <button type="button" className={page === id ? "active" : ""} onClick={() => navigate(item.route)} key={id}>
+                {item.navLabel}
+              </button>
+            ))}
+        </nav>
+      )}
 
       {erroDosRegistros && (
         <div className="tdg-alert" role="alert">

@@ -54,7 +54,7 @@ describe("página de clientes", () => {
         vendedores: [], crm: {
           contacts: [{ id: "1", name: "Thiago Souza", department: "Operações", email: "fernanda.pereira@adidas.com", phone: "+5519982414440" }],
           intelligence: {
-            version: 6,
+            version: 7,
             checkedAt: "2026-08-11T00:00:00.000Z", esg: { relevance: "Alta", signals: [] },
             companyNews: [{ title: "adidas records strong start to the year", url: "https://www.adidas-group.com/news", snippet: "Continued operating working capital investments and strong business growth across the company." }],
             segmentNews: [], procurementPeople: [], supplierLinks: [], openRfqs: [], nextActions: [],
@@ -68,9 +68,9 @@ describe("página de clientes", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Adidas/ }));
     expect(await screen.findByText("1 contato(s) cadastrado(s); nenhum de Procurement logístico confirmado.")).toBeInTheDocument();
     expect(screen.getAllByText(/Pedir a Thiago Souza a indicação/i).length).toBeGreaterThan(0);
-    expect(screen.getByText("Thiago Souza")).toBeInTheDocument();
+    expect(screen.getAllByText("Thiago Souza").length).toBeGreaterThan(0);
     expect(screen.queryByText("Contato ainda não mapeado")).not.toBeInTheDocument();
-    expect(screen.getByText("Fonte internacional · adidas-group.com")).toBeInTheDocument();
+    expect(screen.getByText(/Fonte pública · adidas-group.com/)).toBeInTheDocument();
     expect(screen.queryByText(/Continued operating working capital/)).not.toBeInTheDocument();
   });
 
@@ -95,7 +95,7 @@ describe("página de clientes", () => {
 
     render(<ClientsPage authHeaders={() => ({})} />);
     fireEvent.click(await screen.findByRole("button", { name: /Adidas/ }));
-    expect(await screen.findByText("Contato salvo")).toBeInTheDocument();
+    expect((await screen.findAllByText("Contato salvo")).length).toBeGreaterThan(0);
     expect(screen.queryByText("Ian Aranjo")).not.toBeInTheDocument();
     expect(screen.queryByText("O que é RFQ")).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /Pesquisar empresa/ }).length).toBeGreaterThan(0);

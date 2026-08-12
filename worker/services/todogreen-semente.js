@@ -47,7 +47,7 @@ const semAcento = (value) =>
 
 export const FERRAMENTAS = Object.freeze({
   carteira: "lista as contas da carteira com temperatura, etapa, próxima ação, nº de contatos e se já houve pesquisa externa. Aceita filtro: {\"temperatura\":\"Quente|Morno|Frio\"} ou {\"situacao\":\"sem-proxima-acao|sem-contato|sem-pesquisa\"}.",
-  cliente: "abre uma conta inteira: dados cadastrais, qualificação, contatos com cargo/e-mail/telefone/LinkedIn, responsáveis comerciais e próxima ação. Requer {\"cliente\":\"nome ou id\"}.",
+  cliente: "abre uma conta inteira: dados cadastrais, potencial de carteira, Account Plan, qualificação, contatos com cargo/e-mail/telefone/LinkedIn, responsáveis comerciais e próxima ação. Requer {\"cliente\":\"nome ou id\"}.",
   contatos: "procura pessoas em toda a carteira por cargo, área ou nome. Requer {\"termo\":\"compras\"}.",
   inteligencia: "devolve a pesquisa externa já feita de uma conta: site oficial, LinkedIn, portais de fornecedor, RFQs, sinais ESG e notícias, com as fontes. Requer {\"cliente\":\"nome ou id\"}.",
   tarefas: "lista as tarefas abertas da Central de Trabalho, com responsável, prazo e situação.",
@@ -68,6 +68,8 @@ IDIOMA OBRIGATÓRIO: responda sempre em português do Brasil. Fontes, cargos e n
 REGRA QUE NÃO SE QUEBRA: se faltar dado para concluir, diga qual falta. Nunca estime, complete ou suponha número, nome, cargo, telefone ou e-mail. Um dado inventado sobre a carteira de um cliente vale menos que dizer "não sei".
 
 Você trabalha DENTRO do CRM da To Do Green. Nunca recomende planilha, Google Sheets, HubSpot ou qualquer ferramenta externa: os dados vivem aqui. Se algo não está cadastrado, diga em qual tela da vertical cadastrar (Clientes, Oportunidades, Central de Trabalho) — ou proponha uma das suas ações. Nunca mencione outro negócio que não seja a To Do Green e as contas desta carteira.
+
+Seu jeito de trabalhar é próximo, objetivo e comercial. Use o nome da pessoa quando ele estiver no contexto, sem repetir em toda frase. Cruze potencial, relacionamento, oportunidade, próxima ação, saúde comercial, White Space, Account Plan, ESG e pesquisa externa antes de recomendar. Diferencie claramente dado cadastrado, evidência pública e lacuna de informação.
 
 Você responde SEMPRE com um único objeto JSON, sem texto fora dele, em um destes três formatos:
 
@@ -236,6 +238,14 @@ const contaCompleta = (linha) => {
     prazoDaProximaAcao: campos.nextActionAt || null,
     ultimaInteracao: campos.lastInteractionAt || null,
     origem: campos.source || null,
+    potencialDaCarteira: {
+      anual: campos.potentialAnnual || null,
+      middleMile: campos.productPotential?.middleMile || null,
+      lastMile: campos.productPotential?.lastMile || null,
+      dedicada: campos.productPotential?.dedicated || null,
+      expansaoGeografica: campos.geographicExpansion || null,
+    },
+    accountPlan: campos.accountPlan || {},
     qualificacao: campos.qualification || {},
     notas: {
       potencialEstrategico: campos.strategicPotential ?? null,
@@ -248,6 +258,14 @@ const contaCompleta = (linha) => {
     contatos: contatos.filter((item) => item?.name).map(contatoPublico),
     pesquisaExternaEm: campos.intelligence?.checkedAt || null,
   };
+};
+
+const pesquisaPublica = (pesquisa) => {
+  if (Array.isArray(pesquisa)) return pesquisa.map(pesquisaPublica);
+  if (!pesquisa || typeof pesquisa !== "object") return pesquisa;
+  return Object.fromEntries(Object.entries(pesquisa)
+    .filter(([chave]) => !["provider", "providers", "failures"].includes(chave))
+    .map(([chave, valor]) => [chave, pesquisaPublica(valor)]));
 };
 
 // ===== Execução das ferramentas de leitura =====
@@ -301,7 +319,7 @@ export async function executarFerramenta(env, { access, pedido, linhas }) {
         pesquisa: null,
         observacao: "Esta conta nunca foi pesquisada na web. Proponha a ação pesquisar_empresa se a pesquisa ajudar a responder.",
       };
-    return { ferramenta, conta: linha.name, pesquisa: campos.intelligence };
+    return { ferramenta, conta: linha.name, pesquisa: pesquisaPublica(campos.intelligence) };
   }
 
   if (ferramenta === "contatos") {
@@ -410,7 +428,7 @@ export async function executarAcao(env, { access, user, email, acao, linhas }) {
   if (!linha) return { erro: "Conta não encontrada na sua carteira.", status: 404 };
   if (!webSearchConfiguration(env).configured)
     return {
-      erro: "Pesquisa web ainda não configurada. Configure o SearXNG autohospedado ou uma chave do Brave Search, Tavily, Serper, Exa, Jina ou Google Search.",
+      erro: "Pesquisa web indisponível. A integração precisa ser revisada por um administrador.",
       status: 503,
     };
   const pesquisa = await pesquisarEmpresa(env, {
@@ -466,6 +484,7 @@ export async function handleTodoGreenSemente(request, env, access, user) {
   // fazer o produto esquecer o que está na frente dele.
   const emFoco = linhas.find((linha) => linha.id === clean(body.clienteId, 60)) || null;
   const cabecalho = [
+    `Pessoa atendida: ${clean(user?.name, 120) || email || "usuária da To Do Green"}.`,
     `Tela em que a pessoa está: ${clean(body.tela, 60) || "não informada"}.`,
     emFoco ? `Conta aberta na tela agora: ${emFoco.name} (id ${emFoco.id}).` : "",
     `Carteira de ${email || "quem perguntou"}: ${indice.length} conta(s).`,

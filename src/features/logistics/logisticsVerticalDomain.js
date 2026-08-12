@@ -616,6 +616,39 @@ export const centralPricingEngine = (productId, inputs = {}, config = {}) => {
   };
 };
 
+export const pricingDecisionSummary = (result = {}) => {
+  const floor = n(result.minimumPrice);
+  const recommended = n(result.recommendedPrice);
+  const strategic = Math.max(floor, recommended * 0.95);
+  const implementation = n(result.inputs?.implementationCost);
+  const monthlyReturn = n(result.marginValue);
+  const occupancy = n(result.inputs?.occupancyPercent);
+  const paybackMonths = implementation > 0 && monthlyReturn > 0
+    ? roundMoney(implementation / monthlyReturn, 1)
+    : null;
+  const decision = result.approval?.required
+    ? "AVANÇAR COM APROVAÇÃO"
+    : n(result.marginPercent) >= 18
+      ? "AVANÇAR"
+      : "REVISAR CONDIÇÃO";
+  return {
+    decision,
+    floor: roundMoney(floor),
+    recommended: roundMoney(recommended),
+    strategic: roundMoney(strategic),
+    marginPercent: n(result.marginPercent),
+    paybackMonths,
+    capacity: occupancy
+      ? occupancy < 60 ? "Capacidade crítica" : `Ocupação de ${roundMoney(occupancy, 1)}%`
+      : "Capacidade a validar",
+    risk: result.approval?.triggers?.[0] || "Sem gatilho crítico identificado",
+    co2AvoidedKg: n(result.impact?.co2AvoidedKg),
+    approval: result.approval?.required
+      ? result.approval.triggers.join(", ")
+      : "Dentro da alçada calculada",
+  };
+};
+
 const unitVolume = (productConfig, inputs) => {
   if (productConfig.billingUnit === "pacote") return n(inputs.packages);
   if (productConfig.billingUnit === "viagem") return n(inputs.tripsPerMonth);

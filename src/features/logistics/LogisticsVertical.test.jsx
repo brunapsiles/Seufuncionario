@@ -193,10 +193,10 @@ describe("LogisticsVertical", () => {
     window.history.pushState({}, "", "/todogreen/precificacao/dedicated");
     const { container } = await renderarAutorizada();
     expect(screen.getByText("Custo mensal")).toBeTruthy();
-    expect(screen.getByText("Menor preço recomendado")).toBeTruthy();
+    expect(screen.getByText("Piso")).toBeTruthy();
     expect(screen.getByText("Preço recomendado")).toBeTruthy();
-    expect(screen.getByText(/Recomendação comercial/i)).toBeTruthy();
-    expect(container.querySelectorAll(".tdg-price-summary > div")).toHaveLength(4);
+    expect(screen.getByText(/RECOMENDAÇÃO:/i)).toBeTruthy();
+    expect(container.querySelectorAll(".tdg-price-summary > div")).toHaveLength(5);
     expect(screen.queryByText("Governança")).toBeNull();
   });
 
@@ -518,9 +518,10 @@ describe("LogisticsVertical", () => {
   });
 
   it("a aba do Deal Desk existe e não é apelido da precificação", async () => {
+    window.history.pushState({}, "", "/todogreen/precificacao");
     await renderarAutorizada();
-    const abas = screen.getByRole("navigation", { name: /Navegação To Do Green/ });
-    expect(abas.textContent).toContain("Deal Desk");
+    const secoes = screen.getByRole("navigation", { name: /Seções de Pricing/ });
+    expect(secoes.textContent).toContain("Deal Desk");
   });
 
   it("loads the independent client page from the real CRM service", async () => {

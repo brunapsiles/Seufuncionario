@@ -57,7 +57,7 @@ test.describe("acesso à vertical To Do Green", () => {
 
     await page.goto("/todogreen/dashboard");
     await expect(page.locator(".tdg-tabs")).toBeVisible();
-    await expect(abas(page).getByRole("button", { name: /Painel$/ }).first()).toBeVisible();
+    await expect(abas(page).getByRole("button", { name: /Visão Geral$/ }).first()).toBeVisible();
   });
 
   test("a aba de Acessos não aparece para quem não gerencia acessos", async ({ page }) => {

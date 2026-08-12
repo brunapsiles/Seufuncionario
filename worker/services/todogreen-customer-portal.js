@@ -212,6 +212,9 @@ const intelligenceFields = (input) => {
           contactsUpdated: finite(input.autoEnrichment.contactsUpdated, 0, 100),
           legacyContactsRemoved: finite(input.autoEnrichment.legacyContactsRemoved, 0, 100),
           legacyContactsRetained: finite(input.autoEnrichment.legacyContactsRetained, 0, 100),
+          qualificationFilled: Array.isArray(input.autoEnrichment.qualificationFilled)
+            ? input.autoEnrichment.qualificationFilled.slice(0, 8).map((item) => clean(item, 80)).filter(Boolean)
+            : [],
         }
       : null,
     excludedVacancies: finite(input.excludedVacancies, 0, 1000),
@@ -270,6 +273,22 @@ const crmFields = (value = {}, companyName = "") => {
       ? [...new Set(input.completedSuggestedActions.slice(0, 50).map((item) => clean(item, 120)).filter(Boolean))]
       : [],
     lastInteractionAt: clean(input.lastInteractionAt, 40),
+    contractRenewalDate: clean(input.contractRenewalDate, 40),
+    potentialAnnual: finite(input.potentialAnnual, 0, 1000000000000),
+    productPotential: {
+      middleMile: finite(input.productPotential?.middleMile, 0, 1000000000000),
+      lastMile: finite(input.productPotential?.lastMile, 0, 1000000000000),
+      dedicated: finite(input.productPotential?.dedicated, 0, 1000000000000),
+    },
+    geographicExpansion: clean(input.geographicExpansion, 1000),
+    accountPlan: {
+      objective: clean(input.accountPlan?.objective, 2000),
+      barriers: clean(input.accountPlan?.barriers, 2000),
+      competitors: clean(input.accountPlan?.competitors, 2000),
+      plan30: clean(input.accountPlan?.plan30, 2000),
+      plan60: clean(input.accountPlan?.plan60, 2000),
+      plan90: clean(input.accountPlan?.plan90, 2000),
+    },
     source: clean(input.source, 100),
     tags: Array.isArray(input.tags) ? input.tags.slice(0, 20).map((item) => clean(item, 60)).filter(Boolean) : [],
     qualification:

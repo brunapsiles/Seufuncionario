@@ -73,9 +73,9 @@ describe("inteligência externa comercial", () => {
       source: "Pesquisa web",
       country: "Brasil",
       verifiedBrazil: true,
-      researchVersion: 6,
+      researchVersion: 7,
     })]);
-    expect(report.version).toBe(6);
+    expect(report.version).toBe(7);
     expect(report.suggestedHeadquarters?.value).toBe("São Paulo, SP");
   });
 

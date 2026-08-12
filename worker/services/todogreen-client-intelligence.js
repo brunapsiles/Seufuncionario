@@ -8,7 +8,7 @@ const normalize = (value) => clean(value, 1200).normalize("NFD").replace(/[\u030
 const safeUrl = (value) => { try { const url = new URL(value); return ["http:", "https:"].includes(url.protocol) ? url.href : ""; } catch { return ""; } };
 const resultKey = (item) => safeUrl(item?.url).replace(/[#?].*$/, "").replace(/\/$/, "");
 const includesAny = (text, terms) => terms.some((term) => text.includes(term));
-export const COMPANY_RESEARCH_VERSION = 6;
+export const COMPANY_RESEARCH_VERSION = 7;
 
 const VACANCY = ["vaga", "vagas", "career", "carreira", "emprego", "job", "jobs", "hiring", "we are hiring", "we're looking", "talentos", "recrutamento", "analista de compras", "comprador"];
 const TRANSPORT = ["transporte", "transportadora", "logistica", "frete", "frota", "middle mile", "last mile", "transferencia", "distribuicao", "carrier"];
@@ -227,7 +227,7 @@ const publicContact = (item, index, { company, officialHost }) => {
     email: contactEmail(item, officialHost, company),
     phone: contactPhone(item),
     linkedinUrl: safeUrl(item.url),
-    relationshipRole: "Influenciador",
+    relationshipRole: "Compras",
     source: "Pesquisa web",
     sourceUrl: safeUrl(item.url),
     country: "Brasil",
@@ -541,7 +541,7 @@ export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = f
     })),
   })));
   if (planResults.every((item) => !item.configured))
-    return { erro: "Pesquisa web ainda não configurada. Configure o SearXNG autohospedado ou uma chave do Brave Search, Tavily, Serper, Exa, Jina ou Google Search.", status: 503 };
+    return { erro: "Pesquisa web indisponível. A integração precisa ser revisada por um administrador.", status: 503 };
   const report = classifyCompanyResearch({ company, segment, searches: settled, knownContacts, checkedAt: new Date().toISOString() });
   report.providers = [...new Set(planResults.flatMap((item) => item.providers || []))];
   report.failures = planResults.flatMap((item) => item.failures || []).slice(0, 12);
@@ -603,7 +603,27 @@ export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = f
     legacyContactsRetained,
   };
   const nextContacts = [...enrichedContacts, ...discoveredContacts];
-  const nextFields = { ...fields, website: filledWebsite, linkedinUrl: filledLinkedin, headquarters: filledHeadquarters, contacts: nextContacts, intelligence: report };
+  const qualification = fields.qualification && typeof fields.qualification === "object"
+    ? { ...fields.qualification }
+    : {};
+  const filledQualification = [];
+  if (!clean(qualification.publicProfile, 1000) && (report.officialWebsite || report.linkedinCompany)) {
+    qualification.publicProfile = `Presença institucional pública confirmada${report.officialWebsite ? " em site compatível com a empresa" : ""}${report.linkedinCompany ? " e no LinkedIn" : ""}.`;
+    qualification.publicProfileSource = report.officialWebsite?.url || report.linkedinCompany?.url || "";
+    filledQualification.push("perfil público");
+  }
+  if (!clean(qualification.logisticsSignals, 1000) && (report.procurementPeople.length || report.openRfqs.length)) {
+    qualification.logisticsSignals = report.openRfqs.length
+      ? "Há processo público acionável ligado a logística ou transportes; valide escopo e prazo na fonte."
+      : "Há evidência pública de pessoas ligadas a Procurement de Logística e Transportes no Brasil.";
+    filledQualification.push("sinais logísticos");
+  }
+  if (!clean(qualification.esgCommitments, 1000) && report.esg?.signals?.length) {
+    qualification.esgCommitments = `${report.esg.signals.length} fonte(s) pública(s) indicam agenda ESG relacionada à empresa. Consulte as evidências vinculadas antes de usar em proposta.`;
+    filledQualification.push("sinais ESG");
+  }
+  report.autoEnrichment.qualificationFilled = filledQualification;
+  const nextFields = { ...fields, website: filledWebsite, linkedinUrl: filledLinkedin, headquarters: filledHeadquarters, qualification, contacts: nextContacts, intelligence: report };
   await env.DB.prepare(
     `UPDATE todogreen_clients SET segment=?,fields_json=?,revision=revision+1,updated_by=?,updated_at=?
       WHERE id=? AND tenant_id=? AND workspace_owner_id=?`,
@@ -616,7 +636,7 @@ export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = f
       segment: filledSegment,
       revision: Number(linha.revision || 0) + 1,
       updatedAt: report.checkedAt,
-      crm: { website: filledWebsite, linkedinUrl: filledLinkedin, headquarters: filledHeadquarters, contacts: nextContacts, intelligence: report },
+      crm: { website: filledWebsite, linkedinUrl: filledLinkedin, headquarters: filledHeadquarters, qualification, contacts: nextContacts, intelligence: report },
     },
     doCache: false,
   };
