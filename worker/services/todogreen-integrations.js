@@ -31,6 +31,29 @@ const nativeAutomations = (env) => {
   ];
 };
 
+const messagingIntegrations = (env = {}) => {
+  const baseUrl = String(env.EVOLUTION_API_BASE_URL || "").trim();
+  let validUrl = false;
+  try {
+    validUrl = ["http:", "https:"].includes(new URL(baseUrl).protocol);
+  } catch {
+    validUrl = false;
+  }
+  const configured = Boolean(
+    validUrl && env.EVOLUTION_API_KEY && env.EVOLUTION_INSTANCE,
+  );
+  return [
+    {
+      id: "evolution-api",
+      name: "Evolution API",
+      configured,
+      detail: configured
+        ? "Credenciais da instância cadastradas para envio pelo CRM."
+        : "Conector pronto. Requer URL, chave e nome da instância conectada.",
+    },
+  ];
+};
+
 export function todoGreenIntegrationStatus(env = {}) {
   const search = webSearchConfiguration(env);
   return {
@@ -40,6 +63,7 @@ export function todoGreenIntegrationStatus(env = {}) {
       providers: Object.entries(search.providers).map(([id, configured]) => ({ id, configured })),
     },
     automation: nativeAutomations(env),
+    messaging: messagingIntegrations(env),
     automationEngine: {
       id: "cloudflare-native",
       name: "Cloudflare Worker + Cron + D1",
