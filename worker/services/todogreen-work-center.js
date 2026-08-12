@@ -165,6 +165,13 @@ export async function handleTodoGreenWorkCenter(request, env) {
       "SELECT id FROM todogreen_work_boards WHERE id = ? AND workspace_owner_id = ? AND status = 'active'",
     ).bind(normalizedBoardId, access.ownerId).first();
     if (!board) return response({ error: "Quadro inválido." }, 400);
+    const initialStatus = clean(body.status, 40) || "novo";
+    const initialDueDate = clean(body.dueDate, 20) || null;
+    const requestedPriority = clean(body.priority, 40) || "media";
+    const elevateOverdue = initialDueDate && initialDueDate < new Date().toISOString().slice(0, 10) && initialStatus !== "concluido" && !["alta", "critica"].includes(requestedPriority);
+    const initialPriority = elevateOverdue ? "alta" : requestedPriority;
+    const initialFields = body.fields && typeof body.fields === "object" ? { ...body.fields } : {};
+    if (elevateOverdue) initialFields.automation = "Prazo vencido: prioridade elevada automaticamente.";
     await env.DB.prepare(
       `INSERT INTO todogreen_work_items
        (id, tenant_id, workspace_owner_id, board_id, type, title, description, status,
@@ -175,9 +182,9 @@ export async function handleTodoGreenWorkCenter(request, env) {
     ).bind(
       id, TENANT_ID, access.ownerId, normalizedBoardId,
       clean(body.type, 60) || "tarefa", clean(body.title, 240), clean(body.description, 4000),
-      clean(body.status, 40) || "novo", clean(body.priority, 40) || "media",
+      initialStatus, initialPriority,
       clean(body.responsibleUserId, 100) || null, clean(body.responsible, 160), clean(body.client, 200),
-      clean(body.dueDate, 20) || null, JSON.stringify(body.fields || {}), JSON.stringify(body.relations || []),
+      initialDueDate, JSON.stringify(initialFields), JSON.stringify(body.relations || []),
       JSON.stringify(body.dependencies || []), user.id, user.id, now, now,
     ).run();
     const row = await env.DB.prepare("SELECT * FROM todogreen_work_items WHERE id = ?").bind(id).first();
@@ -196,8 +203,26 @@ export async function handleTodoGreenWorkCenter(request, env) {
     if (expectedRevision && expectedRevision !== Number(current.revision))
       return response({ error: "Este item foi alterado por outra pessoa. Recarregue antes de salvar.", code: "revision_conflict", current: mapItem(current) }, 409);
     const before = mapItem(current);
-    const nextFields = body.fields && typeof body.fields === "object" ? body.fields : before.fields;
+    const nextFields = body.fields && typeof body.fields === "object" ? { ...body.fields } : { ...before.fields };
     const now = new Date().toISOString();
+    const nextStatus = clean(body.status ?? before.status, 40);
+    const nextDueDate = clean(body.dueDate ?? before.dueDate, 20) || null;
+    let nextPriority = clean(body.priority ?? before.priority, 40);
+    const automationsExecuted = [];
+    if (nextStatus === "bloqueado" && !["alta", "critica"].includes(nextPriority)) {
+      nextPriority = "alta";
+      automationsExecuted.push("Item bloqueado: prioridade elevada para alta.");
+    }
+    if (nextDueDate && nextDueDate < now.slice(0, 10) && nextStatus !== "concluido" && !["alta", "critica"].includes(nextPriority)) {
+      nextPriority = "alta";
+      automationsExecuted.push("Prazo vencido: prioridade elevada para alta.");
+    }
+    if (nextStatus === "concluido" && before.status !== "concluido") {
+      nextFields.completedAt = now;
+      nextFields.completedBy = user.id;
+      automationsExecuted.push("Conclusão registrada com data e responsável.");
+    }
+    if (automationsExecuted.length) nextFields.automation = automationsExecuted.join(" ");
     await env.DB.prepare(
       `UPDATE todogreen_work_items SET
        title = ?, description = ?, status = ?, priority = ?, responsible_user_id = ?,
@@ -207,17 +232,17 @@ export async function handleTodoGreenWorkCenter(request, env) {
        WHERE id = ? AND workspace_owner_id = ? AND revision = ?`,
     ).bind(
       clean(body.title ?? before.title, 240), clean(body.description ?? before.description, 4000),
-      clean(body.status ?? before.status, 40), clean(body.priority ?? before.priority, 40),
+      nextStatus, nextPriority,
       clean(body.responsibleUserId ?? before.responsibleUserId, 100) || null,
       clean(body.responsible ?? before.responsible, 160), clean(body.client ?? before.client, 200),
-      clean(body.dueDate ?? before.dueDate, 20) || null, JSON.stringify(nextFields),
+      nextDueDate, JSON.stringify(nextFields),
       JSON.stringify(body.relations ?? before.relations), JSON.stringify(body.dependencies ?? before.dependencies),
       user.id, now, itemId, access.ownerId, current.revision,
     ).run();
     const row = await env.DB.prepare("SELECT * FROM todogreen_work_items WHERE id = ?").bind(itemId).first();
     const item = mapItem(row);
     await event(env, access.ownerId, item.boardId, item.id, user.id, "updated", before, item);
-    return response({ item });
+    return response({ item, automationsExecuted });
   }
 
   if (request.method === "DELETE" && itemId) {

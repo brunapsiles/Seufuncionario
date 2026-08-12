@@ -52,7 +52,14 @@ export default function IntegrationsPage({ authHeaders, setToast }) {
     }
   };
   if (loading && !status) return <section className="tdg-panel" aria-busy="true">Carregando integrações...</section>;
-  const searchItems = (status?.search?.providers || []).map((item) => ({ ...item, name: item.id === "searxng" ? "SearXNG" : item.id }));
+  const searchItems = [{
+    id: "web-search",
+    name: "Pesquisa web pública",
+    configured: Boolean(status?.search?.configured),
+    detail: status?.search?.configured
+      ? "Operacional com redundância e fontes vinculadas"
+      : "Pendente de uma fonte de pesquisa",
+  }];
   return (
     <div className="tdg-page">
       <header className="tdg-page-title"><div><span>CONFIABILIDADE</span><h2>Integrações de IA, busca e automação</h2><p>A Semente usa uma cascata de provedores. As automações essenciais rodam na própria Cloudflare, sem exigir n8n ou servidores externos.</p></div><button className="tdg-action" type="button" onClick={load}><RefreshCw size={16} />Atualizar</button></header>

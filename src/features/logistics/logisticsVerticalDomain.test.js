@@ -9,6 +9,7 @@ import {
   calculateEnvironmentalImpact,
   calculateGreenScore,
   getProductPricingBlueprint,
+  pricingDecisionSummary,
   hasTodoGreenPermission,
   verticalPermite,
   summarizeTodoGreenDashboard,
@@ -111,6 +112,12 @@ describe("logistics vertical domain", () => {
     expect(result.approval.triggers).toContain("Target incompatível com preço mínimo");
     expect(result.approval.triggers).toContain("Dados insuficientes ou pouco confiáveis");
     expect(result.recommendation.decision).toBe("Encaminhar ao Deal Desk");
+    const decision = pricingDecisionSummary(result);
+    expect(decision.decision).toBe("AVANÇAR COM APROVAÇÃO");
+    expect(decision.floor).toBe(result.minimumPrice);
+    expect(decision.recommended).toBe(result.recommendedPrice);
+    expect(decision.strategic).toBeGreaterThanOrEqual(decision.floor);
+    expect(decision.approval).toContain("Target incompatível");
   });
 
   it("triggers Deal Desk for large contracts even with healthy margin", () => {

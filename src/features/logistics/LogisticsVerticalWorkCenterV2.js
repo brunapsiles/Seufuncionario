@@ -25,6 +25,7 @@ let state = {
   activeBoardId: "",
   search: "",
   status: "todos",
+  view: "table",
   loading: true,
   saving: new Set(),
   error: "",
@@ -119,7 +120,9 @@ const patchItem = async (item, patch) => {
       body: JSON.stringify({ ...patch, revision: item.revision }),
     });
     upsertItem(payload.item);
-    state.notice = "Alteração sincronizada.";
+    state.notice = payload.automationsExecuted?.length
+      ? `Alteração sincronizada. ${payload.automationsExecuted.join(" ")}`
+      : "Alteração sincronizada.";
   } catch (error) {
     if (error.status === 409 && error.payload?.current) {
       upsertItem(error.payload.current);
@@ -209,6 +212,35 @@ const rowHtml = (item) => {
   </article>`;
 };
 
+const compactItemHtml = (item, mode = "card") => {
+  const overdue = item.dueDate && item.dueDate < today() && item.status !== "concluido";
+  const disabled = !state.canWrite || state.saving.has(item.id) ? "disabled" : "";
+  return `<article class="tdg-work-${mode} ${overdue ? "overdue" : ""}" data-item-id="${esc(item.id)}">
+    <div><span class="tdg-work-badge ${item.priority === "critica" ? "critical" : overdue ? "warning" : ""}">${esc(label(item.priority))}</span><strong>${esc(item.title)}</strong><small>${esc(item.client || "Sem cliente/operação")}</small></div>
+    <p>${esc(item.description || "Sem descrição.")}</p>
+    <footer><span>${esc(item.responsible || "Sem responsável")}</span><time>${esc(item.dueDate || "Sem prazo")}</time></footer>
+    <div class="tdg-work-card-actions"><select data-field="status" aria-label="Status" ${disabled}>${statuses.map((value) => `<option value="${value}" ${value === item.status ? "selected" : ""}>${label(value)}</option>`).join("")}</select><button type="button" data-work-remove ${disabled} aria-label="Arquivar item">×</button></div>
+  </article>`;
+};
+
+const itemsViewHtml = () => {
+  const items = filteredItems();
+  if (!items.length) return `<div class="tdg-work-empty">${state.loading ? "Carregando itens..." : "Nenhum item neste quadro."}</div>`;
+  if (state.view === "kanban") return `<div class="tdg-work-kanban">${statuses.map((status) => {
+    const columnItems = items.filter((item) => item.status === status);
+    return `<section><header><strong>${esc(label(status))}</strong><span>${columnItems.length}</span></header><div>${columnItems.length ? columnItems.map((item) => compactItemHtml(item)).join("") : "<small>Nenhum item</small>"}</div></section>`;
+  }).join("")}</div>`;
+  if (state.view === "calendar") {
+    const dated = [...items].sort((a, b) => String(a.dueDate || "9999").localeCompare(String(b.dueDate || "9999")));
+    return `<div class="tdg-work-calendar">${dated.map((item) => `<section><time>${esc(item.dueDate ? new Date(`${item.dueDate}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", weekday: "short" }) : "Sem prazo")}</time>${compactItemHtml(item, "calendar-item")}</section>`).join("")}</div>`;
+  }
+  if (state.view === "timeline") {
+    const dated = [...items].sort((a, b) => String(a.dueDate || "9999").localeCompare(String(b.dueDate || "9999")));
+    return `<div class="tdg-work-timeline">${dated.map((item) => `<div><span></span>${compactItemHtml(item, "timeline-item")}</div>`).join("")}</div>`;
+  }
+  return `<div class="tdg-work-list">${items.map(rowHtml).join("")}</div>`;
+};
+
 const renderWorkCenter = () => {
   const root = document.querySelector("[data-tdg-work-center-root]");
   if (!root) return;
@@ -220,7 +252,9 @@ const renderWorkCenter = () => {
     <div class="tdg-work-center-layout"><aside class="tdg-board-sidebar">${state.boards.map((item) => `<button type="button" data-board-id="${esc(item.id)}" class="${item.id === state.activeBoardId ? "active" : ""}"><strong>${esc(item.name)}</strong><small>${contarItens(state.items.filter((work) => work.boardId === item.id && !work.archivedAt).length)}</small></button>`).join("")}</aside>
     <div class="tdg-board-main"><div class="tdg-work-metrics"><span><small>Ativos</small><strong>${summary.total}</strong></span><span><small>Atrasados</small><strong>${summary.overdue}</strong></span><span><small>Bloqueados</small><strong>${summary.blocked}</strong></span><span><small>Aprovações</small><strong>${summary.pendingApprovals}</strong></span></div>
     <div class="tdg-board-toolbar"><input data-work-search value="${esc(state.search)}" placeholder="Buscar título, cliente, operação ou responsável"><select data-work-filter><option value="todos">Todos os status</option>${statuses.map((value) => `<option value="${value}" ${value === state.status ? "selected" : ""}>${label(value)}</option>`).join("")}</select></div>
-    ${formHtml()}<div class="tdg-work-list">${filteredItems().length ? filteredItems().map(rowHtml).join("") : `<div class="tdg-work-empty">${state.loading ? "Carregando itens..." : "Nenhum item neste quadro."}</div>`}</div>
+    <div class="tdg-work-view-switch" aria-label="Visualização do quadro">${[["table", "Tabela"], ["kanban", "Kanban"], ["calendar", "Calendário"], ["timeline", "Cronograma"]].map(([id, text]) => `<button type="button" data-work-view="${id}" class="${state.view === id ? "active" : ""}">${text}</button>`).join("")}</div>
+    <div class="tdg-work-automation"><strong>Automações ativas</strong><span>Bloqueio eleva a prioridade · prazo vencido eleva a prioridade · conclusão registra data e responsável</span></div>
+    ${formHtml()}${itemsViewHtml()}
     <div class="tdg-ai-panel"><strong>Assistente da Central</strong><small>Analisa somente os registros carregados e usa o roteador de IA do Seu Funcionário.</small><textarea readonly placeholder="A análise aparecerá aqui.">${esc(state.aiResult)}</textarea>${state.aiBusy ? "<small>Analisando...</small>" : ""}</div></div></div></section>`;
 
   root.querySelector("[data-work-sync]")?.addEventListener("click", sync);
@@ -230,6 +264,7 @@ const renderWorkCenter = () => {
   root.querySelectorAll("[data-board-id]").forEach((button) => button.addEventListener("click", () => { state.activeBoardId = button.dataset.boardId; state.search = ""; state.status = "todos"; state.aiResult = ""; renderWorkCenter(); }));
   root.querySelector("[data-work-search]")?.addEventListener("input", (event) => { state.search = event.target.value; renderWorkCenter(); });
   root.querySelector("[data-work-filter]")?.addEventListener("change", (event) => { state.status = event.target.value; renderWorkCenter(); });
+  root.querySelectorAll("[data-work-view]").forEach((button) => button.addEventListener("click", () => { state.view = button.dataset.workView; renderWorkCenter(); }));
   root.querySelectorAll("[data-item-id]").forEach((row) => {
     const item = state.items.find((candidate) => candidate.id === row.dataset.itemId);
     if (!item) return;
