@@ -7,16 +7,52 @@ const json = (data, status = 200) => new Response(JSON.stringify(data), {
   headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
 });
 
-const AUTOMATIONS = [
-  ["n8n", "n8n Community", "N8N_BASE_URL"],
-  ["node-red", "Node-RED", "NODERED_BASE_URL"],
-  ["activepieces", "Activepieces", "ACTIVEPIECES_BASE_URL"],
-  ["windmill", "Windmill", "WINDMILL_BASE_URL"],
-  ["temporal", "Temporal", "TEMPORAL_BASE_URL"],
-  ["airflow", "Apache Airflow", "AIRFLOW_BASE_URL"],
-  ["kestra", "Kestra", "KESTRA_BASE_URL"],
-  ["huginn", "Huginn", "HUGINN_BASE_URL"],
-];
+const nativeAutomations = (env) => {
+  const configured = Boolean(env.DB);
+  return [
+    {
+      id: "cloudflare-cron",
+      name: "Agendamentos da Cloudflare",
+      configured,
+      detail: "Execução automática a cada hora.",
+    },
+    {
+      id: "tasks-reminders",
+      name: "Tarefas e lembretes automáticos",
+      configured,
+      detail: "Executados no Worker e registrados no D1.",
+    },
+    {
+      id: "weekly-summary",
+      name: "Resumo semanal",
+      configured,
+      detail: "Processado toda segunda-feira pela infraestrutura da plataforma.",
+    },
+  ];
+};
+
+const messagingIntegrations = (env = {}) => {
+  const baseUrl = String(env.EVOLUTION_API_BASE_URL || "").trim();
+  let validUrl = false;
+  try {
+    validUrl = ["http:", "https:"].includes(new URL(baseUrl).protocol);
+  } catch {
+    validUrl = false;
+  }
+  const configured = Boolean(
+    validUrl && env.EVOLUTION_API_KEY && env.EVOLUTION_INSTANCE,
+  );
+  return [
+    {
+      id: "evolution-api",
+      name: "Evolution API",
+      configured,
+      detail: configured
+        ? "Credenciais da instância cadastradas para envio pelo CRM."
+        : "Conector pronto. Requer URL, chave e nome da instância conectada.",
+    },
+  ];
+};
 
 export function todoGreenIntegrationStatus(env = {}) {
   const search = webSearchConfiguration(env);
@@ -26,7 +62,14 @@ export function todoGreenIntegrationStatus(env = {}) {
       configured: search.configured,
       providers: Object.entries(search.providers).map(([id, configured]) => ({ id, configured })),
     },
-    automation: AUTOMATIONS.map(([id, name, key]) => ({ id, name, configured: Boolean(env[key]) })),
+    automation: nativeAutomations(env),
+    messaging: messagingIntegrations(env),
+    automationEngine: {
+      id: "cloudflare-native",
+      name: "Cloudflare Worker + Cron + D1",
+      configured: Boolean(env.DB),
+      requiresExternalServer: false,
+    },
     exclusions: [
       { id: "whisper", name: "Transcrição Whisper", reason: "Não faz parte da jornada da vertical." },
       { id: "image-generation", name: "Geração de imagens", reason: "Não faz parte da jornada da vertical." },

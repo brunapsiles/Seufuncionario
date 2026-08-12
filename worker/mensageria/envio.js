@@ -102,8 +102,29 @@ export async function sendEmailText(env, to, subject, text) {
   return { provider: "brevo" };
 }
 
+const evolutionWhatsappConfig = (env = {}) => {
+  const baseUrl = String(env.EVOLUTION_API_BASE_URL || "").trim();
+  const apiKey = String(env.EVOLUTION_API_KEY || "").trim();
+  const instance = String(env.EVOLUTION_INSTANCE || "").trim();
+  if (!baseUrl || !apiKey || !instance) return null;
+  try {
+    const url = new URL(baseUrl);
+    if (!['http:', 'https:'].includes(url.protocol)) return null;
+    return {
+      baseUrl: url.toString().replace(/\/$/, ""),
+      apiKey,
+      instance,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const metaWhatsappEnabled = (env = {}) =>
+  Boolean(env.WHATSAPP_TOKEN && env.WHATSAPP_PHONE_ID);
+
 export function whatsappEnabled(env) {
-  return !!(env.WHATSAPP_TOKEN && env.WHATSAPP_PHONE_ID);
+  return Boolean(evolutionWhatsappConfig(env) || metaWhatsappEnabled(env));
 }
 
 const normalizeWhatsappTo = (value) => {
@@ -112,9 +133,10 @@ const normalizeWhatsappTo = (value) => {
 };
 
 export async function sendWhatsAppText(env, to, text) {
+  const evolution = evolutionWhatsappConfig(env);
   if (env.OUTBOX_TEST_DELIVERY === "mock")
     return {
-      provider: "whatsapp_cloud_api",
+      provider: evolution ? "evolution_api" : "whatsapp_cloud_api",
       providerMessageId: "wamid.test",
     };
   if (!whatsappEnabled(env))
@@ -122,6 +144,38 @@ export async function sendWhatsAppText(env, to, text) {
   const phone = normalizeWhatsappTo(to);
   if (!phone)
     throw new Error("Informe o WhatsApp com DDI e DDD para envio automático.");
+
+  if (evolution) {
+    const resp = await fetch(
+      `${evolution.baseUrl}/message/sendText/${encodeURIComponent(evolution.instance)}`,
+      {
+        method: "POST",
+        headers: {
+          apikey: evolution.apiKey,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          number: phone,
+          textMessage: { text: String(text || "") },
+          linkPreview: false,
+        }),
+      },
+    );
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok)
+      throw new Error(
+        payload?.response?.message ||
+          payload?.message ||
+          payload?.error ||
+          `Falha na Evolution API (${resp.status}).`,
+      );
+    return {
+      provider: "evolution_api",
+      providerMessageId:
+        payload?.key?.id || payload?.message?.key?.id || payload?.messageId || "",
+    };
+  }
+
   const version = env.WHATSAPP_API_VERSION || "v20.0";
   const resp = await fetch(
     `https://graph.facebook.com/${version}/${env.WHATSAPP_PHONE_ID}/messages`,
