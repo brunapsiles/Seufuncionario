@@ -25,7 +25,7 @@ describe("integrações da vertical", () => {
       expect.objectContaining({ id: "evolution-api", configured: true }),
     ]);
     expect(status.automation.map((item) => item.id)).toEqual([
-      "cloudflare-cron", "tasks-reminders", "weekly-summary",
+      "cloudflare-cron", "tasks-reminders", "custom-workflow-rules", "weekly-summary",
     ]);
     expect(JSON.stringify(status)).not.toMatch(/n8n|node-red|activepieces|windmill|temporal|airflow|kestra|huginn/i);
     expect(JSON.stringify(status)).not.toContain("segredo-groq");
