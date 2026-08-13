@@ -57,6 +57,7 @@ describe("o schema vem das migrações, não da requisição", () => {
       "todogreen_green_scores",
       "todogreen_score_weights",
       "todogreen_client_assignments",
+      "todogreen_goal_metrics",
       "environmental_calculations",
     ]) {
       expect(declaradasNasMigracoes.has(tabela)).toBe(true);

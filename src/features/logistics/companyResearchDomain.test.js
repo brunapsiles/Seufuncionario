@@ -70,7 +70,7 @@ describe("inteligência externa comercial", () => {
   it("sugere segmento e transforma perfil público de procurement em contato verificável", () => {
     const report = classifyCompanyResearch({ company: "Loja Exemplo", segment: "", searches: [
       { kind: "identity", results: [result("Loja Exemplo | LinkedIn", "https://www.linkedin.com/company/loja-exemplo", "Rede brasileira de varejo com sede em São Paulo, Brasil")] },
-      { kind: "contacts", results: [result("Ana Souza - Gerente de Procurement - Loja Exemplo | LinkedIn", "https://br.linkedin.com/in/ana-souza", "São Paulo, Brasil. Procurement de logística, transportes e supply chain na Loja Exemplo.")] },
+      { kind: "contacts", results: [result("Ana Souza - Gerente de Procurement - Loja Exemplo | LinkedIn", "https://br.linkedin.com/in/ana-souza", "São Paulo, Brasil. Atualmente trabalha na Loja Exemplo com procurement de logística, transportes e supply chain.")] },
       { kind: "supplier", results: [] }, { kind: "rfq", results: [] }, { kind: "esg", results: [] }, { kind: "news", results: [] }, { kind: "segment", results: [] },
     ] });
     expect(report.suggestedSegment.value).toBe("Varejo");
@@ -82,9 +82,9 @@ describe("inteligência externa comercial", () => {
       verifiedBrazil: true,
       currentEmploymentVerified: true,
       employmentStatus: "current",
-      researchVersion: 10,
+      researchVersion: 11,
     })]);
-    expect(report.version).toBe(10);
+    expect(report.version).toBe(11);
     expect(report.suggestedHeadquarters?.value).toBe("São Paulo, SP");
   });
 
@@ -190,8 +190,8 @@ describe("inteligência externa comercial", () => {
 
   it("combina as duas consultas de contatos sem perder resultados válidos", () => {
     const report = classifyCompanyResearch({ company: "Empresa Brasil", segment: "Indústria", searches: [
-      { kind: "contacts", results: [result("Ana Souza - Procurement Logístico - Empresa Brasil | LinkedIn", "https://br.linkedin.com/in/ana", "São Paulo, Brasil. Compras de frete e transportes na Empresa Brasil.")] },
-      { kind: "contacts", results: [result("Bruno Lima - Gerente de Suprimentos - Empresa Brasil | LinkedIn", "https://br.linkedin.com/in/bruno", "Curitiba, Brasil. Supply chain e contratação de transportadoras na Empresa Brasil.")] },
+      { kind: "contacts", results: [result("Ana Souza - Procurement Logístico - Empresa Brasil | LinkedIn", "https://br.linkedin.com/in/ana", "São Paulo, Brasil. Atualmente trabalha na Empresa Brasil com compras de frete e transportes.")] },
+      { kind: "contacts", results: [result("Bruno Lima - Gerente de Suprimentos - Empresa Brasil | LinkedIn", "https://br.linkedin.com/in/bruno", "Curitiba, Brasil. Atualmente trabalha na Empresa Brasil com supply chain e contratação de transportadoras.")] },
     ] });
     expect(report.contactCandidates.map((item) => item.name)).toEqual(["Ana Souza", "Bruno Lima"]);
   });
@@ -199,8 +199,8 @@ describe("inteligência externa comercial", () => {
   it("só inclui lideranças de logística com evidência pública de Brasil", () => {
     const report = classifyCompanyResearch({ company: "Adidas", segment: "Varejo", searches: [
       { kind: "contacts", results: [
-        { ...result("Nadiah Maluf - Gerente Logistica / Transportes - adidas", "https://br.linkedin.com/in/nadiah-maluf", "Responsável pela área de transportes da adidas e pela relação com transportadoras."), searchScope: "brazil-procurement-logistics" },
-        { ...result("Mikaelly M. - Gerente de Compras na adidas", "https://www.linkedin.com/in/mikaellym", "São Paulo, Brasil. Gestão estratégica de compras, supply chain e varejo na adidas."), searchScope: "brazil-procurement-logistics" },
+        { ...result("Nadiah Maluf - Gerente Logistica / Transportes - adidas", "https://br.linkedin.com/in/nadiah-maluf", "Atualmente trabalha na adidas como responsável pela área de transportes e pela relação com transportadoras no Brasil."), searchScope: "brazil-procurement-logistics" },
+        { ...result("Mikaelly M. - Gerente de Compras na adidas", "https://www.linkedin.com/in/mikaellym", "São Paulo, Brasil. Atualmente trabalha na adidas com gestão estratégica de compras, supply chain e varejo."), searchScope: "brazil-procurement-logistics" },
       ] },
     ] });
     expect(report.contactCandidates.map((item) => item.name)).toEqual(["Nadiah Maluf", "Mikaelly M."]);
@@ -294,7 +294,7 @@ describe("inteligência externa comercial", () => {
       name: "Contato Importado",
       email: "contato@empresa.com",
       phone: "+55 11 99999-0000",
-      active: false,
+      active: true,
       employmentStatus: "unknown",
     })]);
   });

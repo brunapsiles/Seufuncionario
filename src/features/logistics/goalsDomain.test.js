@@ -78,4 +78,31 @@ describe("metas da To Do Green", () => {
     expect(result.errors).toContain("Informe um período válido.");
     expect(result.errors).toContain("Informe o valor alvo.");
   });
+
+  it("aceita métrica criada pelo administrador", () => {
+    const metrics = [{ id: "renovacoes", label: "Renovações", category: "commercial", unit: "number", source: "manual" }];
+    expect(validateGoalInput({
+      title: "Renovar contratos estratégicos",
+      category: "commercial",
+      scopeType: "company",
+      metricKey: "renovacoes",
+      direction: "increase",
+      periodStart: "2026-01-01",
+      periodEnd: "2026-12-31",
+      targetValue: 12,
+    }, metrics).valid).toBe(true);
+  });
+
+  it("usa os critérios do administrador para classificar o resultado", () => {
+    const progress = goalProgress({
+      direction: "increase", baselineValue: 0, targetValue: 100, currentValue: 82,
+      periodStart: "2026-01-01", periodEnd: "2026-12-31", status: "active",
+      thresholds: { criteria: [
+        { id: "ok", label: "No ritmo", operator: "gte", value: 80, status: "on_track" },
+        { id: "critical", label: "Crítica", operator: "gte", value: 0, status: "critical" },
+      ] },
+    }, "2026-08-01");
+    expect(progress.healthStatus).toBe("on_track");
+    expect(progress.matchedCriterion.label).toBe("No ritmo");
+  });
 });

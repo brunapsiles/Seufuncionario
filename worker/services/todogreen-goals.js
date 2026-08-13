@@ -3,10 +3,13 @@ import {
   GOAL_CATEGORIES,
   GOAL_DIRECTIONS,
   GOAL_METRICS,
+  GOAL_SOURCES,
   GOAL_SCOPES,
+  GOAL_UNITS,
   goalMetric,
   goalProgress,
   goalSummary,
+  normalizeGoalCriteria,
   validateGoalInput,
 } from "../../src/features/logistics/goalsDomain.js";
 import { podeNaVertical, TENANT_ID } from "./todogreen-access.js";
@@ -32,6 +35,40 @@ const parse = (value, fallback) => {
 const nowIso = () => new Date().toISOString();
 const day = (value) => clean(value, 10);
 const month = (value) => day(value).slice(0, 7);
+const metricKey = (value) => clean(value, 80).normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  .toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60);
+
+const mapMetricRow = (row) => ({
+  id: row.metric_key,
+  databaseId: row.id,
+  label: row.label,
+  description: row.description || "",
+  category: row.category,
+  unit: row.unit,
+  direction: row.direction,
+  source: row.source_key,
+  sourceLabel: row.source_label,
+  measurementMode: row.measurement_mode,
+  formula: row.formula || "",
+  criteria: normalizeGoalCriteria(parse(row.criteria_json, [])),
+  active: Boolean(row.active),
+  custom: true,
+  revision: number(row.revision, 1),
+});
+
+async function customMetrics(env, access, includeInactive = false) {
+  const rows = await env.DB.prepare(
+    `SELECT * FROM todogreen_goal_metrics
+      WHERE tenant_id=? AND workspace_owner_id=? AND archived_at IS NULL
+        AND (?=1 OR active=1) ORDER BY category,label`,
+  ).bind(TENANT_ID, access.ownerId, includeInactive ? 1 : 0).all();
+  return (rows.results || []).map(mapMetricRow);
+}
+
+async function metricCatalog(env, access, includeInactive = false) {
+  return [...GOAL_METRICS.map((item) => ({ ...item, custom: false, criteria: [] })),
+    ...(await customMetrics(env, access, includeInactive))];
+}
 
 const ROLE_GOAL_PERMISSIONS = Object.freeze({
   lideranca_comercial: ["goal:read", "goal:create", "goal:update", "goal:checkin", "goal:approve", "goal:close", "goal:manage-team", "goal:export"],
@@ -116,10 +153,11 @@ async function automaticValue(env, access, row) {
   const endMonth = month(end);
   const client = filterForScope(row);
   const common = [TENANT_ID, access.ownerId];
+  const sourceKey = clean(row.source_key, 100) || goalMetric(row.metric_key).source;
   let result = null;
 
-  if (["revenue", "cost"].includes(row.metric_key)) {
-    const kind = row.metric_key;
+  if (["financial.revenue", "financial.cost"].includes(sourceKey)) {
+    const kind = sourceKey === "financial.revenue" ? "revenue" : "cost";
     result = await env.DB.prepare(
       `SELECT COALESCE(SUM(amount),0) AS value
          FROM todogreen_financial_entries
@@ -127,7 +165,7 @@ async function automaticValue(env, access, row) {
           AND archived_at IS NULL AND status = 'confirmed'
           AND reference_month >= ? AND reference_month <= ?${client.sql}`,
     ).bind(...common, kind, startMonth, endMonth, ...client.binds).first();
-  } else if (row.metric_key === "margin") {
+  } else if (sourceKey === "financial.margin") {
     const marginClient = filterForScope(row);
     result = await env.DB.prepare(
       `SELECT CASE WHEN revenue = 0 THEN 0 ELSE ((revenue - cost) / revenue) * 100 END AS value
@@ -140,7 +178,7 @@ async function automaticValue(env, access, row) {
               AND status = 'confirmed' AND reference_month >= ? AND reference_month <= ?${marginClient.sql}
          )`,
     ).bind(...common, startMonth, endMonth, ...marginClient.binds).first();
-  } else if (row.metric_key === "pipeline") {
+  } else if (sourceKey === "opportunities.pipeline") {
     const scope = filterForScope(row);
     result = await env.DB.prepare(
       `SELECT COALESCE(SUM(CASE WHEN contract_value > 0 THEN contract_value ELSE monthly_value END),0) AS value
@@ -148,41 +186,42 @@ async function automaticValue(env, access, row) {
         WHERE tenant_id = ? AND workspace_owner_id = ? AND archived_at IS NULL
           AND created_at >= ? AND created_at <= ?${scope.sql}`,
     ).bind(...common, `${start}T00:00:00.000Z`, `${end}T23:59:59.999Z`, ...scope.binds).first();
-  } else if (row.metric_key === "opportunities") {
+  } else if (sourceKey === "opportunities.count") {
     const scope = filterForScope(row);
     result = await env.DB.prepare(
       `SELECT COUNT(*) AS value FROM todogreen_opportunities
         WHERE tenant_id = ? AND workspace_owner_id = ? AND archived_at IS NULL
           AND created_at >= ? AND created_at <= ?${scope.sql}`,
     ).bind(...common, `${start}T00:00:00.000Z`, `${end}T23:59:59.999Z`, ...scope.binds).first();
-  } else if (row.metric_key === "proposals") {
+  } else if (sourceKey === "proposals.count") {
     const scope = filterForScope(row);
     result = await env.DB.prepare(
       `SELECT COUNT(*) AS value FROM todogreen_proposals
         WHERE tenant_id = ? AND workspace_owner_id = ? AND archived_at IS NULL
           AND created_at >= ? AND created_at <= ?${scope.sql}`,
     ).bind(...common, `${start}T00:00:00.000Z`, `${end}T23:59:59.999Z`, ...scope.binds).first();
-  } else if (row.metric_key === "clients") {
+  } else if (sourceKey === "clients.count") {
     result = await env.DB.prepare(
       `SELECT COUNT(*) AS value FROM todogreen_clients
         WHERE tenant_id = ? AND workspace_owner_id = ? AND archived_at IS NULL
           AND created_at >= ? AND created_at <= ?`,
     ).bind(...common, `${start}T00:00:00.000Z`, `${end}T23:59:59.999Z`).first();
-  } else if (["trips", "deliveries", "packages", "distance", "occupancy"].includes(row.metric_key)) {
+  } else if (["operations.trips", "operations.deliveries", "operations.packages", "operations.distance", "operations.occupancy"].includes(sourceKey)) {
+    const operationMetric = sourceKey.split(".")[1];
     const column = {
       trips: "SUM(CAST(json_extract(fields_json, '$.trips') AS REAL))",
       deliveries: "SUM(CAST(json_extract(fields_json, '$.deliveries') AS REAL))",
       packages: "SUM(CAST(json_extract(fields_json, '$.packages') AS REAL))",
       distance: "SUM(distance_km)",
       occupancy: "AVG(CAST(json_extract(fields_json, '$.occupancyPercent') AS REAL))",
-    }[row.metric_key];
+    }[operationMetric];
     const scope = filterForScope(row);
     result = await env.DB.prepare(
       `SELECT COALESCE(${column},0) AS value FROM todogreen_client_operations
         WHERE tenant_id = ? AND workspace_owner_id = ? AND archived_at IS NULL
           AND substr(service_date, 1, 7) >= ? AND substr(service_date, 1, 7) <= ?${scope.sql}`,
     ).bind(...common, startMonth, endMonth, ...scope.binds).first();
-  } else if (row.metric_key === "green_score") {
+  } else if (sourceKey === "esg.green_score") {
     const clientId = row.scope_type === "client" ? row.scope_id : "";
     const scopeSql = clientId ? " AND client_id = ?" : "";
     result = await env.DB.prepare(
@@ -192,7 +231,7 @@ async function automaticValue(env, access, row) {
           ORDER BY calculated_at DESC LIMIT 20
        )`,
     ).bind(TENANT_ID, row.workspace_owner_id, `${end}T23:59:59.999Z`, ...(clientId ? [clientId] : [])).first();
-  } else if (row.metric_key === "co2_avoided") {
+  } else if (sourceKey === "esg.co2_avoided") {
     const clientId = row.scope_type === "client" ? row.scope_id : "";
     result = await env.DB.prepare(
       `SELECT COALESCE(SUM(CAST(json_extract(result_json,'$.impact.co2AvoidedKg') AS REAL)),0) AS value
@@ -206,7 +245,7 @@ async function automaticValue(env, access, row) {
     value: number(result?.value),
     details: {
       mode: "automatic",
-      sourceKey: row.source_key,
+      sourceKey,
       calculatedAt: nowIso(),
       periodStart: start,
       periodEnd: end,
@@ -302,6 +341,7 @@ async function listGoals(env, access, user, url) {
                g.period_end, g.updated_at DESC LIMIT 200`,
   ).bind(...binds).all();
   const goals = await Promise.all((rows.results || []).map((row) => enrichedGoal(env, access, row)));
+  const metrics = await metricCatalog(env, access);
   return json({
     goals,
     summary: goalSummary(goals),
@@ -309,16 +349,91 @@ async function listGoals(env, access, user, url) {
       canCreate: goalCan(access, "goal:create"),
       canManageTeam: goalCan(access, "goal:manage-team"),
       canManageCompany: goalCan(access, "goal:manage-company"),
+      canManageMetrics: managesAllGoals(access),
       canExport: goalCan(access, "goal:export"),
     },
     catalogs: {
       categories: GOAL_CATEGORIES,
       scopes: GOAL_SCOPES,
-      metrics: GOAL_METRICS,
+      metrics,
       directions: GOAL_DIRECTIONS,
       cadences: GOAL_CADENCES,
+      units: GOAL_UNITS,
+      sources: GOAL_SOURCES,
     },
   });
+}
+
+async function manageMetrics(request, env, access, user, customMetricId = "") {
+  if (request.method === "GET") return json({
+    metrics: await metricCatalog(env, access, true),
+    units: GOAL_UNITS,
+    sources: GOAL_SOURCES,
+    categories: GOAL_CATEGORIES,
+    directions: GOAL_DIRECTIONS,
+    canManage: managesAllGoals(access),
+  });
+  if (!managesAllGoals(access)) return json({ error: "Somente a administração pode configurar indicadores." }, 403);
+  if (request.method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const label = clean(body.label, 160);
+    const key = metricKey(body.metricKey || label);
+    if (label.length < 2 || key.length < 2) return json({ error: "Informe o nome do indicador." }, 400);
+    if (GOAL_METRICS.some((item) => item.id === key)) return json({ error: "Esse identificador é reservado por um indicador nativo." }, 409);
+    const category = GOAL_CATEGORIES.some((item) => item.id === body.category) ? body.category : "management";
+    const unit = GOAL_UNITS.some((item) => item.id === body.unit) ? body.unit : "number";
+    const direction = GOAL_DIRECTIONS.some((item) => item.id === body.direction) ? body.direction : "increase";
+    const source = GOAL_SOURCES.find((item) => item.id === body.sourceKey) || GOAL_SOURCES[0];
+    const at = nowIso();
+    const id = crypto.randomUUID();
+    try {
+      await env.DB.prepare(
+        `INSERT INTO todogreen_goal_metrics
+         (id,tenant_id,workspace_owner_id,metric_key,label,description,category,unit,direction,
+          measurement_mode,source_key,source_label,formula,criteria_json,active,revision,
+          created_by,updated_by,created_at,updated_at,archived_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,1,?,?,?,?,NULL)`,
+      ).bind(id, TENANT_ID, access.ownerId, key, label, clean(body.description, 1000), category, unit,
+        direction, source.mode, source.id, source.label, clean(body.formula, 600),
+        JSON.stringify(normalizeGoalCriteria(body.criteria)), user.id, user.id, at, at).run();
+    } catch {
+      return json({ error: "Já existe um indicador com esse identificador." }, 409);
+    }
+    const created = await env.DB.prepare("SELECT * FROM todogreen_goal_metrics WHERE id=?").bind(id).first();
+    return json({ metric: mapMetricRow(created) }, 201);
+  }
+  const row = await env.DB.prepare(
+    `SELECT * FROM todogreen_goal_metrics WHERE id=? AND tenant_id=? AND workspace_owner_id=? AND archived_at IS NULL`,
+  ).bind(customMetricId, TENANT_ID, access.ownerId).first();
+  if (!row) return json({ error: "Indicador personalizado não encontrado." }, 404);
+  if (request.method === "PATCH") {
+    const body = await request.json().catch(() => ({}));
+    if (number(body.revision) !== number(row.revision)) return json({ error: "O indicador mudou. Recarregue antes de salvar." }, 409);
+    const category = GOAL_CATEGORIES.some((item) => item.id === body.category) ? body.category : row.category;
+    const unit = GOAL_UNITS.some((item) => item.id === body.unit) ? body.unit : row.unit;
+    const direction = GOAL_DIRECTIONS.some((item) => item.id === body.direction) ? body.direction : row.direction;
+    const source = GOAL_SOURCES.find((item) => item.id === body.sourceKey) || GOAL_SOURCES.find((item) => item.id === row.source_key) || GOAL_SOURCES[0];
+    const result = await env.DB.prepare(
+      `UPDATE todogreen_goal_metrics SET label=?,description=?,category=?,unit=?,direction=?,measurement_mode=?,
+       source_key=?,source_label=?,formula=?,criteria_json=?,active=?,revision=revision+1,updated_by=?,updated_at=?
+       WHERE id=? AND tenant_id=? AND workspace_owner_id=? AND revision=?`,
+    ).bind(clean(body.label ?? row.label, 160), clean(body.description ?? row.description, 1000), category, unit,
+      direction, source.mode, source.id, source.label, clean(body.formula ?? row.formula, 600),
+      JSON.stringify(normalizeGoalCriteria(body.criteria ?? parse(row.criteria_json, []))), body.active === false ? 0 : 1,
+      user.id, nowIso(), row.id, TENANT_ID, access.ownerId, row.revision).run();
+    if (!result.meta?.changes) return json({ error: "O indicador mudou. Recarregue." }, 409);
+    const updated = await env.DB.prepare("SELECT * FROM todogreen_goal_metrics WHERE id=?").bind(row.id).first();
+    return json({ metric: mapMetricRow(updated) });
+  }
+  if (request.method === "DELETE") {
+    const at = nowIso();
+    await env.DB.prepare(
+      `UPDATE todogreen_goal_metrics SET archived_at=?,active=0,revision=revision+1,updated_by=?,updated_at=?
+        WHERE id=? AND tenant_id=? AND workspace_owner_id=?`,
+    ).bind(at, user.id, at, row.id, TENANT_ID, access.ownerId).run();
+    return json({ ok: true });
+  }
+  return json({ error: "Método não permitido." }, 405);
 }
 
 async function detail(env, access, user, row) {
@@ -359,9 +474,10 @@ async function detail(env, access, user, row) {
 async function createGoal(request, env, access, user) {
   if (!goalCan(access, "goal:create")) return json({ error: "Você não pode criar metas." }, 403);
   const body = await request.json().catch(() => ({}));
-  const validation = validateGoalInput(body);
+  const metrics = await metricCatalog(env, access);
+  const validation = validateGoalInput(body, metrics);
   if (!validation.valid) return json({ error: validation.errors[0], errors: validation.errors }, 400);
-  const metric = goalMetric(body.metricKey);
+  const metric = goalMetric(body.metricKey, metrics);
   const id = crypto.randomUUID();
   const now = nowIso();
   const measurementMode = body.measurementMode === "manual" || metric.source === "manual" ? "manual" : "automatic";
@@ -392,7 +508,7 @@ async function createGoal(request, env, access, user) {
     direction === "range" ? number(body.rangeMin) : null, direction === "range" ? number(body.rangeMax) : null,
     Math.max(0, number(body.weight, 100)), day(body.periodStart), day(body.periodEnd), clean(body.cadence || "monthly", 20),
     ownerUserId, ownerEmail, clean(body.ownerLabel, 180), body.evidenceRequired ? 1 : 0,
-    JSON.stringify(body.thresholds || {}), status, managesAllGoals(access) ? "not_required" : "pending",
+    JSON.stringify(body.thresholds || { criteria: metric.criteria || [] }), status, managesAllGoals(access) ? "not_required" : "pending",
     user.id, user.id, now, now,
   ).run();
   if (ownerEmail || ownerUserId) {
@@ -434,7 +550,8 @@ async function updateGoal(request, env, access, user, row) {
     rangeMin: body.rangeMin ?? row.range_min,
     rangeMax: body.rangeMax ?? row.range_max,
   };
-  const validation = validateGoalInput(merged);
+  const metrics = await metricCatalog(env, access, true);
+  const validation = validateGoalInput(merged, metrics);
   if (!validation.valid) return json({ error: validation.errors[0], errors: validation.errors }, 400);
   const structuralChanged = [
     [body.targetValue, row.target_value], [body.baselineValue, row.baseline_value],
@@ -442,7 +559,7 @@ async function updateGoal(request, env, access, user, row) {
   ].some(([incoming, current]) => incoming !== undefined && String(incoming) !== String(current));
   if (structuralChanged && row.status !== "draft" && !clean(body.changeReason, 600))
     return json({ error: "Explique por que a meta iniciada está sendo alterada." }, 400);
-  const metric = goalMetric(merged.metricKey);
+  const metric = goalMetric(merged.metricKey, metrics);
   const measurementMode = body.measurementMode === "manual" || metric.source === "manual"
     ? "manual" : body.measurementMode === "automatic" ? "automatic" : row.measurement_mode;
   const now = nowIso();
@@ -603,6 +720,8 @@ export async function handleTodoGreenGoals(request, env, user, access, url) {
   const goalId = clean(parts[3], 100);
   const subresource = clean(parts[4], 40);
   const subresourceId = clean(parts[5], 100);
+
+  if (goalId === "metrics") return manageMetrics(request, env, access, user, subresource || "");
 
   if (!goalId) {
     if (request.method === "GET") return listGoals(env, access, user, url);

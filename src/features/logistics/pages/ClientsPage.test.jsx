@@ -25,7 +25,7 @@ describe("página de clientes", () => {
   it("conecta conta, forecast e próxima melhor ação", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
       clientes: [{
-        id: "client-1", name: "Rede Alfa", segment: "Varejo", status: "ativo", revision: 2,
+        id: "client-1", accountCode: "TDG-000001", name: "Rede Alfa", segment: "Varejo", status: "ativo", revision: 2,
         vendedores: [], crm: { stage: "Diagnóstico", nextAction: "Validar rota", nextActionAt: "2999-01-01", dataQuality: 80, contacts: [] },
       }],
       acesso: { podeGerenciar: true, podeEditar: true, somenteCarteira: false },
@@ -40,6 +40,7 @@ describe("página de clientes", () => {
     expect(screen.getAllByText(/600\.000/).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: /Rede Alfa/ }));
     expect(await screen.findByRole("heading", { name: "Rede Alfa" })).toBeInTheDocument();
+    expect(screen.getAllByText("TDG-000001").length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: /Pesquisar empresa/ }).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: /Ver como cliente/ })).toBeInTheDocument();
     expect(screen.getAllByText(/Mapear ao menos um contato de Procurement/i).length).toBeGreaterThan(0);

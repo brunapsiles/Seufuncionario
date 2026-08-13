@@ -8,7 +8,7 @@ const normalize = (value) => clean(value, 1200).normalize("NFD").replace(/[\u030
 const safeUrl = (value) => { try { const url = new URL(value); return ["http:", "https:"].includes(url.protocol) ? url.href : ""; } catch { return ""; } };
 const resultKey = (item) => safeUrl(item?.url).replace(/[#?].*$/, "").replace(/\/$/, "");
 const includesAny = (text, terms) => terms.some((term) => text.includes(term));
-export const COMPANY_RESEARCH_VERSION = 10;
+export const COMPANY_RESEARCH_VERSION = 11;
 
 const VACANCY = ["vaga", "vagas", "career", "carreira", "emprego", "job", "jobs", "hiring", "we are hiring", "we're looking", "talentos", "recrutamento", "analista de compras", "comprador"];
 const TRANSPORT = ["transporte", "transportadora", "logistica", "frete", "frota", "middle mile", "last mile", "transferencia", "distribuicao", "carrier"];
@@ -298,18 +298,20 @@ const profileGeography = (item) => {
 
 const currentEmploymentEvidence = (item, company) => {
   const text = normalize(`${item?.title}. ${item?.snippet}`);
-  const title = normalize(item?.title);
   const companyTerms = companyTokens(company);
-  const companyInTitle = companyTerms.some((token) => title.includes(token));
   const companyStatements = text.split(/[.!?;\n]+/).filter((statement) =>
     companyTerms.some((token) => statement.includes(token)));
   const cueInCompanyStatement = (cues) => companyStatements.some((statement) => includesAny(statement, cues));
   const closedCompanyRange = companyStatements.some((statement) =>
     /\b(?:19|20)\d{2}\s*[-–—]\s*(?:19|20)\d{2}\b/.test(statement));
   if (cueInCompanyStatement(FORMER_EMPLOYMENT) || closedCompanyRange) return "former";
-  const currentRoleInTitle = companyInTitle && includesAny(title, PROCUREMENT.concat(LOGISTICS_DECISION));
+  // O título do resultado pode permanecer indexado por meses depois de uma
+  // troca de emprego. Empresa + cargo no título ajuda a achar a pessoa, mas
+  // não comprova atualidade. Só aceitamos como vínculo atual quando a própria
+  // evidência pública traz um marcador explícito ("atualmente", "present",
+  // "desde" etc.) no trecho associado à empresa-alvo.
   const explicitCurrentRole = cueInCompanyStatement(CURRENT_EMPLOYMENT);
-  return currentRoleInTitle || explicitCurrentRole ? "current" : "unknown";
+  return explicitCurrentRole ? "current" : "unknown";
 };
 
 const classifyContactResult = (item, company) => {
@@ -510,11 +512,14 @@ export function reconcileResearchedContacts({ existingContacts = [], contactCand
     if (webDiscovered && !current && protectedChannel) {
       return [{
         ...contact,
-        active: false,
+        // Telefone/e-mail importado é patrimônio da carteira. A pesquisa pode
+        // retirar a pessoa do mapa decisório, mas não desativar nem excluir o
+        // cadastro sem uma ação humana explícita.
+        active: contact.active !== false,
         currentEmploymentVerified: false,
         employmentCheckedAt: checkedAt,
         employmentStatus: "unknown",
-        validation: "Contato preservado por possuir telefone ou e-mail. O vínculo atual não foi reconfirmado pela pesquisa; atualize ou exclua manualmente.",
+        validation: "Contato preservado por possuir telefone ou e-mail. O vínculo atual não foi reconfirmado; ele não conta como decisor até validação ou edição manual.",
       }];
     }
     return [contact];
