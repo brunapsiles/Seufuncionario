@@ -43,9 +43,18 @@ describe("página de clientes", () => {
     expect(screen.getAllByText("TDG-000001").length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: /Pesquisar empresa/ }).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: /Ver como cliente/ })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Visões da conta" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Resumo" })).toHaveClass("active");
     expect(screen.getAllByText(/Mapear ao menos um contato de Procurement/i).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Marcar feita e ver próxima" })).toBeEnabled();
     expect(screen.getByText("Reunião com compras")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Oportunidades" }));
+    expect(screen.getByRole("button", { name: "Oportunidades" })).toHaveClass("active");
+    expect(screen.getByText("White Space")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Atividade" }));
+    expect(await screen.findByText("Nenhuma mensagem ou reunião registrada")).toBeInTheDocument();
   });
 
   it("reconhece os contatos salvos sem fingir que são procurement logístico", async () => {

@@ -222,6 +222,9 @@ describe("To Do Green enterprise CRM", () => {
     expect(withBasis.shareOfWallet.remaining).toBe(8_000_000);
     const withoutBasis = buildAccountIntelligence({ account: createTodoGreenAccount({ id: "wallet-empty", ourAnnualRevenue: 1_000 }) });
     expect(withoutBasis.shareOfWallet.percentage).toBeNull();
+    const withoutOurRevenue = buildAccountIntelligence({ account: createTodoGreenAccount({ id: "wallet-no-revenue", customerAnnualLogisticsSpend: 10_000_000 }) });
+    expect(withoutOurRevenue.shareOfWallet.percentage).toBeNull();
+    expect(withoutOurRevenue.shareOfWallet.status).toBe("missing-our-revenue");
   });
 
   it("calculates the annual portfolio potential from monthly quantities and tickets", () => {

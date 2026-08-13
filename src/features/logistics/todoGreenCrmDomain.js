@@ -441,7 +441,8 @@ export const buildAccountIntelligence = ({ account = {}, contacts = [], opportun
   const nextBestAction = recommendNextCommercialAction({ account, contacts, opportunities });
   const customerSpend = asNumber(account.customerAnnualLogisticsSpend);
   const ourRevenue = asNumber(account.ourAnnualRevenue);
-  const shareOfWallet = customerSpend > 0 ? {
+  const ourRevenueProvided = ourRevenue > 0;
+  const shareOfWallet = customerSpend > 0 && ourRevenueProvided ? {
     percentage: Math.round(Math.min(100, (ourRevenue / customerSpend) * 100) * 10) / 10,
     remaining: Math.max(0, customerSpend - ourRevenue),
     ourRevenue,
@@ -452,7 +453,7 @@ export const buildAccountIntelligence = ({ account = {}, contacts = [], opportun
     remaining: null,
     ourRevenue,
     customerSpend: null,
-    status: "missing-customer-spend",
+    status: customerSpend > 0 ? "missing-our-revenue" : "missing-customer-spend",
   };
   const objective = asText(plan.objective) || (whiteSpace.length
     ? `Qualificar expansão da conta em ${whiteSpace[0]}.`

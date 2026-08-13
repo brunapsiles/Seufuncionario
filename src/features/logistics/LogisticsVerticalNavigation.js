@@ -1,5 +1,3 @@
-import { TODO_GREEN_MODULE_CATALOG } from "./logisticsVerticalDomain.js";
-
 const PRODUCT_IDS = [
   "middle-mile",
   "last-mile",
@@ -24,35 +22,6 @@ const PRODUCT_NAMES = {
   "custom-project": "Projeto logístico personalizado",
 };
 
-const MODULE_META = {
-  dashboards: ["Meus painéis", "Crie e organize visões para clientes, vendas, resultados, operação e indicadores ambientais."],
-  clientes: ["Clientes e contatos", "Cadastre e acompanhe clientes, decisores, necessidades e próximos passos."],
-  oportunidades: ["Oportunidades", "Acompanhe oportunidades comerciais, etapas, prioridades e potencial de negócio."],
-  "performance-comercial": ["Performance comercial", "Acompanhe execução da carteira e metas sem misturar oportunidades ou pipeline."],
-  propostas: ["Propostas e contratos", "Crie propostas comerciais e acompanhe as condições de cada negociação."],
-  precificacao: ["Precificação", "Escolha o serviço logístico que deseja calcular."],
-  esg: ["Inteligência ESG", "Acompanhe impacto ambiental, Green Score e informações para clientes."],
-  "central-esg": ["Central ESG", "Calcule, registre e acompanhe os resultados ambientais de cada cliente."],
-  operacoes: ["Operações", "Registre e acompanhe rotas, viagens, entregas, produtividade e ocorrências."],
-  solicitacoes: ["Solicitações de clientes", "Responda o que os clientes pediram pelo portal, com prazo, responsável e histórico da conversa."],
-  rastreamento: ["TMS Tracker", "Configure e acompanhe a integração de posições e eventos da frota."],
-  receita: ["Receitas", "Acompanhe previsão, faturamento e recebimentos por cliente e serviço."],
-  custos: ["Custos e margem", "Registre custos e acompanhe a rentabilidade das operações."],
-  comissoes: ["Comissões", "Acompanhe valores e regras comerciais aplicáveis."],
-  relatorios: ["Relatórios", "Consulte e gere informações comerciais, operacionais, financeiras e ambientais."],
-  metodologia: ["Metodologia", "Consulte premissas, fontes e critérios utilizados nos cálculos."],
-  auditoria: ["Auditoria e governança", "Acompanhe alterações, aprovações e responsabilidades."],
-  acessos: ["Usuários e acessos", "Gerencie quem pode acessar e o que cada pessoa pode fazer."],
-  "green-score": ["Green Score", "Acompanhe o indicador ambiental e sua evolução."],
-  "calculadora-ambiental": ["Calculadora ambiental", "Calcule o impacto ambiental de uma operação."],
-  "tradutor-esg": ["Tradutor ESG", "Transforme resultados ambientais em informações claras para o cliente."],
-  "escopo-3": ["Emissões da cadeia logística", "Organize as emissões relacionadas às operações do cliente. Nos relatórios, isso também aparece como Escopo 3."],
-};
-
-for (const item of TODO_GREEN_MODULE_CATALOG) {
-  if (!MODULE_META[item.id]) MODULE_META[item.id] = [item.name, item.description || `Acesse ${item.name.toLowerCase()} no To Do Green.`];
-}
-
 export const parseTodoGreenRoute = (pathname = "") => {
   const parts = String(pathname)
     .replace(/^\/todogreen\/?/, "")
@@ -74,9 +43,6 @@ const navigate = (route) => {
   window.history.pushState({}, "", route);
   window.dispatchEvent(new PopStateEvent("popstate"));
 };
-
-const directChildren = (root, selector) =>
-  Array.from(root?.children || []).filter((node) => node.matches?.(selector));
 
 const setVisible = (node, visible) => {
   if (!node) return;
@@ -102,115 +68,6 @@ const markProductCards = (root) => {
       if (productId) button.dataset.tdgProductId = productId;
     });
   });
-};
-
-const simplifyHomeLanguage = (root) => {
-  const hero = root.querySelector(".tdg-hero");
-  if (hero) {
-    setText(hero.querySelector(".tdg-kicker"), "TO DO GREEN");
-    setText(hero.querySelector("div > p"), "Escolha uma área e abra apenas o ambiente que precisa usar.");
-    const status = hero.querySelector("aside span");
-    if (status) {
-      setText(
-        status,
-        status.textContent
-          .replace(/funcionais/gi, "disponíveis")
-          .replace(/backlog/gi, "em preparação"),
-      );
-    }
-    setText(hero.querySelector("aside small"), "Recursos organizados por área e perfil de acesso.");
-  }
-
-  root.querySelectorAll(".tdg-module-card em").forEach((label) => {
-    setText(label, "Em preparação");
-  });
-  root.querySelectorAll(".tdg-section-head > span").forEach((label) => {
-    if (!/funcionais|backlog/i.test(label.textContent || "")) return;
-    setText(
-      label,
-      label.textContent
-        .replace(/funcionais/gi, "disponíveis")
-        .replace(/backlog/gi, "em preparação"),
-    );
-  });
-  root.querySelectorAll(".tdg-backlog summary").forEach((summary) =>
-    setText(summary, "Ver recursos em preparação"),
-  );
-};
-
-const isProductCatalogPanel = (panel) => {
-  if (!panel?.classList.contains("tdg-panel")) return false;
-  const kicker = panel.querySelector(".tdg-kicker")?.textContent || "";
-  return /PRODUTOS LOGÍSTICOS/i.test(kicker) || Boolean(panel.querySelector(".tdg-product-strip") && !panel.classList.contains("tdg-pricing"));
-};
-
-const applyPageVisibility = (root, route) => {
-  root.classList.toggle("tdg-module-page", !route.isHome);
-
-  const hero = directChildren(root, ".tdg-hero")[0];
-  const tabs = directChildren(root, ".tdg-tabs")[0];
-  const metrics = directChildren(root, ".tdg-metrics")[0];
-  const areaSections = directChildren(root, ".tdg-section");
-  const panels = directChildren(root, ".tdg-panel");
-
-  setVisible(hero, route.isHome);
-  setVisible(tabs, route.isHome);
-  setVisible(metrics, route.isHome);
-  areaSections.forEach((section) => setVisible(section, route.isHome));
-  panels.filter(isProductCatalogPanel).forEach((panel) => setVisible(panel, route.isHome));
-
-  panels
-    .filter((panel) => !isProductCatalogPanel(panel))
-    .forEach((panel) => setVisible(panel, true));
-};
-
-const ensurePageHeader = (root, route) => {
-  let header = Array.from(root.children).find((node) => node.dataset?.tdgPageHeader === "true");
-  const heroTitle = root.querySelector(".tdg-hero h1");
-
-  if (route.isHome) {
-    header?.remove();
-    if (heroTitle) heroTitle.id = "tdg-title";
-    return;
-  }
-
-  if (heroTitle) heroTitle.id = "tdg-home-title";
-  if (!header) {
-    header = document.createElement("section");
-    header.className = "tdg-page-header";
-    header.dataset.tdgPageHeader = "true";
-    root.prepend(header);
-  }
-
-  const productName = PRODUCT_NAMES[route.detail];
-  const isPricingSelection = route.section === "precificacao" && !productName;
-  const isPricingDetail = route.section === "precificacao" && Boolean(productName);
-  const [baseTitle, baseDescription] = MODULE_META[route.section] || [
-    "To Do Green",
-    "Ambiente de trabalho da vertical To Do Green.",
-  ];
-  const title = isPricingDetail ? `Precificação: ${productName}` : baseTitle;
-  const description = isPricingDetail
-    ? "Preencha os dados da operação e consulte preço, margem e impacto ambiental em uma visão dedicada."
-    : isPricingSelection
-      ? "Selecione abaixo o tipo de operação que deseja precificar."
-      : baseDescription;
-  const key = `${route.section}:${route.detail}:${title}`;
-
-  if (header.dataset.tdgHeaderKey !== key) {
-    header.dataset.tdgHeaderKey = key;
-    header.innerHTML = `
-      <div class="tdg-page-heading">
-        <span>TO DO GREEN</span>
-        <h1 id="tdg-title">${title}</h1>
-        <p>${description}</p>
-      </div>
-      <div class="tdg-page-actions">
-        ${isPricingDetail ? '<button type="button" data-tdg-pricing-types>Trocar tipo</button>' : ""}
-        <button type="button" data-tdg-page-home>Voltar ao início</button>
-      </div>
-    `;
-  }
 };
 
 const configurePricingPage = (root, route) => {
@@ -254,9 +111,6 @@ const applyNavigation = () => {
 
   const route = parseTodoGreenRoute(window.location.pathname);
   markProductCards(root);
-  simplifyHomeLanguage(root);
-  applyPageVisibility(root, route);
-  ensurePageHeader(root, route);
   configurePricingPage(root, route);
 };
 

@@ -473,12 +473,12 @@ const renderWorkCenter = () => {
 };
 
 const ensureTab = () => {
-  const nav = document.querySelector(".tdg-tabs");
+  const nav = document.querySelector("[data-tdg-management-tools]");
   if (!nav || nav.querySelector("[data-tdg-work-center-tab]")) return;
   const button = document.createElement("button");
   button.type = "button";
   button.dataset.tdgWorkCenterTab = "true";
-  button.textContent = "Central";
+  button.textContent = "Gestão de Projetos";
   button.addEventListener("click", () => { history.pushState({}, "", "/todogreen/central-trabalho"); window.dispatchEvent(new PopStateEvent("popstate")); render(); });
   nav.appendChild(button);
 };
@@ -491,7 +491,8 @@ const render = () => {
   if (!main) return;
   let root = main.querySelector("[data-tdg-work-center-root]");
   if (!root) { root = document.createElement("div"); root.dataset.tdgWorkCenterRoot = "true"; main.appendChild(root); }
-  [...main.children].forEach((child) => { if (child.matches(".tdg-hero,.tdg-tabs,.tdg-metrics,[data-tdg-work-center-root]")) return; child.style.display = active ? "none" : ""; });
+  const pageContent = main.querySelector("[data-tdg-page-content]");
+  if (pageContent) pageContent.style.display = active ? "none" : "";
   root.style.display = active ? "block" : "none";
   document.querySelector("[data-tdg-work-center-tab]")?.classList.toggle("active", active);
   if (active) { renderWorkCenter(); if (!state.boards.length && !state.loading) sync(); }

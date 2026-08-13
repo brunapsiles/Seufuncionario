@@ -2,6 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react
 import {
   Activity,
   AlertTriangle,
+  ArrowRight,
   Archive,
   Award,
   BarChart3,
@@ -69,6 +70,7 @@ import {
 import { liberacaoDaProposta } from "./dealDeskDomain.js";
 import { useVerticalRecords } from "./useVerticalRecords.js";
 import { inputsDePrecificacaoDaOportunidade } from "./electrificationJourneyDomain.js";
+import { buildTodoGreenDecisionCenter } from "./decisionCenterDomain.js";
 import {
   agruparModulosPorTela,
   grupoAtendeBusca,
@@ -215,12 +217,12 @@ const IMPLEMENTED_MODULE_IDS = new Set([
 
 const MODULE_IMPLEMENTATION = Object.freeze({
   dashboard: {
-    title: "Painel de Gerenciamento",
-    navLabel: "Painel",
+    title: "Visão Geral",
+    navLabel: "Visão Geral",
     route: "/todogreen/dashboard",
     area: "gestao",
     status: "functional",
-    description: "Visibilidade comercial e estratégica sobre clientes, oportunidades, preços, resultados, operação e ESG, sem substituir a gestão das áreas responsáveis.",
+    description: "O que exige atenção agora, com acesso direto à próxima ação.",
   },
   dashboards: {
     title: "Painéis personalizados",
@@ -407,7 +409,7 @@ const MODULE_IMPLEMENTATION = Object.freeze({
 });
 
 const PRIMARY_NAVIGATION = Object.freeze([
-  { id: "overview", label: "Visão Geral", route: "/todogreen/dashboard", pages: ["dashboard", "acessos", "integracoes"] },
+  { id: "overview", label: "Visão Geral", route: "/todogreen/dashboard", pages: ["dashboard"] },
   { id: "commercial", label: "Comercial", route: "/todogreen/oportunidades", pages: ["oportunidades", "propostas", "metas", "performance-comercial"] },
   { id: "pricing", label: "Pricing", route: "/todogreen/precificacao", pages: ["precificacao", "regua", "deal-desk", "custos", "receita"] },
   { id: "operations", label: "Operação", route: "/todogreen/operacoes", pages: ["operacoes", "rastreamento", "solicitacoes"] },
@@ -415,11 +417,15 @@ const PRIMARY_NAVIGATION = Object.freeze([
   { id: "clients", label: "Clientes", route: "/todogreen/clientes", pages: ["clientes"] },
   { id: "reports", label: "Relatórios", route: "/todogreen/relatorios", pages: ["relatorios", "auditoria"] },
   { id: "dashboards", label: "Dashboards", route: "/todogreen/dashboards", pages: ["dashboards"] },
-  { id: "projects", label: "Projetos", route: "/todogreen/central-trabalho", pages: ["central-trabalho"] },
 ]);
 
-const navigationFor = (page, path) => {
-  if (String(path || "").includes("/central-trabalho")) return PRIMARY_NAVIGATION.at(-1);
+const MANAGEMENT_TOOLS = Object.freeze([
+  { id: "projects", label: "Gestão de Projetos", route: "/todogreen/central-trabalho", permission: "" },
+  { id: "integracoes", label: "Integrações", route: "/todogreen/integracoes", permission: "integration:manage" },
+  { id: "acessos", label: "Usuários e acessos", route: "/todogreen/acessos", permission: "access:manage" },
+]);
+
+const navigationFor = (page) => {
   return PRIMARY_NAVIGATION.find((item) => item.pages.includes(page)) || PRIMARY_NAVIGATION[0];
 };
 
@@ -957,11 +963,11 @@ function AccessDenied({ db }) {
 
 function MetricCard({ label, value, detail, tone = "neutral" }) {
   return (
-    <button className={`tdg-metric ${tone}`} type="button">
+    <article className={`tdg-metric ${tone}`}>
       <span>{label}</span>
       <strong>{value}</strong>
       <small>{detail}</small>
-    </button>
+    </article>
   );
 }
 
@@ -1055,44 +1061,56 @@ function FieldInput({ name, value, required, onChange }) {
   );
 }
 
-function EmptyState({ onCreate }) {
+function DashboardPanel({ data, dashboard, tasks, onNavigate }) {
+  const decision = buildTodoGreenDecisionCenter({ data, dashboard, tasks });
+  const countLabel = (total, singular, plural) => `${total} ${total === 1 ? singular : plural}`;
   return (
-    <section className="tdg-panel tdg-empty-state">
-      <div className="tdg-section-head">
+    <section className="tdg-panel tdg-decision-center" aria-labelledby="tdg-title">
+      <header className="tdg-decision-header">
         <div>
-          <span className="tdg-kicker">SEM DADOS FICTÍCIOS</span>
-          <h2>Nenhum indicador real carregado ainda.</h2>
-          <p>O painel não usa receita, cliente ou operação inventada como produção. Cadastre a primeira simulação ou ative o modo demonstração explicitamente.</p>
+          <span className="tdg-kicker">VISÃO GERAL</span>
+          <h1 id="tdg-title">O que precisa da sua atenção</h1>
+          <p>Prioridades reais da operação, do comercial e dos clientes. Cada aviso abre o local onde a ação acontece.</p>
         </div>
-        <button className="tdg-action" type="button" onClick={onCreate}>Criar primeira simulação</button>
-      </div>
-    </section>
-  );
-}
+        <span className="tdg-data-status">{data.demo ? "Demonstração identificada" : "Dados reais"}</span>
+      </header>
 
-function DashboardPanel({ data, dashboard }) {
-  const pipeline = data.opportunities.reduce((sum, item) => sum + Number(item.value || 0), 0);
-  return (
-    <section className="tdg-panel">
-      <div className="tdg-section-head">
-        <div>
-          <span className="tdg-kicker">COMERCIAL &amp; ESTRATÉGIA</span>
-          <h2>Painel de Gerenciamento</h2>
-          <p>Uma visão consolidada para acompanhamento comercial e estratégico. Os dados operacionais aparecem como indicadores, sem substituir a gestão da área responsável.</p>
-        </div>
-        <strong>{data.demo ? "modo demonstração" : "dados reais"}</strong>
+      <div className="tdg-decision-metrics" aria-label="Resultados principais">
+        <MetricCard label="Receita" value={decision.hasRevenueData ? BRL.format(dashboard.receitaRealizada || dashboard.receitaPrevista) : "Não informada"} detail={decision.hasRevenueData ? "realizada e contratada" : "sem lançamento financeiro"} />
+        <MetricCard label="Margem" value={decision.hasMarginData ? `${number.format(dashboard.margemOperacionalPercent)}%` : "Não calculada"} detail={decision.hasMarginData ? BRL.format(dashboard.margemContribuicao) : "sem custo e operação"} tone={!decision.hasMarginData ? "neutral" : dashboard.margemOperacionalPercent < 18 ? "risk" : "good"} />
+        <MetricCard label="Forecast" value={BRL.format(decision.forecast)} detail={countLabel(decision.counts.openOpportunities, "oportunidade aberta", "oportunidades abertas")} />
+        <MetricCard label="Pipeline" value={BRL.format(decision.pipeline)} detail="valor total em negociação" />
+        <MetricCard label="CO2 evitado" value={decision.hasImpactData ? `${number.format(dashboard.co2Evitado / 1000)} t` : "Não calculado"} detail={decision.hasImpactData ? "estimativa com memória de cálculo" : "sem operação vinculada"} tone={decision.hasImpactData ? "good" : "neutral"} />
       </div>
-      <div className="tdg-result">
-        <MetricCard label="Clientes" value={number.format(data.clients.length)} detail="cadastros reais" />
-        <MetricCard label="Pipeline" value={BRL.format(pipeline)} detail="oportunidades abertas" />
-        <MetricCard label="Receita" value={BRL.format(dashboard.receitaRealizada || dashboard.receitaPrevista)} detail="realizada + simulada" />
-        <MetricCard label="CO2 evitado" value={`${number.format(dashboard.co2Evitado / 1000)} t`} detail="estimativa auditável" tone="good" />
-      </div>
-      <div className="tdg-output-grid">
-        <span><small>Simulações</small><strong>{data.pricingScenarios.length}</strong></span>
-        <span><small>Propostas</small><strong>{data.proposals.length}</strong></span>
-        <span><small>Operações</small><strong>{data.operations.length}</strong></span>
-        <span><small>Itens de custo</small><strong>{data.costEntries.length}</strong></span>
+
+      <div className="tdg-decision-body">
+        <section className="tdg-attention-list" aria-labelledby="tdg-attention-title">
+          <div className="tdg-decision-section-title">
+            <div><span>AGORA</span><h2 id="tdg-attention-title">Prioridades e alertas</h2></div>
+            <small>{decision.alerts.length ? countLabel(decision.alerts.length, "item para decidir", "itens para decidir") : "Nenhuma pendência crítica encontrada"}</small>
+          </div>
+          {decision.alerts.length === 0 ? (
+            <div className="tdg-decision-clear"><CheckCircle2 size={20} /><div><strong>{decision.hasData ? "Nada crítico neste momento" : "Comece conectando o primeiro dado real"}</strong><span>{decision.hasData ? "A Semente continua acompanhando mudanças na carteira, no pricing e na operação." : "Cadastre um cliente, uma oportunidade ou uma simulação para o painel orientar suas decisões."}</span></div>{!decision.hasData && <button type="button" onClick={() => onNavigate?.("/todogreen/clientes")}>Cadastrar cliente</button>}</div>
+          ) : decision.alerts.slice(0, 6).map((alert) => (
+            <button className={`tdg-decision-alert ${alert.tone}`} type="button" onClick={() => onNavigate?.(alert.route)} key={alert.id}>
+              <span className="tdg-decision-alert-icon">{alert.tone === "risk" ? <AlertTriangle size={18} /> : <Bell size={18} />}</span>
+              <span><strong>{alert.title}</strong><small>{alert.detail}</small></span>
+              <b>{alert.action}<ArrowRight size={15} /></b>
+            </button>
+          ))}
+        </section>
+
+        <aside className="tdg-decision-next" aria-label="Atalhos para continuar o trabalho">
+          <span>CONTINUE O FLUXO</span>
+          <h2>Da conta ao resultado</h2>
+          <p>Abra o ponto da jornada que você precisa avançar. Os dados já cadastrados seguem com você.</p>
+          <div>
+            <button type="button" onClick={() => onNavigate?.("/todogreen/clientes")}>Clientes <ArrowRight size={14} /></button>
+            <button type="button" onClick={() => onNavigate?.("/todogreen/oportunidades")}>Oportunidades <ArrowRight size={14} /></button>
+            <button type="button" onClick={() => onNavigate?.("/todogreen/precificacao")}>Pricing <ArrowRight size={14} /></button>
+            <button type="button" onClick={() => onNavigate?.("/todogreen/operacoes")}>Operação <ArrowRight size={14} /></button>
+          </div>
+        </aside>
       </div>
     </section>
   );
@@ -1746,8 +1764,12 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
   const allowed = estadoDoAcesso === ACESSO.liberado;
   const role = allowed ? remoteAccess.role || "" : "";
   const page = todoGreenRouteToPage(path);
-  const primaryNavigation = navigationFor(page, path);
-  const isHome = /^\/todogreen\/?$/.test(path);
+  const primaryNavigation = navigationFor(page);
+  const isOverview = page === "dashboard";
+  const isWorkCenter = String(path).includes("/central-trabalho");
+  const activeManagement = isWorkCenter
+    ? MANAGEMENT_TOOLS[0]
+    : MANAGEMENT_TOOLS.find((item) => item.id === page) || null;
   // A vertical inteira numa chamada só, e só depois que o acesso foi
   // confirmado: pedir os registros antes disso seria bater no servidor para
   // ouvir 403.
@@ -1805,22 +1827,37 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
   const openPricing = () => navigate("/todogreen/precificacao");
 
   return (
-    <main className="tdg" aria-labelledby="tdg-title">
-      <section className="tdg-hero">
-        <div>
-          <span className="tdg-kicker">VERTICAL PRIVADA · {TODO_GREEN_TENANT.name}</span>
-          <h1 id="tdg-title">Painel de Gerenciamento</h1>
-          <p>Visibilidade comercial e estratégica sobre clientes, oportunidades, preços, resultados, operação e indicadores ambientais.</p>
-          <div className="tdg-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar função, área, produto ou especialista" aria-label="Buscar funções da vertical To Do Green" /></div>
+    <main className={`tdg ${isOverview ? "tdg-overview-page" : "tdg-module-page"}`} aria-labelledby="tdg-title">
+      <header className="tdg-shell-header">
+        <div className="tdg-shell-location">
+          <span>TO DO GREEN</span>
+          <strong>{activeManagement?.label || primaryNavigation.label}</strong>
         </div>
-      </section>
+        <details className="tdg-management-menu">
+          <summary>Gestão e configurações</summary>
+          <div data-tdg-management-tools="true">
+            {MANAGEMENT_TOOLS
+              .filter((item) => !item.permission || hasTodoGreenPermission(role, item.permission))
+              .map((item) => (
+                <button
+                  type="button"
+                  className={(isWorkCenter && item.id === "projects") || page === item.id ? "active" : ""}
+                  data-tdg-work-center-tab={item.id === "projects" ? "true" : undefined}
+                  onClick={() => navigate(item.route)}
+                  key={item.id}
+                >
+                  {item.label}
+                </button>
+              ))}
+          </div>
+        </details>
+      </header>
 
       <nav className="tdg-tabs" aria-label="Navegação To Do Green">
         {PRIMARY_NAVIGATION.map((item) => (
           <button
             type="button"
-            className={primaryNavigation.id === item.id ? "active" : ""}
-            data-tdg-work-center-tab={item.id === "projects" ? "true" : undefined}
+            className={!activeManagement && primaryNavigation.id === item.id ? "active" : ""}
             onClick={() => navigate(item.route)}
             key={item.id}
           >
@@ -1829,7 +1866,7 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
         ))}
       </nav>
 
-      {primaryNavigation.id !== "projects" && primaryNavigation.pages.length > 1 && (
+      {!isWorkCenter && primaryNavigation.pages.length > 1 && (
         <nav className="tdg-subtabs" aria-label={`Seções de ${primaryNavigation.label}`}>
           {primaryNavigation.pages
             .map((id) => [id, MODULE_IMPLEMENTATION[id]])
@@ -1842,6 +1879,7 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
         </nav>
       )}
 
+      <div data-tdg-page-content="true">
       {erroDosRegistros && (
         <div className="tdg-alert" role="alert">
           <AlertTriangle size={18} />
@@ -1849,16 +1887,7 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
         </div>
       )}
 
-      <section className="tdg-metrics" aria-label="Indicadores executivos">
-        <MetricCard label="Receita contratada" value={BRL.format(dashboard.receitaPrevista || dashboard.receitaRealizada)} detail="simulações e lançamentos" />
-        <MetricCard label="Margem operacional" value={`${number.format(dashboard.margemOperacionalPercent)}%`} detail={BRL.format(dashboard.margemContribuicao)} tone={dashboard.margemOperacionalPercent < 18 ? "risk" : "good"} />
-        <MetricCard label="CO2 evitado" value={`${number.format(dashboard.co2Evitado / 1000)} t`} detail={`${number.format(dashboard.reducaoEmissoesPercent)}% redução`} tone="good" />
-        <MetricCard label="Aprovações pendentes" value={number.format(dashboard.aprovacoesPendentes)} detail="condições comerciais" tone={dashboard.aprovacoesPendentes ? "warn" : "good"} />
-        <MetricCard label="Dados" value={verticalData.demo ? "Demo" : "Real"} detail={verticalData.demo ? "rotulado" : "sem seed fake"} />
-      </section>
-
-      {!verticalData.demo && dashboard.receitaPrevista === 0 && dashboard.receitaRealizada === 0 && verticalData.clients.length === 0 && page === "dashboard" && <EmptyState onCreate={openPricing} />}
-      {page === "dashboard" && <DashboardPanel data={verticalData} dashboard={dashboard} />}
+      {page === "dashboard" && <DashboardPanel data={verticalData} dashboard={dashboard} tasks={db?.tasks || []} onNavigate={navigate} />}
       {page === "dashboards" && <Suspense fallback={<section className="tdg-panel">Carregando seus painéis...</section>}><DashboardBuilderPage authHeaders={authHeaders} summary={dashboard} setToast={setToast} /></Suspense>}
       {page === "metas" && <Suspense fallback={<section className="tdg-panel">Carregando metas...</section>}><GoalsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "performance-comercial" && <Suspense fallback={<section className="tdg-panel">Carregando performance comercial...</section>}><SalesPerformancePage authHeaders={authHeaders} onNavigate={navigate} /></Suspense>}
@@ -1902,18 +1931,26 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
       {page === "auditoria" && <GovernancePanel role={role} />}
       {page === "acessos" && <AccessPanel role={role} authHeaders={authHeaders} setToast={setToast} />}
       {page === "integracoes" && <Suspense fallback={<section className="tdg-panel">Carregando integrações...</section>}><IntegrationsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
-      {!Object.keys(MODULE_IMPLEMENTATION).includes(page) && !["green-score", "calculadora-ambiental", "tradutor-esg", "escopo-3", "custos", "comissoes"].includes(page) && <DashboardPanel data={verticalData} dashboard={dashboard} />}
+      {!Object.keys(MODULE_IMPLEMENTATION).includes(page) && !["central-trabalho", "green-score", "calculadora-ambiental", "tradutor-esg", "escopo-3", "custos", "comissoes"].includes(page) && <DashboardPanel data={verticalData} dashboard={dashboard} tasks={db?.tasks || []} onNavigate={navigate} />}
 
-      {isHome && (
-        <>
+      {isOverview && (
+        <details className="tdg-tool-catalog">
+          <summary>
+            <span><strong>Todas as ferramentas</strong><small>Encontre uma função específica sem aumentar o menu principal.</small></span>
+            <span>Explorar</span>
+          </summary>
+          <div className="tdg-tool-catalog-content">
+            <div className="tdg-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar função, área, produto ou especialista" aria-label="Buscar funções da vertical To Do Green" /></div>
           <section className="tdg-panel">
             <div className="tdg-section-head"><div><span className="tdg-kicker">PRODUTOS LOGÍSTICOS</span><h2>Calculadoras reais disponíveis</h2></div><button className="tdg-action" type="button" onClick={openPricing}>Abrir precificação</button></div>
             <div className="tdg-product-strip">{LOGISTICS_PRODUCTS.map((product) => <ProductCard product={product} active={false} onSelect={openPricing} key={product.id} />)}</div>
           </section>
 
           {modulesByArea.map((area) => <AreaSection area={area} grupos={area.grupos} key={area.id} />)}
-        </>
+          </div>
+        </details>
       )}
+      </div>
 
       {/* A Semente fica por último no DOM de propósito: quem navega por teclado
           ou leitor de tela percorre a tela inteira antes de chegar nela, em vez
