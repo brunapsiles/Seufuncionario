@@ -28,6 +28,7 @@ import {
   X,
 } from "lucide-react";
 import Modal from "../../../components/Modal.jsx";
+import RelationshipMap from "../RelationshipMap.jsx";
 import {
   TODO_GREEN_ACCOUNT_STAGES,
   TODO_GREEN_ACCOUNT_TEMPERATURES,
@@ -673,6 +674,7 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
         <section className="tdg-crm-detail-section tdg-crm-account-strategy"><header><strong>White Space</strong><small>Produtos sem oportunidade vinculada</small></header><div className="tdg-crm-chip-list">{selectedStrategy.whiteSpace.length ? selectedStrategy.whiteSpace.map((item) => <span key={item}>{item}</span>) : <span>Portfólio principal já coberto</span>}</div></section>
         <section className="tdg-crm-detail-section tdg-crm-account-strategy"><header><strong>Account Plan</strong><small>Plano 30/60/90</small></header><dl className="tdg-crm-account-data"><div><dt>Objetivo</dt><dd>{selectedStrategy.accountPlan.objective || "Não definido"}</dd></div><div><dt>Barreiras</dt><dd>{selectedStrategy.accountPlan.barriers || "Não mapeadas"}</dd></div><div><dt>Concorrentes</dt><dd>{selectedStrategy.accountPlan.competitors || "Não mapeados"}</dd></div><div><dt>30 dias</dt><dd>{selectedStrategy.accountPlan.plan30 || "Não definido"}</dd></div><div><dt>60 dias</dt><dd>{selectedStrategy.accountPlan.plan60 || "Não definido"}</dd></div><div><dt>90 dias</dt><dd>{selectedStrategy.accountPlan.plan90 || "Não definido"}</dd></div></dl></section>
         <ExternalIntelligence report={selectedReport} researching={researching} error={researchError} onResearch={researchSelected} />
+        <RelationshipMap contatos={selectedAccount.contacts} conta={selected.name} />
         <section className="tdg-crm-detail-section"><header><strong>Relacionamento</strong><small>{selectedAccount.contacts.length} contato(s)</small></header><div className="tdg-crm-roles">{selectedAccount.contacts.map((contact) => <ContactCard key={contact.id} contact={contact} clientName={selected.name} />)}{selectedAccount.contacts.length === 0 && <p>Nenhum decisor ou patrocinador mapeado.</p>}</div></section>
       </main><aside>
         <section className="tdg-crm-alerts"><strong><AlertTriangle size={15} />Health comercial</strong>{selectedStrategy.commercialHealth.map((alert) => <span key={alert}>{alert}</span>)}</section>
