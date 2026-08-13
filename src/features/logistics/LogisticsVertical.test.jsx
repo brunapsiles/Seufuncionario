@@ -157,8 +157,9 @@ describe("LogisticsVertical", () => {
 
   it("renders the private hub for authorized To Do Green users", async () => {
     await renderarAutorizada();
-    expect(screen.getAllByText("Painel de Gerenciamento").length).toBeGreaterThan(0);
-    expect(screen.getByText("COMERCIAL & ESTRATÉGIA")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "O que precisa da sua atenção" })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Navegação To Do Green" }).querySelectorAll("button")).toHaveLength(8);
+    expect(screen.getByText("Gestão e configurações")).toBeTruthy();
     expect(screen.queryByText(/Painel operacional/i)).toBeNull();
     expect(screen.queryByText(/ativas.*planejado/i)).toBeNull();
     expect(screen.queryByText(/Recursos organizados por área/i)).toBeNull();
@@ -169,7 +170,7 @@ describe("LogisticsVertical", () => {
 
   it("does not show fake production indicators when no real data exists", async () => {
     await renderarAutorizada();
-    expect(screen.getByText("Nenhum indicador real carregado ainda.")).toBeTruthy();
+    expect(screen.getByText("Comece conectando o primeiro dado real")).toBeTruthy();
     expect(screen.queryByText("Cliente enterprise")).toBeNull();
     expect(screen.queryByText("Operação e-commerce")).toBeNull();
     expect(screen.queryByText(/demonstração ativo/i)).toBeNull();
