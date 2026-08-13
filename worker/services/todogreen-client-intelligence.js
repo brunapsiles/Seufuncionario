@@ -593,7 +593,7 @@ export function classifyCompanyResearch({ company, segment, searches, knownConta
       actionable: false,
     }))
     .slice(0, 12);
-  const knownContactResults = unique((byKind.known_contacts || []).filter((item) => /linkedin\.com\/in\//i.test(item.url) && mentionsCompany(item, company) && !isVacancy(item)), 12);
+  const knownContactResults = unique((byKind.known_contacts || []).filter((item) => /linkedin\.com\/in\//i.test(item.url) && mentionsCompany(item, company) && !isVacancy(item)), 100);
   const knownContactCandidates = knownContactResults.map((item, index) => knownContactCandidate(item, index, company, knownContacts, checkedAt)).filter(Boolean);
   const seenCandidateProfiles = new Set();
   const contactCandidates = [...procurementCandidates, ...knownContactCandidates].filter((item) => {
@@ -759,14 +759,16 @@ export function buildCompanyResearchPlans({ company, segment, year, focus = "com
   if (focus === "contacts") {
     const contactsToFind = (Array.isArray(knownContacts) ? knownContacts : [])
       .filter((item) => clean(item?.name, 160).split(/\s+/).length >= 2 && !safeUrl(item?.linkedinUrl))
-      .slice(0, 25)
+      .slice(0, 100)
       .map((item) => clean(item.name, 160));
-    for (const contactName of contactsToFind) {
+    for (let index = 0; index < contactsToFind.length; index += 5) {
+      const contactNames = contactsToFind.slice(index, index + 5);
+      const namesQuery = contactNames.map((contactName) => `"${contactName}"`).join(" OR ");
       plans.push({
         kinds: ["known_contacts"],
         contactScope: "brazil-known-contact",
-        knownContactNames: [contactName],
-        query: `site:linkedin.com/in "${contactName}" ${contactTarget} (Brasil OR Brazil OR "São Paulo") -jobs -vaga`,
+        knownContactNames: contactNames,
+        query: `site:linkedin.com/in (${namesQuery}) ${contactTarget} (Brasil OR Brazil OR "São Paulo") -jobs -vaga`,
       });
     }
   }

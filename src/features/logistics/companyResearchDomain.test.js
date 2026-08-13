@@ -14,15 +14,22 @@ describe("inteligência externa comercial", () => {
       company: "Adidas", segment: "Varejo", year: 2026, focus: "contacts",
       knownContacts: [{ name: "Thiago Souza" }, { name: "Fernanda Vasco" }],
     });
-    expect(focused).toHaveLength(11);
+    expect(focused).toHaveLength(10);
     expect(focused.filter((item) => item.kinds.includes("known_contacts"))).toEqual([
       expect.objectContaining({
-        knownContactNames: ["Thiago Souza"],
+        knownContactNames: ["Thiago Souza", "Fernanda Vasco"],
         query: expect.stringMatching(/"Thiago Souza".*"Adidas"/),
       }),
-      expect.objectContaining({ knownContactNames: ["Fernanda Vasco"] }),
     ]);
     expect(focused.filter((item) => item.kinds.includes("contacts")).every((item) => /linkedin\.com\/in|LinkedIn/.test(item.query))).toBe(true);
+  });
+
+  it("pesquisa todos os contatos existentes em lotes sem o limite antigo", () => {
+    const knownContacts = Array.from({ length: 27 }, (_, index) => ({ name: `Contato Número ${index + 1}` }));
+    const plans = buildCompanyResearchPlans({ company: "Empresa Brasil", segment: "Indústria", year: 2026, focus: "contacts", knownContacts });
+    const contactPlans = plans.filter((item) => item.kinds.includes("known_contacts"));
+    expect(contactPlans).toHaveLength(6);
+    expect(contactPlans.flatMap((item) => item.knownContactNames)).toHaveLength(27);
   });
   it("não confunde vaga com RFQ e só confirma oportunidade aberta de transporte", () => {
     const report = classifyCompanyResearch({ company: "Empresa X", segment: "Varejo", searches: [
