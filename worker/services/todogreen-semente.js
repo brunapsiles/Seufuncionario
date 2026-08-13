@@ -24,6 +24,7 @@ import { recorteDeCarteira, podeNaVertical, TENANT_ID } from "./todogreen-access
 import { runWithFallback } from "./ai.js";
 import { webSearchConfiguration } from "./web-search.js";
 import { pesquisarEmpresa } from "./todogreen-client-intelligence.js";
+import { pessoasAtribuiveis, resolverResponsavel } from "../../src/features/logistics/taskAssignmentDomain.js";
 
 const response = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -54,7 +55,7 @@ export const FERRAMENTAS = Object.freeze({
 });
 
 export const ACOES = Object.freeze({
-  criar_tarefa: "cria uma tarefa na Central de Trabalho. Campos: titulo (obrigatório), descricao, cliente, prazo (AAAA-MM-DD), prioridade (baixa|media|alta|critica).",
+  criar_tarefa: "cria uma tarefa na Central de Trabalho. Campos: titulo (obrigatório), descricao, cliente, responsavel (nome ou e-mail; se omitido vai para o vendedor da conta), prazo (AAAA-MM-DD), prioridade (baixa|media|alta|critica).",
   definir_proxima_acao: "grava a próxima ação de uma conta. Campos: cliente (obrigatório), acao (obrigatório), prazo (AAAA-MM-DD).",
   pesquisar_empresa: "dispara a pesquisa externa de uma conta na web. Campo: cliente (obrigatório).",
 });
@@ -382,6 +383,26 @@ export async function executarAcao(env, { access, user, email, acao, linhas }) {
     ).bind(access.ownerId).first();
     if (!quadro)
       return { erro: "Não há quadro ativo na Central de Trabalho para receber a tarefa.", status: 409 };
+
+    // A tarefa vai para o dono da conta na carteira, não para quem pediu.
+    // Antes ela era sempre atribuída a quem falou com a Semente — e o
+    // vendedor da conta descobria a tarefa dele no nome de outra pessoa.
+    const contaDaTarefa = escolherCliente(linhas, acao?.cliente).linha;
+    const vendedores = contaDaTarefa ? await responsaveis(env, contaDaTarefa.id) : [];
+    // O e-mail mora em `users`; `memberships` só guarda o vínculo. E o status
+    // ativo é 'ativo' em português — foi assim que a coluna nasceu.
+    const membros = await env.DB.prepare(
+      `SELECT u.id AS userId, u.name, u.email
+         FROM memberships m JOIN users u ON u.id = m.member_id
+        WHERE m.owner_id=? AND m.status='ativo' LIMIT 200`,
+    ).bind(access.ownerId).all().then((r) => r.results || []);
+    const atribuicao = resolverResponsavel({
+      informado: acao?.responsavel,
+      vendedoresDaConta: vendedores,
+      criador: { userId: user.id, email },
+      pessoas: pessoasAtribuiveis({ membros, vendedores }),
+    });
+
     const id = crypto.randomUUID();
     await env.DB.prepare(
       `INSERT INTO todogreen_work_items
@@ -393,11 +414,19 @@ export async function executarAcao(env, { access, user, email, acao, linhas }) {
     ).bind(
       id, TENANT_ID, access.ownerId, quadro.id, titulo,
       clean(acao?.descricao, 4000), clean(acao?.prioridade, 40) || "media",
-      user.id, email || null, clean(acao?.cliente, 200) || null,
+      atribuicao.userId || null, atribuicao.label || null, clean(acao?.cliente, 200) || null,
       /^\d{4}-\d{2}-\d{2}$/.test(clean(acao?.prazo, 20)) ? clean(acao?.prazo, 20) : null,
       user.id, user.id, agora, agora,
     ).run();
-    return { ok: true, tipo, resumo: `Tarefa "${titulo}" criada na Central de Trabalho.`, id };
+    return {
+      ok: true,
+      tipo,
+      // Quem confirmou precisa saber para quem a tarefa foi, e por quê —
+      // senão a atribuição volta a ser invisível.
+      resumo: `Tarefa "${titulo}" criada${atribuicao.label ? ` para ${atribuicao.label}` : " sem responsável"}. ${atribuicao.motivo}`,
+      id,
+      atribuicao,
+    };
   }
 
   if (tipo === "definir_proxima_acao") {
