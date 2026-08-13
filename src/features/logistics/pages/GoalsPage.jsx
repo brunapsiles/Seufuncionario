@@ -9,7 +9,9 @@ import {
   ListChecks,
   Plus,
   Save,
+  Settings2,
   Target,
+  Trash2,
   UserRound,
   X,
 } from "lucide-react";
@@ -96,11 +98,88 @@ function GoalCard({ goal, selected, onSelect }) {
   );
 }
 
+const emptyMetric = () => ({
+  label: "", metricKey: "", description: "", category: "commercial", unit: "number",
+  direction: "increase", sourceKey: "manual", formula: "", active: true, criteria: [],
+});
+
+function MetricsManager({ authHeaders, onClose, onChanged }) {
+  const [payload, setPayload] = useState({ metrics: [], units: [], sources: [], categories: [], directions: [] });
+  const [form, setForm] = useState(emptyMetric);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const customMetrics = (payload.metrics || []).filter((item) => item.custom);
+  const nativeMetrics = (payload.metrics || []).filter((item) => !item.custom);
+  const load = async () => {
+    try { setPayload(await api("/metrics", authHeaders)); } catch (reason) { setError(reason.message); }
+  };
+  useEffect(() => { load(); }, []);
+  const edit = (metric) => setForm({
+    ...emptyMetric(), ...metric, metricKey: metric.id, sourceKey: metric.source,
+    databaseId: metric.databaseId, revision: metric.revision,
+  });
+  const update = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  const updateCriterion = (index, key, value) => setForm((current) => ({
+    ...current,
+    criteria: current.criteria.map((criterion, position) => position === index ? { ...criterion, [key]: value } : criterion),
+  }));
+  const addCriterion = () => setForm((current) => ({
+    ...current,
+    criteria: [...current.criteria, { id: crypto.randomUUID(), label: "", operator: "gte", value: 0, max: null, status: "on_track" }],
+  }));
+  const save = async (event) => {
+    event.preventDefault(); setSaving(true); setError("");
+    try {
+      await api(form.databaseId ? `/metrics/${form.databaseId}` : "/metrics", authHeaders, {
+        method: form.databaseId ? "PATCH" : "POST",
+        body: JSON.stringify(form),
+      });
+      setForm(emptyMetric());
+      await load();
+      onChanged?.();
+    } catch (reason) { setError(reason.message); } finally { setSaving(false); }
+  };
+  const archive = async (metric) => {
+    try {
+      await api(`/metrics/${metric.databaseId}`, authHeaders, { method: "DELETE" });
+      if (form.databaseId === metric.databaseId) setForm(emptyMetric());
+      await load(); onChanged?.();
+    } catch (reason) { setError(reason.message); }
+  };
+  return (
+    <div className="tdg-goal-drawer tdg-metric-drawer" role="dialog" aria-modal="true" aria-labelledby="metric-manager-title">
+      <div className="tdg-metric-manager">
+        <header><div><span>ADMINISTRAÇÃO</span><h3 id="metric-manager-title">Métricas e critérios</h3><p>Crie indicadores, escolha a fonte e defina faixas de leitura sem alterar código.</p></div><button type="button" onClick={onClose} aria-label="Fechar"><X size={19} /></button></header>
+        {error && <div className="tdg-page-error">{error}</div>}
+        <div className="tdg-metric-manager-grid">
+          <aside>
+            <button type="button" className="tdg-action" onClick={() => setForm(emptyMetric())}><Plus size={15} />Novo indicador</button>
+            <strong>Personalizados</strong>
+            {customMetrics.length === 0 && <small>Nenhum indicador personalizado.</small>}
+            {customMetrics.map((metric) => <div className="tdg-metric-list-item" key={metric.databaseId}><button type="button" onClick={() => edit(metric)}><strong>{metric.label}</strong><small>{metric.category} · {metric.sourceLabel}</small></button><button type="button" aria-label={`Arquivar ${metric.label}`} onClick={() => archive(metric)}><Trash2 size={14} /></button></div>)}
+            <details><summary>Indicadores nativos ({nativeMetrics.length})</summary>{nativeMetrics.map((metric) => <small key={metric.id}>{metric.label}</small>)}</details>
+          </aside>
+          <form onSubmit={save}>
+            <div className="tdg-form-row"><label><span>Nome da métrica</span><input required minLength={2} value={form.label} onChange={(e) => update("label", e.target.value)} /></label><label><span>Identificador</span><input value={form.metricKey} disabled={Boolean(form.databaseId)} onChange={(e) => update("metricKey", e.target.value)} placeholder="gerado pelo nome" /></label></div>
+            <label><span>Descrição</span><textarea value={form.description} onChange={(e) => update("description", e.target.value)} /></label>
+            <div className="tdg-form-row"><label><span>Categoria</span><select value={form.category} onChange={(e) => update("category", e.target.value)}>{(payload.categories || []).map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select></label><label><span>Unidade</span><select value={form.unit} onChange={(e) => update("unit", e.target.value)}>{(payload.units || []).map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select></label></div>
+            <div className="tdg-form-row"><label><span>Direção</span><select value={form.direction} onChange={(e) => update("direction", e.target.value)}>{(payload.directions || []).map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select></label><label><span>Fonte de cálculo</span><select value={form.sourceKey} onChange={(e) => update("sourceKey", e.target.value)}>{(payload.sources || []).map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select></label></div>
+            <label><span>Fórmula / regra documentada</span><input value={form.formula} onChange={(e) => update("formula", e.target.value)} placeholder="Ex.: soma das receitas confirmadas no período" /></label>
+            <fieldset className="tdg-metric-criteria"><legend>Critérios de leitura</legend><p>O administrador pode adicionar quantos critérios forem necessários para interpretar o resultado.</p>{form.criteria.map((criterion, index) => <div className="tdg-metric-criterion" key={criterion.id || index}><input aria-label={`Nome do critério ${index + 1}`} value={criterion.label} onChange={(e) => updateCriterion(index, "label", e.target.value)} placeholder="Ex.: Meta atingida" /><select aria-label={`Operador do critério ${index + 1}`} value={criterion.operator} onChange={(e) => updateCriterion(index, "operator", e.target.value)}><option value="gte">Maior ou igual</option><option value="lte">Menor ou igual</option><option value="between">Entre</option></select><input aria-label={`Valor do critério ${index + 1}`} type="number" step="any" value={criterion.value} onChange={(e) => updateCriterion(index, "value", Number(e.target.value))} />{criterion.operator === "between" && <input aria-label={`Máximo do critério ${index + 1}`} type="number" step="any" value={criterion.max ?? ""} onChange={(e) => updateCriterion(index, "max", Number(e.target.value))} />}<select aria-label={`Situação do critério ${index + 1}`} value={criterion.status} onChange={(e) => updateCriterion(index, "status", e.target.value)}><option value="achieved">Atingida</option><option value="on_track">No ritmo</option><option value="attention">Atenção</option><option value="critical">Crítica</option></select><button type="button" aria-label={`Remover critério ${index + 1}`} onClick={() => setForm((current) => ({ ...current, criteria: current.criteria.filter((_, position) => position !== index) }))}><Trash2 size={14} /></button></div>)}<button type="button" onClick={addCriterion}><Plus size={14} />Adicionar critério</button></fieldset>
+            <label className="tdg-goal-checkbox"><input type="checkbox" checked={form.active !== false} onChange={(e) => update("active", e.target.checked)} /><span>Disponível para novas metas</span></label>
+            <footer><button type="button" onClick={onClose}>Fechar</button><button className="tdg-action" disabled={saving}><Save size={16} />{saving ? "Salvando..." : form.databaseId ? "Atualizar métrica" : "Criar métrica"}</button></footer>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GoalForm({ catalogs, goals, onClose, onSaved, authHeaders }) {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const metric = goalMetric(form.metricKey);
+  const metric = goalMetric(form.metricKey, catalogs.metrics || []);
   const change = (key, value) => setForm((current) => ({ ...current, [key]: value }));
   const save = async (event) => {
     event.preventDefault();
@@ -136,7 +215,7 @@ function GoalForm({ catalogs, goals, onClose, onSaved, authHeaders }) {
         <label className="full"><span>Descrição</span><textarea value={form.description} onChange={(e) => change("description", e.target.value)} placeholder="Explique o resultado esperado e o que está dentro do escopo." /></label>
         <div className="tdg-form-row">
           <label><span>Categoria</span><select value={form.category} onChange={(e) => change("category", e.target.value)}>{(catalogs.categories || []).map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select></label>
-          <label><span>Indicador</span><select value={form.metricKey} onChange={(e) => { const selected = goalMetric(e.target.value); setForm((current) => ({ ...current, metricKey: selected.id, category: selected.category, direction: selected.direction || "increase", measurementMode: selected.source === "manual" ? "manual" : "automatic" })); }}>{(catalogs.metrics || []).map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select></label>
+          <label><span>Indicador</span><select value={form.metricKey} onChange={(e) => { const selected = goalMetric(e.target.value, catalogs.metrics || []); setForm((current) => ({ ...current, metricKey: selected.id, category: selected.category, direction: selected.direction || "increase", measurementMode: selected.source === "manual" ? "manual" : "automatic" })); }}>{(catalogs.metrics || []).map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select></label>
         </div>
         <div className="tdg-form-row">
           <label><span>Escopo</span><select value={form.scopeType} onChange={(e) => change("scopeType", e.target.value)}>{(catalogs.scopes || []).map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select></label>
@@ -247,6 +326,7 @@ function GoalDetail({ detail, onReload, authHeaders, setToast }) {
         <div><span>Projeção</span><strong>{percent(goal.progress.projectedPercent)}</strong><small>mantido o ritmo atual</small></div>
       </div>
       <dl className="tdg-goal-meta"><div><dt><CalendarDays size={15} />Período</dt><dd>{goal.periodStart} a {goal.periodEnd}</dd></div><div><dt><UserRound size={15} />Responsável</dt><dd>{goal.ownerLabel || goal.ownerEmail || "Não definido"}</dd></div><div><dt><Target size={15} />Escopo</dt><dd>{goal.scopeLabel || goal.scopeType}</dd></div><div><dt>Versão</dt><dd>{goal.version}, revisão {goal.revision}</dd></div></dl>
+      {(goal.thresholds?.criteria || []).length > 0 && <section className="tdg-goal-criteria-readout"><h4>Critérios configurados</h4>{goal.thresholds.criteria.map((criterion) => <span className={goal.progress.matchedCriterion?.id === criterion.id ? "matched" : ""} key={criterion.id}><strong>{criterion.label}</strong><small>{criterion.operator === "gte" ? "≥" : criterion.operator === "lte" ? "≤" : "entre"} {criterion.value}{criterion.operator === "between" ? ` e ${criterion.max}` : ""} · {GOAL_HEALTH_LABELS[criterion.status]}</small></span>)}</section>}
       <div className="tdg-goal-detail-columns">
         <section><h4>Plano de ação</h4>{actions.length === 0 && <p className="tdg-goal-empty">Nenhuma ação aberta.</p>}{actions.map((action) => <div className="tdg-goal-action" key={action.id}><span className={`status-${action.status}`} /><div><strong>{action.title}</strong><small>{action.ownerLabel || "Sem responsável"} · {action.dueAt || "sem prazo"}</small></div><select aria-label={`Situação de ${action.title}`} value={action.status} onChange={(e) => updateAction(action, e.target.value)}><option value="open">Aberta</option><option value="in_progress">Em andamento</option><option value="blocked">Bloqueada</option><option value="done">Concluída</option><option value="cancelled">Cancelada</option></select></div>)}{access.canCheckin && <ActionForm goalId={goal.id} authHeaders={authHeaders} onSaved={onReload} />}</section>
         <section><h4>Check-ins</h4>{checkins.length === 0 && <p className="tdg-goal-empty">Nenhum acompanhamento registrado.</p>}{checkins.map((item) => <div className="tdg-goal-checkin" key={item.id}><strong>{item.createdByLabel || "Responsável"}</strong><small>{new Date(item.createdAt).toLocaleString("pt-BR")}</small><p>{item.narrative}</p>{item.blockers && <span><AlertTriangle size={14} />{item.blockers}</span>}</div>)}</section>
@@ -267,6 +347,7 @@ export default function GoalsPage({ authHeaders, setToast }) {
   const [status, setStatus] = useState("loading");
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
+  const [managingMetrics, setManagingMetrics] = useState(false);
   const [filters, setFilters] = useState({ category: "", status: "" });
 
   const load = async () => {
@@ -289,7 +370,7 @@ export default function GoalsPage({ authHeaders, setToast }) {
 
   return (
     <section className="tdg-panel tdg-page tdg-goals-page">
-      <header className="tdg-page-title"><div><span>COMERCIAL, FINANCEIRO, OPERAÇÃO E ESG</span><h2>Metas e acompanhamento</h2><p>Defina o resultado, a fonte de medição, o responsável e o plano necessário para chegar lá.</p></div>{access.canCreate && <button type="button" className="tdg-action" onClick={() => setCreating(true)}><Plus size={17} />Nova meta</button>}</header>
+      <header className="tdg-page-title"><div><span>COMERCIAL, FINANCEIRO, OPERAÇÃO E ESG</span><h2>Metas e acompanhamento</h2><p>Defina o resultado, a fonte de medição, o responsável e o plano necessário para chegar lá.</p></div><div className="tdg-goal-admin-actions">{access.canManageMetrics && <button type="button" onClick={() => setManagingMetrics(true)}><Settings2 size={17} />Métricas e critérios</button>}{access.canCreate && <button type="button" className="tdg-action" onClick={() => setCreating(true)}><Plus size={17} />Nova meta</button>}</div></header>
       {error && <div className="tdg-page-error">{error}</div>}
       <Summary summary={summary} />
       <div className="tdg-goal-filters"><label><span>Categoria</span><select value={filters.category} onChange={(e) => setFilters({ ...filters, category: e.target.value })}><option value="">Todas</option>{catalogs.categories.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select></label><label><span>Situação</span><select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}><option value="">Todas</option><option value="draft">Rascunho</option><option value="active">Ativa</option><option value="blocked">Bloqueada</option><option value="achieved">Atingida</option><option value="closed">Encerrada</option></select></label></div>
@@ -298,6 +379,7 @@ export default function GoalsPage({ authHeaders, setToast }) {
         <div className="tdg-goal-workspace">{selected && !detail && <p>Carregando detalhes...</p>}{detail && detail.goal?.id === selectedId ? <GoalDetail detail={detail} authHeaders={authHeaders} setToast={setToast} onReload={reloadAll} /> : !selected && <div className="tdg-goal-placeholder"><Target size={34} /><strong>Escolha uma meta</strong><p>O detalhamento mostra ritmo, projeção, check-ins, ações e histórico.</p></div>}</div>
       </div>
       {creating && <GoalForm catalogs={catalogs} goals={goals} authHeaders={authHeaders} onClose={() => setCreating(false)} onSaved={(goal) => { setCreating(false); setSelectedId(goal.id); setToast?.("Meta criada."); load(); }} />}
+      {managingMetrics && <MetricsManager authHeaders={authHeaders} onClose={() => setManagingMetrics(false)} onChanged={load} />}
     </section>
   );
 }

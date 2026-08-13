@@ -50,6 +50,35 @@ export const GOAL_CADENCES = Object.freeze([
   { id: "custom", label: "Personalizada" },
 ]);
 
+export const GOAL_UNITS = Object.freeze([
+  { id: "number", label: "Número" },
+  { id: "currency", label: "Real (R$)" },
+  { id: "percent", label: "Percentual" },
+  { id: "distance", label: "Quilômetros" },
+  { id: "mass", label: "CO₂e" },
+  { id: "score", label: "Pontuação" },
+  { id: "days", label: "Dias" },
+  { id: "hours", label: "Horas" },
+]);
+
+export const GOAL_SOURCES = Object.freeze([
+  { id: "manual", label: "Check-in manual", mode: "manual" },
+  { id: "financial.revenue", label: "Receitas confirmadas", mode: "automatic" },
+  { id: "financial.cost", label: "Custos confirmados", mode: "automatic" },
+  { id: "financial.margin", label: "Margem financeira", mode: "automatic" },
+  { id: "opportunities.pipeline", label: "Valor do pipeline", mode: "automatic" },
+  { id: "opportunities.count", label: "Quantidade de oportunidades", mode: "automatic" },
+  { id: "proposals.count", label: "Quantidade de propostas", mode: "automatic" },
+  { id: "clients.count", label: "Novos clientes", mode: "automatic" },
+  { id: "operations.trips", label: "Viagens realizadas", mode: "automatic" },
+  { id: "operations.deliveries", label: "Entregas realizadas", mode: "automatic" },
+  { id: "operations.packages", label: "Pacotes transportados", mode: "automatic" },
+  { id: "operations.distance", label: "Distância percorrida", mode: "automatic" },
+  { id: "operations.occupancy", label: "Ocupação média", mode: "automatic" },
+  { id: "esg.co2_avoided", label: "CO₂ evitado", mode: "automatic" },
+  { id: "esg.green_score", label: "Green Score", mode: "automatic" },
+]);
+
 export const GOAL_METRICS = Object.freeze([
   { id: "manual", label: "Indicador manual", category: "management", unit: "number", source: "manual" },
   { id: "revenue", label: "Receita realizada", category: "financial", unit: "currency", source: "financial.revenue" },
@@ -68,7 +97,20 @@ export const GOAL_METRICS = Object.freeze([
   { id: "green_score", label: "Green Score", category: "esg", unit: "score", source: "esg.green_score" },
 ]);
 
-export const goalMetric = (metricKey) => GOAL_METRICS.find((item) => item.id === metricKey) || GOAL_METRICS[0];
+export const goalMetric = (metricKey, metrics = GOAL_METRICS) => metrics.find((item) => item.id === metricKey) || GOAL_METRICS[0];
+
+export const normalizeGoalCriteria = (criteria = []) => (Array.isArray(criteria) ? criteria : [])
+  .slice(0, 12)
+  .map((item, index) => ({
+    id: String(item?.id || `criterion-${index + 1}`).slice(0, 80),
+    label: String(item?.label || "").trim().slice(0, 120),
+    description: String(item?.description || "").trim().slice(0, 300),
+    operator: ["gte", "lte", "between"].includes(item?.operator) ? item.operator : "gte",
+    value: finite(item?.value),
+    max: item?.operator === "between" ? finite(item?.max) : null,
+    status: ["achieved", "on_track", "attention", "critical"].includes(item?.status) ? item.status : "on_track",
+  }))
+  .filter((item) => item.label);
 
 export const formatGoalValue = (value, unit = "number") => {
   const number = finite(value);
@@ -139,6 +181,14 @@ export const goalProgress = (goal, now = new Date()) => {
     healthStatus = paceRatio >= 0.9 ? "on_track" : paceRatio >= 0.7 ? "attention" : "critical";
   }
   const projectedAttainment = elapsedRatio > 0 ? attainmentRatio / elapsedRatio : attainmentRatio;
+  const criteria = normalizeGoalCriteria(goal.thresholds?.criteria || []);
+  const current = finite(goal.currentValue ?? goal.current_value);
+  const matchedCriterion = criteria.find((criterion) => {
+    if (criterion.operator === "lte") return current <= criterion.value;
+    if (criterion.operator === "between") return current >= criterion.value && current <= finite(criterion.max);
+    return current >= criterion.value;
+  }) || null;
+  if (matchedCriterion && !["blocked", "closed"].includes(healthStatus)) healthStatus = matchedCriterion.status;
   return {
     attainmentRatio,
     attainmentPercent: Math.max(0, attainmentRatio * 100),
@@ -155,6 +205,7 @@ export const goalProgress = (goal, now = new Date()) => {
       rangeMax: goal.rangeMax ?? goal.range_max,
     }),
     healthStatus,
+    matchedCriterion,
     totalDays,
     elapsedDays,
   };
@@ -171,13 +222,13 @@ export const GOAL_HEALTH_LABELS = Object.freeze({
   closed: "Encerrada",
 });
 
-export const validateGoalInput = (input = {}) => {
+export const validateGoalInput = (input = {}, metrics = GOAL_METRICS) => {
   const errors = [];
   const title = String(input.title || "").trim();
   const category = String(input.category || "");
   const scopeType = String(input.scopeType || input.scope_type || "");
   const metricKey = String(input.metricKey || input.metric_key || "manual");
-  const direction = String(input.direction || goalMetric(metricKey).direction || "increase");
+  const direction = String(input.direction || goalMetric(metricKey, metrics).direction || "increase");
   const periodStart = isoDay(input.periodStart || input.period_start);
   const periodEnd = isoDay(input.periodEnd || input.period_end);
   const rawTarget = input.targetValue ?? input.target_value;
@@ -185,7 +236,7 @@ export const validateGoalInput = (input = {}) => {
   if (title.length < 3) errors.push("Informe um título com pelo menos 3 caracteres.");
   if (!GOAL_CATEGORIES.some((item) => item.id === category)) errors.push("Selecione uma categoria válida.");
   if (!GOAL_SCOPES.some((item) => item.id === scopeType)) errors.push("Selecione um escopo válido.");
-  if (!GOAL_METRICS.some((item) => item.id === metricKey)) errors.push("Selecione um indicador válido.");
+  if (!metrics.some((item) => item.id === metricKey)) errors.push("Selecione um indicador válido.");
   if (!GOAL_DIRECTIONS.some((item) => item.id === direction)) errors.push("Selecione uma direção válida.");
   if (!periodStart || !periodEnd || periodEnd < periodStart) errors.push("Informe um período válido.");
   if (!Number.isFinite(targetValue)) errors.push("Informe o valor alvo.");

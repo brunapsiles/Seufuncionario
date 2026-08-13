@@ -529,6 +529,31 @@
 .tdg-goal-drawer textarea { min-height: 80px; resize: vertical; }
 .tdg-goal-drawer footer { border-top: 1px solid #e1e8e4; margin-top: 18px; padding-top: 14px; }
 .tdg-goal-drawer footer > button:not(.tdg-action) { border: 0; background: transparent; color: #5e6f69; }
+.tdg-goal-admin-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.tdg-goal-admin-actions button { align-items: center; background: #fff; border: 1px solid #bfd1c8; border-radius: 10px; color: #285b4b; display: inline-flex; font-size: 11px; font-weight: 800; gap: 6px; padding: 9px 11px; }
+.tdg-metric-drawer { justify-content: center; padding: 3vh 3vw; }
+.tdg-metric-manager { background: #fff; border-radius: 18px; box-shadow: 0 20px 55px rgba(20,45,36,.24); height: 94vh; max-width: 1180px; overflow: auto; padding: 22px; width: 100%; }
+.tdg-metric-manager > header p { color: #6a7c75; font-size: 11px; margin: 5px 0 0; }
+.tdg-metric-manager-grid { display: grid; gap: 20px; grid-template-columns: 270px minmax(0,1fr); }
+.tdg-metric-manager-grid > aside { align-content: start; border-right: 1px solid #e1e9e5; display: grid; gap: 9px; padding-right: 14px; }
+.tdg-metric-manager-grid > aside > strong { color: #52665e; font-size: 10px; letter-spacing: .07em; margin-top: 8px; text-transform: uppercase; }
+.tdg-metric-manager-grid > aside details small { display: block; padding: 4px 0; }
+.tdg-metric-list-item { align-items: stretch; border: 1px solid #d9e4df; border-radius: 10px; display: flex; overflow: hidden; }
+.tdg-metric-list-item > button { background: #fff; border: 0; color: #294b40; padding: 8px; text-align: left; }
+.tdg-metric-list-item > button:first-child { display: grid; flex: 1; gap: 2px; }
+.tdg-metric-list-item small { color: #75867f; font-size: 9px; }
+.tdg-metric-manager-grid > form { min-width: 0; }
+.tdg-metric-criteria { border: 1px solid #d8e4de; border-radius: 12px; display: grid; gap: 8px; margin: 12px 0; padding: 12px; }
+.tdg-metric-criteria legend { color: #285b4b; font-size: 11px; font-weight: 800; padding: 0 6px; }
+.tdg-metric-criteria > p { color: #6a7c75; font-size: 10px; margin: 0; }
+.tdg-metric-criteria > button { align-items: center; background: #edf6f1; border: 0; border-radius: 8px; color: #285b4b; display: inline-flex; gap: 5px; justify-self: start; padding: 7px 9px; }
+.tdg-metric-criterion { align-items: center; display: grid; gap: 6px; grid-template-columns: minmax(140px,1.4fr) minmax(110px,.8fr) 95px 95px minmax(90px,.8fr) 32px; }
+.tdg-metric-criterion > button { background: #fff; border: 1px solid #e0c9c4; border-radius: 8px; color: #9a392b; padding: 7px; }
+.tdg-goal-criteria-readout { background: #f3f8f5; border: 1px solid #d8e6df; border-radius: 12px; display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; padding: 12px; }
+.tdg-goal-criteria-readout h4 { flex-basis: 100%; margin: 0; }
+.tdg-goal-criteria-readout span { background: #fff; border: 1px solid #d7e3dd; border-radius: 9px; display: grid; gap: 2px; padding: 7px 9px; }
+.tdg-goal-criteria-readout span.matched { border-color: #3e9677; box-shadow: inset 3px 0 #3e9677; }
+.tdg-goal-criteria-readout small { color: #6a7c75; font-size: 9px; }
 .tdg-goal-checkbox { display: flex !important; align-items: center; gap: 8px; }
 .tdg-goal-checkbox input { width: auto; }
 .tdg-goal-checkbox span { margin: 0 !important; }
@@ -679,6 +704,7 @@
 .tdg-crm-account-data dd small { color: #2f7861; display: block; font-size: 9px; font-weight: 700; margin-top: 3px; }
 .tdg-crm-relationship-map { display: grid; gap: 8px; grid-template-columns: repeat(2,minmax(0,1fr)); }
 .tdg-crm-relationship-map > div { border-left: 3px solid #9dc8b3; display: grid; gap: 3px; padding: 6px 9px; }
+.tdg-crm-relationship-map > div.risk { background: #fff4f0; border-left-color: #b94f3c; }
 .tdg-crm-chip-list { display: flex; flex-wrap: wrap; gap: 7px; }
 .tdg-crm-chip-list span { background: #e8f3ed; border-radius: 999px; color: #285b4b; font-size: 10.5px; font-weight: 750; padding: 6px 9px; }
 .tdg-crm-task-form { display: grid; gap: 12px; }
@@ -719,3 +745,4 @@
 @media (max-width: 1100px) { .tdg-crm-card-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } .tdg-crm-detail-grid { grid-template-columns: minmax(0,1fr); } }
 @media (max-width: 800px) { .tdg-crm-detail-hero { display: grid; } .tdg-crm-detail-actions { justify-content: flex-start; } .tdg-crm-detail-metrics,.tdg-crm-portal-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); } .tdg-crm-portal-content { grid-template-columns: minmax(0,1fr); } }
 @media (max-width: 560px) { .tdg-crm-filter-grid,.tdg-crm-card-grid,.tdg-crm-detail-metrics,.tdg-crm-portal-metrics,.tdg-crm-detail-section .tdg-crm-roles,.tdg-crm-task-form > div,.tdg-crm-strategy-grid,.tdg-crm-relationship-map { grid-template-columns: 1fr; } .tdg-crm-portal-preview > header { display: grid; } }
+@media (max-width: 900px) { .tdg-metric-manager-grid { grid-template-columns: 1fr; } .tdg-metric-manager-grid > aside { border-bottom: 1px solid #e1e9e5; border-right: 0; padding: 0 0 12px; } .tdg-metric-criterion { grid-template-columns: 1fr 1fr; } }

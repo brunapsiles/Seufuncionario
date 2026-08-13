@@ -71,6 +71,7 @@ const sha256 = async (value) => {
 
 const clean = (value, max = 500) => String(value ?? "").trim().slice(0, max);
 const normalizeText = (value) => clean(value, 500).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const accountCode = (id) => `TDG-${clean(id, 60).replace(/[^a-z0-9]/gi, "").slice(0, 12).toUpperCase()}`;
 
 const finite = (value, min = 0, max = 100) => {
   const number = Number(value);
@@ -1355,7 +1356,7 @@ export async function handleTodoGreenClients(request, env, access, user) {
 
   if (request.method === "GET") {
     const linhas = await env.DB.prepare(
-      `SELECT c.id, c.name, c.legal_name, c.document, c.segment, c.status, c.portal_enabled,
+      `SELECT c.id, c.account_code, c.name, c.legal_name, c.document, c.segment, c.status, c.portal_enabled,
               c.notes, c.fields_json, c.revision, c.created_at, c.updated_at,
               (SELECT COUNT(*) FROM todogreen_client_users v
                 WHERE v.client_id = c.id AND v.status = 'active') AS pessoas
@@ -1386,6 +1387,7 @@ export async function handleTodoGreenClients(request, env, access, user) {
     return response({
       clientes: (linhas.results || []).map((cliente) => ({
         id: cliente.id,
+        accountCode: cliente.account_code || accountCode(cliente.id),
         name: cliente.name,
         legalName: cliente.legal_name,
         document: cliente.document,
@@ -1481,9 +1483,9 @@ export async function handleTodoGreenClients(request, env, access, user) {
       for (const item of lote) {
         statements.push(env.DB.prepare(
           `INSERT INTO todogreen_clients
-             (id, tenant_id, workspace_owner_id, name, legal_name, document, segment,
+             (id, account_code, tenant_id, workspace_owner_id, name, legal_name, document, segment,
               status, portal_enabled, notes, fields_json, created_by, updated_by, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
              name = excluded.name,
              legal_name = excluded.legal_name,
@@ -1499,7 +1501,7 @@ export async function handleTodoGreenClients(request, env, access, user) {
            WHERE todogreen_clients.tenant_id = excluded.tenant_id
              AND todogreen_clients.workspace_owner_id = excluded.workspace_owner_id`,
         ).bind(
-          item.id, TENANT_ID, access.ownerId || user.id, item.nome, item.razaoSocial,
+          item.id, accountCode(item.id), TENANT_ID, access.ownerId || user.id, item.nome, item.razaoSocial,
           item.documento, item.segmento, item.status, item.observacoes,
           JSON.stringify(item.crm), user.id, user.id, agora, agora,
         ));
@@ -1538,9 +1540,9 @@ export async function handleTodoGreenClients(request, env, access, user) {
       return response({ error: "Este identificador já pertence a outro espaço." }, 409);
     await env.DB.prepare(
       `INSERT INTO todogreen_clients
-         (id, tenant_id, workspace_owner_id, name, legal_name, document, segment,
+         (id, account_code, tenant_id, workspace_owner_id, name, legal_name, document, segment,
           status, portal_enabled, notes, fields_json, created_by, updated_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          name = excluded.name,
          legal_name = excluded.legal_name,
@@ -1558,6 +1560,7 @@ export async function handleTodoGreenClients(request, env, access, user) {
     )
       .bind(
         id,
+        accountCode(id),
         TENANT_ID,
         access.ownerId || user.id,
         nome,

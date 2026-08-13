@@ -35,6 +35,9 @@ export const TODO_GREEN_RELATIONSHIP_ROLES = [
   "Operações",
   "Sustentabilidade",
   "Bloqueador",
+  "Quem decide",
+  "Quem apoia",
+  "Quem atravessa",
 ];
 
 export const TODO_GREEN_ACCOUNT_STAGES = [
@@ -415,11 +418,12 @@ export const buildAccountIntelligence = ({ account = {}, contacts = [], opportun
 
   const currentRelationshipContacts = contacts.filter((contact) => contact.active !== false && contact.employmentStatus !== "former" &&
     (!contact.employmentCheckedAt || contact.currentEmploymentVerified === true));
-  const buyers = contactGroup(currentRelationshipContacts, ["compras", "decisor econômico"], ["procurement", "compras", "suprimentos", "sourcing"]);
-  const influencers = contactGroup(currentRelationshipContacts, ["influenciador", "patrocinador", "decisor técnico"]);
-  const blockers = contactGroup(currentRelationshipContacts, ["bloqueador"]);
+  const buyers = contactGroup(currentRelationshipContacts, ["compras", "decisor econômico", "quem decide"], ["procurement", "compras", "suprimentos", "sourcing"]);
+  const influencers = contactGroup(currentRelationshipContacts, ["influenciador", "patrocinador", "decisor técnico", "quem apoia"]);
+  const blockers = contactGroup(currentRelationshipContacts, ["bloqueador", "quem atravessa"]);
   const users = contactGroup(currentRelationshipContacts, ["usuário", "operações"], ["operações", "logística", "transportes"]);
   const uniqueNames = (items) => [...new Set(items.map((item) => item.name).filter(Boolean))];
+  if (blockers.length) health.push(`${blockers.length} contato(s) mapeado(s) como bloqueio político da conta`);
   const plan = account.accountPlan || {};
   const whiteSpace = Object.entries(PRODUCT_LABELS)
     .filter(([id]) => !usedProducts.has(id))
