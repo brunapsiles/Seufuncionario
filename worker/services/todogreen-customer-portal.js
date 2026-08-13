@@ -129,9 +129,26 @@ const intelligenceSources = (items, limit = 10) => Array.isArray(items)
   ? items.slice(0, limit).map(intelligenceSource).filter((item) => item.title && item.url)
   : [];
 
+const enrichmentEvidenceFields = (input) => {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return {};
+  return Object.fromEntries(["legalName", "segment", "headquarters", "website", "linkedinUrl"]
+    .map((key) => {
+      const item = input[key];
+      if (!item || typeof item !== "object" || !safeExternalUrl(item.sourceUrl)) return null;
+      return [key, {
+        value: clean(item.value, 300),
+        sourceUrl: safeExternalUrl(item.sourceUrl),
+        sourceTitle: clean(item.sourceTitle, 240),
+        checkedAt: clean(item.checkedAt, 40),
+        confidence: clean(item.confidence, 40),
+        method: clean(item.method, 80),
+      }];
+    }).filter(Boolean));
+};
+
 const intelligenceFields = (input) => {
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;
-  const version = finite(input.version, 1, 10);
+  const version = finite(input.version, 1, 100);
   if (version < 5) return null;
   return {
     version,
@@ -201,13 +218,20 @@ const intelligenceFields = (input) => {
           country: clean(contact?.country, 80),
           specialty: clean(contact?.specialty, 120),
           validation: clean(contact?.validation, 500),
+          confidence: clean(contact?.confidence, 40),
+          evidence: contact?.evidence && typeof contact.evidence === "object" ? {
+            sourceUrl: safeExternalUrl(contact.evidence.sourceUrl),
+            checkedAt: clean(contact.evidence.checkedAt, 40),
+            method: clean(contact.evidence.method, 80),
+            confidence: clean(contact.evidence.confidence, 40),
+          } : null,
           verifiedBrazil: contact?.verifiedBrazil === true,
           currentEmploymentVerified: contact?.currentEmploymentVerified === true,
           employmentCheckedAt: clean(contact?.employmentCheckedAt, 40),
           employmentStatus: ["current", "former", "unknown"].includes(clean(contact?.employmentStatus, 20))
             ? clean(contact?.employmentStatus, 20)
             : "unknown",
-          researchVersion: finite(contact?.researchVersion, 0, 10),
+          researchVersion: finite(contact?.researchVersion, 0, 100),
         })).filter((contact) => contact.name && contact.linkedinUrl)
       : [],
     formerContacts: Array.isArray(input.formerContacts)
@@ -340,6 +364,13 @@ const crmFields = (value = {}, companyName = "") => {
         source: clean(contact?.source, 80),
         sourceUrl: safeExternalUrl(contact?.sourceUrl),
         validation: clean(contact?.validation, 500),
+        confidence: clean(contact?.confidence, 40),
+        evidence: contact?.evidence && typeof contact.evidence === "object" ? {
+          sourceUrl: safeExternalUrl(contact.evidence.sourceUrl),
+          checkedAt: clean(contact.evidence.checkedAt, 40),
+          method: clean(contact.evidence.method, 80),
+          confidence: clean(contact.evidence.confidence, 40),
+        } : null,
         country: clean(contact?.country, 80),
         specialty: clean(contact?.specialty, 120),
         verifiedBrazil: contact?.verifiedBrazil === true,
@@ -348,7 +379,7 @@ const crmFields = (value = {}, companyName = "") => {
         employmentStatus: ["current", "former", "unknown"].includes(clean(contact?.employmentStatus, 20))
           ? clean(contact?.employmentStatus, 20)
           : "unknown",
-        researchVersion: finite(contact?.researchVersion, 0, 10),
+        researchVersion: finite(contact?.researchVersion, 0, 100),
         active: contact?.active !== false,
       })).filter((contact) => contact.name))
     : [];
@@ -372,6 +403,8 @@ const crmFields = (value = {}, companyName = "") => {
       : [],
     lastInteractionAt: clean(input.lastInteractionAt, 40),
     contractRenewalDate: clean(input.contractRenewalDate, 40),
+    ourAnnualRevenue: finite(input.ourAnnualRevenue, 0, 1000000000000),
+    customerAnnualLogisticsSpend: finite(input.customerAnnualLogisticsSpend, 0, 1000000000000),
     potentialAnnual: portfolioPotential.potentialAnnual,
     productPotential: portfolioPotential.productPotential,
     potentialManual: portfolioPotential.potentialManual,
@@ -397,6 +430,7 @@ const crmFields = (value = {}, companyName = "") => {
       input.intelligence && typeof input.intelligence === "object" && !Array.isArray(input.intelligence)
         ? intelligenceFields(input.intelligence)
         : null,
+    enrichmentEvidence: enrichmentEvidenceFields(input.enrichmentEvidence),
   };
 };
 

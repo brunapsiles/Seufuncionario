@@ -38,6 +38,7 @@ import {
   buildAccountIntelligence,
   calculatePortfolioPotential,
   crmAccountSummary,
+  normalizeRelationshipRole,
 } from "../todoGreenCrmDomain.js";
 import { assessAccount, gmailComposeUrl, outlookComposeUrl, whatsappUrl } from "../accountIntelligenceDomain.js";
 import { parseCrmImportFile } from "../crmSpreadsheetImportDomain.js";
@@ -108,8 +109,9 @@ function ResearchLinks({ title, items = [], empty }) {
     : <small>{empty}</small>}</div>;
 }
 
-function AccountSource({ url }) {
-  return url ? <a href={url} target="_blank" rel="noreferrer">Ver fonte <ExternalLink size={11} /></a> : null;
+function AccountSource({ url, evidence }) {
+  const sourceUrl = evidence?.sourceUrl || url;
+  return sourceUrl ? <small><a href={sourceUrl} target="_blank" rel="noreferrer">Ver fonte <ExternalLink size={11} /></a>{evidence?.checkedAt ? ` · ${formatCheckedAt(evidence.checkedAt)}` : ""}{evidence?.confidence ? ` · confiança ${evidence.confidence}` : ""}</small> : null;
 }
 
 function ExternalIntelligence({ report, researching, error, onResearch }) {
@@ -215,7 +217,7 @@ function ContactCard({ contact, clientName }) {
   const details = [...new Set([contact.title, contact.department, contact.specialty, contact.country, contact.relationshipRole].filter(Boolean))];
   const whatsapp = whatsappUrl(contact.phone);
   return <article>
-    <div><b>{contact.name}</b><small>{details.join(" · ") || "Função ainda não informada"}</small>{contact.source && <em className="tdg-crm-contact-source">{contact.source}{contact.currentEmploymentVerified ? ` · vínculo atual indicado em ${formatCheckedAt(contact.employmentCheckedAt)}` : " · vínculo não confirmado"}</em>}{contact.validation && <em className="tdg-crm-contact-source">{contact.validation}</em>}</div>
+    <div><b>{contact.name}</b><small>{details.join(" · ") || "Função ainda não informada"}</small>{contact.source && <em className="tdg-crm-contact-source">{contact.source}{contact.currentEmploymentVerified ? ` · vínculo atual indicado em ${formatCheckedAt(contact.employmentCheckedAt)}` : " · vínculo não confirmado"}{contact.confidence ? ` · confiança ${contact.confidence}` : ""}</em>}{contact.validation && <em className="tdg-crm-contact-source">{contact.validation}</em>}{(contact.evidence?.sourceUrl || contact.sourceUrl) && <a className="tdg-crm-contact-source" href={contact.evidence?.sourceUrl || contact.sourceUrl} target="_blank" rel="noreferrer">Fonte verificada <ExternalLink size={11} /></a>}</div>
     <div className="tdg-crm-contact-channels">{contact.email && <a href={`mailto:${contact.email}`}><Mail size={13} />{contact.email}</a>}{contact.phone && <a href={`tel:${contact.phone}`}>{contact.phone}</a>}</div>
     <div className="tdg-crm-contact-actions">{whatsapp && <a href={whatsapp} target="_blank" rel="noreferrer"><MessageCircle size={14} />WhatsApp</a>}{contact.email && <><a href={gmailComposeUrl(contact.email, `To Do Green · ${clientName}`)} target="_blank" rel="noreferrer">Gmail</a><a href={outlookComposeUrl(contact.email, `To Do Green · ${clientName}`)} target="_blank" rel="noreferrer">Outlook</a></>}{contact.linkedinUrl && <a href={contact.linkedinUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} />LinkedIn</a>}</div>
   </article>;
@@ -245,6 +247,8 @@ const accountForm = (client) => {
     nextActionAt: crm.nextActionAt || "",
     lastInteractionAt: crm.lastInteractionAt || "",
     contractRenewalDate: crm.contractRenewalDate || "",
+    ourAnnualRevenue: crm.ourAnnualRevenue || 0,
+    customerAnnualLogisticsSpend: crm.customerAnnualLogisticsSpend || 0,
     potentialAnnual: crm.potentialManual?.annual ?? crm.potentialAnnual ?? 0,
     middleMilePotential: crm.potentialManual?.products?.middleMile ?? crm.productPotential?.middleMile ?? 0,
     lastMilePotential: crm.potentialManual?.products?.lastMile ?? crm.productPotential?.lastMile ?? 0,
@@ -311,7 +315,9 @@ function AccountEditor({ client, onClose, onSave }) {
       active: status !== "former",
       verifiedBrazil: status === "current" ? true : item.verifiedBrazil,
       country: status === "current" ? item.country || "Brasil" : item.country,
-      researchVersion: status === "current" ? 10 : item.researchVersion,
+      researchVersion: status === "current" ? 12 : item.researchVersion,
+      confidence: status === "current" ? "alta" : item.confidence,
+      evidence: status === "current" ? { sourceUrl: item.sourceUrl || item.linkedinUrl || "", checkedAt: new Date().toISOString(), method: "Confirmação manual", confidence: "alta" } : item.evidence,
       validation: status === "current"
         ? "Vínculo atual confirmado manualmente no CRM."
         : status === "former"
@@ -369,6 +375,8 @@ function AccountEditor({ client, onClose, onSave }) {
           nextActionAt: form.nextActionAt,
           lastInteractionAt: form.lastInteractionAt,
           contractRenewalDate: form.contractRenewalDate,
+          ourAnnualRevenue: Number(form.ourAnnualRevenue || 0),
+          customerAnnualLogisticsSpend: Number(form.customerAnnualLogisticsSpend || 0),
           potentialAnnual: calculatedPotential.annual || 0,
           productPotential: {
             middleMile: calculatedPotential.middleMile || 0,
@@ -420,6 +428,8 @@ function AccountEditor({ client, onClose, onSave }) {
             <label><span>Prazo da próxima ação</span><input type="date" value={form.nextActionAt} onChange={field("nextActionAt")} /></label>
             <label><span>Última interação</span><input type="date" value={form.lastInteractionAt} onChange={field("lastInteractionAt")} /></label>
             <label><span>Renovação do contrato</span><input type="date" value={form.contractRenewalDate} onChange={field("contractRenewalDate")} /></label>
+            <label><span>Receita anual To Do Green (R$)</span><input type="number" min="0" value={form.ourAnnualRevenue} onChange={field("ourAnnualRevenue")} /></label>
+            <label><span>Gasto logístico anual do cliente (R$)</span><input type="number" min="0" value={form.customerAnnualLogisticsSpend} onChange={field("customerAnnualLogisticsSpend")} /></label>
           </div>
           <label><span>Contexto e observações</span><textarea value={form.notes} onChange={field("notes")} /></label>
         </fieldset>
@@ -490,7 +500,7 @@ function AccountEditor({ client, onClose, onSave }) {
               <div className="tdg-crm-contact-editor-grid">
                 <label><span>Nome</span><input value={item.name || ""} onChange={(event) => updateContact(item.id, "name", event.target.value)} /></label>
                 <label><span>Cargo</span><input value={item.title || ""} onChange={(event) => updateContact(item.id, "title", event.target.value)} /></label>
-                <label><span>Papel</span><select value={item.relationshipRole || "Influenciador"} onChange={(event) => updateContact(item.id, "relationshipRole", event.target.value)}>{TODO_GREEN_RELATIONSHIP_ROLES.map((role) => <option key={role}>{role}</option>)}</select></label>
+                <label><span>Papel</span><select value={normalizeRelationshipRole(item.relationshipRole) || "Influenciador"} onChange={(event) => updateContact(item.id, "relationshipRole", event.target.value)}>{TODO_GREEN_RELATIONSHIP_ROLES.map((role) => <option key={role}>{role}</option>)}</select></label>
                 <label><span>E-mail</span><input type="email" value={item.email || ""} onChange={(event) => updateContact(item.id, "email", event.target.value)} /></label>
                 <label><span>Telefone</span><input value={item.phone || ""} onChange={(event) => updateContact(item.id, "phone", event.target.value)} /></label>
                 <label><span>LinkedIn</span><input type="url" placeholder="https://linkedin.com/in/..." value={item.linkedinUrl || ""} onChange={(event) => updateContact(item.id, "linkedinUrl", event.target.value)} /></label>
@@ -781,7 +791,8 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
       <div className="tdg-crm-detail-grid"><main>
         <section className="tdg-crm-intelligence"><header><strong>IA · mapa da empresa</strong><small>Leitura dos dados do CRM</small></header><div><span>Relevância ESG</span><strong>{selectedIntelligence.esgRelevance}</strong><small>{selectedIntelligence.esgReason}</small></div><div><span>Próxima tarefa sugerida</span><strong>{selectedIntelligence.nextTask}</strong></div><div><span>Procurement de Logística e Transportes</span><strong>{procurementSummary}</strong></div></section>
         <section className="tdg-crm-detail-section tdg-crm-account-strategy"><header><strong>Potencial de carteira</strong><small>Cálculo anual auditável</small></header><div className="tdg-crm-strategy-grid"><span><small>Potencial anual</small><strong>{selectedStrategy.potential.annual ? BRL.format(selectedStrategy.potential.annual) : "Não calculado"}</strong></span><span><small>Middle mile</small><strong>{selectedStrategy.potential.middleMile ? BRL.format(selectedStrategy.potential.middleMile) : "Não calculado"}</strong></span><span><small>Last mile</small><strong>{selectedStrategy.potential.lastMile ? BRL.format(selectedStrategy.potential.lastMile) : "Não calculado"}</strong></span><span><small>Dedicada</small><strong>{selectedStrategy.potential.dedicated ? BRL.format(selectedStrategy.potential.dedicated) : "Não calculado"}</strong></span></div><p><strong>Base:</strong> {selectedStrategy.potential.method}.</p><p><strong>Expansão geográfica:</strong> {selectedStrategy.potential.geographicExpansion || "Ainda não mapeada."}</p>{selectedStrategy.potential.missing && <small>Abra Editar e informe as quantidades mensais e os tickets médios. Sem essa base, o CRM não inventa receita.</small>}</section>
-        <section className="tdg-crm-detail-section tdg-crm-account-strategy"><header><strong>Relationship Map</strong><small>Papéis associados às pessoas</small></header><div className="tdg-crm-relationship-map">{[["Quem decide", selectedStrategy.relationshipMap.buyers], ["Quem apoia", selectedStrategy.relationshipMap.influencers], ["Quem atravessa", selectedStrategy.relationshipMap.blockers], ["Usuário operacional", selectedStrategy.relationshipMap.users]].map(([label, names]) => <div className={label === "Quem atravessa" && names.length ? "risk" : ""} key={label}><span>{label}</span><strong>{names.length ? names.join(", ") : "Não mapeado"}</strong></div>)}</div></section>
+        <section className="tdg-crm-detail-section tdg-crm-account-strategy"><header><strong>Share of Wallet</strong><small>Participação no gasto logístico do cliente</small></header>{selectedStrategy.shareOfWallet.percentage === null ? <p>Gasto logístico anual do cliente não informado. O CRM não estima participação sem essa base.</p> : <div className="tdg-crm-strategy-grid"><span><small>Participação To Do Green</small><strong>{selectedStrategy.shareOfWallet.percentage.toLocaleString("pt-BR")}%</strong></span><span><small>Receita anual To Do Green</small><strong>{BRL.format(selectedStrategy.shareOfWallet.ourRevenue)}</strong></span><span><small>Gasto logístico do cliente</small><strong>{BRL.format(selectedStrategy.shareOfWallet.customerSpend)}</strong></span><span><small>Espaço estimado</small><strong>{BRL.format(selectedStrategy.shareOfWallet.remaining)}</strong></span></div>}</section>
+        <section className="tdg-crm-detail-section tdg-crm-account-strategy"><header><strong>Relationship Map</strong><small>Papéis associados às pessoas</small></header><div className="tdg-crm-relationship-map">{[["Quem decide", selectedStrategy.relationshipMap.buyers], ["Quem apoia", selectedStrategy.relationshipMap.influencers], ["Quem bloqueia", selectedStrategy.relationshipMap.blockers], ["Usuário operacional", selectedStrategy.relationshipMap.users]].map(([label, names]) => <div className={label === "Quem bloqueia" && names.length ? "risk" : ""} key={label}><span>{label}</span><strong>{names.length ? names.join(", ") : "Não mapeado"}</strong></div>)}</div></section>
         <section className="tdg-crm-detail-section tdg-crm-account-strategy"><header><strong>White Space</strong><small>Produtos sem oportunidade vinculada</small></header><div className="tdg-crm-chip-list">{selectedStrategy.whiteSpace.length ? selectedStrategy.whiteSpace.map((item) => <span key={item}>{item}</span>) : <span>Portfólio principal já coberto</span>}</div></section>
         <section className="tdg-crm-detail-section tdg-crm-account-strategy"><header><strong>Account Plan</strong><small>Cadastro + recomendações derivadas do CRM</small></header><dl className="tdg-crm-account-data"><div><dt>Objetivo</dt><dd>{selectedStrategy.accountPlan.objective || "Não definido"}{selectedStrategy.accountPlan.generated?.objective && <small>Sugerido pelos dados atuais</small>}</dd></div><div><dt>Barreiras</dt><dd>{selectedStrategy.accountPlan.barriers || "Não mapeadas"}{selectedStrategy.accountPlan.generated?.barriers && <small>Derivadas dos alertas reais</small>}</dd></div><div><dt>Concorrentes</dt><dd>{selectedStrategy.accountPlan.competitors || "Não mapeados"}</dd></div><div><dt>30 dias</dt><dd>{selectedStrategy.accountPlan.plan30 || "Não definido"}{selectedStrategy.accountPlan.generated?.plan30 && <small>Próxima melhor ação calculada</small>}</dd></div><div><dt>60 dias</dt><dd>{selectedStrategy.accountPlan.plan60 || "Não definido"}{selectedStrategy.accountPlan.generated?.plan60 && <small>Sugerido pelos dados atuais</small>}</dd></div><div><dt>90 dias</dt><dd>{selectedStrategy.accountPlan.plan90 || "Não definido"}{selectedStrategy.accountPlan.generated?.plan90 && <small>Sugerido pelos dados atuais</small>}</dd></div></dl></section>
         <ExternalIntelligence report={selectedReport} researching={researching} error={researchError} onResearch={researchSelected} />
@@ -794,10 +805,11 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
         <section className="tdg-crm-detail-section"><header><strong>Responsáveis</strong></header><div className="tdg-client-sellers">{(selected.vendedores || []).length === 0 && <small>Sem responsável comercial</small>}{(selected.vendedores || []).map((seller) => <span key={seller.email}>{seller.email}{access.podeGerenciar && <button type="button" aria-label={`Remover ${seller.email}`} onClick={() => unassign(selected.id, seller.email)}><X size={12} /></button>}</span>)}</div>{access.podeGerenciar && <form className="tdg-crm-assign" onSubmit={assign}><input required type="email" aria-label="E-mail do vendedor" placeholder="vendedor@empresa.com" value={assignment.clientId === selected.id ? assignment.sellerEmail : ""} onChange={(e) => setAssignment({ clientId: selected.id, sellerEmail: e.target.value, note: "" })} /><button type="submit"><UserPlus size={14} />Atribuir</button></form>}</section>
         <section className="tdg-crm-detail-section"><header><strong>Dados da conta</strong><small>Cadastro e preenchimento público</small></header><dl className="tdg-crm-account-data">
           <div><dt>ID da conta</dt><dd><code>{selected.accountCode || selected.id}</code><small>Código estável para busca, metas, importações e integrações</small></dd></div>
-          <div><dt>Razão social</dt><dd>{selected.legalName || "Não informada"}<AccountSource url={selectedReport?.suggestedLegalName?.source?.url} /></dd></div>
-          <div><dt>Sede</dt><dd>{selected.crm?.headquarters || "Não informada"}<AccountSource url={selectedReport?.suggestedHeadquarters?.source?.url} /></dd></div>
-          <div><dt>Site</dt><dd>{selected.crm?.website ? <a href={selected.crm.website} target="_blank" rel="noreferrer">{sourceHost(selected.crm.website)} <ExternalLink size={12} /></a> : "Não informado"}</dd></div>
-          <div><dt>LinkedIn</dt><dd>{selected.crm?.linkedinUrl ? <a href={selected.crm.linkedinUrl} target="_blank" rel="noreferrer">Abrir página da empresa <ExternalLink size={12} /></a> : "Não informado"}</dd></div>
+          <div><dt>Razão social</dt><dd>{selected.legalName || "Não informada"}<AccountSource evidence={selected.crm?.enrichmentEvidence?.legalName} url={selectedReport?.suggestedLegalName?.source?.url} /></dd></div>
+          <div><dt>Segmento</dt><dd>{selected.segment || "Não informado"}<AccountSource evidence={selected.crm?.enrichmentEvidence?.segment} url={selectedReport?.suggestedSegment?.source?.url} /></dd></div>
+          <div><dt>Sede</dt><dd>{selected.crm?.headquarters || "Não informada"}<AccountSource evidence={selected.crm?.enrichmentEvidence?.headquarters} url={selectedReport?.suggestedHeadquarters?.source?.url} /></dd></div>
+          <div><dt>Site</dt><dd>{selected.crm?.website ? <a href={selected.crm.website} target="_blank" rel="noreferrer">{sourceHost(selected.crm.website)} <ExternalLink size={12} /></a> : "Não informado"}<AccountSource evidence={selected.crm?.enrichmentEvidence?.website} /></dd></div>
+          <div><dt>LinkedIn</dt><dd>{selected.crm?.linkedinUrl ? <a href={selected.crm.linkedinUrl} target="_blank" rel="noreferrer">Abrir página da empresa <ExternalLink size={12} /></a> : "Não informado"}<AccountSource evidence={selected.crm?.enrichmentEvidence?.linkedinUrl} /></dd></div>
           <div><dt>Perfil público</dt><dd>{selected.crm?.qualification?.publicProfile || "Ainda não identificado"}<AccountSource url={selected.crm?.qualification?.publicProfileSource} /></dd></div>
           <div><dt>Sinais logísticos</dt><dd>{selected.crm?.qualification?.logisticsSignals || "Ainda não identificados"}<AccountSource url={selected.crm?.qualification?.logisticsSignalsSource} /></dd></div>
           <div><dt>Compromissos ESG</dt><dd>{selected.crm?.qualification?.esgCommitments || "Ainda não identificados"}<AccountSource url={selected.crm?.qualification?.esgCommitmentsSource} /></dd></div>

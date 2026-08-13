@@ -37,8 +37,19 @@ export const TODO_GREEN_RELATIONSHIP_ROLES = [
   "Bloqueador",
   "Quem decide",
   "Quem apoia",
-  "Quem atravessa",
+  "Quem bloqueia",
+  "Usuário operacional",
 ];
+
+export const normalizeRelationshipRole = (value) =>
+  asText(value) === "Quem atravessa" ? "Quem bloqueia" : asText(value);
+
+export const isCurrentRelationshipContact = (contact = {}) => {
+  if (!contact.name || contact.active === false || contact.employmentStatus === "former") return false;
+  const fromWeb = lowerRole(contact.source).startsWith("pesquisa web");
+  if (!fromWeb) return true;
+  return contact.currentEmploymentVerified === true && contact.verifiedBrazil === true;
+};
 
 export const TODO_GREEN_ACCOUNT_STAGES = [
   "Mapeamento",
@@ -99,6 +110,8 @@ export const createTodoGreenAccount = (input = {}) => ({
   nextActionAt: asText(input.nextActionAt),
   lastInteractionAt: asText(input.lastInteractionAt),
   contractRenewalDate: asText(input.contractRenewalDate),
+  ourAnnualRevenue: asNumber(input.ourAnnualRevenue),
+  customerAnnualLogisticsSpend: asNumber(input.customerAnnualLogisticsSpend),
   potentialAnnual: asNumber(input.potentialAnnual),
   productPotential: input.productPotential && typeof input.productPotential === "object" ? input.productPotential : {},
   potentialManual: input.potentialManual && typeof input.potentialManual === "object" ? input.potentialManual : {},
@@ -120,8 +133,8 @@ export const createTodoGreenContact = (input = {}) => ({
   email: asText(input.email).toLowerCase(),
   phone: asText(input.phone),
   linkedin: asText(input.linkedin),
-  relationshipRole: TODO_GREEN_RELATIONSHIP_ROLES.includes(input.relationshipRole)
-    ? input.relationshipRole
+  relationshipRole: TODO_GREEN_RELATIONSHIP_ROLES.includes(normalizeRelationshipRole(input.relationshipRole))
+    ? normalizeRelationshipRole(input.relationshipRole)
     : "Influenciador",
   influence: clamp(asNumber(input.influence)),
   supportLevel: clamp(asNumber(input.supportLevel), -100, 100),
@@ -157,22 +170,20 @@ export const calculateAccountScore = (account = {}) => {
 };
 
 export const calculateRelationshipCoverage = (contacts = []) => {
-  const active = contacts.filter((contact) => contact.active !== false);
-  const roles = new Set(active.map((contact) => contact.relationshipRole));
-  const criticalRoles = [
-    "Decisor econômico",
-    "Decisor técnico",
-    "Patrocinador",
-    "Compras",
-    "Operações",
-    "Sustentabilidade",
-  ];
-  const covered = criticalRoles.filter((role) => roles.has(role));
-  const blockers = active.filter((contact) => contact.relationshipRole === "Bloqueador").length;
+  const active = contacts.filter(isCurrentRelationshipContact);
+  const roles = new Set(active.map((contact) => lowerRole(contact.relationshipRole)));
+  const criticalRoles = ["Quem decide", "Quem apoia", "Usuário operacional"];
+  const aliases = {
+    "Quem decide": ["quem decide", "decisor econômico", "decisor técnico", "compras"],
+    "Quem apoia": ["quem apoia", "patrocinador", "influenciador"],
+    "Usuário operacional": ["usuário operacional", "usuário", "operações"],
+  };
+  const covered = criticalRoles.filter((role) => aliases[role].some((alias) => roles.has(alias)));
+  const blockers = active.filter((contact) => ["bloqueador", "quem bloqueia", "quem atravessa"].includes(lowerRole(contact.relationshipRole))).length;
   return {
     score: Math.round((covered.length / criticalRoles.length) * 100),
     covered,
-    missing: criticalRoles.filter((role) => !roles.has(role)),
+    missing: criticalRoles.filter((role) => !covered.includes(role)),
     blockers,
     totalContacts: active.length,
   };
@@ -262,9 +273,9 @@ export const recommendNextCommercialAction = ({ account = {}, contacts = [], opp
   const health = accountHealth(account, contacts, opportunities);
   if (!account.nextAction) return "Definir próxima ação, responsável e data.";
   if (health.overdue) return `Executar ação atrasada: ${account.nextAction}`;
-  if (health.relationshipCoverage.missing.includes("Decisor econômico"))
-    return "Mapear e acessar o decisor econômico.";
-  if (health.relationshipCoverage.missing.includes("Patrocinador"))
+  if (health.relationshipCoverage.missing.includes("Quem decide"))
+    return "Mapear e acessar quem decide a contratação logística.";
+  if (health.relationshipCoverage.missing.includes("Quem apoia"))
     return "Construir patrocinador interno para sustentar a oportunidade.";
   if (asNumber(account.dataQuality) < 60)
     return "Concluir diagnóstico logístico antes de precificar.";
@@ -416,11 +427,10 @@ export const buildAccountIntelligence = ({ account = {}, contacts = [], opportun
     health.push(`${withoutNextStep.length} oportunidade(s) sem próxima ação`);
   if (!health.length) health.push("Nenhum alerta comercial objetivo com os dados atuais");
 
-  const currentRelationshipContacts = contacts.filter((contact) => contact.active !== false && contact.employmentStatus !== "former" &&
-    (!contact.employmentCheckedAt || contact.currentEmploymentVerified === true));
+  const currentRelationshipContacts = contacts.filter(isCurrentRelationshipContact);
   const buyers = contactGroup(currentRelationshipContacts, ["compras", "decisor econômico", "quem decide"], ["procurement", "compras", "suprimentos", "sourcing"]);
   const influencers = contactGroup(currentRelationshipContacts, ["influenciador", "patrocinador", "decisor técnico", "quem apoia"]);
-  const blockers = contactGroup(currentRelationshipContacts, ["bloqueador", "quem atravessa"]);
+  const blockers = contactGroup(currentRelationshipContacts, ["bloqueador", "quem bloqueia", "quem atravessa"]);
   const users = contactGroup(currentRelationshipContacts, ["usuário", "operações"], ["operações", "logística", "transportes"]);
   const uniqueNames = (items) => [...new Set(items.map((item) => item.name).filter(Boolean))];
   if (blockers.length) health.push(`${blockers.length} contato(s) mapeado(s) como bloqueio político da conta`);
@@ -429,6 +439,21 @@ export const buildAccountIntelligence = ({ account = {}, contacts = [], opportun
     .filter(([id]) => !usedProducts.has(id))
     .map(([, label]) => label);
   const nextBestAction = recommendNextCommercialAction({ account, contacts, opportunities });
+  const customerSpend = asNumber(account.customerAnnualLogisticsSpend);
+  const ourRevenue = asNumber(account.ourAnnualRevenue);
+  const shareOfWallet = customerSpend > 0 ? {
+    percentage: Math.round(Math.min(100, (ourRevenue / customerSpend) * 100) * 10) / 10,
+    remaining: Math.max(0, customerSpend - ourRevenue),
+    ourRevenue,
+    customerSpend,
+    status: "calculated",
+  } : {
+    percentage: null,
+    remaining: null,
+    ourRevenue,
+    customerSpend: null,
+    status: "missing-customer-spend",
+  };
   const objective = asText(plan.objective) || (whiteSpace.length
     ? `Qualificar expansão da conta em ${whiteSpace[0]}.`
     : "Consolidar a operação atual e proteger a renovação da conta.");
@@ -447,6 +472,7 @@ export const buildAccountIntelligence = ({ account = {}, contacts = [], opportun
 
   return {
     potential,
+    shareOfWallet,
     relationshipMap: {
       buyers: uniqueNames(buyers),
       influencers: uniqueNames(influencers),

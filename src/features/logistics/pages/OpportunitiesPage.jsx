@@ -20,6 +20,7 @@ import {
   normalizarOportunidade,
   resumirPipeline,
 } from "../opportunityIntelligenceDomain.js";
+import { montarForecast, pendenciasDoForecast } from "../forecastDomain.js";
 import {
   OBJETIVOS_ELETRIFICACAO,
   avaliarJornadaEletrificacao,
@@ -566,6 +567,16 @@ export default function OpportunitiesPage({
     [opportunities],
   );
   const resumo = useMemo(() => resumirPipeline(registros), [registros]);
+  const forecast = useMemo(() => {
+    const agora = new Date();
+    const inicio = new Date(Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth(), 1));
+    const meses = Array.from({ length: 6 }, (_, index) => {
+      const data = new Date(Date.UTC(inicio.getUTCFullYear(), inicio.getUTCMonth() + index, 1));
+      const mes = data.toISOString().slice(0, 7);
+      return { mes, ...montarForecast({ oportunidades: registros, periodo: mes }) };
+    });
+    return { meses, pendencias: pendenciasDoForecast({ oportunidades: registros }) };
+  }, [registros]);
   const analises = useMemo(
     () => new Map(registros.map((registro) => [registro.id, analisarOportunidade(registro)])),
     [registros],
@@ -659,6 +670,11 @@ export default function OpportunitiesPage({
           )}
         </article>
       </div>
+
+      <section className="tdg-pipeline-strip" aria-label="Forecast comercial mensal">
+        {forecast.meses.map((item) => <article key={item.mes}><strong>{new Date(`${item.mes}-01T00:00:00Z`).toLocaleDateString("pt-BR", { month: "short", year: "numeric", timeZone: "UTC" })}</strong><span>{item.quantidade} negócio(s)</span><small>{BRL.format(item.commit)} commit · {BRL.format(item.ponderado)} ponderado · {BRL.format(item.bestCase)} best case</small></article>)}
+        {forecast.pendencias.find((item) => item.id === "sem-data") && <article className="attention"><strong>Sem previsão</strong><span>{forecast.pendencias.find((item) => item.id === "sem-data").quantidade} negócio(s)</span><small>Fora do calendário até informar a data de fechamento</small></article>}
+      </section>
 
       <form className="tdg-client-admin-form" onSubmit={salvar}>
         <strong>Nova oportunidade</strong>

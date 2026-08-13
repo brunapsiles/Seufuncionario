@@ -20,6 +20,7 @@ import { handleTodoGreenClientIntelligence } from "./todogreen-client-intelligen
 import { handleTodoGreenSemente } from "./todogreen-semente.js";
 import { handleTodoGreenTimeline } from "./todogreen-timeline.js";
 import { handleTodoGreenIntegrations } from "./todogreen-integrations.js";
+import { handleTodoGreenPricingPerformance } from "./todogreen-pricing-performance.js";
 
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
   status,
@@ -79,6 +80,13 @@ export async function routeTodoGreenApi(request, env, ctx) {
   if (path.startsWith("/api/todogreen/pricing-parameters"))
     return guarded("To Do Green pricing parameters error", "Não foi possível carregar os parâmetros comerciais.",
       () => handleTodoGreenPricingParameters(request, env));
+  if (path.startsWith("/api/todogreen/pricing-performance")) {
+    return guarded("To Do Green pricing performance error", "Não foi possível comparar pricing e operação.", async () => {
+      const resolved = await internalAccess(request, env);
+      if (resolved.response) return resolved.response;
+      return handleTodoGreenPricingPerformance(request, env, resolved.access, resolved.user);
+    });
+  }
   if (path.startsWith("/api/todogreen/dashboards"))
     return guarded("To Do Green dashboards error", "Não foi possível carregar os painéis.",
       () => handleTodoGreenDashboards(request, env));

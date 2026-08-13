@@ -93,6 +93,15 @@ describe("o que não tem dado não entra e é dito", () => {
     expect(f.lacunas.semDataPrevista).toBe(1);
   });
 
+  it("aceita o campo atual do CRM para a previsão de fechamento", () => {
+    const f = montarForecast({
+      oportunidades: [oportunidade({ dataPrevistaFechamento: "", expectedCloseAt: "2026-08-20" })],
+      periodo: "2026-08",
+    });
+    expect(f.quantidade).toBe(1);
+    expect(f.commit).toBe(100_000);
+  });
+
   it("conta quantas estão sem probabilidade", () => {
     const f = montarForecast({ oportunidades: [oportunidade({ probabilidade: "" })], periodo: "2026-08" });
     expect(f.lacunas.semProbabilidade).toBe(1);

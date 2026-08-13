@@ -203,6 +203,11 @@ export function montarIndice(linhas) {
   return linhas.map((linha) => {
     const campos = parse(linha.fields_json, {}) || {};
     const contatos = Array.isArray(campos.contacts) ? campos.contacts : [];
+    const contatosAtuais = contatos.filter((item) => {
+      if (!item?.name || item.active === false || item.employmentStatus === "former") return false;
+      const descobertoNaWeb = String(item.source || "").toLowerCase().startsWith("pesquisa web");
+      return !descobertoNaWeb || (item.currentEmploymentVerified === true && item.verifiedBrazil === true);
+    });
     return {
       id: linha.id,
       nome: linha.name,
@@ -211,8 +216,8 @@ export function montarIndice(linhas) {
       etapa: campos.stage || null,
       proximaAcao: campos.nextAction || null,
       prazoDaProximaAcao: campos.nextActionAt || null,
-      contatos: contatos.length,
-      contatosComCanal: contatos.filter((item) => item?.email || item?.phone || item?.linkedinUrl).length,
+      contatos: contatosAtuais.length,
+      contatosComCanal: contatosAtuais.filter((item) => item?.email || item?.phone || item?.linkedinUrl).length,
       pesquisaExterna: campos.intelligence?.checkedAt || null,
       atualizadoEm: linha.updated_at || null,
     };
