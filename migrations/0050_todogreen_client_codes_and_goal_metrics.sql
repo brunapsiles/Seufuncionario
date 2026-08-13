@@ -3,7 +3,7 @@
 ALTER TABLE todogreen_clients ADD COLUMN account_code TEXT NOT NULL DEFAULT '';
 
 UPDATE todogreen_clients
-   SET account_code = 'TDG-' || upper(substr(replace(replace(id, '-', ''), ' ', ''), 1, 12))
+   SET account_code = printf('TDG-%08d', rowid)
  WHERE account_code = '';
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_todogreen_clients_account_code
