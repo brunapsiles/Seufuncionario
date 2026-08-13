@@ -7,6 +7,13 @@
 
 import { recorteDeCarteira, podeNaVertical, TENANT_ID } from "./todogreen-access.js";
 import { criarEvento, montarLinhaDoTempo, resumirLinhaDoTempo, TIPOS } from "../../src/features/logistics/accountTimelineDomain.js";
+import {
+  proximaMelhorAcao,
+  saudeDaConta,
+  shareOfWallet,
+  whiteSpace,
+} from "../../src/features/logistics/accountHealthDomain.js";
+import { LOGISTICS_PRODUCTS } from "../../src/features/logistics/logisticsVerticalDomain.js";
 
 const response = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -31,7 +38,9 @@ const BRL = (valor) =>
 async function contaVisivel(env, access, email, clientId) {
   const scope = recorteDeCarteira(access, email, "c", "id");
   return env.DB.prepare(
-    `SELECT c.id, c.name, c.fields_json FROM todogreen_clients c
+    // segment e document entram porque a nota de completude do cadastro os
+    // lê: sem eles no SELECT, toda conta apareceria com o cadastro incompleto.
+    `SELECT c.id, c.name, c.segment, c.document, c.fields_json FROM todogreen_clients c
       WHERE c.id=? AND c.tenant_id=? AND c.workspace_owner_id=? AND c.archived_at IS NULL ${scope.sql}`,
   ).bind(clientId, TENANT_ID, access.ownerId, ...scope.params).first();
 }
@@ -174,6 +183,80 @@ export async function reunirEventos(env, { ownerId, clientId, conta }) {
   return eventos;
 }
 
+/**
+ * Saúde, white space, share of wallet e próxima melhor ação da conta.
+ *
+ * Fica junto da linha do tempo de propósito: as quatro leituras dependem de
+ * "há quanto tempo nada acontece", que é a linha do tempo respondendo. Servir
+ * em endpoints separados obrigaria a recalcular o histórico duas vezes por
+ * abertura de tela.
+ */
+export async function inteligenciaDaConta(env, { ownerId, clientId, conta, diasSemAtividade }) {
+  const campos = parse(conta?.fields_json, {}) || {};
+  const [oportunidades, operacoes, cenarios, contratos] = await Promise.all([
+    env.DB.prepare(
+      `SELECT id,stage,monthly_value,contract_value FROM todogreen_opportunities
+        WHERE tenant_id=? AND workspace_owner_id=? AND client_id=? AND archived_at IS NULL LIMIT 200`)
+      .bind(TENANT_ID, ownerId, clientId).all(),
+    env.DB.prepare(
+      `SELECT product_id,incident_count,sla_status FROM todogreen_client_operations
+        WHERE tenant_id=? AND workspace_owner_id=? AND client_id=? LIMIT 400`)
+      .bind(TENANT_ID, ownerId, clientId).all(),
+    env.DB.prepare(
+      `SELECT product_id FROM pricing_scenarios
+        WHERE tenant_id=? AND workspace_owner_id=? AND client_id=? LIMIT 200`)
+      .bind(TENANT_ID, ownerId, clientId).all(),
+    env.DB.prepare(
+      `SELECT monthly_value,total_value,status FROM todogreen_contracts
+        WHERE tenant_id=? AND workspace_owner_id=? AND client_id=? AND archived_at IS NULL LIMIT 60`)
+      .bind(TENANT_ID, ownerId, clientId).all(),
+  ]);
+
+  const contatos = Array.isArray(campos.contacts) ? campos.contacts : [];
+  const espacos = whiteSpace({
+    catalogo: LOGISTICS_PRODUCTS,
+    operacoes: linhas(operacoes),
+    oportunidades: linhas(cenarios),
+    contratos: [],
+  });
+
+  // Receita anual nossa sai dos contratos ativos. O gasto logístico total do
+  // cliente é dado DELE — se ninguém registrou, o share of wallet diz que não
+  // dá para saber, em vez de fingir que somos 100%.
+  const receitaAnualNossa = linhas(contratos)
+    .filter((item) => String(item.status || "").toLowerCase() !== "encerrado")
+    .reduce((soma, item) => soma + (Number(item.monthly_value) || 0) * 12, 0);
+
+  return {
+    saude: saudeDaConta({
+      conta: {
+        segment: conta?.segment,
+        document: conta?.document,
+        stage: campos.stage,
+        nextAction: campos.nextAction,
+        headquarters: campos.headquarters,
+      },
+      contatos,
+      oportunidades: linhas(oportunidades),
+      operacoes: linhas(operacoes),
+      diasSemAtividade,
+    }),
+    whiteSpace: espacos,
+    shareOfWallet: shareOfWallet({
+      receitaAnualNossa,
+      gastoLogisticoAnualDoCliente: Number(campos.gastoLogisticoAnual) || 0,
+    }),
+    proximaAcao: proximaMelhorAcao({
+      conta: { nextAction: campos.nextAction },
+      contatos,
+      oportunidades: linhas(oportunidades),
+      espacos: espacos.espacos,
+      diasSemAtividade,
+      pesquisaEm: campos.intelligence?.checkedAt || null,
+    }),
+  };
+}
+
 export async function handleTodoGreenTimeline(request, env, access, user) {
   if (!env.DB) return response({ error: "Banco indisponível." }, 503);
   if (request.method !== "GET") return response({ error: "Método não permitido." }, 405);
@@ -197,9 +280,18 @@ export async function handleTodoGreenTimeline(request, env, access, user) {
     limite: Math.min(500, Math.max(1, Number(url.searchParams.get("limite")) || 300)),
   });
 
+  const resumo = resumirLinhaDoTempo(linhaDoTempo);
+  const inteligencia = await inteligenciaDaConta(env, {
+    ownerId: access.ownerId,
+    clientId,
+    conta,
+    diasSemAtividade: resumo.diasSemAtividade,
+  });
+
   return response({
     cliente: { id: conta.id, nome: conta.name },
     eventos: linhaDoTempo,
-    resumo: resumirLinhaDoTempo(linhaDoTempo),
+    resumo,
+    ...inteligencia,
   });
 }
