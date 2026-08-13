@@ -136,6 +136,13 @@ const intelligenceFields = (input) => {
     version,
     company: clean(input.company, 200),
     segment: clean(input.segment, 120),
+    suggestedLegalName: input.suggestedLegalName && typeof input.suggestedLegalName === "object"
+      ? {
+          value: clean(input.suggestedLegalName.value, 200),
+          confidence: clean(input.suggestedLegalName.confidence, 40),
+          source: input.suggestedLegalName.source ? intelligenceSource(input.suggestedLegalName.source) : null,
+        }
+      : null,
     suggestedSegment: input.suggestedSegment && typeof input.suggestedSegment === "object"
       ? {
           value: clean(input.suggestedSegment.value, 120),
@@ -153,10 +160,24 @@ const intelligenceFields = (input) => {
     checkedAt: clean(input.checkedAt, 40),
     officialWebsite: input.officialWebsite ? intelligenceSource(input.officialWebsite) : null,
     linkedinCompany: input.linkedinCompany ? intelligenceSource(input.linkedinCompany) : null,
+    publicRegistry: input.publicRegistry && typeof input.publicRegistry === "object"
+      ? {
+          cnpj: clean(input.publicRegistry.cnpj, 14),
+          legalName: clean(input.publicRegistry.legalName, 200),
+          tradeName: clean(input.publicRegistry.tradeName, 200),
+          city: clean(input.publicRegistry.city, 120),
+          state: clean(input.publicRegistry.state, 2),
+          mainActivity: clean(input.publicRegistry.mainActivity, 240),
+          status: clean(input.publicRegistry.status, 120),
+          sourceUrl: safeExternalUrl(input.publicRegistry.sourceUrl),
+          source: input.publicRegistry.source ? intelligenceSource(input.publicRegistry.source) : null,
+        }
+      : null,
     esg: {
       relevance: clean(input.esg?.relevance, 40),
       signals: intelligenceSources(input.esg?.signals),
     },
+    logisticsSignals: intelligenceSources(input.logisticsSignals),
     supplierLinks: intelligenceSources(input.supplierLinks),
     supplierRejected: finite(input.supplierRejected, 0, 1000),
     openRfqs: intelligenceSources(input.openRfqs),
@@ -180,8 +201,21 @@ const intelligenceFields = (input) => {
           specialty: clean(contact?.specialty, 120),
           validation: clean(contact?.validation, 500),
           verifiedBrazil: contact?.verifiedBrazil === true,
+          currentEmploymentVerified: contact?.currentEmploymentVerified === true,
+          employmentCheckedAt: clean(contact?.employmentCheckedAt, 40),
+          employmentStatus: ["current", "former", "unknown"].includes(clean(contact?.employmentStatus, 20))
+            ? clean(contact?.employmentStatus, 20)
+            : "unknown",
           researchVersion: finite(contact?.researchVersion, 0, 10),
         })).filter((contact) => contact.name && contact.linkedinUrl)
+      : [],
+    formerContacts: Array.isArray(input.formerContacts)
+      ? input.formerContacts.slice(0, 20).map((contact) => ({
+          name: clean(contact?.name, 160),
+          linkedinUrl: safeLinkedinUrl(contact?.linkedinUrl),
+          sourceUrl: safeExternalUrl(contact?.sourceUrl),
+          validation: clean(contact?.validation, 500),
+        })).filter((contact) => contact.name)
       : [],
     contactSearchQuality: input.contactSearchQuality && typeof input.contactSearchQuality === "object"
       ? {
@@ -191,6 +225,8 @@ const intelligenceFields = (input) => {
           noBrazilEvidenceRejected: finite(input.contactSearchQuality.noBrazilEvidenceRejected, 0, 1000),
           nonLogisticsRejected: finite(input.contactSearchQuality.nonLogisticsRejected, 0, 1000),
           otherCompanyRejected: finite(input.contactSearchQuality.otherCompanyRejected, 0, 1000),
+          formerEmploymentRejected: finite(input.contactSearchQuality.formerEmploymentRejected, 0, 1000),
+          currentEmploymentUnverified: finite(input.contactSearchQuality.currentEmploymentUnverified, 0, 1000),
           vacanciesRejected: finite(input.contactSearchQuality.vacanciesRejected, 0, 1000),
           policy: clean(input.contactSearchQuality.policy, 500),
         }
@@ -202,6 +238,7 @@ const intelligenceFields = (input) => {
     failures: Array.isArray(input.failures) ? input.failures.slice(0, 12).map((item) => ({ provider: clean(item?.provider, 60), error: clean(item?.error, 180) })) : [],
     autoEnrichment: input.autoEnrichment && typeof input.autoEnrichment === "object"
       ? {
+          legalNameFilled: input.autoEnrichment.legalNameFilled === true,
           segmentFilled: input.autoEnrichment.segmentFilled === true,
           websiteFilled: input.autoEnrichment.websiteFilled === true,
           websiteCorrected: input.autoEnrichment.websiteCorrected === true,
@@ -212,6 +249,7 @@ const intelligenceFields = (input) => {
           contactsUpdated: finite(input.autoEnrichment.contactsUpdated, 0, 100),
           legacyContactsRemoved: finite(input.autoEnrichment.legacyContactsRemoved, 0, 100),
           legacyContactsRetained: finite(input.autoEnrichment.legacyContactsRetained, 0, 100),
+          formerContactsMarkedInactive: finite(input.autoEnrichment.formerContactsMarkedInactive, 0, 100),
           qualificationFilled: Array.isArray(input.autoEnrichment.qualificationFilled)
             ? input.autoEnrichment.qualificationFilled.slice(0, 8).map((item) => clean(item, 80)).filter(Boolean)
             : [],
@@ -222,8 +260,62 @@ const intelligenceFields = (input) => {
   };
 };
 
+const portfolioPotentialFields = (input = {}) => {
+  const potentialInputs = {
+    middleMileMonthlyTrips: finite(input.potentialInputs?.middleMileMonthlyTrips, 0, 1000000000),
+    middleMileAverageTicket: finite(input.potentialInputs?.middleMileAverageTicket, 0, 1000000000),
+    lastMileMonthlyDeliveries: finite(input.potentialInputs?.lastMileMonthlyDeliveries, 0, 1000000000),
+    lastMileAverageTicket: finite(input.potentialInputs?.lastMileAverageTicket, 0, 1000000000),
+    dedicatedMonthlyVehicles: finite(input.potentialInputs?.dedicatedMonthlyVehicles, 0, 1000000),
+    dedicatedMonthlyTicket: finite(input.potentialInputs?.dedicatedMonthlyTicket, 0, 1000000000),
+  };
+  const potentialManual = {
+    annual: finite(input.potentialManual?.annual ?? input.potentialAnnual, 0, 1000000000000),
+    products: {
+      middleMile: finite(input.potentialManual?.products?.middleMile ?? input.productPotential?.middleMile, 0, 1000000000000),
+      lastMile: finite(input.potentialManual?.products?.lastMile ?? input.productPotential?.lastMile, 0, 1000000000000),
+      dedicated: finite(input.potentialManual?.products?.dedicated ?? input.productPotential?.dedicated, 0, 1000000000000),
+    },
+  };
+  const annual = (quantity, ticket) => quantity > 0 && ticket > 0 ? quantity * ticket * 12 : 0;
+  const calculated = {
+    middleMile: annual(potentialInputs.middleMileMonthlyTrips, potentialInputs.middleMileAverageTicket),
+    lastMile: annual(potentialInputs.lastMileMonthlyDeliveries, potentialInputs.lastMileAverageTicket),
+    dedicated: annual(potentialInputs.dedicatedMonthlyVehicles, potentialInputs.dedicatedMonthlyTicket),
+  };
+  const productPotential = Object.fromEntries(Object.entries(calculated).map(([key, value]) => [
+    key,
+    value || potentialManual.products[key] || 0,
+  ]));
+  const productSum = Object.values(productPotential).reduce((sum, value) => sum + value, 0);
+  const productsWithValue = Object.values(productPotential).filter(Boolean).length;
+  const calculatedProducts = Object.values(calculated).filter(Boolean).length;
+  return {
+    potentialInputs,
+    potentialManual,
+    productPotential,
+    potentialAnnual: productsWithValue === 3 ? productSum : potentialManual.annual || productSum || 0,
+    potentialCalculation: {
+      method: productsWithValue === 3 && calculatedProducts
+        ? `${calculatedProducts} produto(s) calculado(s) por quantidade mensal × ticket médio × 12`
+        : potentialManual.annual && calculatedProducts
+          ? `Potencial anual informado; ${calculatedProducts} produto(s) calculado(s) por quantidade mensal × ticket médio × 12`
+        : productsWithValue === 3
+          ? "Soma dos potenciais cadastrados por produto"
+          : potentialManual.annual
+            ? "Potencial anual informado manualmente"
+            : productSum
+              ? "Soma parcial dos produtos com dados disponíveis"
+            : "Sem base suficiente para cálculo",
+      calculatedProducts,
+      calculatedAt: clean(input.potentialCalculation?.calculatedAt, 40),
+    },
+  };
+};
+
 const crmFields = (value = {}, companyName = "") => {
   const input = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const portfolioPotential = portfolioPotentialFields(input);
   const storedWebsite = safeExternalUrl(input.website);
   const legacyResearchWebsite = safeExternalUrl(input.intelligence?.officialWebsite?.url);
   const website = Number(input.intelligence?.version || 0) < 3 && sameExternalUrl(storedWebsite, legacyResearchWebsite) && !websiteBelongsToCompany(storedWebsite, companyName)
@@ -250,6 +342,11 @@ const crmFields = (value = {}, companyName = "") => {
         country: clean(contact?.country, 80),
         specialty: clean(contact?.specialty, 120),
         verifiedBrazil: contact?.verifiedBrazil === true,
+        currentEmploymentVerified: contact?.currentEmploymentVerified === true,
+        employmentCheckedAt: clean(contact?.employmentCheckedAt, 40),
+        employmentStatus: ["current", "former", "unknown"].includes(clean(contact?.employmentStatus, 20))
+          ? clean(contact?.employmentStatus, 20)
+          : "unknown",
         researchVersion: finite(contact?.researchVersion, 0, 10),
         active: contact?.active !== false,
       })).filter((contact) => contact.name))
@@ -274,12 +371,11 @@ const crmFields = (value = {}, companyName = "") => {
       : [],
     lastInteractionAt: clean(input.lastInteractionAt, 40),
     contractRenewalDate: clean(input.contractRenewalDate, 40),
-    potentialAnnual: finite(input.potentialAnnual, 0, 1000000000000),
-    productPotential: {
-      middleMile: finite(input.productPotential?.middleMile, 0, 1000000000000),
-      lastMile: finite(input.productPotential?.lastMile, 0, 1000000000000),
-      dedicated: finite(input.productPotential?.dedicated, 0, 1000000000000),
-    },
+    potentialAnnual: portfolioPotential.potentialAnnual,
+    productPotential: portfolioPotential.productPotential,
+    potentialManual: portfolioPotential.potentialManual,
+    potentialInputs: portfolioPotential.potentialInputs,
+    potentialCalculation: portfolioPotential.potentialCalculation,
     geographicExpansion: clean(input.geographicExpansion, 1000),
     accountPlan: {
       objective: clean(input.accountPlan?.objective, 2000),

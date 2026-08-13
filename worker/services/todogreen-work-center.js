@@ -1,7 +1,10 @@
 import {
   authenticatedUser,
+  recorteDeCarteira,
   resolveTodoGreenAccess,
 } from "./todogreen-access.js";
+import { pesquisarEmpresa } from "./todogreen-client-intelligence.js";
+import { sendWhatsAppText, whatsappEnabled } from "../mensageria/envio.js";
 
 const TENANT_ID = "todogreen";
 const MAX_LIMIT = 200;
@@ -17,6 +20,8 @@ const AUTOMATION_ACTIONS = new Set([
   "change-priority",
   "assign-person",
   "move-item",
+  "research-client",
+  "prepare-whatsapp",
 ]);
 const AUTOMATION_OPERATORS = new Set([
   "equals",
@@ -161,13 +166,15 @@ async function runAutomationRules(env, ownerId, item, { before = null, eventType
   ).bind(ownerId).all();
   const boardIds = new Set((boardRows.results || []).map((row) => row.id));
   const executed = [];
+  const sideEffects = [];
   const matchedIds = [];
   for (const row of rows.results || []) {
     const rule = mapAutomationRule(row);
     if (!automationTriggerMatches(rule, eventType, before, item, now)) continue;
     if (!automationConditionMatches(rule, item)) continue;
-    const value = clean(rule.action.value, 200);
+    const value = clean(rule.action.value, rule.action.type === "prepare-whatsapp" ? 1000 : 200);
     let changed = false;
+    let executionMessage = `Regra “${rule.name}” executada.`;
     if (rule.action.type === "change-status" && item.status !== value && ["novo", "em-andamento", "aguardando", "bloqueado", "concluido"].includes(value)) {
       item.status = value;
       changed = true;
@@ -180,17 +187,86 @@ async function runAutomationRules(env, ownerId, item, { before = null, eventType
     } else if (rule.action.type === "move-item" && item.boardId !== value && boardIds.has(value)) {
       item.boardId = value;
       changed = true;
+    } else if (rule.action.type === "research-client" && item.fields?.clientId) {
+      sideEffects.push({ type: "research-client", clientId: item.fields.clientId, focus: value === "contacts" ? "contacts" : "company", ruleId: rule.id });
+      executionMessage = `Regra “${rule.name}”: pesquisa e autopreenchimento iniciados.`;
+      changed = true;
+    } else if (rule.action.type === "prepare-whatsapp" && item.fields?.clientId && item.fields?.contactId) {
+      item.fields.pendingWhatsapp = {
+        ruleId: rule.id,
+        clientId: item.fields.clientId,
+        contactId: item.fields.contactId,
+        contactName: clean(item.fields.contactName, 160),
+        message: value,
+        status: "pending",
+        preparedAt: now,
+      };
+      executionMessage = `Regra “${rule.name}”: WhatsApp preparado e aguardando confirmação.`;
+      changed = true;
     }
     if (!changed) continue;
     matchedIds.push(rule.id);
-    executed.push(`Regra “${rule.name}” executada.`);
+    executed.push(executionMessage);
   }
   if (matchedIds.length) {
     await env.DB.batch(matchedIds.map((id) => env.DB.prepare(
       "UPDATE todogreen_work_automation_rules SET last_run_at = ? WHERE id = ? AND workspace_owner_id = ?",
     ).bind(now, id, ownerId)));
   }
-  return executed;
+  return { executed, sideEffects };
+}
+
+async function executeAutomationSideEffects(env, ownerId, userId, effects = []) {
+  for (const effect of effects) {
+    if (effect.type !== "research-client") continue;
+    const linha = await env.DB.prepare(
+      `SELECT id,name,legal_name,document,segment,notes,fields_json,revision
+         FROM todogreen_clients
+        WHERE id=? AND tenant_id=? AND workspace_owner_id=? AND archived_at IS NULL`,
+    ).bind(effect.clientId, TENANT_ID, ownerId).first();
+    if (!linha) continue;
+    try {
+      await pesquisarEmpresa(env, {
+        linha,
+        ownerId,
+        userId,
+        forcar: false,
+        focus: effect.focus,
+      });
+    } catch (error) {
+      console.error("To Do Green automation research error", error);
+    }
+  }
+}
+
+async function normalizeItemCrmLink(env, access, user, fields = {}) {
+  const next = { ...fields };
+  const clientId = clean(next.clientId, 80);
+  if (!clientId) {
+    delete next.clientId;
+    delete next.contactId;
+    delete next.contactName;
+    return { fields: next };
+  }
+  const scope = recorteDeCarteira(access, user.email, "c", "id");
+  const client = await env.DB.prepare(
+    `SELECT c.id,c.name,c.fields_json FROM todogreen_clients c
+      WHERE c.id=? AND c.tenant_id=? AND c.workspace_owner_id=? AND c.archived_at IS NULL ${scope.sql}`,
+  ).bind(clientId, TENANT_ID, access.ownerId, ...scope.params).first();
+  if (!client) return { error: "A conta vinculada não pertence à sua carteira." };
+  next.clientId = client.id;
+  const contactId = clean(next.contactId, 80);
+  if (!contactId) {
+    delete next.contactId;
+    delete next.contactName;
+    return { fields: next, clientName: client.name };
+  }
+  const contact = (Array.isArray(parse(client.fields_json, {}).contacts) ? parse(client.fields_json, {}).contacts : [])
+    .find((candidate) => clean(candidate?.id, 80) === contactId);
+  if (!contact) return { error: "O contato selecionado não pertence à conta vinculada." };
+  next.contactId = contactId;
+  next.contactName = clean(contact.name, 160);
+  return { fields: next, clientName: client.name };
 }
 
 export async function runTodoGreenScheduledWorkAutomations(env, current = new Date()) {
@@ -217,13 +293,13 @@ export async function runTodoGreenScheduledWorkAutomations(env, current = new Da
   for (const row of rows.results || []) {
     const before = mapItem(row);
     const item = { ...before, fields: { ...before.fields } };
-    const automationsExecuted = await runAutomationRules(env, before.workspaceOwnerId || row.workspace_owner_id, item, {
+    const automationRun = await runAutomationRules(env, before.workspaceOwnerId || row.workspace_owner_id, item, {
       before,
       eventType: "scheduled",
       now,
     });
-    if (!automationsExecuted.length) continue;
-    item.fields.automation = automationsExecuted.join(" ");
+    if (!automationRun.executed.length) continue;
+    item.fields.automation = automationRun.executed.join(" ");
     const result = await env.DB.prepare(
       `UPDATE todogreen_work_items SET board_id = ?, status = ?, priority = ?,
        responsible_label = ?, fields_json = ?, revision = revision + 1,
@@ -234,6 +310,7 @@ export async function runTodoGreenScheduledWorkAutomations(env, current = new Da
     if (!result.meta?.changes) continue;
     const latest = await env.DB.prepare("SELECT * FROM todogreen_work_items WHERE id = ?").bind(item.id).first();
     await event(env, row.workspace_owner_id, item.boardId, item.id, "system:automation", "automated", before, mapItem(latest));
+    await executeAutomationSideEffects(env, row.workspace_owner_id, "system:automation", automationRun.sideEffects);
     updated += 1;
   }
   return { inspected: (rows.results || []).length, updated };
@@ -251,7 +328,7 @@ const normalizeAutomationRule = (body = {}) => {
     conditionOperator: AUTOMATION_OPERATORS.has(operator) ? operator : "",
     conditionValue: clean(body.conditionValue, 240),
     actionType: AUTOMATION_ACTIONS.has(actionType) ? actionType : "",
-    actionValue: clean(body.actionValue, 200),
+    actionValue: clean(body.actionValue, actionType === "prepare-whatsapp" ? 1000 : 200),
     enabled: body.enabled !== false,
   };
 };
@@ -371,7 +448,7 @@ async function event(env, ownerId, boardId, itemId, actorId, action, before, aft
     .run();
 }
 
-export async function handleTodoGreenWorkCenter(request, env) {
+export async function handleTodoGreenWorkCenter(request, env, ctx) {
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/api/todogreen/work-center")) return null;
   const user = await authenticatedUser(request, env);
@@ -384,6 +461,43 @@ export async function handleTodoGreenWorkCenter(request, env) {
   if (parts[3] === "automations")
     return handleAutomationRules(request, env, access, user, parts);
   const itemId = parts[3] || "";
+  if (request.method === "POST" && itemId && parts[4] === "whatsapp-confirm") {
+    if (!canWrite(access)) return response({ error: "Você não pode confirmar este envio." }, 403);
+    const current = await env.DB.prepare(
+      "SELECT * FROM todogreen_work_items WHERE id = ? AND workspace_owner_id = ? AND archived_at IS NULL",
+    ).bind(itemId, access.ownerId).first();
+    if (!current) return response({ error: "Item não encontrado." }, 404);
+    const item = mapItem(current);
+    const pending = item.fields?.pendingWhatsapp;
+    if (!pending || pending.status !== "pending")
+      return response({ error: "Este item não possui um WhatsApp pendente de confirmação." }, 409);
+    if (env.OUTBOX_TEST_DELIVERY !== "mock" && !whatsappEnabled(env))
+      return response({ error: "O WhatsApp automático ainda não está configurado neste ambiente." }, 503);
+    const client = await env.DB.prepare(
+      "SELECT fields_json FROM todogreen_clients WHERE id=? AND tenant_id=? AND workspace_owner_id=? AND archived_at IS NULL",
+    ).bind(clean(pending.clientId, 80), TENANT_ID, access.ownerId).first();
+    const clientFields = parse(client?.fields_json, {});
+    const contact = (Array.isArray(clientFields.contacts) ? clientFields.contacts : [])
+      .find((candidate) => clean(candidate?.id, 80) === clean(pending.contactId, 80));
+    if (!contact?.phone) return response({ error: "O contato selecionado não possui um WhatsApp válido no CRM." }, 400);
+    const delivery = await sendWhatsAppText(env, contact.phone, clean(pending.message, 2000));
+    const now = new Date().toISOString();
+    item.fields.pendingWhatsapp = {
+      ...pending,
+      status: "sent",
+      sentAt: now,
+      sentBy: user.id,
+      provider: delivery.provider,
+      providerMessageId: delivery.providerMessageId || "",
+    };
+    await env.DB.prepare(
+      `UPDATE todogreen_work_items SET fields_json=?,revision=revision+1,updated_by=?,updated_at=?
+        WHERE id=? AND workspace_owner_id=? AND revision=?`,
+    ).bind(JSON.stringify(item.fields), user.id, now, itemId, access.ownerId, current.revision).run();
+    const latest = await env.DB.prepare("SELECT * FROM todogreen_work_items WHERE id = ?").bind(itemId).first();
+    await event(env, access.ownerId, latest.board_id, itemId, user.id, "whatsapp-sent", { pendingWhatsapp: pending }, { pendingWhatsapp: item.fields.pendingWhatsapp });
+    return response({ item: mapItem(latest), delivery: { provider: delivery.provider } });
+  }
   const limit = Math.min(MAX_LIMIT, Math.max(1, Number(url.searchParams.get("limit")) || 100));
   const boardId = clean(url.searchParams.get("board"), 160);
   const cursor = clean(url.searchParams.get("cursor"), 60);
@@ -407,12 +521,26 @@ export async function handleTodoGreenWorkCenter(request, env) {
     const automationRows = await env.DB.prepare(
       "SELECT * FROM todogreen_work_automation_rules WHERE workspace_owner_id = ? ORDER BY enabled DESC, updated_at DESC",
     ).bind(access.ownerId).all();
+    const clientScope = recorteDeCarteira(access, user.email, "c", "id");
+    const clientRows = await env.DB.prepare(
+      `SELECT c.id,c.name,c.fields_json FROM todogreen_clients c
+        WHERE c.tenant_id=? AND c.workspace_owner_id=? AND c.archived_at IS NULL ${clientScope.sql}
+        ORDER BY c.name LIMIT 500`,
+    ).bind(TENANT_ID, access.ownerId, ...clientScope.params).all();
+    const clients = (clientRows.results || []).map((row) => ({
+      id: row.id,
+      name: row.name,
+      contacts: (Array.isArray(parse(row.fields_json, {}).contacts) ? parse(row.fields_json, {}).contacts : [])
+        .filter((contact) => contact?.id && contact?.name)
+        .map((contact) => ({ id: clean(contact.id, 80), name: clean(contact.name, 160), phone: clean(contact.phone, 80) })),
+    }));
     const hasMore = items.length > limit;
     if (hasMore) items.pop();
     return response({
       boards: (boards.results || []).map(mapBoard),
       items,
       automationRules: (automationRows.results || []).map(mapAutomationRule),
+      clients,
       nextCursor: hasMore ? items[items.length - 1]?.updatedAt || null : null,
       access: { role: access.role, canWrite: canWrite(access) },
     });
@@ -438,15 +566,17 @@ export async function handleTodoGreenWorkCenter(request, env) {
     const initialPriority = elevateOverdue ? "alta" : requestedPriority;
     const initialFields = body.fields && typeof body.fields === "object" ? { ...body.fields } : {};
     if (elevateOverdue) initialFields.automation = "Prazo vencido: prioridade elevada automaticamente.";
+    const crmLink = await normalizeItemCrmLink(env, access, user, initialFields);
+    if (crmLink.error) return response({ error: crmLink.error }, 400);
     const candidate = {
       id, boardId: normalizedBoardId, type: clean(body.type, 60) || "tarefa",
       title: clean(body.title, 240), description: clean(body.description, 4000),
       status: initialStatus, priority: initialPriority,
       responsibleUserId: clean(body.responsibleUserId, 100), responsible: clean(body.responsible, 160),
-      client: clean(body.client, 200), dueDate: initialDueDate || "", fields: initialFields,
+      client: clean(crmLink.clientName || body.client, 200), dueDate: initialDueDate || "", fields: crmLink.fields,
     };
-    const customAutomations = await runAutomationRules(env, access.ownerId, candidate, { eventType: "item-created", now });
-    if (customAutomations.length) candidate.fields.automation = [candidate.fields.automation, ...customAutomations].filter(Boolean).join(" ");
+    const automationRun = await runAutomationRules(env, access.ownerId, candidate, { eventType: "item-created", now });
+    if (automationRun.executed.length) candidate.fields.automation = [candidate.fields.automation, ...automationRun.executed].filter(Boolean).join(" ");
     await env.DB.prepare(
       `INSERT INTO todogreen_work_items
        (id, tenant_id, workspace_owner_id, board_id, type, title, description, status,
@@ -465,7 +595,11 @@ export async function handleTodoGreenWorkCenter(request, env) {
     const row = await env.DB.prepare("SELECT * FROM todogreen_work_items WHERE id = ?").bind(id).first();
     const item = mapItem(row);
     await event(env, access.ownerId, normalizedBoardId, id, user.id, "created", {}, item);
-    return response({ item, automationsExecuted: customAutomations }, 201);
+    if (automationRun.sideEffects.length) {
+      const work = executeAutomationSideEffects(env, access.ownerId, user.id, automationRun.sideEffects);
+      if (ctx?.waitUntil) ctx.waitUntil(work); else await work;
+    }
+    return response({ item, automationsExecuted: automationRun.executed }, 201);
   }
 
   if (request.method === "PATCH" && itemId) {
@@ -478,7 +612,10 @@ export async function handleTodoGreenWorkCenter(request, env) {
     if (expectedRevision && expectedRevision !== Number(current.revision))
       return response({ error: "Este item foi alterado por outra pessoa. Recarregue antes de salvar.", code: "revision_conflict", current: mapItem(current) }, 409);
     const before = mapItem(current);
-    const nextFields = body.fields && typeof body.fields === "object" ? { ...body.fields } : { ...before.fields };
+    const requestedFields = body.fields && typeof body.fields === "object" ? { ...body.fields } : { ...before.fields };
+    const crmLink = await normalizeItemCrmLink(env, access, user, requestedFields);
+    if (crmLink.error) return response({ error: crmLink.error }, 400);
+    const nextFields = crmLink.fields;
     const now = new Date().toISOString();
     const nextStatus = clean(body.status ?? before.status, 40);
     const nextDueDate = clean(body.dueDate ?? before.dueDate, 20) || null;
@@ -505,15 +642,15 @@ export async function handleTodoGreenWorkCenter(request, env) {
       priority: nextPriority,
       responsibleUserId: clean(body.responsibleUserId ?? before.responsibleUserId, 100),
       responsible: clean(body.responsible ?? before.responsible, 160),
-      client: clean(body.client ?? before.client, 200),
+      client: clean(crmLink.clientName || (body.client ?? before.client), 200),
       dueDate: nextDueDate || "",
       fields: nextFields,
       relations: body.relations ?? before.relations,
       dependencies: body.dependencies ?? before.dependencies,
     };
     const eventType = candidate.status !== before.status ? "status-changed" : "item-updated";
-    const customAutomations = await runAutomationRules(env, access.ownerId, candidate, { before, eventType, now });
-    automationsExecuted.push(...customAutomations);
+    const automationRun = await runAutomationRules(env, access.ownerId, candidate, { before, eventType, now });
+    automationsExecuted.push(...automationRun.executed);
     if (automationsExecuted.length) candidate.fields.automation = automationsExecuted.join(" ");
     await env.DB.prepare(
       `UPDATE todogreen_work_items SET
@@ -534,6 +671,10 @@ export async function handleTodoGreenWorkCenter(request, env) {
     const row = await env.DB.prepare("SELECT * FROM todogreen_work_items WHERE id = ?").bind(itemId).first();
     const item = mapItem(row);
     await event(env, access.ownerId, item.boardId, item.id, user.id, "updated", before, item);
+    if (automationRun.sideEffects.length) {
+      const work = executeAutomationSideEffects(env, access.ownerId, user.id, automationRun.sideEffects);
+      if (ctx?.waitUntil) ctx.waitUntil(work); else await work;
+    }
     return response({ item, automationsExecuted });
   }
 

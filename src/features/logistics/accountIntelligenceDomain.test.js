@@ -17,6 +17,16 @@ describe("inteligência e canais da conta", () => {
     expect(result.nextTask).toMatch(/Confirmar com Carlos/i);
   });
 
+  it("não trata vínculo pesquisado e não confirmado como procurement atual", () => {
+    const result = assessAccount({ name: "Empresa", crm: { contacts: [{
+      id: "1", name: "Contato antigo", department: "Procurement de Logística",
+      employmentStatus: "unknown", employmentCheckedAt: "2026-08-13T00:00:00.000Z",
+      currentEmploymentVerified: false, active: true,
+    }] } });
+    expect(result.procurementContacts).toHaveLength(0);
+    expect(result.nextTask).toMatch(/indicação de quem decide/i);
+  });
+
   it("usa o contato cadastrado e avança quando a ação sugerida é concluída", () => {
     const account = { name: "Empresa", crm: { contacts: [{ id: "1", name: "Marina", department: "Operações" }] } };
     const first = assessAccount(account);

@@ -145,4 +145,52 @@ describe("automações configuráveis da Central de Trabalho", () => {
     expect(row.priority).toBe("critica");
     expect(row.updated_by).toBe("system:automation");
   });
+
+  it("vincula a conta do CRM e exige confirmação humana antes do WhatsApp", async () => {
+    const clientId = `client-whatsapp-${crypto.randomUUID()}`;
+    const contactId = `contact-${crypto.randomUUID()}`;
+    const createdClient = await pedir("/api/todogreen/clients", {
+      method: "POST",
+      body: {
+        id: clientId,
+        nome: "Cliente WhatsApp",
+        crm: { contacts: [{ id: contactId, name: "Ana Compras", phone: "+5511999999999", relationshipRole: "Compras" }] },
+      },
+    });
+    expect(createdClient.status).toBe(201);
+    const listed = await (await pedir("/api/todogreen/work-center")).json();
+    expect(listed.clients).toContainEqual(expect.objectContaining({ id: clientId, name: "Cliente WhatsApp" }));
+
+    const automation = await pedir("/api/todogreen/work-center/automations", {
+      method: "POST",
+      body: {
+        name: "Preparar abordagem",
+        boardId,
+        trigger: "item-created",
+        conditionField: "type",
+        conditionOperator: "equals",
+        conditionValue: "tarefa",
+        actionType: "prepare-whatsapp",
+        actionValue: "Olá, Ana. Podemos conversar sobre a operação logística?",
+      },
+    });
+    expect(automation.status).toBe(201);
+    const created = await pedir("/api/todogreen/work-center", {
+      method: "POST",
+      body: {
+        boardId,
+        title: "Falar com compras",
+        type: "tarefa",
+        fields: { clientId, contactId, contactName: "Ana Compras" },
+      },
+    });
+    const createdData = await created.json();
+    expect(createdData.item.fields.pendingWhatsapp).toEqual(expect.objectContaining({ status: "pending", contactId }));
+
+    const confirmed = await pedir(`/api/todogreen/work-center/${createdData.item.id}/whatsapp-confirm`, { method: "POST" });
+    expect(confirmed.status).toBe(200);
+    const confirmedData = await confirmed.json();
+    expect(confirmedData.item.fields.pendingWhatsapp.status).toBe("sent");
+    expect(confirmedData.delivery.provider).toBeTruthy();
+  });
 });

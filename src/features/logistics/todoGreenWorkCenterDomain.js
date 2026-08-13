@@ -156,6 +156,8 @@ export const WORK_CENTER_AUTOMATION_ACTIONS = [
   "create-esg-calculation",
   "publish-client-portal",
   "send-email",
+  "research-client",
+  "prepare-whatsapp",
   "send-notification",
   "call-ai",
   "run-webhook",

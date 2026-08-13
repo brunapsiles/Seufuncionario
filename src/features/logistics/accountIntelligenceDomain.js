@@ -7,12 +7,15 @@ const DECISION_ROLES = ["patrocinador", "decisor econômico", "compras"];
 
 export function assessAccount(account = {}) {
   const contacts = account.crm?.contacts || [];
-  const activeContacts = contacts.filter((contact) => contact.active !== false);
+  const hasCurrentDecisionEvidence = (contact) => contact.active !== false && contact.employmentStatus !== "former" &&
+    (!contact.employmentCheckedAt || contact.currentEmploymentVerified === true);
+  const activeContacts = contacts.filter((contact) => contact.active !== false && contact.employmentStatus !== "former");
+  const currentDecisionContacts = contacts.filter(hasCurrentDecisionEvidence);
   const profile = lower(`${account.segment || ""} ${account.name || ""} ${account.notes || ""}`);
   const esgMatches = ESG_HIGH.filter((keyword) => profile.includes(keyword));
-  const procurementContacts = contacts.filter((contact) => PROCUREMENT.some((keyword) => lower(`${contact.title} ${contact.department} ${contact.relationshipRole}`).includes(keyword)));
+  const procurementContacts = currentDecisionContacts.filter((contact) => PROCUREMENT.some((keyword) => lower(`${contact.title} ${contact.department} ${contact.relationshipRole}`).includes(keyword)));
   const logisticsProcurementContacts = procurementContacts.filter((contact) => LOGISTICS.some((keyword) => lower(`${contact.title} ${contact.department} ${contact.specialty || ""}`).includes(keyword)));
-  const decisionContacts = contacts.filter((contact) => DECISION_ROLES.includes(lower(contact.relationshipRole)));
+  const decisionContacts = currentDecisionContacts.filter((contact) => DECISION_ROLES.includes(lower(contact.relationshipRole)));
   const staleContacts = contacts.filter((contact) => contact.active === false);
   const noChannel = contacts.filter((contact) => !contact.email && !contact.phone && !contact.linkedinUrl);
 

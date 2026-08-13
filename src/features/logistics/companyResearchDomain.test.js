@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { buildCompanyResearchPlans, classifyCompanyResearch, resolveWebsiteEnrichment } from "../../../worker/services/todogreen-client-intelligence.js";
+import { buildCompanyResearchPlans, buildPublicAccountEnrichment, classifyCompanyResearch, lookupPublicCompanyRegistry, reconcileResearchedContacts, resolveWebsiteEnrichment } from "../../../worker/services/todogreen-client-intelligence.js";
 
 const result = (title, url, snippet = "") => ({ title, url, snippet, provider: "teste" });
 
 describe("inteligência externa comercial", () => {
   it("separa inteligência e faz duas buscas brasileiras de contatos", () => {
     const plans = buildCompanyResearchPlans({ company: "Adidas", segment: "Varejo", year: 2026 });
-    expect(plans).toHaveLength(7);
-    expect(new Set(plans.flatMap((item) => item.kinds))).toEqual(new Set(["identity", "supplier", "rfq", "esg", "news", "segment", "contacts"]));
+    expect(plans).toHaveLength(8);
+    expect(new Set(plans.flatMap((item) => item.kinds))).toEqual(new Set(["identity", "registry", "supplier", "rfq", "esg", "news", "segment", "contacts"]));
     expect(plans.every((item) => item.query.includes("Brasil"))).toBe(true);
-    expect(buildCompanyResearchPlans({ company: "Adidas", segment: "Varejo", year: 2026, focus: "contacts" })).toHaveLength(8);
+    expect(buildCompanyResearchPlans({ company: "Adidas", segment: "Varejo", year: 2026, focus: "contacts" })).toHaveLength(9);
     const focused = buildCompanyResearchPlans({
       company: "Adidas", segment: "Varejo", year: 2026, focus: "contacts",
       knownContacts: [{ name: "Thiago Souza" }, { name: "Fernanda Vasco" }],
@@ -17,12 +17,19 @@ describe("inteligência externa comercial", () => {
     expect(focused).toHaveLength(10);
     expect(focused.filter((item) => item.kinds.includes("known_contacts"))).toEqual([
       expect.objectContaining({
-        knownContactNames: ["Thiago Souza"],
+        knownContactNames: ["Thiago Souza", "Fernanda Vasco"],
         query: expect.stringMatching(/"Thiago Souza".*"Adidas"/),
       }),
-      expect.objectContaining({ knownContactNames: ["Fernanda Vasco"] }),
     ]);
     expect(focused.filter((item) => item.kinds.includes("contacts")).every((item) => /linkedin\.com\/in|LinkedIn/.test(item.query))).toBe(true);
+  });
+
+  it("pesquisa todos os contatos existentes em lotes sem o limite antigo", () => {
+    const knownContacts = Array.from({ length: 27 }, (_, index) => ({ name: `Contato Número ${index + 1}` }));
+    const plans = buildCompanyResearchPlans({ company: "Empresa Brasil", segment: "Indústria", year: 2026, focus: "contacts", knownContacts });
+    const contactPlans = plans.filter((item) => item.kinds.includes("known_contacts"));
+    expect(contactPlans).toHaveLength(6);
+    expect(contactPlans.flatMap((item) => item.knownContactNames)).toHaveLength(27);
   });
   it("não confunde vaga com RFQ e só confirma oportunidade aberta de transporte", () => {
     const report = classifyCompanyResearch({ company: "Empresa X", segment: "Varejo", searches: [
@@ -73,10 +80,74 @@ describe("inteligência externa comercial", () => {
       source: "Pesquisa web",
       country: "Brasil",
       verifiedBrazil: true,
-      researchVersion: 7,
+      currentEmploymentVerified: true,
+      employmentStatus: "current",
+      researchVersion: 10,
     })]);
-    expect(report.version).toBe(7);
+    expect(report.version).toBe(10);
     expect(report.suggestedHeadquarters?.value).toBe("São Paulo, SP");
+  });
+
+  it("consulta o cadastro público por CNPJ e estrutura razão social, sede e atividade", async () => {
+    const registry = await lookupPublicCompanyRegistry("00.000.000/0001-91", {
+      fetcher: async () => ({
+        ok: true,
+        json: async () => ({
+          razao_social: "BANCO DO BRASIL S.A.", nome_fantasia: "BANCO DO BRASIL",
+          municipio: "BRASILIA", uf: "DF", cnae_fiscal_descricao: "Bancos múltiplos", descricao_situacao_cadastral: "ATIVA",
+        }),
+      }),
+    });
+    expect(registry).toEqual(expect.objectContaining({
+      cnpj: "00000000000191", legalName: "BANCO DO BRASIL S.A.", city: "BRASILIA", state: "DF", status: "ATIVA",
+    }));
+  });
+
+  it("prioriza os dados cadastrais do CNPJ no autopreenchimento sugerido", () => {
+    const report = classifyCompanyResearch({
+      company: "Banco do Brasil", segment: "", searches: [],
+      publicRegistry: {
+        cnpj: "00000000000191", legalName: "BANCO DO BRASIL S.A.", tradeName: "BANCO DO BRASIL",
+        city: "BRASILIA", state: "DF", mainActivity: "Serviços financeiros e banco", status: "ATIVA",
+        sourceUrl: "https://api.opencnpj.org/00000000000191",
+      },
+    });
+    expect(report.suggestedLegalName).toEqual(expect.objectContaining({ value: "BANCO DO BRASIL S.A.", confidence: "alta" }));
+    expect(report.suggestedHeadquarters).toEqual(expect.objectContaining({ value: "BRASILIA, DF", confidence: "alta" }));
+    expect(report.suggestedSegment?.value).toBe("Serviços financeiros");
+  });
+
+  it("converte a pesquisa em todos os campos estruturados exibidos em Dados da conta", () => {
+    const enrichment = buildPublicAccountEnrichment({
+      company: "Empresa Brasil",
+      line: { legal_name: "", segment: "" },
+      fields: {
+        website: "https://empresabrasil.com.br/",
+        linkedinUrl: "https://www.linkedin.com/company/empresa-brasil/",
+        headquarters: "",
+        qualification: {},
+      },
+      report: {
+        suggestedLegalName: { value: "EMPRESA BRASIL S.A." },
+        suggestedSegment: { value: "Indústria" },
+        suggestedHeadquarters: { value: "São Paulo, SP" },
+        publicRegistry: { status: "ATIVA", sourceUrl: "https://api.opencnpj.org/00000000000191" },
+        logisticsSignals: [{ url: "https://empresabrasil.com.br/logistica" }],
+        procurementPeople: [], openRfqs: [],
+        esg: { signals: [{ url: "https://empresabrasil.com.br/esg" }] },
+      },
+    });
+    expect(enrichment).toEqual(expect.objectContaining({
+      filledLegalName: "EMPRESA BRASIL S.A.", filledSegment: "Indústria",
+      filledHeadquarters: "São Paulo, SP", filledWebsite: "https://empresabrasil.com.br/",
+      filledLinkedin: "https://www.linkedin.com/company/empresa-brasil/",
+    }));
+    expect(enrichment.qualification).toEqual(expect.objectContaining({
+      publicProfile: expect.stringContaining("Cadastro público de CNPJ"),
+      logisticsSignals: expect.stringContaining("evidência(s) pública(s)"),
+      esgCommitments: expect.stringContaining("agenda ESG"),
+    }));
+    expect(enrichment.filledQualification).toEqual(["perfil público", "sinais logísticos", "sinais ESG"]);
   });
 
   it("não usa matéria da Mundo Logística como site da Amazon e corrige o preenchimento antigo", () => {
@@ -147,6 +218,87 @@ describe("inteligência externa comercial", () => {
     expect(report.reviewCandidates).toEqual([expect.objectContaining({ rejectionReason: "no-brazil-evidence" })]);
   });
 
+  it("rejeita ex-funcionário mesmo quando o perfil ainda menciona procurement e a empresa", () => {
+    const report = classifyCompanyResearch({ company: "Adidas", segment: "Varejo", searches: [
+      { kind: "contacts", results: [
+        result(
+          "Joana Silva - Procurement de Logística - adidas | LinkedIn",
+          "https://br.linkedin.com/in/joana-silva",
+          "São Paulo, Brasil. Ex-funcionária da adidas. Atuou em compras de frete e transportes de 2021 - 2024.",
+        ),
+      ] },
+    ] });
+    expect(report.procurementPeople).toHaveLength(0);
+    expect(report.contactCandidates).toHaveLength(0);
+    expect(report.formerContacts).toEqual([expect.objectContaining({ name: "Joana Silva" })]);
+    expect(report.contactSearchQuality.formerEmploymentRejected).toBe(1);
+    expect(report.reviewCandidates).toHaveLength(0);
+  });
+
+  it("não inclui perfil quando a fonte não comprova que o vínculo ainda é atual", () => {
+    const report = classifyCompanyResearch({ company: "Empresa Brasil", segment: "Indústria", searches: [
+      { kind: "contacts", results: [
+        result(
+          "Carlos Lima | LinkedIn",
+          "https://br.linkedin.com/in/carlos-lima",
+          "São Paulo, Brasil. Experiência em procurement, logística e transportes. Empresa Brasil.",
+        ),
+      ] },
+    ] });
+    expect(report.contactCandidates).toHaveLength(0);
+    expect(report.contactSearchQuality.currentEmploymentUnverified).toBe(1);
+  });
+
+  it("não confunde uma experiência anterior em outra empresa com o vínculo atual na empresa-alvo", () => {
+    const report = classifyCompanyResearch({ company: "Adidas", segment: "Varejo", searches: [
+      { kind: "contacts", results: [result(
+        "Paula Costa - Procurement de Transportes na adidas | LinkedIn",
+        "https://br.linkedin.com/in/paula-costa",
+        "São Paulo, Brasil. Atualmente atua na adidas em compras de frete. Ex-funcionária da Empresa Anterior.",
+      )] },
+    ] });
+    expect(report.contactCandidates).toEqual([expect.objectContaining({ name: "Paula Costa", employmentStatus: "current" })]);
+    expect(report.contactSearchQuality.formerEmploymentRejected).toBe(0);
+  });
+
+  it("limpa contatos web desatualizados e preserva ex-contato manual apenas como histórico", () => {
+    const result = reconcileResearchedContacts({
+      existingContacts: [
+        { name: "Contato Web Antigo", source: "Pesquisa web", linkedinUrl: "https://linkedin.com/in/antigo", active: true },
+        { name: "Joana Silva", source: "Cadastro manual", linkedinUrl: "https://linkedin.com/in/joana", active: true },
+        { name: "Contato Atual", source: "Pesquisa web", linkedinUrl: "https://linkedin.com/in/atual", active: true },
+      ],
+      contactCandidates: [{ name: "Contato Atual", linkedinUrl: "https://linkedin.com/in/atual", currentEmploymentVerified: true }],
+      formerContacts: [{ name: "Joana Silva", linkedinUrl: "https://linkedin.com/in/joana" }],
+      checkedAt: "2026-08-13T12:00:00.000Z",
+    });
+    expect(result.staleWebContactsRemoved).toBe(1);
+    expect(result.formerContactsMarkedInactive).toBe(1);
+    expect(result.contacts).toEqual([
+      expect.objectContaining({ name: "Joana Silva", active: false, employmentStatus: "former" }),
+      expect.objectContaining({ name: "Contato Atual", active: true }),
+    ]);
+  });
+
+  it("nunca exclui automaticamente contato com telefone ou e-mail", () => {
+    const reconciled = reconcileResearchedContacts({
+      existingContacts: [
+        { name: "Contato Importado", source: "Pesquisa web", email: "contato@empresa.com", phone: "+55 11 99999-0000", active: true },
+      ],
+      contactCandidates: [],
+      formerContacts: [],
+      checkedAt: "2026-08-13T12:00:00.000Z",
+    });
+    expect(reconciled.staleWebContactsRemoved).toBe(0);
+    expect(reconciled.contacts).toEqual([expect.objectContaining({
+      name: "Contato Importado",
+      email: "contato@empresa.com",
+      phone: "+55 11 99999-0000",
+      active: false,
+      employmentStatus: "unknown",
+    })]);
+  });
+
   it("localiza o LinkedIn de um contato já cadastrado sem recriá-lo", () => {
     const report = classifyCompanyResearch({ company: "Amazon", segment: "E-commerce", knownContacts: [
       { name: "Fernanda Vasco", phone: "+55 11 98839-5335", email: "fevasco@amazon.com" },
@@ -162,7 +314,47 @@ describe("inteligência externa comercial", () => {
       name: "Fernanda Vasco",
       linkedinUrl: "https://www.linkedin.com/in/fernanda-vasco",
       source: "Pesquisa web (LinkedIn do contato)",
+      currentEmploymentVerified: true,
+      employmentStatus: "current",
     })]);
+  });
+
+  it("completa o LinkedIn conhecido sem promover vínculo incerto a procurement atual", () => {
+    const report = classifyCompanyResearch({ company: "Amazon", segment: "E-commerce", knownContacts: [
+      { name: "Fernanda Vasco", phone: "+55 11 98839-5335", email: "fevasco@amazon.com" },
+    ], searches: [{ kind: "known_contacts", results: [{
+      ...result("Fernanda Vasco - Amazon | LinkedIn", "https://www.linkedin.com/in/fernanda-vasco", "Perfil profissional de Fernanda Vasco. Experiência em empresas de tecnologia."),
+      knownContactNames: ["Fernanda Vasco"],
+    }] }] });
+    expect(report.contactCandidates).toEqual([expect.objectContaining({
+      name: "Fernanda Vasco",
+      linkedinUrl: "https://www.linkedin.com/in/fernanda-vasco",
+      currentEmploymentVerified: false,
+      employmentStatus: "unknown",
+    })]);
+    expect(report.procurementPeople).toHaveLength(0);
+  });
+
+  it("distingue a marca Três Corações do município homônimo", () => {
+    const report = classifyCompanyResearch({ company: "Três Corações", segment: "", searches: [
+      { kind: "identity", results: [
+        result("Prefeitura de Três Corações", "https://www.trescoracoes.mg.gov.br/", "Portal do município e da cidade de Três Corações, Minas Gerais."),
+        result("Grupo 3corações", "https://www.3coracoes.com.br/", "Empresa brasileira de cafés e alimentos com sede em Eusébio, CE."),
+      ] },
+      { kind: "news", results: [
+        result("Turismo em Três Corações", "https://noticias.example.com/cidade", "A prefeitura e o município divulgaram atrações da cidade de Três Corações."),
+        result("Grupo 3corações amplia indústria", "https://noticias.example.com/grupo-3coracoes", "A empresa de cafés Grupo 3corações anunciou expansão no Brasil."),
+      ] },
+    ] });
+    expect(report.officialWebsite?.url).toBe("https://www.3coracoes.com.br/");
+    expect(report.suggestedHeadquarters?.value).toBe("Eusébio, CE");
+    expect(report.companyNews.map((item) => item.url)).toEqual(["https://noticias.example.com/grupo-3coracoes"]);
+  });
+
+  it("desambigua nomes empresariais homônimos de cidades na consulta", () => {
+    const plans = buildCompanyResearchPlans({ company: "Três Corações", segment: "Alimentos e bebidas", year: 2026 });
+    expect(plans.find((item) => item.kinds.includes("identity"))?.query).toContain("-prefeitura");
+    expect(plans.filter((item) => item.kinds.includes("contacts")).every((item) => item.query.includes("-prefeitura"))).toBe(true);
   });
 
   it("não associa perfil sem evidência brasileira a contato salvo sem país ou telefone", () => {
