@@ -40,14 +40,24 @@ export const TODO_GREEN_ROLES = [
   "auditor",
 ];
 
+// crm:manage, proposal:manage, operations:manage e finance:manage são exigidas
+// por worker/services/todogreen-vertical-records.js para GRAVAR oportunidade,
+// proposta, contrato, operação e lançamento financeiro — e não apareciam em
+// nenhum papel além de owner/admin. Um vendedor não conseguia criar a própria
+// oportunidade; financeiro não conseguia lançar; operações batia em
+// "operation:manage" (singular) contra "operations:manage" (plural) exigido
+// pela coleção. Confirmado com o formulário real: a tela deixava preencher e
+// enviar, o servidor recusava com 403 em silêncio — sem esse mapeamento
+// batendo com o que a persistência exige, a vertical parece funcionar para
+// quem testa como owner e não funciona para ninguém mais.
 export const TODO_GREEN_PERMISSIONS = {
   owner: ["*"],
   admin: ["*"],
-  lideranca_comercial: ["read", "deal:approve", "pricing:simulate", "proposal:create", "goal:read", "goal:create", "goal:update", "goal:checkin", "goal:approve", "goal:close", "goal:manage-team", "goal:export"],
-  vendedor: ["read", "pricing:simulate", "proposal:create", "goal:read", "goal:checkin"],
+  lideranca_comercial: ["read", "crm:manage", "proposal:create", "proposal:manage", "deal:approve", "pricing:simulate", "goal:read", "goal:create", "goal:update", "goal:checkin", "goal:approve", "goal:close", "goal:manage-team", "goal:export"],
+  vendedor: ["read", "crm:manage", "proposal:create", "proposal:manage", "pricing:simulate", "goal:read", "goal:checkin"],
   pricing: ["read", "pricing:simulate", "pricing:manage", "deal:review", "goal:read", "goal:checkin"],
-  financeiro: ["read", "cost:manage", "revenue:manage", "commission:manage", "deal:review", "goal:read", "goal:checkin", "goal:validate"],
-  operacoes: ["read", "operation:manage", "deal:review", "evidence:manage", "goal:read", "goal:checkin", "goal:validate"],
+  financeiro: ["read", "cost:manage", "revenue:manage", "commission:manage", "finance:manage", "deal:review", "goal:read", "goal:checkin", "goal:validate"],
+  operacoes: ["read", "operation:manage", "operations:manage", "deal:review", "evidence:manage", "goal:read", "goal:checkin", "goal:validate"],
   sustentabilidade: ["read", "esg:manage", "deal:review", "audit:read", "evidence:manage", "goal:read", "goal:checkin", "goal:validate"],
   auditor: ["read", "audit:read", "export:read", "goal:read", "goal:export"],
 };

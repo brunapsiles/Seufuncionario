@@ -21,33 +21,17 @@
 
 import { sessionUser } from "../auth/credenciais.js";
 import { edgeIp, json } from "../lib/http.js";
+import { TODO_GREEN_PERMISSIONS, TODO_GREEN_ROLES } from "../../src/features/logistics/logisticsVerticalDomain.js";
 
 const TENANT_ID = "todogreen";
-
 const PAPEL_PADRAO = "vendedor";
-const PAPEIS_VALIDOS = new Set([
-  "owner",
-  "admin",
-  "lideranca_comercial",
-  "vendedor",
-  "pricing",
-  "financeiro",
-  "operacoes",
-  "sustentabilidade",
-  "auditor",
-]);
 
-const PERMISSOES_POR_PAPEL = {
-  owner: ["*"],
-  admin: ["*"],
-  lideranca_comercial: ["read", "deal:approve", "pricing:simulate", "proposal:create"],
-  vendedor: ["read", "pricing:simulate", "proposal:create"],
-  pricing: ["read", "pricing:simulate", "pricing:manage", "deal:review"],
-  financeiro: ["read", "cost:manage", "revenue:manage", "commission:manage", "deal:review"],
-  operacoes: ["read", "operation:manage", "deal:review", "evidence:manage"],
-  sustentabilidade: ["read", "esg:manage", "deal:review", "audit:read", "evidence:manage"],
-  auditor: ["read", "audit:read", "export:read"],
-};
+// Importados da mesma fonte que o endpoint real de concessão de acesso
+// (todogreen-core.js) usa — não uma cópia à mão. Isto já escondeu uma vez o
+// mesmo defeito: o mapa duplicado aqui não tinha as permissões que o teste
+// precisava, então o E2E testava um papel que não existia em produção
+// nenhuma, e a divergência real (permissão nunca derivada do papel na
+// concessão de verdade) passou despercebida.
 
 export async function handleTestSupport(request, env, url) {
   // wrangler dev grava cf-connecting-ip: 127.0.0.1 em toda requisição local —
@@ -63,8 +47,8 @@ export async function handleTestSupport(request, env, url) {
   if (!user) return json({ error: "Sessão inválida." }, 401);
 
   const body = await request.json().catch(() => ({}));
-  const role = PAPEIS_VALIDOS.has(body.role) ? body.role : PAPEL_PADRAO;
-  const permissions = PERMISSOES_POR_PAPEL[role] || ["read"];
+  const role = TODO_GREEN_ROLES.includes(body.role) ? body.role : PAPEL_PADRAO;
+  const permissions = TODO_GREEN_PERMISSIONS[role] || ["read"];
   const email = String(user.email || "").trim().toLowerCase();
   if (!email) return json({ error: "Sessão sem e-mail." }, 400);
 

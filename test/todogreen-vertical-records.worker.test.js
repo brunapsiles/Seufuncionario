@@ -604,3 +604,54 @@ describe("carteira: o vendedor nao ve a oportunidade do colega", () => {
     expect(nomes).toContain("Oportunidade do colega");
   });
 });
+
+// A concessão de acesso pelo formulário real (/api/todogreen/access-list) não
+// manda `permissions` — só e-mail, papel e observação. O servidor precisa
+// derivar a permissão do papel escolhido sozinho. Chegou a ficar sem essa
+// derivação: todo papel virava ["read"], a tela mostrava os botões de
+// escrita como se funcionassem (ela deriva do papel para decidir o que
+// exibir) e o servidor recusava tudo com 403 — a pessoa parecia ter acesso e
+// não conseguia salvar nada. Nenhum teste passava pelo endpoint real de
+// concessão para pegar isso; os outros injetam a permissão direto no banco.
+describe("a concessão real deriva a permissão do papel, não fixa ['read']", () => {
+  it("vendedor autorizado pelo formulário consegue registrar a própria oportunidade", async () => {
+    const dona = await criarUsuario(`tg-conc-dona-${n}`, `conc-dona-${n}@example.com`);
+    await autorizar(dona);
+
+    const emailVendedor = `conc-vendedor-${n}@example.com`;
+    const concessao = await pedir("/api/todogreen/access-list", {
+      metodo: "POST",
+      token: dona.token,
+      corpo: { email: emailVendedor, role: "vendedor", note: "" },
+    });
+    expect(concessao.status).toBe(201);
+
+    const vendedor = await criarUsuario(`tg-conc-vend-${n}`, emailVendedor);
+    const registrar = await pedir("/api/todogreen/records/opportunities", {
+      metodo: "POST",
+      token: vendedor.token,
+      corpo: { cliente: "Conta registrada pelo vendedor" },
+    });
+    expect(registrar.status).toBe(201);
+  });
+
+  it("papel inválido no corpo cai no mais restrito, não em admin", async () => {
+    const dona = await criarUsuario(`tg-conc-dona2-${n}`, `conc-dona2-${n}@example.com`);
+    await autorizar(dona);
+
+    const emailEstranho = `conc-estranho-${n}@example.com`;
+    await pedir("/api/todogreen/access-list", {
+      metodo: "POST",
+      token: dona.token,
+      corpo: { email: emailEstranho, role: "papel-que-nao-existe", note: "" },
+    });
+
+    const estranho = await criarUsuario(`tg-conc-estr-${n}`, emailEstranho);
+    const tentativa = await pedir("/api/todogreen/records/opportunities", {
+      metodo: "POST",
+      token: estranho.token,
+      corpo: { cliente: "Não deveria conseguir" },
+    });
+    expect(tentativa.status).toBe(403);
+  });
+});

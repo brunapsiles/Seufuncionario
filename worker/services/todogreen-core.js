@@ -1,6 +1,7 @@
 import {
   LOGISTICS_PRODUCTS,
   TODO_GREEN_MODULE_CATALOG,
+  TODO_GREEN_PERMISSIONS,
   TODO_GREEN_ROLES,
   TODO_GREEN_TENANT,
   centralPricingEngine,
@@ -116,10 +117,19 @@ export async function handleTodoGreenCore(request, env, user, url, dependencies)
       const body = await request.json().catch(() => ({}));
       const normalized = email(body.email);
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) return response({ error: "Informe um e-mail válido." }, 400);
-      const role = TODO_GREEN_ROLES.includes(body.role) ? body.role : "admin";
+      // Papel inválido cai no mais restrito, nunca em admin: um corpo mal
+      // formado não pode virar acesso total por omissão.
+      const role = TODO_GREEN_ROLES.includes(body.role) ? body.role : "auditor";
+      // A permissão nasce do papel escolhido — não de uma lista que o
+      // formulário de autorização nunca envia. Antes, todo papel selecionado
+      // (vendedor, pricing, financeiro, operações, liderança...) recebia
+      // ["read"] fixo, porque só owner/admin tinham caso especial aqui; a
+      // tela mostrava os botões de escrita como se funcionassem (ela deriva
+      // do papel via hasTodoGreenPermission) e o servidor recusava tudo com
+      // 403 — a pessoa parecia ter acesso e não conseguia salvar nada.
       const permissions = Array.isArray(body.permissions)
         ? body.permissions.map((item) => String(item).slice(0,80)).slice(0,30)
-        : ["owner","admin"].includes(role) ? ["*"] : ["read"];
+        : TODO_GREEN_PERMISSIONS[role] || ["read"];
       const now = new Date().toISOString();
       await env.DB.prepare(
         `INSERT INTO todogreen_access_emails
