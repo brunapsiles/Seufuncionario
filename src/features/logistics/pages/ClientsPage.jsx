@@ -681,7 +681,7 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
       const qualification = data.enrichment?.qualificationFilled?.length
         ? ` Qualificação preenchida: ${data.enrichment.qualificationFilled.join(", ")}.`
         : "";
-      const removed = data.enrichment?.legacyContactsRemoved ? ` ${data.enrichment.legacyContactsRemoved} contato(s) web sem comprovação brasileira removido(s).` : "";
+      const removed = data.enrichment?.legacyContactsRemoved ? ` ${data.enrichment.legacyContactsRemoved} contato(s) descoberto(s) na web, sem vínculo atual e sem telefone/e-mail, removido(s).` : "";
       setToast?.(`${focus === "contacts" ? "Contatos de Procurement logístico no Brasil pesquisados." : "Empresa pesquisada e ficha atualizada."}${legalName}${segment}${institutional}${correctedWebsite}${headquarters}${qualification}${additions}${updates}${removed}`);
     } catch (reason) { setResearchError(reason.message); }
     finally { setResearching(false); }
