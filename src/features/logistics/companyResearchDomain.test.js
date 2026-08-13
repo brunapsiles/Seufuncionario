@@ -82,9 +82,9 @@ describe("inteligência externa comercial", () => {
       verifiedBrazil: true,
       currentEmploymentVerified: true,
       employmentStatus: "current",
-      researchVersion: 11,
+      researchVersion: 12,
     })]);
-    expect(report.version).toBe(11);
+    expect(report.version).toBe(12);
     expect(report.suggestedHeadquarters?.value).toBe("São Paulo, SP");
   });
 

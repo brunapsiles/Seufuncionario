@@ -42,6 +42,8 @@ const valorDa = (item) =>
   numero(item.valorContrato) || numero(item.valorMensal) * (numero(item.mesesContrato) || 12);
 
 const mes = (valor) => (/^\d{4}-\d{2}/.test(texto(valor)) ? texto(valor).slice(0, 7) : "");
+const dataDeFechamento = (item) =>
+  item.dataPrevistaFechamento || item.expectedCloseAt || item.previsaoFechamento;
 
 /**
  * O forecast do período.
@@ -53,10 +55,10 @@ export function montarForecast({ oportunidades = [], meta = 0, periodo = "" } = 
   const todas = (Array.isArray(oportunidades) ? oportunidades : []).filter(Boolean);
   const abertas = todas.filter((item) => !fechada(item));
   const doPeriodo = periodo
-    ? abertas.filter((item) => mes(item.dataPrevistaFechamento) === periodo)
+    ? abertas.filter((item) => mes(dataDeFechamento(item)) === periodo)
     : abertas;
 
-  const semData = abertas.filter((item) => !mes(item.dataPrevistaFechamento));
+  const semData = abertas.filter((item) => !mes(dataDeFechamento(item)));
   const semProbabilidade = doPeriodo.filter(
     (item) => item.probabilidade === null || item.probabilidade === undefined || item.probabilidade === "",
   );
@@ -72,7 +74,7 @@ export function montarForecast({ oportunidades = [], meta = 0, periodo = "" } = 
   const commit = noCommit.reduce((soma, item) => soma + valorDa(item), 0);
 
   const ganho = todas
-    .filter((item) => ganha(item) && (!periodo || mes(item.dataPrevistaFechamento) === periodo))
+    .filter((item) => ganha(item) && (!periodo || mes(dataDeFechamento(item)) === periodo))
     .reduce((soma, item) => soma + valorDa(item), 0);
 
   const alvo = numero(meta);
@@ -168,12 +170,12 @@ export function pendenciasDoForecast({ oportunidades = [], diasParados = 21, hoj
   const abertas = (Array.isArray(oportunidades) ? oportunidades : []).filter((item) => item && !fechada(item));
   const nome = (item) => texto(item.cliente) || texto(item.titulo) || "sem nome";
   const idade = (item) => {
-    const marca = Date.parse(texto(item.atualizadoEm) || texto(item.criadoEm) || "");
+    const marca = Date.parse(texto(item.atualizadoEm || item.updatedAt) || texto(item.criadoEm || item.createdAt) || "");
     return Number.isFinite(marca) ? Math.floor((Date.parse(hoje) - marca) / 86400000) : null;
   };
 
   return [
-    { id: "sem-data", rotulo: "Sem data prevista de fechamento", contas: abertas.filter((item) => !mes(item.dataPrevistaFechamento)).map(nome) },
+    { id: "sem-data", rotulo: "Sem data prevista de fechamento", contas: abertas.filter((item) => !mes(dataDeFechamento(item))).map(nome) },
     { id: "sem-probabilidade", rotulo: "Sem probabilidade informada", contas: abertas.filter((item) => !numero(item.probabilidade)).map(nome) },
     { id: "sem-proximo-passo", rotulo: "Sem próximo passo definido", contas: abertas.filter((item) => !texto(item.proximoPasso || item.nextStep)).map(nome) },
     { id: "parada", rotulo: `Sem movimento há mais de ${diasParados} dias`, contas: abertas.filter((item) => { const dias = idade(item); return dias !== null && dias > diasParados; }).map(nome) },

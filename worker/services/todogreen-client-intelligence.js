@@ -8,7 +8,7 @@ const normalize = (value) => clean(value, 1200).normalize("NFD").replace(/[\u030
 const safeUrl = (value) => { try { const url = new URL(value); return ["http:", "https:"].includes(url.protocol) ? url.href : ""; } catch { return ""; } };
 const resultKey = (item) => safeUrl(item?.url).replace(/[#?].*$/, "").replace(/\/$/, "");
 const includesAny = (text, terms) => terms.some((term) => text.includes(term));
-export const COMPANY_RESEARCH_VERSION = 11;
+export const COMPANY_RESEARCH_VERSION = 12;
 
 const VACANCY = ["vaga", "vagas", "career", "carreira", "emprego", "job", "jobs", "hiring", "we are hiring", "we're looking", "talentos", "recrutamento", "analista de compras", "comprador"];
 const TRANSPORT = ["transporte", "transportadora", "logistica", "frete", "frota", "middle mile", "last mile", "transferencia", "distribuicao", "carrier"];
@@ -147,6 +147,21 @@ const source = (item, category, extra = {}) => ({
   category,
   ...extra,
 });
+
+const evidence = (suggestion, checkedAt, method = "Pesquisa web") => {
+  if (!suggestion?.value && !suggestion?.url) return null;
+  const item = suggestion.source || suggestion;
+  const url = safeUrl(item?.url || item?.sourceUrl);
+  if (!url) return null;
+  return {
+    value: clean(suggestion.value, 300),
+    sourceUrl: url,
+    sourceTitle: clean(item?.title, 240) || "Fonte pública",
+    checkedAt,
+    confidence: clean(suggestion.confidence, 40) || "moderada",
+    method,
+  };
+};
 
 const unique = (items, limit = 8) => {
   const seen = new Set();
@@ -415,6 +430,8 @@ const publicContact = (item, index, { company, officialHost, checkedAt }) => {
     country: "Brasil",
     specialty: "Procurement logístico",
     validation: "A fonte pública indica vínculo atual com a empresa, atuação no Brasil e escopo de logística/transportes na data da pesquisa.",
+    confidence: "alta",
+    evidence: { sourceUrl: safeUrl(item.url), checkedAt, method: "Pesquisa web", confidence: "alta" },
     verifiedBrazil: true,
     currentEmploymentVerified: true,
     employmentCheckedAt: checkedAt,
@@ -465,6 +482,8 @@ const knownContactCandidate = (item, index, company, knownContacts = [], checked
         ? "LinkedIn localizado pelo nome do contato cadastrado, com evidência pública de vínculo atual com a empresa e atuação no Brasil."
         : "LinkedIn localizado pelo nome e empresa, com vínculo atual indicado na fonte; a atuação no Brasil foi confirmada pelo telefone ou país já cadastrado no CRM."
       : "LinkedIn localizado para o contato já cadastrado. O perfil coincide por nome e empresa, mas a fonte pública não comprova que o vínculo ainda é atual; confirme antes de tratá-lo como decisor.",
+    confidence: current ? "alta" : "moderada",
+    evidence: { sourceUrl: safeUrl(item.url), checkedAt, method: "Pesquisa web", confidence: current ? "alta" : "moderada" },
     verifiedBrazil: true,
     currentEmploymentVerified: current,
     employmentCheckedAt: checkedAt,
@@ -880,6 +899,8 @@ export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = f
       source: existing.source || "Cadastro existente",
       sourceUrl: existing.sourceUrl || match.sourceUrl,
       validation: existing.validation || match.validation,
+      confidence: match.confidence || existing.confidence || "moderada",
+      evidence: match.evidence || existing.evidence || null,
       country: existing.country || match.country,
       specialty: existing.specialty || match.specialty,
       currentEmploymentVerified,
@@ -913,7 +934,18 @@ export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = f
   };
   const nextContacts = [...enrichedContacts, ...discoveredContacts];
   report.autoEnrichment.qualificationFilled = filledQualification;
-  const nextFields = { ...fields, website: filledWebsite, linkedinUrl: filledLinkedin, headquarters: filledHeadquarters, qualification, contacts: nextContacts, intelligence: report };
+  const previousEvidence = fields.enrichmentEvidence && typeof fields.enrichmentEvidence === "object"
+    ? fields.enrichmentEvidence
+    : {};
+  const enrichmentEvidence = {
+    ...previousEvidence,
+    ...(!clean(linha.legal_name, 200) && filledLegalName ? { legalName: evidence(report.suggestedLegalName, report.checkedAt) } : {}),
+    ...(!clean(linha.segment, 120) && filledSegment ? { segment: evidence(report.suggestedSegment, report.checkedAt) } : {}),
+    ...(websiteEnrichment.filled || websiteEnrichment.corrected ? { website: evidence({ value: filledWebsite, ...report.officialWebsite, source: report.officialWebsite }, report.checkedAt) } : {}),
+    ...(!clean(fields.linkedinUrl, 1000) && filledLinkedin ? { linkedinUrl: evidence({ value: filledLinkedin, ...report.linkedinCompany, source: report.linkedinCompany }, report.checkedAt) } : {}),
+    ...(!clean(fields.headquarters, 160) && filledHeadquarters ? { headquarters: evidence(report.suggestedHeadquarters, report.checkedAt) } : {}),
+  };
+  const nextFields = { ...fields, website: filledWebsite, linkedinUrl: filledLinkedin, headquarters: filledHeadquarters, qualification, contacts: nextContacts, intelligence: report, enrichmentEvidence };
   await env.DB.prepare(
     `UPDATE todogreen_clients SET legal_name=?,segment=?,fields_json=?,revision=revision+1,updated_by=?,updated_at=?
       WHERE id=? AND tenant_id=? AND workspace_owner_id=?`,
@@ -927,7 +959,7 @@ export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = f
       segment: filledSegment,
       revision: Number(linha.revision || 0) + 1,
       updatedAt: report.checkedAt,
-      crm: { website: filledWebsite, linkedinUrl: filledLinkedin, headquarters: filledHeadquarters, qualification, contacts: nextContacts, intelligence: report },
+      crm: { website: filledWebsite, linkedinUrl: filledLinkedin, headquarters: filledHeadquarters, qualification, contacts: nextContacts, intelligence: report, enrichmentEvidence },
     },
     doCache: false,
   };

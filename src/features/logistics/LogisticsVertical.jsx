@@ -79,6 +79,7 @@ import Semente from "./Semente.jsx";
 
 const EsgCenter = lazy(() => import("./EsgCenter.jsx"));
 const PricingParametersPanel = lazy(() => import("./PricingParametersPanel.jsx"));
+const PricingPerformancePanel = lazy(() => import("./PricingPerformancePanel.jsx"));
 const DashboardBuilderPage = lazy(() => import("./pages/DashboardBuilderPage.jsx"));
 const GoalsPage = lazy(() => import("./pages/GoalsPage.jsx"));
 const SalesPerformancePage = lazy(() => import("./pages/SalesPerformancePage.jsx"));
@@ -1372,6 +1373,7 @@ function PricingPanel({ role, criar, db, authHeaders, setToast, opportunities = 
         </button>
         {!situacao.podeSalvar && <small>{situacao.resumo}</small>}
       </div>
+      <Suspense fallback={<p>Carregando planejado × realizado...</p>}><PricingPerformancePanel authHeaders={authHeaders} canManage={hasTodoGreenPermission(role, "pricing:manage")} setToast={setToast} /></Suspense>
     </section>
   );
 }

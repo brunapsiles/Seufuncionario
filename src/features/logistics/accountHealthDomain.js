@@ -23,6 +23,11 @@ const arredondar = (valor, casas = 0) => {
   return Math.round(numero(valor) * fator) / fator;
 };
 const limitar = (valor, minimo = 0, maximo = 100) => Math.min(maximo, Math.max(minimo, numero(valor)));
+const contatoAtual = (item) => {
+  if (!item?.name || item.active === false || item.employmentStatus === "former") return false;
+  const web = String(item.source || "").toLowerCase().startsWith("pesquisa web");
+  return !web || (item.currentEmploymentVerified === true && item.verifiedBrazil === true);
+};
 
 // ===== Health Score =====
 //
@@ -53,7 +58,7 @@ const notaDeAtividade = (dias) => {
 };
 
 const notaDeRelacionamento = (contatos = []) => {
-  const ativos = contatos.filter((item) => item?.active !== false && item?.name);
+  const ativos = contatos.filter(contatoAtual);
   if (!ativos.length) return { nota: 0, porque: "Nenhum contato mapeado." };
   const comCanal = ativos.filter((item) => item.email || item.phone || item.linkedinUrl);
   const decisores = ativos.filter((item) =>
@@ -215,7 +220,7 @@ const REGRAS = [
   {
     id: "sem-contato",
     urgencia: "alta",
-    quando: ({ contatos }) => !contatos.filter((item) => item?.name && item?.active !== false).length,
+    quando: ({ contatos }) => !contatos.filter(contatoAtual).length,
     acao: "Mapear o primeiro contato da conta",
     porque: "Não há nenhum contato registrado — sem pessoa não há venda.",
     onde: "Editar 360º → Mapa de relacionamento",
@@ -224,7 +229,7 @@ const REGRAS = [
     id: "sem-compras",
     urgencia: "alta",
     quando: ({ contatos }) =>
-      !contatos.some((item) => /compras|procurement|suprimentos|sourcing|supply/i.test(`${item.title} ${item.department} ${item.relationshipRole}`)),
+      !contatos.filter(contatoAtual).some((item) => /compras|procurement|suprimentos|sourcing|supply/i.test(`${item.title} ${item.department} ${item.relationshipRole}`)),
     acao: "Identificar quem lidera Compras ou Procurement",
     porque: "Nenhum contato de Compras mapeado; a decisão de frete passa por lá.",
     onde: "Pesquisar contatos",

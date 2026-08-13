@@ -41,9 +41,9 @@ describe("To Do Green enterprise CRM", () => {
     ];
     const coverage = calculateRelationshipCoverage(contacts);
     expect(coverage.totalContacts).toBe(3);
-    expect(coverage.covered).toContain("Patrocinador");
-    expect(coverage.missing).toContain("Decisor econômico");
-    expect(coverage.score).toBe(50);
+    expect(coverage.covered).toContain("Quem apoia");
+    expect(coverage.missing).toContain("Quem decide");
+    expect(coverage.score).toBe(67);
   });
 
   it("calculates account health with pipeline and operational alerts", () => {
@@ -86,7 +86,7 @@ describe("To Do Green enterprise CRM", () => {
       contacts: [createTodoGreenContact({ relationshipRole: "Patrocinador" })],
       opportunities: [],
     });
-    expect(recommendation).toBe("Mapear e acessar o decisor econômico.");
+    expect(recommendation).toBe("Mapear e acessar quem decide a contratação logística.");
   });
 
   it("produces an executive account summary", () => {
@@ -105,12 +105,12 @@ describe("To Do Green enterprise CRM", () => {
       nextActionAt: "2999-01-01",
     });
     const contacts = [
-      createTodoGreenContact({ relationshipRole: "Decisor econômico" }),
-      createTodoGreenContact({ relationshipRole: "Decisor técnico" }),
-      createTodoGreenContact({ relationshipRole: "Patrocinador" }),
-      createTodoGreenContact({ relationshipRole: "Compras" }),
-      createTodoGreenContact({ relationshipRole: "Operações" }),
-      createTodoGreenContact({ relationshipRole: "Sustentabilidade" }),
+      createTodoGreenContact({ name: "A", relationshipRole: "Decisor econômico" }),
+      createTodoGreenContact({ name: "B", relationshipRole: "Decisor técnico" }),
+      createTodoGreenContact({ name: "C", relationshipRole: "Patrocinador" }),
+      createTodoGreenContact({ name: "D", relationshipRole: "Compras" }),
+      createTodoGreenContact({ name: "E", relationshipRole: "Operações" }),
+      createTodoGreenContact({ name: "F", relationshipRole: "Sustentabilidade" }),
     ];
     const summary = crmAccountSummary(account, contacts, [
       { accountId: account.id, stage: "Proposta", value: 2_000_000, probability: 60 },
@@ -192,6 +192,36 @@ describe("To Do Green enterprise CRM", () => {
       opportunities: [],
     });
     expect(result.relationshipMap.buyers).toEqual([]);
+  });
+
+  it("não trata resultado web sem vínculo atual como decisor", () => {
+    const coverage = calculateRelationshipCoverage([{
+      name: "Contato antigo", relationshipRole: "Quem decide", source: "Pesquisa web",
+      active: true, employmentStatus: "unknown", currentEmploymentVerified: false, verifiedBrazil: true,
+    }]);
+    expect(coverage.totalContacts).toBe(0);
+    expect(coverage.missing).toContain("Quem decide");
+  });
+
+  it("usa Quem bloqueia e migra o rótulo legado sem perder o contato", () => {
+    const legacy = createTodoGreenContact({ name: "Pessoa de risco", relationshipRole: "Quem atravessa" });
+    expect(legacy.relationshipRole).toBe("Quem bloqueia");
+    const coverage = calculateRelationshipCoverage([
+      legacy,
+      createTodoGreenContact({ name: "Decisor", relationshipRole: "Quem decide" }),
+    ]);
+    expect(coverage.blockers).toBe(1);
+    expect(coverage.missing).not.toContain("Quem decide");
+  });
+
+  it("calcula Share of Wallet apenas quando o gasto logístico do cliente foi informado", () => {
+    const withBasis = buildAccountIntelligence({
+      account: createTodoGreenAccount({ id: "wallet", ourAnnualRevenue: 2_000_000, customerAnnualLogisticsSpend: 10_000_000 }),
+    });
+    expect(withBasis.shareOfWallet.percentage).toBe(20);
+    expect(withBasis.shareOfWallet.remaining).toBe(8_000_000);
+    const withoutBasis = buildAccountIntelligence({ account: createTodoGreenAccount({ id: "wallet-empty", ourAnnualRevenue: 1_000 }) });
+    expect(withoutBasis.shareOfWallet.percentage).toBeNull();
   });
 
   it("calculates the annual portfolio potential from monthly quantities and tickets", () => {
