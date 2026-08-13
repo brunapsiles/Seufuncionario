@@ -296,6 +296,32 @@ function AccountEditor({ client, onClose, onSave }) {
     }));
     setContact({ name: "", title: "", email: "", phone: "", linkedinUrl: "", relationshipRole: "Influenciador" });
   };
+  const updateContact = (id, key, value) => setForm((current) => ({
+    ...current,
+    contacts: current.contacts.map((item) => item.id === id ? { ...item, [key]: value } : item),
+  }));
+  const updateContactEmployment = (id, status) => setForm((current) => ({
+    ...current,
+    contacts: current.contacts.map((item) => item.id === id ? {
+      ...item,
+      employmentStatus: status,
+      currentEmploymentVerified: status === "current",
+      employmentCheckedAt: new Date().toISOString(),
+      active: status !== "former",
+      verifiedBrazil: status === "current" ? true : item.verifiedBrazil,
+      country: status === "current" ? item.country || "Brasil" : item.country,
+      researchVersion: status === "current" ? 10 : item.researchVersion,
+      validation: status === "current"
+        ? "Vínculo atual confirmado manualmente no CRM."
+        : status === "former"
+          ? "Contato preservado como histórico; vínculo marcado manualmente como encerrado."
+          : "Vínculo atual ainda não confirmado.",
+    } : item),
+  }));
+  const removeContact = (item) => {
+    if (typeof window !== "undefined" && !window.confirm(`Excluir manualmente ${item.name} do CRM? Esta ação remove os dados de contato desta conta.`)) return;
+    setForm((current) => ({ ...current, contacts: current.contacts.filter((candidate) => candidate.id !== item.id) }));
+  };
   const save = async (event) => {
     event.preventDefault();
     setSaving(true);
@@ -458,7 +484,19 @@ function AccountEditor({ client, onClose, onSave }) {
           </div>
           <div className="tdg-crm-contact-list">
             {form.contacts.length === 0 && <p>Nenhum contato mapeado. Comece pelo patrocinador e pelos decisores econômico e técnico.</p>}
-            {form.contacts.map((item) => <article key={item.id}><div><strong>{item.name}</strong><small>{item.title || "Cargo não informado"} · {item.relationshipRole}</small></div><span>{item.email || item.phone || "Sem canal informado"}</span><button type="button" aria-label={`Remover ${item.name}`} onClick={() => setForm((current) => ({ ...current, contacts: current.contacts.filter((candidate) => candidate.id !== item.id) }))}><Trash2 size={14} /></button></article>)}
+            {form.contacts.map((item) => <article className="tdg-crm-contact-editor-row" key={item.id}>
+              <header><strong>{item.name}</strong><small>{item.source || "Cadastro manual"}{item.email || item.phone ? " · dados preservados até exclusão manual" : ""}</small></header>
+              <div className="tdg-crm-contact-editor-grid">
+                <label><span>Nome</span><input value={item.name || ""} onChange={(event) => updateContact(item.id, "name", event.target.value)} /></label>
+                <label><span>Cargo</span><input value={item.title || ""} onChange={(event) => updateContact(item.id, "title", event.target.value)} /></label>
+                <label><span>Papel</span><select value={item.relationshipRole || "Influenciador"} onChange={(event) => updateContact(item.id, "relationshipRole", event.target.value)}>{TODO_GREEN_RELATIONSHIP_ROLES.map((role) => <option key={role}>{role}</option>)}</select></label>
+                <label><span>E-mail</span><input type="email" value={item.email || ""} onChange={(event) => updateContact(item.id, "email", event.target.value)} /></label>
+                <label><span>Telefone</span><input value={item.phone || ""} onChange={(event) => updateContact(item.id, "phone", event.target.value)} /></label>
+                <label><span>LinkedIn</span><input type="url" placeholder="https://linkedin.com/in/..." value={item.linkedinUrl || ""} onChange={(event) => updateContact(item.id, "linkedinUrl", event.target.value)} /></label>
+                <label><span>Situação do vínculo</span><select value={item.employmentStatus || "unknown"} onChange={(event) => updateContactEmployment(item.id, event.target.value)}><option value="unknown">Não confirmado</option><option value="current">Atual confirmado</option><option value="former">Histórico / saiu da empresa</option></select></label>
+              </div>
+              <button className="tdg-crm-contact-delete" type="button" aria-label={`Excluir ${item.name}`} onClick={() => removeContact(item)}><Trash2 size={14} />Excluir manualmente</button>
+            </article>)}
           </div>
         </fieldset>
         <footer><button type="button" onClick={onClose}>Cancelar</button><button className="tdg-action" type="submit" disabled={saving}>{saving ? "Salvando..." : "Salvar visão 360º"}</button></footer>
@@ -735,7 +773,7 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
 
     {selected && selectedSummary && <div className="tdg-crm-detail">
       <button className="tdg-crm-back" type="button" onClick={closeClient}><ArrowLeft size={16} />Voltar para a carteira</button>
-      <header className="tdg-crm-detail-hero"><div><span>{selected.crm?.tier || "Enterprise"}{selected.crm?.temperature ? ` · ${selected.crm.temperature}` : ""}</span><h2>{selected.name}</h2><p>{selected.segment || "Segmento não informado"} · {selected.crm?.stage || "Mapeamento"}{selected.document ? ` · ${selected.document}` : ""}</p><small>{selected.crm?.source ? `Origem: ${selected.crm.source}` : "Conta da carteira To Do Green"}</small></div><div className="tdg-crm-detail-actions">{access.podeEditar && <button type="button" onClick={() => setEditingId(selected.id)}><Edit3 size={15} />Editar</button>}<button type="button" onClick={() => setTaskClientId(selected.id)}><ListPlus size={15} />Adicionar tarefa</button><button type="button" onClick={() => researchSelected("company")} disabled={researching}><Globe2 size={15} />Pesquisar empresa</button><button type="button" onClick={() => researchSelected("contacts")} disabled={researching}><UserSearch size={15} />Pesquisar contatos</button><button type="button" onClick={() => setPortalPreviewOpen(true)}><Eye size={15} />Ver como cliente</button><button type="button" onClick={() => onNavigate?.(`/todogreen/oportunidades?client=${encodeURIComponent(selected.id)}`)}>Pipeline <ArrowRight size={15} /></button></div></header>
+      <header className="tdg-crm-detail-hero"><div><span>{selected.crm?.tier || "Enterprise"}{selected.crm?.temperature ? ` · ${selected.crm.temperature}` : ""}</span><h2>{selected.name}</h2><p>{selected.segment || "Segmento não informado"} · {selected.crm?.stage || "Mapeamento"}{selected.document ? ` · ${selected.document}` : ""}</p><small>{selected.crm?.source ? `Origem: ${selected.crm.source}` : "Conta da carteira To Do Green"}</small></div><div className="tdg-crm-detail-actions">{access.podeEditar && <button type="button" onClick={() => setEditingId(selected.id)}><Edit3 size={15} />Editar</button>}<button type="button" onClick={() => setTaskClientId(selected.id)}><ListPlus size={15} />Adicionar tarefa</button><button type="button" onClick={() => researchSelected("company")} disabled={researching}><Globe2 size={15} />Pesquisar empresa</button><button type="button" onClick={() => researchSelected("contacts")} disabled={researching}><UserSearch size={15} />Atualizar contatos</button><button type="button" onClick={() => setPortalPreviewOpen(true)}><Eye size={15} />Ver como cliente</button><button type="button" onClick={() => onNavigate?.(`/todogreen/oportunidades?client=${encodeURIComponent(selected.id)}`)}>Pipeline <ArrowRight size={15} /></button></div></header>
       <div className="tdg-crm-detail-metrics"><article><small>Saúde da conta</small><strong>{selectedSummary.score}</strong><span>{selectedSummary.attention === "healthy" ? "Saudável" : selectedSummary.attention === "critical" ? "Crítica" : "Atenção"}</span></article><article><small>Cobertura de decisores</small><strong>{selectedSummary.coverage}%</strong><span>{selectedAccount.contacts.length} contato(s)</span></article><article><small>Pipeline da conta</small><strong>{BRL.format(selectedSummary.pipeline || 0)}</strong><span>{selectedSummary.openOpportunities || 0} oportunidade(s)</span></article><article><small>Portal do cliente</small><strong>{selected.portalEnabled ? "Liberado" : "Bloqueado"}</strong><span>{selected.portalUserCount || 0} acesso(s) ativo(s)</span></article></div>
       <section className="tdg-crm-next"><Target size={17} /><div><small>PRÓXIMA MELHOR AÇÃO</small><strong>{selectedIntelligence.nextTask}</strong></div><button type="button" onClick={() => setTaskClientId(selected.id)}>Transformar em tarefa</button><button type="button" onClick={completeSuggestedAction} disabled={!selectedIntelligence.nextTaskCanComplete}>Marcar feita e ver próxima</button></section>
       {portalPreviewOpen && <ClientPortalPreview client={selected} authHeaders={authHeaders} open onClose={() => setPortalPreviewOpen(false)} />}

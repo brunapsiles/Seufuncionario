@@ -75,9 +75,9 @@ describe("inteligência externa comercial", () => {
       verifiedBrazil: true,
       currentEmploymentVerified: true,
       employmentStatus: "current",
-      researchVersion: 9,
+      researchVersion: 10,
     })]);
-    expect(report.version).toBe(9);
+    expect(report.version).toBe(10);
     expect(report.suggestedHeadquarters?.value).toBe("São Paulo, SP");
   });
 
@@ -261,7 +261,7 @@ describe("inteligência externa comercial", () => {
         { name: "Joana Silva", source: "Cadastro manual", linkedinUrl: "https://linkedin.com/in/joana", active: true },
         { name: "Contato Atual", source: "Pesquisa web", linkedinUrl: "https://linkedin.com/in/atual", active: true },
       ],
-      contactCandidates: [{ name: "Contato Atual", linkedinUrl: "https://linkedin.com/in/atual" }],
+      contactCandidates: [{ name: "Contato Atual", linkedinUrl: "https://linkedin.com/in/atual", currentEmploymentVerified: true }],
       formerContacts: [{ name: "Joana Silva", linkedinUrl: "https://linkedin.com/in/joana" }],
       checkedAt: "2026-08-13T12:00:00.000Z",
     });
@@ -271,6 +271,25 @@ describe("inteligência externa comercial", () => {
       expect.objectContaining({ name: "Joana Silva", active: false, employmentStatus: "former" }),
       expect.objectContaining({ name: "Contato Atual", active: true }),
     ]);
+  });
+
+  it("nunca exclui automaticamente contato com telefone ou e-mail", () => {
+    const reconciled = reconcileResearchedContacts({
+      existingContacts: [
+        { name: "Contato Importado", source: "Pesquisa web", email: "contato@empresa.com", phone: "+55 11 99999-0000", active: true },
+      ],
+      contactCandidates: [],
+      formerContacts: [],
+      checkedAt: "2026-08-13T12:00:00.000Z",
+    });
+    expect(reconciled.staleWebContactsRemoved).toBe(0);
+    expect(reconciled.contacts).toEqual([expect.objectContaining({
+      name: "Contato Importado",
+      email: "contato@empresa.com",
+      phone: "+55 11 99999-0000",
+      active: false,
+      employmentStatus: "unknown",
+    })]);
   });
 
   it("localiza o LinkedIn de um contato já cadastrado sem recriá-lo", () => {
@@ -288,7 +307,47 @@ describe("inteligência externa comercial", () => {
       name: "Fernanda Vasco",
       linkedinUrl: "https://www.linkedin.com/in/fernanda-vasco",
       source: "Pesquisa web (LinkedIn do contato)",
+      currentEmploymentVerified: true,
+      employmentStatus: "current",
     })]);
+  });
+
+  it("completa o LinkedIn conhecido sem promover vínculo incerto a procurement atual", () => {
+    const report = classifyCompanyResearch({ company: "Amazon", segment: "E-commerce", knownContacts: [
+      { name: "Fernanda Vasco", phone: "+55 11 98839-5335", email: "fevasco@amazon.com" },
+    ], searches: [{ kind: "known_contacts", results: [{
+      ...result("Fernanda Vasco - Amazon | LinkedIn", "https://www.linkedin.com/in/fernanda-vasco", "Perfil profissional de Fernanda Vasco. Experiência em empresas de tecnologia."),
+      knownContactNames: ["Fernanda Vasco"],
+    }] }] });
+    expect(report.contactCandidates).toEqual([expect.objectContaining({
+      name: "Fernanda Vasco",
+      linkedinUrl: "https://www.linkedin.com/in/fernanda-vasco",
+      currentEmploymentVerified: false,
+      employmentStatus: "unknown",
+    })]);
+    expect(report.procurementPeople).toHaveLength(0);
+  });
+
+  it("distingue a marca Três Corações do município homônimo", () => {
+    const report = classifyCompanyResearch({ company: "Três Corações", segment: "", searches: [
+      { kind: "identity", results: [
+        result("Prefeitura de Três Corações", "https://www.trescoracoes.mg.gov.br/", "Portal do município e da cidade de Três Corações, Minas Gerais."),
+        result("Grupo 3corações", "https://www.3coracoes.com.br/", "Empresa brasileira de cafés e alimentos com sede em Eusébio, CE."),
+      ] },
+      { kind: "news", results: [
+        result("Turismo em Três Corações", "https://noticias.example.com/cidade", "A prefeitura e o município divulgaram atrações da cidade de Três Corações."),
+        result("Grupo 3corações amplia indústria", "https://noticias.example.com/grupo-3coracoes", "A empresa de cafés Grupo 3corações anunciou expansão no Brasil."),
+      ] },
+    ] });
+    expect(report.officialWebsite?.url).toBe("https://www.3coracoes.com.br/");
+    expect(report.suggestedHeadquarters?.value).toBe("Eusébio, CE");
+    expect(report.companyNews.map((item) => item.url)).toEqual(["https://noticias.example.com/grupo-3coracoes"]);
+  });
+
+  it("desambigua nomes empresariais homônimos de cidades na consulta", () => {
+    const plans = buildCompanyResearchPlans({ company: "Três Corações", segment: "Alimentos e bebidas", year: 2026 });
+    expect(plans.find((item) => item.kinds.includes("identity"))?.query).toContain("-prefeitura");
+    expect(plans.filter((item) => item.kinds.includes("contacts")).every((item) => item.query.includes("-prefeitura"))).toBe(true);
   });
 
   it("não associa perfil sem evidência brasileira a contato salvo sem país ou telefone", () => {

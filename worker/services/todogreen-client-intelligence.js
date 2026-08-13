@@ -8,7 +8,7 @@ const normalize = (value) => clean(value, 1200).normalize("NFD").replace(/[\u030
 const safeUrl = (value) => { try { const url = new URL(value); return ["http:", "https:"].includes(url.protocol) ? url.href : ""; } catch { return ""; } };
 const resultKey = (item) => safeUrl(item?.url).replace(/[#?].*$/, "").replace(/\/$/, "");
 const includesAny = (text, terms) => terms.some((term) => text.includes(term));
-export const COMPANY_RESEARCH_VERSION = 9;
+export const COMPANY_RESEARCH_VERSION = 10;
 
 const VACANCY = ["vaga", "vagas", "career", "carreira", "emprego", "job", "jobs", "hiring", "we are hiring", "we're looking", "talentos", "recrutamento", "analista de compras", "comprador"];
 const TRANSPORT = ["transporte", "transportadora", "logistica", "frete", "frota", "middle mile", "last mile", "transferencia", "distribuicao", "carrier"];
@@ -71,6 +71,14 @@ const SEGMENTS = [
   ["Logística e transportes", ["logistica", "transporte", "transportadora", "frete"]],
   ["Serviços financeiros", ["banco", "financeir", "fintech", "seguros"]],
 ];
+
+const AMBIGUOUS_PLACE_BRANDS = {
+  "tres coracoes": {
+    aliases: ["3coracoes", "3 coracoes", "grupo 3coracoes", "grupo tres coracoes"],
+    businessCues: ["empresa", "companhia", "grupo", "marca", "cnpj", "cafe", "cafes", "industria", "linkedin.com/company"],
+    placeCues: ["prefeitura", "municipio", "camara municipal", "cidade de", "turismo", "secretaria municipal"],
+  },
+};
 
 const cnpjDigits = (value) => clean(value, 40).replace(/\D/g, "");
 const validCnpj = (value) => {
@@ -170,11 +178,24 @@ const companyTokens = (company) => normalize(company)
   .split(/\s+/)
   .filter((item) => item.length > 3 && !["grupo", "brasil"].includes(item));
 
+const ambiguousPlaceBrand = (company) => AMBIGUOUS_PLACE_BRANDS[normalize(company)] || null;
+
+const companySearchTerm = (company) =>
+  `"${clean(company, 200)}" (empresa OR companhia OR marca OR CNPJ) -prefeitura -município -municipio -"cidade de"`;
+
+const isGovernmentWebsite = (value) => {
+  try {
+    const host = new URL(safeUrl(value)).hostname.replace(/^www\./, "").toLowerCase();
+    return host.endsWith(".gov.br") || host === "gov.br";
+  } catch { return false; }
+};
+
 const websiteBelongsToCompany = (value, company) => {
   let host = "";
   try { host = normalize(new URL(safeUrl(value)).hostname.replace(/^www\./, "")); } catch { return false; }
   const tokens = companyTokens(company);
-  return Boolean(host && tokens.length && tokens.some((token) => host.includes(token)));
+  const aliases = ambiguousPlaceBrand(company)?.aliases || [];
+  return Boolean(host && ((tokens.length && tokens.some((token) => host.includes(token))) || aliases.some((alias) => host.includes(normalize(alias).replace(/\s+/g, "")))));
 };
 
 export function resolveWebsiteEnrichment({ existingWebsite, previousResearchWebsite, officialWebsite, company }) {
@@ -254,7 +275,14 @@ const mentionsCompany = (item, company) => {
   const tokens = companyTokens(company);
   if (!tokens.length) return true;
   const text = normalize(`${item?.title} ${item?.snippet} ${item?.url}`).slice(0, 900);
-  return tokens.some((token) => text.includes(token));
+  const nameMatches = tokens.some((token) => text.includes(token));
+  const ambiguous = ambiguousPlaceBrand(company);
+  if (!ambiguous) return nameMatches;
+  const aliasMatches = ambiguous.aliases.some((alias) => text.includes(normalize(alias)));
+  const businessEvidence = includesAny(text, ambiguous.businessCues);
+  const placeEvidence = includesAny(text, ambiguous.placeCues);
+  if (placeEvidence && !businessEvidence) return false;
+  return (nameMatches || aliasMatches) && businessEvidence;
 };
 
 const profileGeography = (item) => {
@@ -411,10 +439,12 @@ const knownContactCandidate = (item, index, company, knownContacts = [], checked
   if (!name) return null;
   const profile = profileParts(item, company);
   if (!profile) return null;
-  if (currentEmploymentEvidence(item, company) !== "current") return null;
+  const employment = currentEmploymentEvidence(item, company);
+  if (employment === "former") return null;
   const geography = profileGeography(item);
   const savedContact = knownContacts.find((contact) => normalize(contact?.name) === normalize(name));
   if (geography === "foreign" || (geography !== "brazil" && !brazilEvidenceFromSavedContact(savedContact))) return null;
+  const current = employment === "current";
   return {
     id: `known-web-contact-${index + 1}`,
     name,
@@ -428,13 +458,15 @@ const knownContactCandidate = (item, index, company, knownContacts = [], checked
     sourceUrl: safeUrl(item.url),
     country: "Brasil",
     specialty: "Contato já cadastrado",
-    validation: geography === "brazil"
-      ? "LinkedIn localizado pelo nome do contato cadastrado, com evidência pública de vínculo atual com a empresa e atuação no Brasil."
-      : "LinkedIn localizado pelo nome e empresa, com vínculo atual indicado na fonte; a atuação no Brasil foi confirmada pelo telefone ou país já cadastrado no CRM.",
+    validation: current
+      ? geography === "brazil"
+        ? "LinkedIn localizado pelo nome do contato cadastrado, com evidência pública de vínculo atual com a empresa e atuação no Brasil."
+        : "LinkedIn localizado pelo nome e empresa, com vínculo atual indicado na fonte; a atuação no Brasil foi confirmada pelo telefone ou país já cadastrado no CRM."
+      : "LinkedIn localizado para o contato já cadastrado. O perfil coincide por nome e empresa, mas a fonte pública não comprova que o vínculo ainda é atual; confirme antes de tratá-lo como decisor.",
     verifiedBrazil: true,
-    currentEmploymentVerified: true,
+    currentEmploymentVerified: current,
     employmentCheckedAt: checkedAt,
-    employmentStatus: "current",
+    employmentStatus: current ? "current" : "unknown",
     researchVersion: COMPANY_RESEARCH_VERSION,
     active: true,
   };
@@ -446,7 +478,7 @@ const isLegacyUnverifiedWebContact = (contact) =>
     contact?.verifiedBrazil !== true || contact?.currentEmploymentVerified !== true);
 
 export function reconcileResearchedContacts({ existingContacts = [], contactCandidates = [], formerContacts = [], checkedAt = "" }) {
-  const currentCandidateIdentities = new Set(contactCandidates.flatMap((item) => [
+  const currentCandidateIdentities = new Set(contactCandidates.filter((item) => item.currentEmploymentVerified === true).flatMap((item) => [
     normalize(item.linkedinUrl), normalize(item.email), normalize(item.name),
   ]).filter(Boolean));
   const formerIdentities = new Set(formerContacts.flatMap((item) => [
@@ -457,13 +489,14 @@ export function reconcileResearchedContacts({ existingContacts = [], contactCand
   const contacts = existingContacts.flatMap((contact) => {
     const identities = [normalize(contact.linkedinUrl), normalize(contact.email), normalize(contact.name)].filter(Boolean);
     const webDiscovered = normalize(contact.source).startsWith("pesquisa web");
+    const protectedChannel = Boolean(clean(contact.email, 320) || clean(contact.phone, 500));
     const current = identities.some((identity) => currentCandidateIdentities.has(identity));
     const former = identities.some((identity) => formerIdentities.has(identity));
-    if (webDiscovered && !current) {
+    if (webDiscovered && !current && !protectedChannel) {
       staleWebContactsRemoved += 1;
       return [];
     }
-    if (!webDiscovered && former) {
+    if (former) {
       formerContactsMarkedInactive += 1;
       return [{
         ...contact,
@@ -472,6 +505,16 @@ export function reconcileResearchedContacts({ existingContacts = [], contactCand
         currentEmploymentVerified: false,
         employmentCheckedAt: checkedAt,
         validation: "Contato preservado como histórico: a fonte pública indica que o vínculo com esta empresa não é mais atual.",
+      }];
+    }
+    if (webDiscovered && !current && protectedChannel) {
+      return [{
+        ...contact,
+        active: false,
+        currentEmploymentVerified: false,
+        employmentCheckedAt: checkedAt,
+        employmentStatus: "unknown",
+        validation: "Contato preservado por possuir telefone ou e-mail. O vínculo atual não foi reconfirmado pela pesquisa; atualize ou exclua manualmente.",
       }];
     }
     return [contact];
@@ -503,7 +546,7 @@ export function classifyCompanyResearch({ company, segment, searches, knownConta
   const linkedInCompany = all.find((item) => /linkedin\.com\/company\//i.test(item.url) && mentionsCompany(item, company));
   const officialWebsiteResult = (byKind.identity || []).find((item) => {
     const url = normalize(safeUrl(item.url));
-    return Boolean(url) && !includesAny(url, ["linkedin.com", "facebook.com", "instagram.com", "wikipedia.org", "youtube.com", "jusbrasil.com", "glassdoor."]) &&
+    return Boolean(url) && !isGovernmentWebsite(item.url) && !includesAny(url, ["linkedin.com", "facebook.com", "instagram.com", "wikipedia.org", "youtube.com", "jusbrasil.com", "glassdoor."]) &&
       websiteBelongsToCompany(item.url, company);
   });
   const officialWebsite = officialWebsiteResult ? {
@@ -665,19 +708,24 @@ const response = (data, status = 200) => new Response(JSON.stringify(data), { st
 /** Uma pesquisa 360 reaproveita cada resultado em várias classificações. */
 export function buildCompanyResearchPlans({ company, segment, year, focus = "company", knownContacts = [] }) {
   const name = clean(company, 200);
+  const companyTerm = companySearchTerm(name);
+  const ambiguous = ambiguousPlaceBrand(name);
+  const contactTarget = ambiguous
+    ? `("${name}" empresa OR ${ambiguous.aliases.map((alias) => `"${alias}"`).join(" OR ")}) -prefeitura -município -municipio -"cidade de"`
+    : `"${name}"`;
   const market = clean(segment, 120) || "logística e transporte";
   const plans = [
     {
       kinds: ["identity"],
-      query: `"${name}" Brasil site oficial LinkedIn empresa segmento`,
+      query: `${companyTerm} Brasil site oficial LinkedIn segmento`,
     },
     {
       kinds: ["registry"],
-      query: `"${name}" Brasil ("razão social" OR "nome empresarial" OR CNPJ) (sede OR endereço OR segmento)`,
+      query: `${companyTerm} Brasil ("razão social" OR "nome empresarial" OR CNPJ) (sede OR endereço OR segmento)`,
     },
     {
       kinds: ["esg", "news"],
-      query: `"${name}" Brasil ESG sustentabilidade logística notícias ${year}`,
+      query: `${companyTerm} Brasil ESG sustentabilidade logística notícias ${year}`,
     },
     {
       kinds: ["segment"],
@@ -685,40 +733,40 @@ export function buildCompanyResearchPlans({ company, segment, year, focus = "com
     },
     {
       kinds: ["supplier", "rfq"],
-      query: `"${name}" Brasil ("cadastro de fornecedores" OR "seja fornecedor" OR "RFQ aberta" OR "RFP aberta" OR licitação OR concorrência) (transporte OR transportadora OR logística OR frete) (inscrições OR prazo OR proposta OR portal)`,
+      query: `${companyTerm} Brasil ("cadastro de fornecedores" OR "seja fornecedor" OR "RFQ aberta" OR "RFP aberta" OR licitação OR concorrência) (transporte OR transportadora OR logística OR frete) (inscrições OR prazo OR proposta OR portal)`,
     },
     {
       kinds: ["contacts"],
       contactScope: "brazil-procurement-logistics",
-      query: `site:linkedin.com/in "${name}" (Brasil OR Brazil OR "São Paulo") (procurement OR compras OR suprimentos) (logística OR transportes OR frete OR "supply chain")`,
+      query: `site:linkedin.com/in ${contactTarget} (Brasil OR Brazil OR "São Paulo") (procurement OR compras OR suprimentos) (logística OR transportes OR frete OR "supply chain")`,
     },
     {
       kinds: ["contacts"],
       contactScope: "brazil-procurement-logistics",
-      query: `site:br.linkedin.com/in "${name}" Brasil (compras OR procurement OR logística OR transportes OR "supply chain")`,
+      query: `site:br.linkedin.com/in ${contactTarget} Brasil (compras OR procurement OR logística OR transportes OR "supply chain")`,
     },
     {
       kinds: ["contacts"],
       contactScope: "brazil-procurement-logistics",
-      query: `"${name}" Brasil LinkedIn gerente compras suprimentos transportes logística`,
+      query: `${contactTarget} Brasil LinkedIn gerente compras suprimentos transportes logística`,
     },
   ];
   if (focus === "contacts") plans.push({
     kinds: ["contacts"],
     contactScope: "brazil-procurement-logistics",
-    query: `site:linkedin.com/in "${name}" (Brasil OR Brazil OR "São Paulo") (diretor OR gerente OR head) ("supply chain" OR transportes OR distribuição OR outbound)`,
+    query: `site:linkedin.com/in ${contactTarget} (Brasil OR Brazil OR "São Paulo") (diretor OR gerente OR head) ("supply chain" OR transportes OR distribuição OR outbound)`,
   });
   if (focus === "contacts") {
     const contactsToFind = (Array.isArray(knownContacts) ? knownContacts : [])
       .filter((item) => clean(item?.name, 160).split(/\s+/).length >= 2 && !safeUrl(item?.linkedinUrl))
-      .slice(0, 8)
+      .slice(0, 25)
       .map((item) => clean(item.name, 160));
     for (const contactName of contactsToFind) {
       plans.push({
         kinds: ["known_contacts"],
         contactScope: "brazil-known-contact",
         knownContactNames: [contactName],
-        query: `site:linkedin.com/in "${contactName}" "${name}" (Brasil OR Brazil OR "São Paulo")`,
+        query: `site:linkedin.com/in "${contactName}" ${contactTarget} (Brasil OR Brazil OR "São Paulo") -jobs -vaga`,
       });
     }
   }
@@ -814,6 +862,7 @@ export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = f
       normalize(existing.name) === normalize(candidate.name));
     if (!match) return existing;
     matchedCandidates.add(match.linkedinUrl);
+    const currentEmploymentVerified = match.currentEmploymentVerified === true;
     const next = {
       ...existing,
       title: existing.title || match.title,
@@ -821,22 +870,22 @@ export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = f
       email: existing.email || match.email,
       phone: existing.phone || match.phone,
       linkedinUrl: existing.linkedinUrl || match.linkedinUrl,
-      source: existing.source || "Pesquisa web (complemento)",
+      source: existing.source || "Cadastro existente",
       sourceUrl: existing.sourceUrl || match.sourceUrl,
       validation: existing.validation || match.validation,
       country: existing.country || match.country,
       specialty: existing.specialty || match.specialty,
-      currentEmploymentVerified: true,
+      currentEmploymentVerified,
       employmentCheckedAt: report.checkedAt,
-      employmentStatus: "current",
+      employmentStatus: currentEmploymentVerified ? "current" : "unknown",
       researchVersion: COMPANY_RESEARCH_VERSION,
-      active: existing.active === false && existing.employmentStatus === "former" ? true : existing.active,
+      active: currentEmploymentVerified && existing.active === false && existing.employmentStatus === "former" ? true : existing.active,
     };
     if (JSON.stringify(next) !== JSON.stringify(existing)) contactsUpdated += 1;
     return next;
   });
   const existingIdentities = new Set(enrichedContacts.flatMap((item) => [normalize(item.linkedinUrl), normalize(item.email), normalize(item.name)].filter(Boolean)));
-  const discoveredContacts = (report.contactCandidates || []).filter((item) => !matchedCandidates.has(item.linkedinUrl) && !existingIdentities.has(normalize(item.linkedinUrl)) && !existingIdentities.has(normalize(item.email)) && !existingIdentities.has(normalize(item.name)));
+  const discoveredContacts = (report.contactCandidates || []).filter((item) => item.currentEmploymentVerified === true && !matchedCandidates.has(item.linkedinUrl) && !existingIdentities.has(normalize(item.linkedinUrl)) && !existingIdentities.has(normalize(item.email)) && !existingIdentities.has(normalize(item.name)));
   const {
     filledLegalName, filledSegment, filledWebsite, filledLinkedin, filledHeadquarters,
     websiteEnrichment, qualification, filledQualification,

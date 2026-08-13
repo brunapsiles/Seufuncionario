@@ -180,6 +180,20 @@ describe("To Do Green enterprise CRM", () => {
     expect(result.accountPlan.objective).toBe("Abrir operação dedicada");
   });
 
+  it("mantém contato histórico fora do mapa atual de relacionamento", () => {
+    const account = createTodoGreenAccount({ id: "account-history" });
+    const result = buildAccountIntelligence({
+      account,
+      contacts: [{
+        id: "old-buyer", name: "Ex Comprador", relationshipRole: "Compras",
+        employmentStatus: "former", employmentCheckedAt: "2026-08-13T00:00:00.000Z",
+        currentEmploymentVerified: false, active: false,
+      }],
+      opportunities: [],
+    });
+    expect(result.relationshipMap.buyers).toEqual([]);
+  });
+
   it("calculates the annual portfolio potential from monthly quantities and tickets", () => {
     const potential = calculatePortfolioPotential(createTodoGreenAccount({
       potentialInputs: {

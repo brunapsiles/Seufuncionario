@@ -413,10 +413,12 @@ export const buildAccountIntelligence = ({ account = {}, contacts = [], opportun
     health.push(`${withoutNextStep.length} oportunidade(s) sem próxima ação`);
   if (!health.length) health.push("Nenhum alerta comercial objetivo com os dados atuais");
 
-  const buyers = contactGroup(contacts, ["compras", "decisor econômico"], ["procurement", "compras", "suprimentos", "sourcing"]);
-  const influencers = contactGroup(contacts, ["influenciador", "patrocinador", "decisor técnico"]);
-  const blockers = contactGroup(contacts, ["bloqueador"]);
-  const users = contactGroup(contacts, ["usuário", "operações"], ["operações", "logística", "transportes"]);
+  const currentRelationshipContacts = contacts.filter((contact) => contact.active !== false && contact.employmentStatus !== "former" &&
+    (!contact.employmentCheckedAt || contact.currentEmploymentVerified === true));
+  const buyers = contactGroup(currentRelationshipContacts, ["compras", "decisor econômico"], ["procurement", "compras", "suprimentos", "sourcing"]);
+  const influencers = contactGroup(currentRelationshipContacts, ["influenciador", "patrocinador", "decisor técnico"]);
+  const blockers = contactGroup(currentRelationshipContacts, ["bloqueador"]);
+  const users = contactGroup(currentRelationshipContacts, ["usuário", "operações"], ["operações", "logística", "transportes"]);
   const uniqueNames = (items) => [...new Set(items.map((item) => item.name).filter(Boolean))];
   const plan = account.accountPlan || {};
   const whiteSpace = Object.entries(PRODUCT_LABELS)
