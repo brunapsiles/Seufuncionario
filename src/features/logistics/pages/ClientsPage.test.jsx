@@ -26,7 +26,7 @@ describe("página de clientes", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
       clientes: [{
         id: "client-1", accountCode: "TDG-000001", name: "Rede Alfa", segment: "Varejo", status: "ativo", revision: 2,
-        vendedores: [], crm: { stage: "Diagnóstico", nextAction: "Validar rota", nextActionAt: "2999-01-01", dataQuality: 80, contacts: [] },
+        vendedores: [], crm: { stage: "Diagnóstico", nextAction: "Validar rota", nextActionAt: "2999-01-01", dataQuality: 80, customerAnnualLogisticsSpend: 5_000_000, contacts: [] },
       }],
       acesso: { podeGerenciar: true, podeEditar: true, somenteCarteira: false },
     }), { status: 200 })));
@@ -45,6 +45,8 @@ describe("página de clientes", () => {
     expect(screen.getByRole("button", { name: /Ver como cliente/ })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Visões da conta" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Resumo" })).toHaveClass("active");
+    expect(screen.getByText(/Receita anual da To Do Green ainda não informada/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Gasto logístico anual do cliente não informado/)).not.toBeInTheDocument();
     expect(screen.getAllByText(/Mapear ao menos um contato de Procurement/i).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Marcar feita e ver próxima" })).toBeEnabled();
     expect(screen.getByText("Reunião com compras")).toBeInTheDocument();

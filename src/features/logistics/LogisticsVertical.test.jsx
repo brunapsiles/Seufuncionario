@@ -157,6 +157,7 @@ describe("LogisticsVertical", () => {
 
   it("renders the private hub for authorized To Do Green users", async () => {
     await renderarAutorizada();
+    expect(screen.getByRole("heading", { name: "Visão Geral", level: 1 }).hidden).toBe(false);
     expect(screen.getByRole("heading", { name: "O que precisa da sua atenção" })).toBeTruthy();
     expect(screen.getByRole("navigation", { name: "Navegação To Do Green" }).querySelectorAll("button")).toHaveLength(8);
     expect(screen.getByText("Gestão e configurações")).toBeTruthy();
@@ -168,12 +169,57 @@ describe("LogisticsVertical", () => {
     expect(screen.getByText("Inteligência ESG")).toBeTruthy();
   });
 
+  it("mantém a busca de funções disponível em qualquer página", async () => {
+    window.history.pushState({}, "", "/todogreen/precificacao");
+    await renderarAutorizada();
+    expect(screen.getByRole("heading", { name: "Precificação e aprovação comercial", level: 1 }).hidden).toBe(false);
+    expect(screen.getByText(/Calculadoras por produto, margem, custo, target/i).hidden).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Buscar ferramenta" }));
+    await waitFor(() => expect(window.location.pathname).toBe("/todogreen/dashboard"));
+    expect(window.location.search).toBe("?ferramentas=1");
+    expect(screen.getByText("Calculadoras reais disponíveis").closest("details")?.open).toBe(true);
+    expect(screen.getByLabelText("Buscar funções da vertical To Do Green").closest("details")?.open).toBe(true);
+  });
+
+  it("cada página mantém um título principal único e compreensível", async () => {
+    window.history.pushState({}, "", "/todogreen/clientes");
+    const { container } = await renderarAutorizada();
+    expect(screen.getByRole("heading", { name: "Clientes e contatos", level: 1 }).hidden).toBe(false);
+    expect(container.querySelectorAll("#tdg-title")).toHaveLength(1);
+    expect(container.querySelector("main.tdg")?.getAttribute("aria-labelledby")).toBe("tdg-title");
+  });
+
   it("does not show fake production indicators when no real data exists", async () => {
     await renderarAutorizada();
     expect(screen.getByText("Comece conectando o primeiro dado real")).toBeTruthy();
+    expect(screen.getByText("Não medida")).toBeTruthy();
+    expect(screen.getByText("Não calculada")).toBeTruthy();
     expect(screen.queryByText("Cliente enterprise")).toBeNull();
     expect(screen.queryByText("Operação e-commerce")).toBeNull();
     expect(screen.queryByText(/demonstração ativo/i)).toBeNull();
+  });
+
+  it("leva margem e ocupação críticas para uma ação específica", async () => {
+    stubDeRede({
+      "/api/todogreen/records": () => jsonOk({
+        ...REGISTROS,
+        scenarios: [{
+          id: "s-risk", productId: "middle-mile", clientId: "cli-1", clienteNome: "Rede Alfa",
+          premissas: { confirmadas: true },
+          result: { selectedPrice: 100_000, loadedCost: 94_000, marginPercent: 6, minimumMarginPercent: 18 },
+        }],
+        operations: [{
+          id: "op-risk", produtoId: "middle-mile", viagens: 10, entregas: 30,
+          distanciaKm: 500, ocupacaoPercent: 35, campos: { route: "Cajamar → Osasco" },
+        }],
+      }),
+    });
+    await renderarAutorizada();
+    expect(await screen.findByText(/Rede Alfa está 12 p\.p\. abaixo do piso/)).toBeTruthy();
+    expect(await screen.findByText(/Cajamar → Osasco com 35% de ocupação/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Abrir pricing/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Abrir operação/ })).toBeTruthy();
   });
 
   it("renders product-specific pricing fields instead of one generic form", async () => {

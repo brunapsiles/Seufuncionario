@@ -71,6 +71,8 @@ import { liberacaoDaProposta } from "./dealDeskDomain.js";
 import { useVerticalRecords } from "./useVerticalRecords.js";
 import { inputsDePrecificacaoDaOportunidade } from "./electrificationJourneyDomain.js";
 import { buildTodoGreenDecisionCenter } from "./decisionCenterDomain.js";
+import { cenariosAbaixoDoPiso, resumoDeMargem } from "./marginDomain.js";
+import { operacoesCriticas, resumoDeOcupacao } from "./operationsEfficiencyDomain.js";
 import {
   agruparModulosPorTela,
   grupoAtendeBusca,
@@ -420,9 +422,30 @@ const PRIMARY_NAVIGATION = Object.freeze([
 ]);
 
 const MANAGEMENT_TOOLS = Object.freeze([
-  { id: "projects", label: "Gestão de Projetos", route: "/todogreen/central-trabalho", permission: "" },
-  { id: "integracoes", label: "Integrações", route: "/todogreen/integracoes", permission: "integration:manage" },
-  { id: "acessos", label: "Usuários e acessos", route: "/todogreen/acessos", permission: "access:manage" },
+  {
+    id: "projects",
+    label: "Gestão de Projetos",
+    title: "Gestão de Projetos",
+    description: "Quadros, responsáveis, prazos, automações e acompanhamento das entregas da To Do Green.",
+    route: "/todogreen/central-trabalho",
+    permission: "",
+  },
+  {
+    id: "integracoes",
+    label: "Integrações",
+    title: MODULE_IMPLEMENTATION.integracoes.title,
+    description: MODULE_IMPLEMENTATION.integracoes.description,
+    route: "/todogreen/integracoes",
+    permission: "integration:manage",
+  },
+  {
+    id: "acessos",
+    label: "Usuários e acessos",
+    title: "Usuários e acessos",
+    description: MODULE_IMPLEMENTATION.acessos.description,
+    route: "/todogreen/acessos",
+    permission: "access:manage",
+  },
 ]);
 
 const navigationFor = (page) => {
@@ -863,6 +886,14 @@ const operacaoDaApi = (item) => ({
   occupancyPercent: item.ocupacaoPercent,
   status: item.situacao,
   route: item.campos?.route || "",
+  referencia: item.campos?.route || item.referencia || "",
+  mesReferencia: item.mesReferencia || String(item.criadoEm || "").slice(0, 7),
+  produtoId: item.produtoId,
+  entregas: item.entregas,
+  pacotes: item.pacotes,
+  viagens: item.viagens,
+  distanciaKm: item.distanciaKm,
+  ocupacaoPercent: item.ocupacaoPercent,
   incidents: Number(item.campos?.incidents || 0),
   revision: item.revision,
   createdAt: item.criadoEm,
@@ -1063,13 +1094,22 @@ function FieldInput({ name, value, required, onChange }) {
 
 function DashboardPanel({ data, dashboard, tasks, onNavigate }) {
   const decision = buildTodoGreenDecisionCenter({ data, dashboard, tasks });
+  const margin = resumoDeMargem({ cenarios: data.pricingScenarios });
+  const marginRisks = cenariosAbaixoDoPiso({ cenarios: data.pricingScenarios, limite: 3 });
+  const occupancy = resumoDeOcupacao({ operacoes: data.operations });
+  const occupancyRisks = operacoesCriticas({ operacoes: data.operations, limite: 3 });
+  const actionableAlerts = [
+    ...marginRisks.map((item) => ({ id: `margin-${item.id}`, tone: "risk", title: `${item.cliente} está ${number.format(item.distanciaDoPiso)} p.p. abaixo do piso`, detail: `Margem ${number.format(item.margemPercent)}% · piso ${number.format(item.piso)}%`, action: "Abrir pricing", route: "/todogreen/precificacao" })),
+    ...occupancyRisks.map((item) => ({ id: `occupancy-${item.id}`, tone: "risk", title: `${item.referencia} com ${number.format(item.ocupacaoPercent)}% de ocupação`, detail: "Revise consolidação, frequência ou alocação da rota.", action: "Abrir operação", route: "/todogreen/operacoes" })),
+    ...decision.alerts,
+  ];
   const countLabel = (total, singular, plural) => `${total} ${total === 1 ? singular : plural}`;
   return (
-    <section className="tdg-panel tdg-decision-center" aria-labelledby="tdg-title">
+    <section className="tdg-panel tdg-decision-center" aria-labelledby="tdg-decision-title">
       <header className="tdg-decision-header">
         <div>
           <span className="tdg-kicker">VISÃO GERAL</span>
-          <h1 id="tdg-title">O que precisa da sua atenção</h1>
+          <h2 id="tdg-decision-title">O que precisa da sua atenção</h2>
           <p>Prioridades reais da operação, do comercial e dos clientes. Cada aviso abre o local onde a ação acontece.</p>
         </div>
         <span className="tdg-data-status">{data.demo ? "Demonstração identificada" : "Dados reais"}</span>
@@ -1077,9 +1117,10 @@ function DashboardPanel({ data, dashboard, tasks, onNavigate }) {
 
       <div className="tdg-decision-metrics" aria-label="Resultados principais">
         <MetricCard label="Receita" value={decision.hasRevenueData ? BRL.format(dashboard.receitaRealizada || dashboard.receitaPrevista) : "Não informada"} detail={decision.hasRevenueData ? "realizada e contratada" : "sem lançamento financeiro"} />
-        <MetricCard label="Margem" value={decision.hasMarginData ? `${number.format(dashboard.margemOperacionalPercent)}%` : "Não calculada"} detail={decision.hasMarginData ? BRL.format(dashboard.margemContribuicao) : "sem custo e operação"} tone={!decision.hasMarginData ? "neutral" : dashboard.margemOperacionalPercent < 18 ? "risk" : "good"} />
+        <MetricCard label="Margem das simulações" value={margin.margemPercent === null ? "Não calculada" : `${number.format(margin.margemPercent)}%`} detail={margin.leitura} tone={margin.abaixoDoPiso ? "risk" : margin.margemPercent === null ? "neutral" : "good"} />
         <MetricCard label="Forecast" value={BRL.format(decision.forecast)} detail={countLabel(decision.counts.openOpportunities, "oportunidade aberta", "oportunidades abertas")} />
         <MetricCard label="Pipeline" value={BRL.format(decision.pipeline)} detail="valor total em negociação" />
+        <MetricCard label="Ocupação" value={occupancy.ocupacaoMedia === null ? "Não medida" : `${number.format(occupancy.ocupacaoMedia)}%`} detail={occupancy.leitura} tone={occupancy.criticas ? "risk" : occupancy.ocupacaoMedia === null ? "neutral" : "good"} />
         <MetricCard label="CO2 evitado" value={decision.hasImpactData ? `${number.format(dashboard.co2Evitado / 1000)} t` : "Não calculado"} detail={decision.hasImpactData ? "estimativa com memória de cálculo" : "sem operação vinculada"} tone={decision.hasImpactData ? "good" : "neutral"} />
       </div>
 
@@ -1087,11 +1128,11 @@ function DashboardPanel({ data, dashboard, tasks, onNavigate }) {
         <section className="tdg-attention-list" aria-labelledby="tdg-attention-title">
           <div className="tdg-decision-section-title">
             <div><span>AGORA</span><h2 id="tdg-attention-title">Prioridades e alertas</h2></div>
-            <small>{decision.alerts.length ? countLabel(decision.alerts.length, "item para decidir", "itens para decidir") : "Nenhuma pendência crítica encontrada"}</small>
+            <small>{actionableAlerts.length ? countLabel(actionableAlerts.length, "item para decidir", "itens para decidir") : "Nenhuma pendência crítica encontrada"}</small>
           </div>
-          {decision.alerts.length === 0 ? (
+          {actionableAlerts.length === 0 ? (
             <div className="tdg-decision-clear"><CheckCircle2 size={20} /><div><strong>{decision.hasData ? "Nada crítico neste momento" : "Comece conectando o primeiro dado real"}</strong><span>{decision.hasData ? "A Semente continua acompanhando mudanças na carteira, no pricing e na operação." : "Cadastre um cliente, uma oportunidade ou uma simulação para o painel orientar suas decisões."}</span></div>{!decision.hasData && <button type="button" onClick={() => onNavigate?.("/todogreen/clientes")}>Cadastrar cliente</button>}</div>
-          ) : decision.alerts.slice(0, 6).map((alert) => (
+          ) : actionableAlerts.slice(0, 6).map((alert) => (
             <button className={`tdg-decision-alert ${alert.tone}`} type="button" onClick={() => onNavigate?.(alert.route)} key={alert.id}>
               <span className="tdg-decision-alert-icon">{alert.tone === "risk" ? <AlertTriangle size={18} /> : <Bell size={18} />}</span>
               <span><strong>{alert.title}</strong><small>{alert.detail}</small></span>
@@ -1108,7 +1149,11 @@ function DashboardPanel({ data, dashboard, tasks, onNavigate }) {
             <button type="button" onClick={() => onNavigate?.("/todogreen/clientes")}>Clientes <ArrowRight size={14} /></button>
             <button type="button" onClick={() => onNavigate?.("/todogreen/oportunidades")}>Oportunidades <ArrowRight size={14} /></button>
             <button type="button" onClick={() => onNavigate?.("/todogreen/precificacao")}>Pricing <ArrowRight size={14} /></button>
+            <button type="button" onClick={() => onNavigate?.("/todogreen/propostas")}>Propostas e contratos <ArrowRight size={14} /></button>
+            <button type="button" onClick={() => onNavigate?.("/todogreen/deal-desk")}>Aprovações <ArrowRight size={14} /></button>
             <button type="button" onClick={() => onNavigate?.("/todogreen/operacoes")}>Operação <ArrowRight size={14} /></button>
+            <button type="button" onClick={() => onNavigate?.("/todogreen/receita")}>Receita e resultado <ArrowRight size={14} /></button>
+            <button type="button" onClick={() => onNavigate?.("/todogreen/central-esg")}>ESG <ArrowRight size={14} /></button>
           </div>
         </aside>
       </div>
@@ -1770,6 +1815,8 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
   const activeManagement = isWorkCenter
     ? MANAGEMENT_TOOLS[0]
     : MANAGEMENT_TOOLS.find((item) => item.id === page) || null;
+  const currentPage = activeManagement || MODULE_IMPLEMENTATION[page] || MODULE_IMPLEMENTATION.dashboard;
+  const catalogRequested = new URLSearchParams(path.split("?")[1] || "").get("ferramentas") === "1";
   // A vertical inteira numa chamada só, e só depois que o acesso foi
   // confirmado: pedir os registros antes disso seria bater no servidor para
   // ouvir 403.
@@ -1830,27 +1877,33 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
     <main className={`tdg ${isOverview ? "tdg-overview-page" : "tdg-module-page"}`} aria-labelledby="tdg-title">
       <header className="tdg-shell-header">
         <div className="tdg-shell-location">
-          <span>TO DO GREEN</span>
-          <strong>{activeManagement?.label || primaryNavigation.label}</strong>
+          <span>TO DO GREEN · {activeManagement ? "GESTÃO" : primaryNavigation.label.toUpperCase()}</span>
+          <h1 id="tdg-title">{currentPage.title}</h1>
+          <p>{currentPage.description}</p>
         </div>
-        <details className="tdg-management-menu">
-          <summary>Gestão e configurações</summary>
-          <div data-tdg-management-tools="true">
-            {MANAGEMENT_TOOLS
-              .filter((item) => !item.permission || hasTodoGreenPermission(role, item.permission))
-              .map((item) => (
-                <button
-                  type="button"
-                  className={(isWorkCenter && item.id === "projects") || page === item.id ? "active" : ""}
-                  data-tdg-work-center-tab={item.id === "projects" ? "true" : undefined}
-                  onClick={() => navigate(item.route)}
-                  key={item.id}
-                >
-                  {item.label}
-                </button>
-              ))}
-          </div>
-        </details>
+        <div className="tdg-shell-actions">
+          <button className="tdg-shell-search" type="button" onClick={() => navigate("/todogreen/dashboard?ferramentas=1")}>
+            <Search size={15} />Buscar ferramenta
+          </button>
+          <details className="tdg-management-menu">
+            <summary>Gestão e configurações</summary>
+            <div data-tdg-management-tools="true">
+              {MANAGEMENT_TOOLS
+                .filter((item) => !item.permission || hasTodoGreenPermission(role, item.permission))
+                .map((item) => (
+                  <button
+                    type="button"
+                    className={(isWorkCenter && item.id === "projects") || page === item.id ? "active" : ""}
+                    data-tdg-work-center-tab={item.id === "projects" ? "true" : undefined}
+                    onClick={() => navigate(item.route)}
+                    key={item.id}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+            </div>
+          </details>
+        </div>
       </header>
 
       <nav className="tdg-tabs" aria-label="Navegação To Do Green">
@@ -1934,7 +1987,7 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
       {!Object.keys(MODULE_IMPLEMENTATION).includes(page) && !["central-trabalho", "green-score", "calculadora-ambiental", "tradutor-esg", "escopo-3", "custos", "comissoes"].includes(page) && <DashboardPanel data={verticalData} dashboard={dashboard} tasks={db?.tasks || []} onNavigate={navigate} />}
 
       {isOverview && (
-        <details className="tdg-tool-catalog">
+        <details className="tdg-tool-catalog" open={catalogRequested || undefined}>
           <summary>
             <span><strong>Todas as ferramentas</strong><small>Encontre uma função específica sem aumentar o menu principal.</small></span>
             <span>Explorar</span>
