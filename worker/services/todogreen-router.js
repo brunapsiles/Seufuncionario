@@ -39,7 +39,7 @@ const guarded = async (label, message, handler) => {
 // espaço de trabalho vindo da query string.
 const internalAccess = (request, env) => exigirAcessoTodoGreen(request, env);
 
-export async function routeTodoGreenApi(request, env) {
+export async function routeTodoGreenApi(request, env, ctx) {
   const url = new URL(request.url);
   const path = url.pathname;
   if (!path.startsWith("/api/todogreen/")) return null;
@@ -75,7 +75,7 @@ export async function routeTodoGreenApi(request, env) {
       () => handleTodoGreenCustomerPortal(request, env));
   if (path.startsWith("/api/todogreen/work-center"))
     return guarded("To Do Green work center error", "Não foi possível sincronizar a Central de Trabalho.",
-      () => handleTodoGreenWorkCenter(request, env));
+      () => handleTodoGreenWorkCenter(request, env, ctx));
   if (path.startsWith("/api/todogreen/pricing-parameters"))
     return guarded("To Do Green pricing parameters error", "Não foi possível carregar os parâmetros comerciais.",
       () => handleTodoGreenPricingParameters(request, env));

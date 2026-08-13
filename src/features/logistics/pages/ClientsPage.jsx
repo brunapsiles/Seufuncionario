@@ -35,6 +35,7 @@ import {
   TODO_GREEN_RELATIONSHIP_ROLES,
   buildCrmCommandCenter,
   buildAccountIntelligence,
+  calculatePortfolioPotential,
   crmAccountSummary,
 } from "../todoGreenCrmDomain.js";
 import { assessAccount, gmailComposeUrl, outlookComposeUrl, whatsappUrl } from "../accountIntelligenceDomain.js";
@@ -58,9 +59,11 @@ const api = async (path, authHeaders, options = {}) => {
 };
 
 const trustedCrmContact = (contact) => {
+  if (contact?.active === false || contact?.employmentStatus === "former") return false;
   const source = String(contact?.source || "").trim().toLowerCase();
   if (!source.startsWith("pesquisa web")) return true;
-  return contact?.verifiedBrazil === true && Number(contact?.researchVersion || 0) >= 3 && String(contact?.country || "").toLowerCase() === "brasil";
+  return contact?.verifiedBrazil === true && contact?.currentEmploymentVerified === true &&
+    Number(contact?.researchVersion || 0) >= 9 && String(contact?.country || "").toLowerCase() === "brasil";
 };
 
 const accountFromClient = (client) => ({
@@ -104,6 +107,10 @@ function ResearchLinks({ title, items = [], empty }) {
     : <small>{empty}</small>}</div>;
 }
 
+function AccountSource({ url }) {
+  return url ? <a href={url} target="_blank" rel="noreferrer">Ver fonte <ExternalLink size={11} /></a> : null;
+}
+
 function ExternalIntelligence({ report, researching, error, onResearch }) {
   return <section className="tdg-crm-web-intelligence">
     <header><div><strong>Inteligência externa</strong><small>{formatCheckedAt(report?.checkedAt)}</small></div><button type="button" onClick={() => onResearch?.("company")} disabled={researching}><RefreshCw size={14} className={researching ? "spin" : ""} />{researching ? "Pesquisando..." : report ? "Atualizar web" : "Pesquisar empresa"}</button></header>
@@ -116,15 +123,17 @@ function ExternalIntelligence({ report, researching, error, onResearch }) {
       <ResearchLinks title="Procurement de Logística e Transportes no Brasil" items={report.procurementPeople} empty="Nenhum contato público passou pelos critérios de empresa, Brasil e escopo logístico." />
       <ResearchLinks title="LinkedIn dos contatos cadastrados" items={report.knownContactProfiles} empty="Nenhum LinkedIn adicional foi confirmado para os contatos já cadastrados." />
       <ResearchLinks title="Candidatos para validação" items={report.reviewCandidates} empty="Nenhum candidato pendente de validação." />
-      {report.contactSearchQuality && <div className="tdg-crm-research-enrichment"><strong>Resultado da busca de contatos</strong><small>{report.contactSearchQuality.accepted || 0} incluído(s), {report.contactSearchQuality.candidatesForReview || 0} candidato(s) para validação, {report.contactSearchQuality.foreignRejected || 0} estrangeiro(s), {report.contactSearchQuality.noBrazilEvidenceRejected || 0} sem evidência de Brasil e {report.contactSearchQuality.nonLogisticsRejected || 0} sem escopo logístico.</small></div>}
+      {report.contactSearchQuality && <div className="tdg-crm-research-enrichment"><strong>Resultado da busca de contatos</strong><small>{report.contactSearchQuality.accepted || 0} com vínculo atual comprovado, {report.contactSearchQuality.formerEmploymentRejected || 0} ex-contato(s) rejeitado(s), {report.contactSearchQuality.currentEmploymentUnverified || 0} sem atualidade comprovada, {report.contactSearchQuality.candidatesForReview || 0} candidato(s) para validação, {report.contactSearchQuality.foreignRejected || 0} estrangeiro(s) e {report.contactSearchQuality.nonLogisticsRejected || 0} sem escopo logístico.</small></div>}
+      {report.suggestedLegalName?.value && <div className="tdg-crm-research-enrichment"><strong>Razão social identificada: {report.suggestedLegalName.value}</strong><small>Confiança {report.suggestedLegalName.confidence}. {report.autoEnrichment?.legalNameFilled ? "Preenchida automaticamente na conta." : "A conta já possuía uma razão social e foi preservada."}</small></div>}
       {report.suggestedSegment?.value && <div className="tdg-crm-research-enrichment"><strong>Segmento identificado: {report.suggestedSegment.value}</strong><small>Confiança {report.suggestedSegment.confidence}. {report.autoEnrichment?.segmentFilled ? "Preenchido automaticamente no CRM." : "O CRM já possuía um segmento e foi preservado."}</small></div>}
       {report.suggestedHeadquarters?.value && <div className="tdg-crm-research-enrichment"><strong>Operação brasileira identificada: {report.suggestedHeadquarters.value}</strong><small>Confiança {report.suggestedHeadquarters.confidence}. {report.autoEnrichment?.headquartersFilled ? "Preenchida automaticamente na conta." : "A conta já possuía uma sede e foi preservada."}</small></div>}
-      {report.autoEnrichment?.contactsAdded > 0 && <div className="tdg-crm-research-enrichment"><strong>{report.autoEnrichment.contactsAdded} contato(s) público(s) incluído(s)</strong><small>Vínculo e cargo ficam marcados para confirmação antes da abordagem.</small></div>}
+      {report.autoEnrichment?.contactsAdded > 0 && <div className="tdg-crm-research-enrichment"><strong>{report.autoEnrichment.contactsAdded} contato(s) público(s) incluído(s)</strong><small>A fonte indica vínculo atual, Brasil e escopo logístico na data da pesquisa. Revalide antes da abordagem.</small></div>}
       {report.autoEnrichment?.contactsUpdated > 0 && <div className="tdg-crm-research-enrichment"><strong>{report.autoEnrichment.contactsUpdated} contato(s) cadastrado(s) complementado(s)</strong><small>Os dados existentes foram preservados e somente campos vazios receberam evidência pública.</small></div>}
       {report.autoEnrichment?.qualificationFilled?.length > 0 && <div className="tdg-crm-research-enrichment"><strong>Qualificação comercial complementada</strong><small>{report.autoEnrichment.qualificationFilled.join(", ")} preenchido(s) com evidências vinculadas.</small></div>}
       {(report.autoEnrichment?.websiteFilled || report.autoEnrichment?.linkedinFilled) && <div className="tdg-crm-research-enrichment"><strong>Dados institucionais preenchidos</strong><small>{[report.autoEnrichment.websiteFilled && "site", report.autoEnrichment.linkedinFilled && "LinkedIn da empresa"].filter(Boolean).join(" e ")} vinculados à conta.</small></div>}
       {(report.autoEnrichment?.websiteCorrected || report.autoEnrichment?.invalidWebsiteRemoved) && <div className="tdg-crm-research-enrichment"><strong>{report.autoEnrichment.websiteCorrected ? "Site oficial corrigido" : "Site incorreto removido"}</strong><small>{report.autoEnrichment.websiteCorrected ? "O endereço anterior era de uma fonte externa e foi substituído pelo domínio da própria empresa." : "O endereço anterior era de uma fonte externa e nenhuma página oficial segura foi encontrada para substituí-lo."}</small></div>}
-      {report.autoEnrichment?.legacyContactsRemoved > 0 && <div className="tdg-crm-research-enrichment"><strong>{report.autoEnrichment.legacyContactsRemoved} contato(s) antigo(s) descartado(s)</strong><small>Resultados web sem comprovação de atuação no Brasil foram removidos da conta.</small></div>}
+      {report.autoEnrichment?.legacyContactsRemoved > 0 && <div className="tdg-crm-research-enrichment"><strong>{report.autoEnrichment.legacyContactsRemoved} contato(s) web sem vínculo atual removido(s)</strong><small>O CRM retirou do mapa ativo resultados antigos, ex-funcionários e perfis cuja atualidade não pôde ser comprovada.</small></div>}
+      {report.autoEnrichment?.formerContactsMarkedInactive > 0 && <div className="tdg-crm-research-enrichment"><strong>{report.autoEnrichment.formerContactsMarkedInactive} contato(s) manual(is) preservado(s) como histórico</strong><small>A fonte indica vínculo anterior. A pessoa foi retirada do mapa de decisores ativos, sem apagar o cadastro feito pela equipe.</small></div>}
       {report.autoEnrichment?.legacyContactsRetained > 0 && <div className="tdg-crm-research-enrichment"><strong>{report.autoEnrichment.legacyContactsRetained} contato(s) antigo(s) preservado(s)</strong><small>Continuam no cadastro para revisão manual, mas não contam como decisores brasileiros confirmados.</small></div>}
       <ResearchLinks title="Sinais ESG" items={report.esg?.signals} empty="Nenhuma evidência pública suficiente." />
       <ResearchLinks title="Notícias da empresa" items={report.companyNews} empty="Nenhuma notícia relevante encontrada." />
@@ -205,7 +214,7 @@ function ContactCard({ contact, clientName }) {
   const details = [...new Set([contact.title, contact.department, contact.specialty, contact.country, contact.relationshipRole].filter(Boolean))];
   const whatsapp = whatsappUrl(contact.phone);
   return <article>
-    <div><b>{contact.name}</b><small>{details.join(" · ") || "Função ainda não informada"}</small>{contact.source && <em className="tdg-crm-contact-source">{contact.source} · confirmar vínculo</em>}{contact.validation && <em className="tdg-crm-contact-source">{contact.validation}</em>}</div>
+    <div><b>{contact.name}</b><small>{details.join(" · ") || "Função ainda não informada"}</small>{contact.source && <em className="tdg-crm-contact-source">{contact.source}{contact.currentEmploymentVerified ? ` · vínculo atual indicado em ${formatCheckedAt(contact.employmentCheckedAt)}` : " · vínculo não confirmado"}</em>}{contact.validation && <em className="tdg-crm-contact-source">{contact.validation}</em>}</div>
     <div className="tdg-crm-contact-channels">{contact.email && <a href={`mailto:${contact.email}`}><Mail size={13} />{contact.email}</a>}{contact.phone && <a href={`tel:${contact.phone}`}>{contact.phone}</a>}</div>
     <div className="tdg-crm-contact-actions">{whatsapp && <a href={whatsapp} target="_blank" rel="noreferrer"><MessageCircle size={14} />WhatsApp</a>}{contact.email && <><a href={gmailComposeUrl(contact.email, `To Do Green · ${clientName}`)} target="_blank" rel="noreferrer">Gmail</a><a href={outlookComposeUrl(contact.email, `To Do Green · ${clientName}`)} target="_blank" rel="noreferrer">Outlook</a></>}{contact.linkedinUrl && <a href={contact.linkedinUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} />LinkedIn</a>}</div>
   </article>;
@@ -235,10 +244,16 @@ const accountForm = (client) => {
     nextActionAt: crm.nextActionAt || "",
     lastInteractionAt: crm.lastInteractionAt || "",
     contractRenewalDate: crm.contractRenewalDate || "",
-    potentialAnnual: crm.potentialAnnual || 0,
-    middleMilePotential: crm.productPotential?.middleMile || 0,
-    lastMilePotential: crm.productPotential?.lastMile || 0,
-    dedicatedPotential: crm.productPotential?.dedicated || 0,
+    potentialAnnual: crm.potentialManual?.annual ?? crm.potentialAnnual ?? 0,
+    middleMilePotential: crm.potentialManual?.products?.middleMile ?? crm.productPotential?.middleMile ?? 0,
+    lastMilePotential: crm.potentialManual?.products?.lastMile ?? crm.productPotential?.lastMile ?? 0,
+    dedicatedPotential: crm.potentialManual?.products?.dedicated ?? crm.productPotential?.dedicated ?? 0,
+    middleMileMonthlyTrips: crm.potentialInputs?.middleMileMonthlyTrips || 0,
+    middleMileAverageTicket: crm.potentialInputs?.middleMileAverageTicket || 0,
+    lastMileMonthlyDeliveries: crm.potentialInputs?.lastMileMonthlyDeliveries || 0,
+    lastMileAverageTicket: crm.potentialInputs?.lastMileAverageTicket || 0,
+    dedicatedMonthlyVehicles: crm.potentialInputs?.dedicatedMonthlyVehicles || 0,
+    dedicatedMonthlyTicket: crm.potentialInputs?.dedicatedMonthlyTicket || 0,
     geographicExpansion: crm.geographicExpansion || "",
     accountPlanObjective: crm.accountPlan?.objective || "",
     accountPlanBarriers: crm.accountPlan?.barriers || "",
@@ -255,6 +270,24 @@ function AccountEditor({ client, onClose, onSave }) {
   const [contact, setContact] = useState({ name: "", title: "", email: "", phone: "", linkedinUrl: "", relationshipRole: "Influenciador" });
   const [saving, setSaving] = useState(false);
   const field = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  const potentialPreview = useMemo(() => calculatePortfolioPotential({
+    potentialManual: {
+      annual: Number(form.potentialAnnual || 0),
+      products: {
+        middleMile: Number(form.middleMilePotential || 0),
+        lastMile: Number(form.lastMilePotential || 0),
+        dedicated: Number(form.dedicatedPotential || 0),
+      },
+    },
+    potentialInputs: {
+      middleMileMonthlyTrips: Number(form.middleMileMonthlyTrips || 0),
+      middleMileAverageTicket: Number(form.middleMileAverageTicket || 0),
+      lastMileMonthlyDeliveries: Number(form.lastMileMonthlyDeliveries || 0),
+      lastMileAverageTicket: Number(form.lastMileAverageTicket || 0),
+      dedicatedMonthlyVehicles: Number(form.dedicatedMonthlyVehicles || 0),
+      dedicatedMonthlyTicket: Number(form.dedicatedMonthlyTicket || 0),
+    },
+  }), [form]);
   const addContact = () => {
     if (!contact.name.trim()) return;
     setForm((current) => ({
@@ -267,6 +300,23 @@ function AccountEditor({ client, onClose, onSave }) {
     event.preventDefault();
     setSaving(true);
     try {
+      const potentialInputs = {
+        middleMileMonthlyTrips: Number(form.middleMileMonthlyTrips || 0),
+        middleMileAverageTicket: Number(form.middleMileAverageTicket || 0),
+        lastMileMonthlyDeliveries: Number(form.lastMileMonthlyDeliveries || 0),
+        lastMileAverageTicket: Number(form.lastMileAverageTicket || 0),
+        dedicatedMonthlyVehicles: Number(form.dedicatedMonthlyVehicles || 0),
+        dedicatedMonthlyTicket: Number(form.dedicatedMonthlyTicket || 0),
+      };
+      const potentialManual = {
+        annual: Number(form.potentialAnnual || 0),
+        products: {
+          middleMile: Number(form.middleMilePotential || 0),
+          lastMile: Number(form.lastMilePotential || 0),
+          dedicated: Number(form.dedicatedPotential || 0),
+        },
+      };
+      const calculatedPotential = calculatePortfolioPotential({ potentialInputs, potentialManual });
       await onSave({
         name: form.name,
         legalName: form.legalName,
@@ -292,11 +342,18 @@ function AccountEditor({ client, onClose, onSave }) {
           nextActionAt: form.nextActionAt,
           lastInteractionAt: form.lastInteractionAt,
           contractRenewalDate: form.contractRenewalDate,
-          potentialAnnual: Number(form.potentialAnnual || 0),
+          potentialAnnual: calculatedPotential.annual || 0,
           productPotential: {
-            middleMile: Number(form.middleMilePotential || 0),
-            lastMile: Number(form.lastMilePotential || 0),
-            dedicated: Number(form.dedicatedPotential || 0),
+            middleMile: calculatedPotential.middleMile || 0,
+            lastMile: calculatedPotential.lastMile || 0,
+            dedicated: calculatedPotential.dedicated || 0,
+          },
+          potentialManual,
+          potentialInputs,
+          potentialCalculation: {
+            method: calculatedPotential.method,
+            calculatedProducts: calculatedPotential.calculatedProducts,
+            calculatedAt: new Date().toISOString(),
           },
           geographicExpansion: form.geographicExpansion,
           accountPlan: {
@@ -342,11 +399,25 @@ function AccountEditor({ client, onClose, onSave }) {
 
         <fieldset>
           <legend>Potencial e plano da conta</legend>
+          <p>O CRM calcula o potencial anual por produto. Preencha quantidade mensal e ticket médio; cada resultado usa quantidade × ticket × 12.</p>
+          <div className="tdg-crm-potential-preview" aria-label="Prévia do potencial calculado">
+            <span><small>Potencial anual calculado</small><strong>{potentialPreview.annual ? BRL.format(potentialPreview.annual) : "Dados insuficientes"}</strong></span>
+            <small>{potentialPreview.method}</small>
+          </div>
           <div className="tdg-crm-form-grid">
-            <label><span>Potencial anual (R$)</span><input type="number" min="0" value={form.potentialAnnual} onChange={field("potentialAnnual")} /></label>
-            <label><span>Potencial middle mile (R$)</span><input type="number" min="0" value={form.middleMilePotential} onChange={field("middleMilePotential")} /></label>
-            <label><span>Potencial last mile (R$)</span><input type="number" min="0" value={form.lastMilePotential} onChange={field("lastMilePotential")} /></label>
-            <label><span>Potencial dedicada (R$)</span><input type="number" min="0" value={form.dedicatedPotential} onChange={field("dedicatedPotential")} /></label>
+            <label><span>Viagens middle mile / mês</span><input type="number" min="0" value={form.middleMileMonthlyTrips} onChange={field("middleMileMonthlyTrips")} /></label>
+            <label><span>Ticket médio por viagem (R$)</span><input type="number" min="0" value={form.middleMileAverageTicket} onChange={field("middleMileAverageTicket")} /></label>
+            <label><span>Entregas last mile / mês</span><input type="number" min="0" value={form.lastMileMonthlyDeliveries} onChange={field("lastMileMonthlyDeliveries")} /></label>
+            <label><span>Ticket médio por entrega (R$)</span><input type="number" min="0" value={form.lastMileAverageTicket} onChange={field("lastMileAverageTicket")} /></label>
+            <label><span>Veículos dedicados / mês</span><input type="number" min="0" value={form.dedicatedMonthlyVehicles} onChange={field("dedicatedMonthlyVehicles")} /></label>
+            <label><span>Mensalidade por veículo (R$)</span><input type="number" min="0" value={form.dedicatedMonthlyTicket} onChange={field("dedicatedMonthlyTicket")} /></label>
+          </div>
+          <p>Valores informados abaixo são usados apenas quando a base de cálculo do produto estiver incompleta.</p>
+          <div className="tdg-crm-form-grid">
+            <label><span>Potencial anual informado (R$)</span><input type="number" min="0" value={form.potentialAnnual} onChange={field("potentialAnnual")} /></label>
+            <label><span>Middle mile informado (R$)</span><input type="number" min="0" value={form.middleMilePotential} onChange={field("middleMilePotential")} /></label>
+            <label><span>Last mile informado (R$)</span><input type="number" min="0" value={form.lastMilePotential} onChange={field("lastMilePotential")} /></label>
+            <label><span>Dedicada informada (R$)</span><input type="number" min="0" value={form.dedicatedPotential} onChange={field("dedicatedPotential")} /></label>
           </div>
           <label><span>Expansão geográfica</span><textarea value={form.geographicExpansion} onChange={field("geographicExpansion")} /></label>
           <div className="tdg-crm-form-grid">
@@ -497,7 +568,7 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
       })
     : null;
   const selectedReportCandidate = selected ? researchReports[selected.id] || selected.crm?.intelligence || null : null;
-  const selectedReport = Number(selectedReportCandidate?.version || 0) >= 7 ? selectedReportCandidate : null;
+  const selectedReport = Number(selectedReportCandidate?.version || 0) >= 9 ? selectedReportCandidate : null;
   const logisticsProcurementNames = selectedIntelligence
     ? [...new Set(selectedIntelligence.logisticsProcurementContacts.map((item) => item.name).filter(Boolean))]
     : [];
@@ -555,6 +626,7 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
       setResearchReports((current) => ({ ...current, [selected.id]: data.intelligence || null }));
       if (data.client?.id) setClients((current) => current.map((client) => client.id === data.client.id ? {
         ...client,
+        legalName: data.client.legalName ?? client.legalName,
         segment: data.client.segment ?? client.segment,
         revision: data.client.revision ?? client.revision,
         updatedAt: data.client.updatedAt ?? client.updatedAt,
@@ -563,6 +635,7 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
       await load();
       const additions = data.enrichment?.contactsAdded ? ` ${data.enrichment.contactsAdded} contato(s) incluído(s).` : "";
       const updates = data.enrichment?.contactsUpdated ? ` ${data.enrichment.contactsUpdated} contato(s) complementado(s).` : "";
+      const legalName = data.enrichment?.legalNameFilled ? " Razão social preenchida." : "";
       const segment = data.enrichment?.segmentFilled ? " Segmento preenchido." : "";
       const institutional = data.enrichment?.websiteFilled || data.enrichment?.linkedinFilled ? " Site ou LinkedIn institucional preenchido." : "";
       const correctedWebsite = data.enrichment?.websiteCorrected ? " Site oficial corrigido." : data.enrichment?.invalidWebsiteRemoved ? " Site incorreto removido." : "";
@@ -571,7 +644,7 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
         ? ` Qualificação preenchida: ${data.enrichment.qualificationFilled.join(", ")}.`
         : "";
       const removed = data.enrichment?.legacyContactsRemoved ? ` ${data.enrichment.legacyContactsRemoved} contato(s) web sem comprovação brasileira removido(s).` : "";
-      setToast?.(`${focus === "contacts" ? "Contatos de Procurement logístico no Brasil pesquisados." : "Empresa pesquisada e ficha atualizada."}${segment}${institutional}${correctedWebsite}${headquarters}${qualification}${additions}${updates}${removed}`);
+      setToast?.(`${focus === "contacts" ? "Contatos de Procurement logístico no Brasil pesquisados." : "Empresa pesquisada e ficha atualizada."}${legalName}${segment}${institutional}${correctedWebsite}${headquarters}${qualification}${additions}${updates}${removed}`);
     } catch (reason) { setResearchError(reason.message); }
     finally { setResearching(false); }
   };
@@ -668,10 +741,10 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
       {portalPreviewOpen && <ClientPortalPreview client={selected} authHeaders={authHeaders} open onClose={() => setPortalPreviewOpen(false)} />}
       <div className="tdg-crm-detail-grid"><main>
         <section className="tdg-crm-intelligence"><header><strong>IA · mapa da empresa</strong><small>Leitura dos dados do CRM</small></header><div><span>Relevância ESG</span><strong>{selectedIntelligence.esgRelevance}</strong><small>{selectedIntelligence.esgReason}</small></div><div><span>Próxima tarefa sugerida</span><strong>{selectedIntelligence.nextTask}</strong></div><div><span>Procurement de Logística e Transportes</span><strong>{procurementSummary}</strong></div></section>
-        <section className="tdg-crm-detail-section tdg-crm-account-strategy"><header><strong>Potencial de carteira</strong><small>Somente valores cadastrados</small></header><div className="tdg-crm-strategy-grid"><span><small>Potencial anual</small><strong>{selectedStrategy.potential.annual ? BRL.format(selectedStrategy.potential.annual) : "Não calculado"}</strong></span><span><small>Middle mile</small><strong>{selectedStrategy.potential.middleMile ? BRL.format(selectedStrategy.potential.middleMile) : "Não informado"}</strong></span><span><small>Last mile</small><strong>{selectedStrategy.potential.lastMile ? BRL.format(selectedStrategy.potential.lastMile) : "Não informado"}</strong></span><span><small>Dedicada</small><strong>{selectedStrategy.potential.dedicated ? BRL.format(selectedStrategy.potential.dedicated) : "Não informado"}</strong></span></div><p><strong>Expansão geográfica:</strong> {selectedStrategy.potential.geographicExpansion || "Ainda não mapeada."}</p>{selectedStrategy.potential.missing && <small>Informe volume, frequência, rotas e ticket para calcular o potencial sem inventar receita.</small>}</section>
+        <section className="tdg-crm-detail-section tdg-crm-account-strategy"><header><strong>Potencial de carteira</strong><small>Cálculo anual auditável</small></header><div className="tdg-crm-strategy-grid"><span><small>Potencial anual</small><strong>{selectedStrategy.potential.annual ? BRL.format(selectedStrategy.potential.annual) : "Não calculado"}</strong></span><span><small>Middle mile</small><strong>{selectedStrategy.potential.middleMile ? BRL.format(selectedStrategy.potential.middleMile) : "Não calculado"}</strong></span><span><small>Last mile</small><strong>{selectedStrategy.potential.lastMile ? BRL.format(selectedStrategy.potential.lastMile) : "Não calculado"}</strong></span><span><small>Dedicada</small><strong>{selectedStrategy.potential.dedicated ? BRL.format(selectedStrategy.potential.dedicated) : "Não calculado"}</strong></span></div><p><strong>Base:</strong> {selectedStrategy.potential.method}.</p><p><strong>Expansão geográfica:</strong> {selectedStrategy.potential.geographicExpansion || "Ainda não mapeada."}</p>{selectedStrategy.potential.missing && <small>Abra Editar e informe as quantidades mensais e os tickets médios. Sem essa base, o CRM não inventa receita.</small>}</section>
         <section className="tdg-crm-detail-section tdg-crm-account-strategy"><header><strong>Relationship Map</strong><small>Papéis associados às pessoas</small></header><div className="tdg-crm-relationship-map">{[["Quem compra", selectedStrategy.relationshipMap.buyers], ["Quem influencia", selectedStrategy.relationshipMap.influencers], ["Quem bloqueia", selectedStrategy.relationshipMap.blockers], ["Usuário operacional", selectedStrategy.relationshipMap.users]].map(([label, names]) => <div key={label}><span>{label}</span><strong>{names.length ? names.join(", ") : "Não mapeado"}</strong></div>)}</div></section>
         <section className="tdg-crm-detail-section tdg-crm-account-strategy"><header><strong>White Space</strong><small>Produtos sem oportunidade vinculada</small></header><div className="tdg-crm-chip-list">{selectedStrategy.whiteSpace.length ? selectedStrategy.whiteSpace.map((item) => <span key={item}>{item}</span>) : <span>Portfólio principal já coberto</span>}</div></section>
-        <section className="tdg-crm-detail-section tdg-crm-account-strategy"><header><strong>Account Plan</strong><small>Plano 30/60/90</small></header><dl className="tdg-crm-account-data"><div><dt>Objetivo</dt><dd>{selectedStrategy.accountPlan.objective || "Não definido"}</dd></div><div><dt>Barreiras</dt><dd>{selectedStrategy.accountPlan.barriers || "Não mapeadas"}</dd></div><div><dt>Concorrentes</dt><dd>{selectedStrategy.accountPlan.competitors || "Não mapeados"}</dd></div><div><dt>30 dias</dt><dd>{selectedStrategy.accountPlan.plan30 || "Não definido"}</dd></div><div><dt>60 dias</dt><dd>{selectedStrategy.accountPlan.plan60 || "Não definido"}</dd></div><div><dt>90 dias</dt><dd>{selectedStrategy.accountPlan.plan90 || "Não definido"}</dd></div></dl></section>
+        <section className="tdg-crm-detail-section tdg-crm-account-strategy"><header><strong>Account Plan</strong><small>Cadastro + recomendações derivadas do CRM</small></header><dl className="tdg-crm-account-data"><div><dt>Objetivo</dt><dd>{selectedStrategy.accountPlan.objective || "Não definido"}{selectedStrategy.accountPlan.generated?.objective && <small>Sugerido pelos dados atuais</small>}</dd></div><div><dt>Barreiras</dt><dd>{selectedStrategy.accountPlan.barriers || "Não mapeadas"}{selectedStrategy.accountPlan.generated?.barriers && <small>Derivadas dos alertas reais</small>}</dd></div><div><dt>Concorrentes</dt><dd>{selectedStrategy.accountPlan.competitors || "Não mapeados"}</dd></div><div><dt>30 dias</dt><dd>{selectedStrategy.accountPlan.plan30 || "Não definido"}{selectedStrategy.accountPlan.generated?.plan30 && <small>Próxima melhor ação calculada</small>}</dd></div><div><dt>60 dias</dt><dd>{selectedStrategy.accountPlan.plan60 || "Não definido"}{selectedStrategy.accountPlan.generated?.plan60 && <small>Sugerido pelos dados atuais</small>}</dd></div><div><dt>90 dias</dt><dd>{selectedStrategy.accountPlan.plan90 || "Não definido"}{selectedStrategy.accountPlan.generated?.plan90 && <small>Sugerido pelos dados atuais</small>}</dd></div></dl></section>
         <ExternalIntelligence report={selectedReport} researching={researching} error={researchError} onResearch={researchSelected} />
         <section className="tdg-crm-detail-section"><header><strong>Relacionamento</strong><small>{selectedAccount.contacts.length} contato(s)</small></header><div className="tdg-crm-roles">{selectedAccount.contacts.map((contact) => <ContactCard key={contact.id} contact={contact} clientName={selected.name} />)}{selectedAccount.contacts.length === 0 && <p>Nenhum decisor ou patrocinador mapeado.</p>}</div></section>
       </main><aside>
@@ -679,7 +752,16 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
         {selectedSummary.alerts.length > 0 && <section className="tdg-crm-alerts"><strong><AlertTriangle size={15} />Pontos de atenção</strong>{selectedSummary.alerts.map((alert) => <span key={alert}>{alert}</span>)}</section>}
         <section className="tdg-crm-detail-section"><header><strong>Oportunidades</strong><button type="button" onClick={() => onNavigate?.(`/todogreen/oportunidades?client=${encodeURIComponent(selected.id)}`)}>Abrir pipeline <ArrowRight size={13} /></button></header>{selectedOpportunities.length === 0 ? <p>Nenhuma oportunidade ligada a esta conta.</p> : <div className="tdg-crm-opps">{selectedOpportunities.slice(0, 6).map((opp) => <article key={opp.id}><span><strong>{opp.stage}</strong><small>{opp.nextStep || "Próximo passo não definido"}</small></span><b>{BRL.format(opp.value || 0)}</b></article>)}</div>}</section>
         <section className="tdg-crm-detail-section"><header><strong>Responsáveis</strong></header><div className="tdg-client-sellers">{(selected.vendedores || []).length === 0 && <small>Sem responsável comercial</small>}{(selected.vendedores || []).map((seller) => <span key={seller.email}>{seller.email}{access.podeGerenciar && <button type="button" aria-label={`Remover ${seller.email}`} onClick={() => unassign(selected.id, seller.email)}><X size={12} /></button>}</span>)}</div>{access.podeGerenciar && <form className="tdg-crm-assign" onSubmit={assign}><input required type="email" aria-label="E-mail do vendedor" placeholder="vendedor@empresa.com" value={assignment.clientId === selected.id ? assignment.sellerEmail : ""} onChange={(e) => setAssignment({ clientId: selected.id, sellerEmail: e.target.value, note: "" })} /><button type="submit"><UserPlus size={14} />Atribuir</button></form>}</section>
-        <section className="tdg-crm-detail-section"><header><strong>Dados da conta</strong><small>Cadastro e preenchimento público</small></header><dl className="tdg-crm-account-data"><div><dt>Razão social</dt><dd>{selected.legalName || "Não informada"}</dd></div><div><dt>Sede</dt><dd>{selected.crm?.headquarters || "Não informada"}</dd></div><div><dt>Site</dt><dd>{selected.crm?.website ? <a href={selected.crm.website} target="_blank" rel="noreferrer">Abrir site <ExternalLink size={12} /></a> : "Não informado"}</dd></div><div><dt>LinkedIn</dt><dd>{selected.crm?.linkedinUrl ? <a href={selected.crm.linkedinUrl} target="_blank" rel="noreferrer">Abrir empresa <ExternalLink size={12} /></a> : "Não informado"}</dd></div><div><dt>Perfil público</dt><dd>{selected.crm?.qualification?.publicProfile || "Ainda não identificado"}</dd></div><div><dt>Sinais logísticos</dt><dd>{selected.crm?.qualification?.logisticsSignals || "Ainda não identificados"}</dd></div><div><dt>Compromissos ESG</dt><dd>{selected.crm?.qualification?.esgCommitments || "Ainda não identificados"}</dd></div><div><dt>Última atualização</dt><dd>{selected.updatedAt ? new Date(selected.updatedAt).toLocaleString("pt-BR") : "Não informada"}</dd></div></dl></section>
+        <section className="tdg-crm-detail-section"><header><strong>Dados da conta</strong><small>Cadastro e preenchimento público</small></header><dl className="tdg-crm-account-data">
+          <div><dt>Razão social</dt><dd>{selected.legalName || "Não informada"}<AccountSource url={selectedReport?.suggestedLegalName?.source?.url} /></dd></div>
+          <div><dt>Sede</dt><dd>{selected.crm?.headquarters || "Não informada"}<AccountSource url={selectedReport?.suggestedHeadquarters?.source?.url} /></dd></div>
+          <div><dt>Site</dt><dd>{selected.crm?.website ? <a href={selected.crm.website} target="_blank" rel="noreferrer">{sourceHost(selected.crm.website)} <ExternalLink size={12} /></a> : "Não informado"}</dd></div>
+          <div><dt>LinkedIn</dt><dd>{selected.crm?.linkedinUrl ? <a href={selected.crm.linkedinUrl} target="_blank" rel="noreferrer">Abrir página da empresa <ExternalLink size={12} /></a> : "Não informado"}</dd></div>
+          <div><dt>Perfil público</dt><dd>{selected.crm?.qualification?.publicProfile || "Ainda não identificado"}<AccountSource url={selected.crm?.qualification?.publicProfileSource} /></dd></div>
+          <div><dt>Sinais logísticos</dt><dd>{selected.crm?.qualification?.logisticsSignals || "Ainda não identificados"}<AccountSource url={selected.crm?.qualification?.logisticsSignalsSource} /></dd></div>
+          <div><dt>Compromissos ESG</dt><dd>{selected.crm?.qualification?.esgCommitments || "Ainda não identificados"}<AccountSource url={selected.crm?.qualification?.esgCommitmentsSource} /></dd></div>
+          <div><dt>Última atualização</dt><dd>{selected.updatedAt ? new Date(selected.updatedAt).toLocaleString("pt-BR") : "Não informada"}</dd></div>
+        </dl></section>
       </aside></div>
     </div>}
     {editingId && <AccountEditor client={clients.find((item) => item.id === editingId)} onClose={() => setEditingId("")} onSave={(payload) => saveClient(clients.find((item) => item.id === editingId), payload)} />}

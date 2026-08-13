@@ -5,6 +5,7 @@ import {
   calculateRelationshipCoverage,
   buildCrmCommandCenter,
   buildAccountIntelligence,
+  calculatePortfolioPotential,
   createTodoGreenAccount,
   createTodoGreenContact,
   crmAccountSummary,
@@ -177,5 +178,43 @@ describe("To Do Green enterprise CRM", () => {
     expect(result.commercialHealth).toContain("Sem contato há 72 dias");
     expect(result.commercialHealth).toContain("Proposta parada há pelo menos 21 dias");
     expect(result.accountPlan.objective).toBe("Abrir operação dedicada");
+  });
+
+  it("calculates the annual portfolio potential from monthly quantities and tickets", () => {
+    const potential = calculatePortfolioPotential(createTodoGreenAccount({
+      potentialInputs: {
+        middleMileMonthlyTrips: 10,
+        middleMileAverageTicket: 5_000,
+        lastMileMonthlyDeliveries: 1_000,
+        lastMileAverageTicket: 15,
+        dedicatedMonthlyVehicles: 2,
+        dedicatedMonthlyTicket: 20_000,
+      },
+    }));
+    expect(potential.middleMile).toBe(600_000);
+    expect(potential.lastMile).toBe(180_000);
+    expect(potential.dedicated).toBe(480_000);
+    expect(potential.annual).toBe(1_260_000);
+    expect(potential.calculatedProducts).toBe(3);
+    expect(potential.method).toContain("quantidade mensal");
+  });
+
+  it("does not invent a portfolio potential when calculation inputs are missing", () => {
+    const potential = calculatePortfolioPotential(createTodoGreenAccount({
+      potentialInputs: { middleMileMonthlyTrips: 10 },
+    }));
+    expect(potential.annual).toBeNull();
+    expect(potential.missing).toBe(true);
+    expect(potential.missingByProduct.middleMile).toContain("ticket médio por viagem");
+  });
+
+  it("derives a 30/60/90 account plan from CRM gaps without inventing competitors", () => {
+    const account = createTodoGreenAccount({ id: "plan-derived", stage: "Prospecção" });
+    const intelligence = buildAccountIntelligence({ account, contacts: [], opportunities: [] });
+    expect(intelligence.accountPlan.objective).toContain("Middle mile");
+    expect(intelligence.accountPlan.plan30).toContain("próxima ação");
+    expect(intelligence.accountPlan.plan60).toContain("volumes mensais");
+    expect(intelligence.accountPlan.competitors).toBe("");
+    expect(intelligence.accountPlan.generated.plan90).toBe(true);
   });
 });

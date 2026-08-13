@@ -659,12 +659,18 @@
 .tdg-crm-account-data div { border-bottom: 1px solid #e4ece8; display: grid; gap: 2px; padding-bottom: 8px; }
 .tdg-crm-account-data dt { color: var(--tdg-muted); font-size: 10px; }
 .tdg-crm-account-data dd { font-size: 11.5px; font-weight: 750; margin: 0; overflow-wrap: anywhere; }
+.tdg-crm-account-data dd > a + a,.tdg-crm-account-data dd > a:last-child:not(:first-child) { color: #2f7861; display: flex; font-size: 9px; gap: 3px; margin-top: 3px; width: fit-content; }
 .tdg-crm-account-strategy > p { color: var(--tdg-muted); font-size: 11.5px; margin: 0; }
 .tdg-crm-account-strategy > small { color: var(--tdg-muted); font-size: 10.5px; }
 .tdg-crm-strategy-grid { display: grid; gap: 8px; grid-template-columns: repeat(4,minmax(0,1fr)); }
 .tdg-crm-strategy-grid > span { background: #f4f8f6; border-radius: 9px; display: grid; gap: 3px; padding: 9px; }
 .tdg-crm-strategy-grid small,.tdg-crm-relationship-map span { color: var(--tdg-muted); font-size: 9.5px; }
 .tdg-crm-strategy-grid strong,.tdg-crm-relationship-map strong { font-size: 11px; overflow-wrap: anywhere; }
+.tdg-crm-potential-preview { align-items: center; background: #eef8f3; border: 1px solid #b7d8c8; border-radius: 12px; display: flex; gap: 16px; justify-content: space-between; margin: 10px 0 14px; padding: 12px 14px; }
+.tdg-crm-potential-preview span { display: grid; gap: 3px; }
+.tdg-crm-potential-preview small { color: var(--tdg-muted); }
+.tdg-crm-potential-preview strong { color: #0b5b45; font-size: 16px; }
+.tdg-crm-account-data dd small { color: #2f7861; display: block; font-size: 9px; font-weight: 700; margin-top: 3px; }
 .tdg-crm-relationship-map { display: grid; gap: 8px; grid-template-columns: repeat(2,minmax(0,1fr)); }
 .tdg-crm-relationship-map > div { border-left: 3px solid #9dc8b3; display: grid; gap: 3px; padding: 6px 9px; }
 .tdg-crm-chip-list { display: flex; flex-wrap: wrap; gap: 7px; }

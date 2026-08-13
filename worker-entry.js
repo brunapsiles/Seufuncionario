@@ -6,7 +6,7 @@ import { routeTodoGreenApi } from "./worker/services/todogreen-router.js";
 
 export default {
   async fetch(request, env, ctx) {
-    const todoGreenResponse = await routeTodoGreenApi(request, env);
+    const todoGreenResponse = await routeTodoGreenApi(request, env, ctx);
     if (todoGreenResponse) return todoGreenResponse;
     return appWorker.fetch(request, env, ctx);
   },

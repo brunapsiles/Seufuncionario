@@ -1,20 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { buildCompanyResearchPlans, classifyCompanyResearch, resolveWebsiteEnrichment } from "../../../worker/services/todogreen-client-intelligence.js";
+import { buildCompanyResearchPlans, buildPublicAccountEnrichment, classifyCompanyResearch, lookupPublicCompanyRegistry, reconcileResearchedContacts, resolveWebsiteEnrichment } from "../../../worker/services/todogreen-client-intelligence.js";
 
 const result = (title, url, snippet = "") => ({ title, url, snippet, provider: "teste" });
 
 describe("inteligência externa comercial", () => {
   it("separa inteligência e faz duas buscas brasileiras de contatos", () => {
     const plans = buildCompanyResearchPlans({ company: "Adidas", segment: "Varejo", year: 2026 });
-    expect(plans).toHaveLength(7);
-    expect(new Set(plans.flatMap((item) => item.kinds))).toEqual(new Set(["identity", "supplier", "rfq", "esg", "news", "segment", "contacts"]));
+    expect(plans).toHaveLength(8);
+    expect(new Set(plans.flatMap((item) => item.kinds))).toEqual(new Set(["identity", "registry", "supplier", "rfq", "esg", "news", "segment", "contacts"]));
     expect(plans.every((item) => item.query.includes("Brasil"))).toBe(true);
-    expect(buildCompanyResearchPlans({ company: "Adidas", segment: "Varejo", year: 2026, focus: "contacts" })).toHaveLength(8);
+    expect(buildCompanyResearchPlans({ company: "Adidas", segment: "Varejo", year: 2026, focus: "contacts" })).toHaveLength(9);
     const focused = buildCompanyResearchPlans({
       company: "Adidas", segment: "Varejo", year: 2026, focus: "contacts",
       knownContacts: [{ name: "Thiago Souza" }, { name: "Fernanda Vasco" }],
     });
-    expect(focused).toHaveLength(10);
+    expect(focused).toHaveLength(11);
     expect(focused.filter((item) => item.kinds.includes("known_contacts"))).toEqual([
       expect.objectContaining({
         knownContactNames: ["Thiago Souza"],
@@ -73,10 +73,74 @@ describe("inteligência externa comercial", () => {
       source: "Pesquisa web",
       country: "Brasil",
       verifiedBrazil: true,
-      researchVersion: 7,
+      currentEmploymentVerified: true,
+      employmentStatus: "current",
+      researchVersion: 9,
     })]);
-    expect(report.version).toBe(7);
+    expect(report.version).toBe(9);
     expect(report.suggestedHeadquarters?.value).toBe("São Paulo, SP");
+  });
+
+  it("consulta o cadastro público por CNPJ e estrutura razão social, sede e atividade", async () => {
+    const registry = await lookupPublicCompanyRegistry("00.000.000/0001-91", {
+      fetcher: async () => ({
+        ok: true,
+        json: async () => ({
+          razao_social: "BANCO DO BRASIL S.A.", nome_fantasia: "BANCO DO BRASIL",
+          municipio: "BRASILIA", uf: "DF", cnae_fiscal_descricao: "Bancos múltiplos", descricao_situacao_cadastral: "ATIVA",
+        }),
+      }),
+    });
+    expect(registry).toEqual(expect.objectContaining({
+      cnpj: "00000000000191", legalName: "BANCO DO BRASIL S.A.", city: "BRASILIA", state: "DF", status: "ATIVA",
+    }));
+  });
+
+  it("prioriza os dados cadastrais do CNPJ no autopreenchimento sugerido", () => {
+    const report = classifyCompanyResearch({
+      company: "Banco do Brasil", segment: "", searches: [],
+      publicRegistry: {
+        cnpj: "00000000000191", legalName: "BANCO DO BRASIL S.A.", tradeName: "BANCO DO BRASIL",
+        city: "BRASILIA", state: "DF", mainActivity: "Serviços financeiros e banco", status: "ATIVA",
+        sourceUrl: "https://api.opencnpj.org/00000000000191",
+      },
+    });
+    expect(report.suggestedLegalName).toEqual(expect.objectContaining({ value: "BANCO DO BRASIL S.A.", confidence: "alta" }));
+    expect(report.suggestedHeadquarters).toEqual(expect.objectContaining({ value: "BRASILIA, DF", confidence: "alta" }));
+    expect(report.suggestedSegment?.value).toBe("Serviços financeiros");
+  });
+
+  it("converte a pesquisa em todos os campos estruturados exibidos em Dados da conta", () => {
+    const enrichment = buildPublicAccountEnrichment({
+      company: "Empresa Brasil",
+      line: { legal_name: "", segment: "" },
+      fields: {
+        website: "https://empresabrasil.com.br/",
+        linkedinUrl: "https://www.linkedin.com/company/empresa-brasil/",
+        headquarters: "",
+        qualification: {},
+      },
+      report: {
+        suggestedLegalName: { value: "EMPRESA BRASIL S.A." },
+        suggestedSegment: { value: "Indústria" },
+        suggestedHeadquarters: { value: "São Paulo, SP" },
+        publicRegistry: { status: "ATIVA", sourceUrl: "https://api.opencnpj.org/00000000000191" },
+        logisticsSignals: [{ url: "https://empresabrasil.com.br/logistica" }],
+        procurementPeople: [], openRfqs: [],
+        esg: { signals: [{ url: "https://empresabrasil.com.br/esg" }] },
+      },
+    });
+    expect(enrichment).toEqual(expect.objectContaining({
+      filledLegalName: "EMPRESA BRASIL S.A.", filledSegment: "Indústria",
+      filledHeadquarters: "São Paulo, SP", filledWebsite: "https://empresabrasil.com.br/",
+      filledLinkedin: "https://www.linkedin.com/company/empresa-brasil/",
+    }));
+    expect(enrichment.qualification).toEqual(expect.objectContaining({
+      publicProfile: expect.stringContaining("Cadastro público de CNPJ"),
+      logisticsSignals: expect.stringContaining("evidência(s) pública(s)"),
+      esgCommitments: expect.stringContaining("agenda ESG"),
+    }));
+    expect(enrichment.filledQualification).toEqual(["perfil público", "sinais logísticos", "sinais ESG"]);
   });
 
   it("não usa matéria da Mundo Logística como site da Amazon e corrige o preenchimento antigo", () => {
@@ -145,6 +209,68 @@ describe("inteligência externa comercial", () => {
     ] });
     expect(report.contactCandidates).toHaveLength(0);
     expect(report.reviewCandidates).toEqual([expect.objectContaining({ rejectionReason: "no-brazil-evidence" })]);
+  });
+
+  it("rejeita ex-funcionário mesmo quando o perfil ainda menciona procurement e a empresa", () => {
+    const report = classifyCompanyResearch({ company: "Adidas", segment: "Varejo", searches: [
+      { kind: "contacts", results: [
+        result(
+          "Joana Silva - Procurement de Logística - adidas | LinkedIn",
+          "https://br.linkedin.com/in/joana-silva",
+          "São Paulo, Brasil. Ex-funcionária da adidas. Atuou em compras de frete e transportes de 2021 - 2024.",
+        ),
+      ] },
+    ] });
+    expect(report.procurementPeople).toHaveLength(0);
+    expect(report.contactCandidates).toHaveLength(0);
+    expect(report.formerContacts).toEqual([expect.objectContaining({ name: "Joana Silva" })]);
+    expect(report.contactSearchQuality.formerEmploymentRejected).toBe(1);
+    expect(report.reviewCandidates).toHaveLength(0);
+  });
+
+  it("não inclui perfil quando a fonte não comprova que o vínculo ainda é atual", () => {
+    const report = classifyCompanyResearch({ company: "Empresa Brasil", segment: "Indústria", searches: [
+      { kind: "contacts", results: [
+        result(
+          "Carlos Lima | LinkedIn",
+          "https://br.linkedin.com/in/carlos-lima",
+          "São Paulo, Brasil. Experiência em procurement, logística e transportes. Empresa Brasil.",
+        ),
+      ] },
+    ] });
+    expect(report.contactCandidates).toHaveLength(0);
+    expect(report.contactSearchQuality.currentEmploymentUnverified).toBe(1);
+  });
+
+  it("não confunde uma experiência anterior em outra empresa com o vínculo atual na empresa-alvo", () => {
+    const report = classifyCompanyResearch({ company: "Adidas", segment: "Varejo", searches: [
+      { kind: "contacts", results: [result(
+        "Paula Costa - Procurement de Transportes na adidas | LinkedIn",
+        "https://br.linkedin.com/in/paula-costa",
+        "São Paulo, Brasil. Atualmente atua na adidas em compras de frete. Ex-funcionária da Empresa Anterior.",
+      )] },
+    ] });
+    expect(report.contactCandidates).toEqual([expect.objectContaining({ name: "Paula Costa", employmentStatus: "current" })]);
+    expect(report.contactSearchQuality.formerEmploymentRejected).toBe(0);
+  });
+
+  it("limpa contatos web desatualizados e preserva ex-contato manual apenas como histórico", () => {
+    const result = reconcileResearchedContacts({
+      existingContacts: [
+        { name: "Contato Web Antigo", source: "Pesquisa web", linkedinUrl: "https://linkedin.com/in/antigo", active: true },
+        { name: "Joana Silva", source: "Cadastro manual", linkedinUrl: "https://linkedin.com/in/joana", active: true },
+        { name: "Contato Atual", source: "Pesquisa web", linkedinUrl: "https://linkedin.com/in/atual", active: true },
+      ],
+      contactCandidates: [{ name: "Contato Atual", linkedinUrl: "https://linkedin.com/in/atual" }],
+      formerContacts: [{ name: "Joana Silva", linkedinUrl: "https://linkedin.com/in/joana" }],
+      checkedAt: "2026-08-13T12:00:00.000Z",
+    });
+    expect(result.staleWebContactsRemoved).toBe(1);
+    expect(result.formerContactsMarkedInactive).toBe(1);
+    expect(result.contacts).toEqual([
+      expect.objectContaining({ name: "Joana Silva", active: false, employmentStatus: "former" }),
+      expect.objectContaining({ name: "Contato Atual", active: true }),
+    ]);
   });
 
   it("localiza o LinkedIn de um contato já cadastrado sem recriá-lo", () => {

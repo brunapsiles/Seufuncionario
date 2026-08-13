@@ -98,6 +98,8 @@ export const createTodoGreenAccount = (input = {}) => ({
   contractRenewalDate: asText(input.contractRenewalDate),
   potentialAnnual: asNumber(input.potentialAnnual),
   productPotential: input.productPotential && typeof input.productPotential === "object" ? input.productPotential : {},
+  potentialManual: input.potentialManual && typeof input.potentialManual === "object" ? input.potentialManual : {},
+  potentialInputs: input.potentialInputs && typeof input.potentialInputs === "object" ? input.potentialInputs : {},
   geographicExpansion: asText(input.geographicExpansion),
   accountPlan: input.accountPlan && typeof input.accountPlan === "object" ? input.accountPlan : {},
   source: asText(input.source),
@@ -309,6 +311,78 @@ const contactGroup = (contacts, roles, terms = []) => contacts.filter((contact) 
 
 const lowerRole = (value) => asText(value).toLocaleLowerCase("pt-BR");
 
+const canonicalProductId = (value) => {
+  const id = lowerRole(value).replace(/[_\s]+/g, "-");
+  if (id.includes("middle")) return "middle-mile";
+  if (id.includes("last")) return "last-mile";
+  if (id.includes("dedic")) return "dedicated";
+  return id;
+};
+
+const calculatedAnnualPotential = (quantity, averageTicket) => {
+  const monthlyQuantity = asNumber(quantity);
+  const ticket = asNumber(averageTicket);
+  return monthlyQuantity > 0 && ticket > 0 ? monthlyQuantity * ticket * 12 : null;
+};
+
+export const calculatePortfolioPotential = (account = {}) => {
+  const inputs = account.potentialInputs || {};
+  const registered = account.potentialManual?.products || account.productPotential || {};
+  const products = {
+    middleMile: {
+      calculated: calculatedAnnualPotential(inputs.middleMileMonthlyTrips, inputs.middleMileAverageTicket),
+      registered: asNumber(registered.middleMile) || null,
+      missing: [
+        !asNumber(inputs.middleMileMonthlyTrips) && "viagens mensais",
+        !asNumber(inputs.middleMileAverageTicket) && "ticket médio por viagem",
+      ].filter(Boolean),
+    },
+    lastMile: {
+      calculated: calculatedAnnualPotential(inputs.lastMileMonthlyDeliveries, inputs.lastMileAverageTicket),
+      registered: asNumber(registered.lastMile) || null,
+      missing: [
+        !asNumber(inputs.lastMileMonthlyDeliveries) && "entregas mensais",
+        !asNumber(inputs.lastMileAverageTicket) && "ticket médio por entrega",
+      ].filter(Boolean),
+    },
+    dedicated: {
+      calculated: calculatedAnnualPotential(inputs.dedicatedMonthlyVehicles, inputs.dedicatedMonthlyTicket),
+      registered: asNumber(registered.dedicated) || null,
+      missing: [
+        !asNumber(inputs.dedicatedMonthlyVehicles) && "veículos dedicados",
+        !asNumber(inputs.dedicatedMonthlyTicket) && "mensalidade média por veículo",
+      ].filter(Boolean),
+    },
+  };
+  const productValue = (key) => products[key].calculated ?? products[key].registered;
+  const productValues = Object.keys(products).map(productValue).filter((value) => value !== null);
+  const calculatedProducts = Object.values(products).filter((item) => item.calculated !== null).length;
+  const registeredAnnual = asNumber(account.potentialManual?.annual ?? account.potentialAnnual) || null;
+  const productSum = productValues.reduce((sum, value) => sum + value, 0);
+  const annual = productValues.length === 3 ? productSum : registeredAnnual || productSum || null;
+  return {
+    annual,
+    middleMile: productValue("middleMile"),
+    lastMile: productValue("lastMile"),
+    dedicated: productValue("dedicated"),
+    geographicExpansion: asText(account.geographicExpansion || account.qualification?.geographicExpansion),
+    method: productValues.length === 3 && calculatedProducts
+      ? `${calculatedProducts} produto(s) calculado(s) por quantidade mensal × ticket médio × 12`
+      : registeredAnnual && calculatedProducts
+        ? `Potencial anual informado; ${calculatedProducts} produto(s) calculado(s) por quantidade mensal × ticket médio × 12`
+        : productValues.length === 3
+        ? "Soma dos potenciais cadastrados por produto"
+        : registeredAnnual
+          ? "Potencial anual informado manualmente"
+          : productValues.length
+            ? "Soma parcial dos produtos com dados disponíveis"
+          : "Sem base suficiente para cálculo",
+    calculatedProducts,
+    missing: !annual,
+    missingByProduct: Object.fromEntries(Object.entries(products).map(([key, item]) => [key, item.missing])),
+  };
+};
+
 export const buildAccountIntelligence = ({ account = {}, contacts = [], opportunities = [], now = new Date() } = {}) => {
   const accountOpportunities = opportunities.filter((item) =>
     item.accountId === account.id || item.clientId === account.id,
@@ -316,10 +390,9 @@ export const buildAccountIntelligence = ({ account = {}, contacts = [], opportun
   const open = accountOpportunities.filter((item) =>
     !CLOSED_STAGES.has(item.stage || item.estagio),
   );
-  const usedProducts = new Set(accountOpportunities.map((item) => item.productId).filter(Boolean));
+  const usedProducts = new Set(accountOpportunities.map((item) => canonicalProductId(item.productId || item.produto)).filter(Boolean));
   const qualification = account.qualification || {};
-  const annual = asNumber(account.potentialAnnual);
-  const productPotential = account.productPotential || {};
+  const potential = calculatePortfolioPotential(account);
   const lastContactDays = daysSince(account.lastInteractionAt, now);
   const renewalDays = account.contractRenewalDate
     ? Math.ceil((Date.parse(account.contractRenewalDate) - now.getTime()) / 86400000)
@@ -346,33 +419,50 @@ export const buildAccountIntelligence = ({ account = {}, contacts = [], opportun
   const users = contactGroup(contacts, ["usuário", "operações"], ["operações", "logística", "transportes"]);
   const uniqueNames = (items) => [...new Set(items.map((item) => item.name).filter(Boolean))];
   const plan = account.accountPlan || {};
+  const whiteSpace = Object.entries(PRODUCT_LABELS)
+    .filter(([id]) => !usedProducts.has(id))
+    .map(([, label]) => label);
+  const nextBestAction = recommendNextCommercialAction({ account, contacts, opportunities });
+  const objective = asText(plan.objective) || (whiteSpace.length
+    ? `Qualificar expansão da conta em ${whiteSpace[0]}.`
+    : "Consolidar a operação atual e proteger a renovação da conta.");
+  const barriers = asText(plan.barriers) || health
+    .filter((item) => item !== "Nenhum alerta comercial objetivo com os dados atuais")
+    .join("; ");
+  const plan30 = asText(plan.plan30) || nextBestAction;
+  const plan60 = asText(plan.plan60) || (potential.missing
+    ? "Completar volumes mensais e tickets médios para dimensionar o potencial."
+    : whiteSpace.length
+      ? `Validar demanda, rotas e decisores para ${whiteSpace[0]}.`
+      : "Revisar satisfação, SLA e oportunidades de eficiência da operação atual.");
+  const plan90 = asText(plan.plan90) || (open.length
+    ? "Revisar avanço do pipeline, proposta, margem e próxima decisão do cliente."
+    : "Registrar uma oportunidade somente após confirmar escopo, valor e decisores.");
 
   return {
-    potential: {
-      annual: annual || null,
-      middleMile: asNumber(productPotential.middleMile) || null,
-      lastMile: asNumber(productPotential.lastMile) || null,
-      dedicated: asNumber(productPotential.dedicated) || null,
-      geographicExpansion: asText(account.geographicExpansion || qualification.geographicExpansion),
-      missing: !annual,
-    },
+    potential,
     relationshipMap: {
       buyers: uniqueNames(buyers),
       influencers: uniqueNames(influencers),
       blockers: uniqueNames(blockers),
       users: uniqueNames(users),
     },
-    whiteSpace: Object.entries(PRODUCT_LABELS)
-      .filter(([id]) => !usedProducts.has(id))
-      .map(([, label]) => label),
+    whiteSpace,
     commercialHealth: health,
     accountPlan: {
-      objective: asText(plan.objective),
-      barriers: asText(plan.barriers),
+      objective,
+      barriers,
       competitors: asText(plan.competitors || qualification.currentSuppliers),
-      plan30: asText(plan.plan30),
-      plan60: asText(plan.plan60),
-      plan90: asText(plan.plan90),
+      plan30,
+      plan60,
+      plan90,
+      generated: {
+        objective: !asText(plan.objective),
+        barriers: !asText(plan.barriers) && Boolean(barriers),
+        plan30: !asText(plan.plan30),
+        plan60: !asText(plan.plan60),
+        plan90: !asText(plan.plan90),
+      },
     },
   };
 };

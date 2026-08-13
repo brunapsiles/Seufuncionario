@@ -8,7 +8,7 @@ const normalize = (value) => clean(value, 1200).normalize("NFD").replace(/[\u030
 const safeUrl = (value) => { try { const url = new URL(value); return ["http:", "https:"].includes(url.protocol) ? url.href : ""; } catch { return ""; } };
 const resultKey = (item) => safeUrl(item?.url).replace(/[#?].*$/, "").replace(/\/$/, "");
 const includesAny = (text, terms) => terms.some((term) => text.includes(term));
-export const COMPANY_RESEARCH_VERSION = 7;
+export const COMPANY_RESEARCH_VERSION = 9;
 
 const VACANCY = ["vaga", "vagas", "career", "carreira", "emprego", "job", "jobs", "hiring", "we are hiring", "we're looking", "talentos", "recrutamento", "analista de compras", "comprador"];
 const TRANSPORT = ["transporte", "transportadora", "logistica", "frete", "frota", "middle mile", "last mile", "transferencia", "distribuicao", "carrier"];
@@ -41,6 +41,17 @@ const FOREIGN_LOCATION = [
   "porto, portugal", "switzerland", "zurich", "lucerne", "germany", "herzogenaurach",
   "united kingdom", "london", "spain", "france", "mexico", "argentina", "chile",
 ];
+const FORMER_EMPLOYMENT = [
+  "ex-funcionario", "ex-funcionaria", "ex colaborador", "ex-colaborador", "ex-colaboradora",
+  "former employee", "former manager", "formerly at", "previously at", "worked at",
+  "trabalhou na", "trabalhou no", "atuou na", "atuou no", "deixou a empresa",
+  "na epoca em que", "quando trabalhava", "experiencia anterior", "cargo anterior",
+];
+const CURRENT_EMPLOYMENT = [
+  "atualmente", "currently", "current role", "present", "desde", "trabalha na", "trabalha no",
+  "atua na", "atua no", "responsavel na", "responsavel no", "gerente na", "gerente no",
+  "diretor na", "diretora na", "head na", "head no", "o momento", "ate o momento",
+];
 const BRAZIL_HEADQUARTERS = [
   ["sao paulo", "São Paulo, SP"], ["campinas", "Campinas, SP"], ["jundiai", "Jundiaí, SP"],
   ["guarulhos", "Guarulhos, SP"], ["osasco", "Osasco, SP"], ["barueri", "Barueri, SP"],
@@ -60,6 +71,50 @@ const SEGMENTS = [
   ["Logística e transportes", ["logistica", "transporte", "transportadora", "frete"]],
   ["Serviços financeiros", ["banco", "financeir", "fintech", "seguros"]],
 ];
+
+const cnpjDigits = (value) => clean(value, 40).replace(/\D/g, "");
+const validCnpj = (value) => {
+  const digits = cnpjDigits(value);
+  if (digits.length !== 14 || /^(\d)\1+$/.test(digits)) return false;
+  const digit = (base, weights) => {
+    const sum = weights.reduce((total, weight, index) => total + Number(base[index]) * weight, 0);
+    const remainder = sum % 11;
+    return remainder < 2 ? 0 : 11 - remainder;
+  };
+  const first = digit(digits.slice(0, 12), [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+  const second = digit(`${digits.slice(0, 12)}${first}`, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+  return digits.endsWith(`${first}${second}`);
+};
+
+const registryText = (value) => typeof value === "object" && value
+  ? clean(value.descricao || value.nome || value.description, 240)
+  : clean(value, 240);
+
+export async function lookupPublicCompanyRegistry(document, { fetcher = fetch } = {}) {
+  const cnpj = cnpjDigits(document);
+  if (!validCnpj(cnpj)) return null;
+  const endpoints = [
+    `https://api.opencnpj.org/${cnpj}`,
+    `https://brasilapi.com.br/api/cnpj/v1/${cnpj}`,
+  ];
+  for (const url of endpoints) {
+    try {
+      const result = await fetcher(url, { headers: { accept: "application/json" } });
+      if (!result?.ok) continue;
+      const payload = await result.json();
+      const data = payload?.data && typeof payload.data === "object" ? payload.data : payload;
+      const legalName = clean(data?.razao_social || data?.razaoSocial || data?.nome_empresarial || data?.nomeEmpresarial, 200);
+      const tradeName = clean(data?.nome_fantasia || data?.nomeFantasia, 200);
+      const city = registryText(data?.municipio || data?.cidade || data?.endereco?.municipio);
+      const state = clean(data?.uf || data?.estado || data?.endereco?.uf, 2).toUpperCase();
+      const mainActivity = registryText(data?.cnae_fiscal_descricao || data?.cnae_principal_descricao || data?.cnae_principal || data?.cnaePrincipal);
+      const status = registryText(data?.descricao_situacao_cadastral || data?.situacao_cadastral || data?.situacaoCadastral);
+      if (!legalName && !city && !mainActivity) continue;
+      return { cnpj, legalName, tradeName, city, state, mainActivity, status, sourceUrl: url };
+    } catch { /* tenta a próxima fonte pública */ }
+  }
+  return null;
+}
 
 const NEWS_PROFILE_NOISE = [
   "company size", "associated members", "people who've listed", "founded", "funding last round",
@@ -136,6 +191,65 @@ export function resolveWebsiteEnrichment({ existingWebsite, previousResearchWebs
   };
 }
 
+export function buildPublicAccountEnrichment({ line = {}, fields = {}, report = {}, company = "" }) {
+  const filledLegalName = !clean(line.legal_name, 200) && report.suggestedLegalName?.value
+    ? clean(report.suggestedLegalName.value, 200)
+    : clean(line.legal_name, 200);
+  const filledSegment = !clean(line.segment, 120) && report.suggestedSegment?.value
+    ? clean(report.suggestedSegment.value, 120)
+    : clean(line.segment, 120);
+  const websiteEnrichment = resolveWebsiteEnrichment({
+    existingWebsite: fields.website,
+    previousResearchWebsite: fields.intelligence?.officialWebsite?.url,
+    officialWebsite: report.officialWebsite?.url,
+    company,
+  });
+  const filledWebsite = websiteEnrichment.value;
+  const filledLinkedin = !clean(fields.linkedinUrl, 1000) && report.linkedinCompany?.url
+    ? safeUrl(report.linkedinCompany.url)
+    : clean(fields.linkedinUrl, 1000);
+  const filledHeadquarters = !clean(fields.headquarters, 160) && report.suggestedHeadquarters?.value
+    ? clean(report.suggestedHeadquarters.value, 160)
+    : clean(fields.headquarters, 160);
+  const qualification = fields.qualification && typeof fields.qualification === "object"
+    ? { ...fields.qualification }
+    : {};
+  const filledQualification = [];
+  const institutionalWebsite = filledWebsite && websiteBelongsToCompany(filledWebsite, company) ? filledWebsite : "";
+  const institutionalLinkedin = /linkedin\.com\/company\//i.test(filledLinkedin) ? filledLinkedin : "";
+  if (!clean(qualification.publicProfile, 1000) && (report.publicRegistry || institutionalWebsite || institutionalLinkedin)) {
+    qualification.publicProfile = [
+      report.publicRegistry ? `Cadastro público de CNPJ${report.publicRegistry.status ? ` com situação ${report.publicRegistry.status}` : ""}` : "",
+      institutionalWebsite ? "site institucional compatível com a empresa" : "",
+      institutionalLinkedin ? "página institucional no LinkedIn" : "",
+    ].filter(Boolean).join("; ") + ".";
+    qualification.publicProfileSource = report.publicRegistry?.sourceUrl || report.officialWebsite?.url || report.linkedinCompany?.url || institutionalWebsite || institutionalLinkedin;
+    filledQualification.push("perfil público");
+  }
+  const procurementPeople = Array.isArray(report.procurementPeople) ? report.procurementPeople : [];
+  const openRfqs = Array.isArray(report.openRfqs) ? report.openRfqs : [];
+  const logisticsSignals = Array.isArray(report.logisticsSignals) ? report.logisticsSignals : [];
+  if (!clean(qualification.logisticsSignals, 1000) && (logisticsSignals.length || procurementPeople.length || openRfqs.length)) {
+    qualification.logisticsSignals = openRfqs.length
+      ? "Há processo público acionável ligado a logística ou transportes; valide escopo e prazo na fonte."
+      : procurementPeople.length
+        ? "Há evidência pública de pessoas com vínculo atual em Procurement de Logística e Transportes no Brasil."
+        : `${logisticsSignals.length} evidência(s) pública(s) relacionam a empresa a logística, transportes, frete ou distribuição.`;
+    qualification.logisticsSignalsSource = openRfqs[0]?.url || procurementPeople[0]?.url || logisticsSignals[0]?.url || "";
+    filledQualification.push("sinais logísticos");
+  }
+  const esgSignals = Array.isArray(report.esg?.signals) ? report.esg.signals : [];
+  if (!clean(qualification.esgCommitments, 1000) && esgSignals.length) {
+    qualification.esgCommitments = `${esgSignals.length} fonte(s) pública(s) indicam agenda ESG relacionada à empresa. Consulte as evidências vinculadas antes de usar em proposta.`;
+    qualification.esgCommitmentsSource = esgSignals[0]?.url || "";
+    filledQualification.push("sinais ESG");
+  }
+  return {
+    filledLegalName, filledSegment, filledWebsite, filledLinkedin, filledHeadquarters,
+    websiteEnrichment, qualification, filledQualification,
+  };
+}
+
 const mentionsCompany = (item, company) => {
   const tokens = companyTokens(company);
   if (!tokens.length) return true;
@@ -154,16 +268,35 @@ const profileGeography = (item) => {
   return "unknown";
 };
 
+const currentEmploymentEvidence = (item, company) => {
+  const text = normalize(`${item?.title}. ${item?.snippet}`);
+  const title = normalize(item?.title);
+  const companyTerms = companyTokens(company);
+  const companyInTitle = companyTerms.some((token) => title.includes(token));
+  const companyStatements = text.split(/[.!?;\n]+/).filter((statement) =>
+    companyTerms.some((token) => statement.includes(token)));
+  const cueInCompanyStatement = (cues) => companyStatements.some((statement) => includesAny(statement, cues));
+  const closedCompanyRange = companyStatements.some((statement) =>
+    /\b(?:19|20)\d{2}\s*[-–—]\s*(?:19|20)\d{2}\b/.test(statement));
+  if (cueInCompanyStatement(FORMER_EMPLOYMENT) || closedCompanyRange) return "former";
+  const currentRoleInTitle = companyInTitle && includesAny(title, PROCUREMENT.concat(LOGISTICS_DECISION));
+  const explicitCurrentRole = cueInCompanyStatement(CURRENT_EMPLOYMENT);
+  return currentRoleInTitle || explicitCurrentRole ? "current" : "unknown";
+};
+
 const classifyContactResult = (item, company) => {
   if (!/linkedin\.com\/in\//i.test(safeUrl(item?.url))) return "not-profile";
   if (isVacancy(item)) return "vacancy";
   if (!mentionsCompany(item, company)) return "other-company";
   const text = normalize(`${item?.title} ${item?.snippet}`);
+  const employment = currentEmploymentEvidence(item, company);
+  if (employment === "former") return "former-employment";
   const geography = profileGeography(item);
   if (geography === "foreign") return "foreign";
   if (!includesAny(text, PROCUREMENT) && !includesAny(text, LOGISTICS_DECISION)) return "not-procurement";
   if (!includesAny(text, LOGISTICS_PROCUREMENT)) return "not-logistics";
   if (geography !== "brazil") return "no-brazil-evidence";
+  if (employment !== "current") return "current-employment-unverified";
   return "accepted";
 };
 
@@ -181,10 +314,29 @@ const inferredSegment = (items) => {
 const inferredHeadquarters = (items) => {
   const evidence = unique(items, 12);
   for (const item of evidence) {
-    const text = normalize(`${item.title} ${item.snippet}`);
+    const rawText = clean(`${item.title}. ${item.snippet}`, 1600);
+    const text = normalize(rawText);
+    const anchoredLocation = rawText.match(/(?:sede|headquarters|localizad[oa]|endere[cç]o|located)\s*(?:em|at|:)?\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ .'-]{2,48}),\s*(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)\b/i);
+    if (anchoredLocation) return {
+      value: `${clean(anchoredLocation[1], 60)}, ${anchoredLocation[2].toUpperCase()}`,
+      source: source(item, "headquarters_evidence"), confidence: "alta",
+    };
     if (!includesAny(text, ["brasil", "brazil"])) continue;
     const city = BRAZIL_HEADQUARTERS.find(([term]) => text.includes(term));
     if (city) return { value: city[1], source: source(item, "headquarters_evidence"), confidence: "moderada" };
+  }
+  return null;
+};
+
+const inferredLegalName = (items, company) => {
+  for (const item of unique(items, 12)) {
+    const text = clean(`${item.title}. ${item.snippet}`, 1800);
+    const match = text.match(/(?:raz[aã]o social|nome empresarial|legal name)\s*[:\-–—]\s*([^|;]{4,200})/i);
+    if (!match) continue;
+    const value = clean(match[1].split(/\b(?:cnpj|nome fantasia|situa[cç][aã]o cadastral|endere[cç]o)\b/i)[0], 200).replace(/[.,\s]+$/, "");
+    const normalizedValue = normalize(value);
+    if (!value || !companyTokens(company).some((token) => normalizedValue.includes(token))) continue;
+    return { value, source: source(item, "legal_name_evidence"), confidence: "moderada" };
   }
   return null;
 };
@@ -216,7 +368,7 @@ const profileParts = (item, company) => {
   return { name, title };
 };
 
-const publicContact = (item, index, { company, officialHost }) => {
+const publicContact = (item, index, { company, officialHost, checkedAt }) => {
   const profile = profileParts(item, company);
   if (!profile) return null;
   return {
@@ -232,8 +384,11 @@ const publicContact = (item, index, { company, officialHost }) => {
     sourceUrl: safeUrl(item.url),
     country: "Brasil",
     specialty: "Procurement logístico",
-    validation: "Perfil público com evidência explícita de atuação no Brasil, vínculo com a empresa e escopo de logística/transportes. Confirme cargo e atualidade antes da abordagem.",
+    validation: "A fonte pública indica vínculo atual com a empresa, atuação no Brasil e escopo de logística/transportes na data da pesquisa.",
     verifiedBrazil: true,
+    currentEmploymentVerified: true,
+    employmentCheckedAt: checkedAt,
+    employmentStatus: "current",
     researchVersion: COMPANY_RESEARCH_VERSION,
     active: true,
   };
@@ -246,7 +401,7 @@ const brazilEvidenceFromSavedContact = (contact) => {
   return digits.startsWith("55") ? digits.length === 12 || digits.length === 13 : digits.length === 10 || digits.length === 11;
 };
 
-const knownContactCandidate = (item, index, company, knownContacts = []) => {
+const knownContactCandidate = (item, index, company, knownContacts = [], checkedAt = "") => {
   const names = Array.isArray(item?.knownContactNames) ? item.knownContactNames : [item?.knownContactName];
   const evidence = normalize(`${item?.title} ${item?.snippet}`);
   const name = names.map((value) => clean(value, 160)).find((value) => {
@@ -256,6 +411,7 @@ const knownContactCandidate = (item, index, company, knownContacts = []) => {
   if (!name) return null;
   const profile = profileParts(item, company);
   if (!profile) return null;
+  if (currentEmploymentEvidence(item, company) !== "current") return null;
   const geography = profileGeography(item);
   const savedContact = knownContacts.find((contact) => normalize(contact?.name) === normalize(name));
   if (geography === "foreign" || (geography !== "brazil" && !brazilEvidenceFromSavedContact(savedContact))) return null;
@@ -273,9 +429,12 @@ const knownContactCandidate = (item, index, company, knownContacts = []) => {
     country: "Brasil",
     specialty: "Contato já cadastrado",
     validation: geography === "brazil"
-      ? "LinkedIn localizado pelo nome do contato cadastrado, empresa e evidência pública de atuação no Brasil. Confirme se o perfil ainda corresponde à pessoa antes da abordagem."
-      : "LinkedIn localizado pelo nome e empresa. A atuação no Brasil foi confirmada pelo telefone ou país já cadastrado no CRM; confirme o vínculo atual antes da abordagem.",
+      ? "LinkedIn localizado pelo nome do contato cadastrado, com evidência pública de vínculo atual com a empresa e atuação no Brasil."
+      : "LinkedIn localizado pelo nome e empresa, com vínculo atual indicado na fonte; a atuação no Brasil foi confirmada pelo telefone ou país já cadastrado no CRM.",
     verifiedBrazil: true,
+    currentEmploymentVerified: true,
+    employmentCheckedAt: checkedAt,
+    employmentStatus: "current",
     researchVersion: COMPANY_RESEARCH_VERSION,
     active: true,
   };
@@ -283,7 +442,47 @@ const knownContactCandidate = (item, index, company, knownContacts = []) => {
 
 const isLegacyUnverifiedWebContact = (contact) =>
   normalize(contact?.source).startsWith("pesquisa web") &&
-  (Number(contact?.researchVersion || 0) < 3 || contact?.verifiedBrazil !== true);
+  (Number(contact?.researchVersion || 0) < COMPANY_RESEARCH_VERSION ||
+    contact?.verifiedBrazil !== true || contact?.currentEmploymentVerified !== true);
+
+export function reconcileResearchedContacts({ existingContacts = [], contactCandidates = [], formerContacts = [], checkedAt = "" }) {
+  const currentCandidateIdentities = new Set(contactCandidates.flatMap((item) => [
+    normalize(item.linkedinUrl), normalize(item.email), normalize(item.name),
+  ]).filter(Boolean));
+  const formerIdentities = new Set(formerContacts.flatMap((item) => [
+    normalize(item.linkedinUrl), normalize(item.name),
+  ]).filter(Boolean));
+  let staleWebContactsRemoved = 0;
+  let formerContactsMarkedInactive = 0;
+  const contacts = existingContacts.flatMap((contact) => {
+    const identities = [normalize(contact.linkedinUrl), normalize(contact.email), normalize(contact.name)].filter(Boolean);
+    const webDiscovered = normalize(contact.source).startsWith("pesquisa web");
+    const current = identities.some((identity) => currentCandidateIdentities.has(identity));
+    const former = identities.some((identity) => formerIdentities.has(identity));
+    if (webDiscovered && !current) {
+      staleWebContactsRemoved += 1;
+      return [];
+    }
+    if (!webDiscovered && former) {
+      formerContactsMarkedInactive += 1;
+      return [{
+        ...contact,
+        active: false,
+        employmentStatus: "former",
+        currentEmploymentVerified: false,
+        employmentCheckedAt: checkedAt,
+        validation: "Contato preservado como histórico: a fonte pública indica que o vínculo com esta empresa não é mais atual.",
+      }];
+    }
+    return [contact];
+  });
+  return {
+    contacts,
+    staleWebContactsRemoved,
+    formerContactsMarkedInactive,
+    legacyContactsRetained: contacts.filter(isLegacyUnverifiedWebContact).length,
+  };
+}
 
 /** Classifica apenas o que está evidenciado no resultado. Não transforma notícia ou vaga em RFQ. */
 const reviewReason = (reason) => ({
@@ -291,11 +490,13 @@ const reviewReason = (reason) => ({
   "not-logistics": "Sem evidência de responsabilidade por Logística ou Transportes",
   "not-procurement": "Sem evidência de Compras, Procurement ou decisão logística",
   "other-company": "Vínculo com a empresa-alvo não comprovado",
+  "former-employment": "A fonte indica vínculo anterior, não atual, com a empresa",
+  "current-employment-unverified": "Sem evidência pública suficiente de vínculo atual com a empresa",
   foreign: "Atuação indicada fora do Brasil",
   vacancy: "O resultado é uma vaga, não um contato",
 }[reason] || "Resultado insuficiente para cadastro automático");
 
-export function classifyCompanyResearch({ company, segment, searches, knownContacts = [], checkedAt = new Date().toISOString() }) {
+export function classifyCompanyResearch({ company, segment, searches, knownContacts = [], publicRegistry = null, checkedAt = new Date().toISOString() }) {
   const byKind = resultsByKind(searches);
   const all = unique(searches.flatMap((item) => item.results || []), 40);
   const companyToken = companyTokens(company)[0] || "";
@@ -330,16 +531,19 @@ export function classifyCompanyResearch({ company, segment, searches, knownConta
   }).filter(trustedForCompany).map((item) => source(item, "rfq", { actionable: true, validation: "O resultado menciona processo aberto e escopo de transporte em domínio compatível; confirme prazo e elegibilidade." }));
   const rejectedRfqCandidates = rfqCandidates.length - openRfqs.length;
   const esgSignals = unique((byKind.esg || []).filter((item) => mentionsCompany(item, company) && includesAny(normalize(`${item.title} ${item.snippet}`), ESG) && !isVacancy(item))).map((item) => source(item, "esg"));
+  const logisticsSignals = unique(all.filter((item) =>
+    mentionsCompany(item, company) && includesAny(normalize(`${item.title} ${item.snippet}`), TRANSPORT) &&
+    !isVacancy(item) && !isCompanyProfileNoise(item)), 8).map((item) => source(item, "logistics_signal"));
   const profileResults = unique(all.filter((item) => /linkedin\.com\/in\//i.test(item.url)), 20);
   const classifiedProfiles = profileResults.map((item) => ({ item, reason: classifyContactResult(item, company) }));
   const acceptedProfiles = classifiedProfiles.filter((item) => item.reason.startsWith("accepted"));
   const procurementPeople = acceptedProfiles.map(({ item }) => source(item, "procurement_contact", {
-    currentness: "Perfil compatível com Brasil e procurement/logística; confirme vínculo e cargo antes do contato.",
-    validation: "Resultado com evidência explícita de empresa, Brasil e escopo de logística/transportes.",
+    currentness: "A fonte pública indica vínculo atual com a empresa na data da pesquisa.",
+    validation: "Resultado com evidência explícita de vínculo atual, empresa, Brasil e escopo de logística/transportes.",
   }));
-  const procurementCandidates = acceptedProfiles.map(({ item }, index) => publicContact(item, index, { company, officialHost })).filter(Boolean);
+  const procurementCandidates = acceptedProfiles.map(({ item }, index) => publicContact(item, index, { company, officialHost, checkedAt })).filter(Boolean);
   const reviewCandidates = classifiedProfiles
-    .filter(({ reason }) => !["accepted", "vacancy", "foreign", "other-company", "not-profile"].includes(reason))
+    .filter(({ reason }) => !["accepted", "vacancy", "foreign", "other-company", "not-profile", "former-employment"].includes(reason))
     .map(({ item, reason }) => source(item, "contact_review", {
       validation: reviewReason(reason),
       rejectionReason: reason,
@@ -347,7 +551,7 @@ export function classifyCompanyResearch({ company, segment, searches, knownConta
     }))
     .slice(0, 12);
   const knownContactResults = unique((byKind.known_contacts || []).filter((item) => /linkedin\.com\/in\//i.test(item.url) && mentionsCompany(item, company) && !isVacancy(item)), 12);
-  const knownContactCandidates = knownContactResults.map((item, index) => knownContactCandidate(item, index, company, knownContacts)).filter(Boolean);
+  const knownContactCandidates = knownContactResults.map((item, index) => knownContactCandidate(item, index, company, knownContacts, checkedAt)).filter(Boolean);
   const seenCandidateProfiles = new Set();
   const contactCandidates = [...procurementCandidates, ...knownContactCandidates].filter((item) => {
     const key = normalize(item.linkedinUrl);
@@ -361,6 +565,18 @@ export function classifyCompanyResearch({ company, segment, searches, knownConta
     snippet: item.validation,
     provider: "Pesquisa web",
   }, "known_contact_profile", { validation: item.validation }));
+  const formerContacts = classifiedProfiles
+    .filter(({ reason }) => reason === "former-employment")
+    .map(({ item }) => {
+      const profile = profileParts(item, company);
+      return profile ? {
+        name: profile.name,
+        linkedinUrl: safeUrl(item.url),
+        sourceUrl: safeUrl(item.url),
+        validation: "A fonte pública indica que o vínculo com a empresa é anterior, não atual.",
+      } : null;
+    })
+    .filter(Boolean);
   const officialWebsiteKey = officialWebsite ? resultKey(officialWebsite) : "";
   const companyNewsResults = unique((byKind.news || []).filter((item) =>
     mentionsCompany(item, company) && !isVacancy(item) && !isCompanyProfileNoise(item) &&
@@ -377,11 +593,28 @@ export function classifyCompanyResearch({ company, segment, searches, knownConta
   const companyNews = companyNewsResults.map((item) => source(item, "company_news"));
   const segmentNews = segmentNewsResults.map((item) => source(item, "segment_news"));
   const esgRelevance = esgSignals.length ? "Alta" : segment && includesAny(normalize(segment), TRANSPORT.concat(["varejo", "industria", "e-commerce", "alimentos", "energia"])) ? "Provável" : "A validar";
+  const registrySource = publicRegistry?.sourceUrl ? source({
+    title: "Cadastro público de CNPJ",
+    url: publicRegistry.sourceUrl,
+    snippet: [publicRegistry.legalName, publicRegistry.city && publicRegistry.state ? `${publicRegistry.city}, ${publicRegistry.state}` : "", publicRegistry.mainActivity].filter(Boolean).join(" · "),
+    provider: "Cadastro público",
+  }, "public_registry", { verification: "Dados cadastrais públicos vinculados ao CNPJ informado na conta." }) : null;
+  const researchIdentity = [...(byKind.identity || []), ...(byKind.registry || []), ...(byKind.news || [])]
+    .filter((item) => mentionsCompany(item, company));
+  const suggestedLegalName = publicRegistry?.legalName
+    ? { value: publicRegistry.legalName, source: registrySource, confidence: "alta" }
+    : inferredLegalName(researchIdentity, company);
+  const suggestedHeadquarters = publicRegistry?.city && publicRegistry?.state
+    ? { value: `${publicRegistry.city}, ${publicRegistry.state}`, source: registrySource, confidence: "alta" }
+    : inferredHeadquarters(researchIdentity);
+  const suggestedSegment = inferredSegment(researchIdentity) || (publicRegistry?.mainActivity
+    ? inferredSegment([{ title: publicRegistry.mainActivity, snippet: publicRegistry.mainActivity, url: publicRegistry.sourceUrl }])
+    : null);
 
   const nextActions = [];
   if (openRfqs.length) nextActions.push("Validar imediatamente prazo, rota, frota e documentos da RFQ identificada.");
   if (supplierLinks.length) nextActions.push("Iniciar ou revisar a homologação no portal oficial de fornecedores.");
-  if (procurementPeople.length) nextActions.push("Confirmar cargo e vínculo atual do contato de procurement antes da abordagem.");
+  if (procurementPeople.length) nextActions.push("Priorizar os contatos com vínculo atual indicado e validar o melhor canal de abordagem.");
   if (esgSignals.length) nextActions.push("Usar a meta ESG encontrada para adaptar o argumento de redução de emissões da operação.");
   if (!nextActions.length) nextActions.push("Completar o mapa de procurement e monitorar sinais públicos; nenhuma oportunidade acionável foi comprovada nesta pesquisa.");
 
@@ -389,18 +622,22 @@ export function classifyCompanyResearch({ company, segment, searches, knownConta
     version: COMPANY_RESEARCH_VERSION,
     company: clean(company, 200),
     segment: clean(segment, 120),
-    suggestedSegment: inferredSegment([...(byKind.identity || []), ...(byKind.news || [])].filter((item) => mentionsCompany(item, company))),
-    suggestedHeadquarters: inferredHeadquarters([...(byKind.identity || []), ...(byKind.news || [])].filter((item) => mentionsCompany(item, company))),
+    suggestedLegalName,
+    suggestedSegment,
+    suggestedHeadquarters,
+    publicRegistry: publicRegistry ? { ...publicRegistry, source: registrySource } : null,
     checkedAt,
     officialWebsite: officialWebsite ? source(officialWebsite, "official_candidate", { verification: "Candidato a site oficial; confirme o domínio antes de usar." }) : null,
     linkedinCompany: linkedInCompany ? source(linkedInCompany, "linkedin_company") : null,
     esg: { relevance: esgRelevance, signals: esgSignals },
+    logisticsSignals,
     supplierLinks,
     supplierRejected,
     openRfqs,
     rfqRejected: rejectedRfqCandidates,
     procurementPeople,
     knownContactProfiles,
+    formerContacts,
     contactCandidates,
     reviewCandidates,
     contactSearchQuality: {
@@ -410,14 +647,16 @@ export function classifyCompanyResearch({ company, segment, searches, knownConta
       noBrazilEvidenceRejected: classifiedProfiles.filter((item) => item.reason === "no-brazil-evidence").length,
       nonLogisticsRejected: classifiedProfiles.filter((item) => item.reason === "not-logistics").length,
       otherCompanyRejected: classifiedProfiles.filter((item) => item.reason === "other-company").length,
+      formerEmploymentRejected: classifiedProfiles.filter((item) => item.reason === "former-employment").length,
+      currentEmploymentUnverified: classifiedProfiles.filter((item) => item.reason === "current-employment-unverified").length,
       vacanciesRejected: classifiedProfiles.filter((item) => item.reason === "vacancy").length,
-      policy: "Somente Brasil + empresa confirmada no resultado + Procurement ligado a Logística, Transportes, Frete, Distribuição ou Supply Chain.",
+      policy: "Somente vínculo atual evidenciado + Brasil + empresa confirmada + Procurement ligado a Logística, Transportes, Frete, Distribuição ou Supply Chain.",
     },
     companyNews,
     segmentNews,
     nextActions,
     excludedVacancies: all.filter(isVacancy).length,
-    disclaimer: "Resultados públicos verificados na data indicada. Contatos só são aceitos com evidência de Brasil, vínculo com a empresa e escopo de procurement logístico. RFQ só aparece quando há empresa-alvo, transporte, processo aberto e canal real de participação. Links e cargos podem mudar e devem ser confirmados na fonte.",
+    disclaimer: "Resultados públicos verificados na data indicada. Contatos só são aceitos com evidência de vínculo atual, Brasil, empresa e escopo de procurement logístico. Perfis com vínculo anterior ou sem atualidade comprovada não entram no mapa ativo. RFQ só aparece quando há empresa-alvo, transporte, processo aberto e canal real de participação.",
   };
 }
 
@@ -431,6 +670,10 @@ export function buildCompanyResearchPlans({ company, segment, year, focus = "com
     {
       kinds: ["identity"],
       query: `"${name}" Brasil site oficial LinkedIn empresa segmento`,
+    },
+    {
+      kinds: ["registry"],
+      query: `"${name}" Brasil ("razão social" OR "nome empresarial" OR CNPJ) (sede OR endereço OR segmento)`,
     },
     {
       kinds: ["esg", "news"],
@@ -529,7 +772,10 @@ export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = f
   const year = new Date().getUTCFullYear();
   const knownContacts = Array.isArray(fields.contacts) ? fields.contacts : [];
   const plans = buildCompanyResearchPlans({ company, segment, year, focus, knownContacts });
-  const planResults = await Promise.all(plans.map(async (plan) => ({ ...plan, ...(await searchWeb(env, plan.query)) })));
+  const [planResults, publicRegistry] = await Promise.all([
+    Promise.all(plans.map(async (plan) => ({ ...plan, ...(await searchWeb(env, plan.query)) }))),
+    lookupPublicCompanyRegistry(linha.document),
+  ]);
   const settled = planResults.flatMap((item) => item.kinds.map((kind) => ({
     kind,
     configured: item.configured,
@@ -542,17 +788,23 @@ export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = f
   })));
   if (planResults.every((item) => !item.configured))
     return { erro: "Pesquisa web indisponível. A integração precisa ser revisada por um administrador.", status: 503 };
-  const report = classifyCompanyResearch({ company, segment, searches: settled, knownContacts, checkedAt: new Date().toISOString() });
+  const report = classifyCompanyResearch({ company, segment, searches: settled, knownContacts, publicRegistry, checkedAt: new Date().toISOString() });
   report.providers = [...new Set(planResults.flatMap((item) => item.providers || []))];
   report.failures = planResults.flatMap((item) => item.failures || []).slice(0, 12);
   if (!report.providers.length && report.failures.length)
     return { erro: "A pesquisa web está configurada, mas o provedor não respondeu. Tente novamente em instantes.", failures: report.failures, status: 502 };
   const allExistingContacts = Array.isArray(fields.contacts) ? fields.contacts : [];
-  // Pesquisa nunca apaga cadastro. Contatos web antigos sem evidência ficam
-  // preservados para revisão manual, mas não ganham selo de Brasil nem entram
-  // na leitura automática de decisores.
-  const existingContacts = allExistingContacts;
-  const legacyContactsRetained = allExistingContacts.filter(isLegacyUnverifiedWebContact).length;
+  const {
+    contacts: existingContacts,
+    staleWebContactsRemoved,
+    formerContactsMarkedInactive,
+    legacyContactsRetained,
+  } = reconcileResearchedContacts({
+    existingContacts: allExistingContacts,
+    contactCandidates: report.contactCandidates,
+    formerContacts: report.formerContacts,
+    checkedAt: report.checkedAt,
+  });
   let contactsUpdated = 0;
   const matchedCandidates = new Set();
   const enrichedContacts = existingContacts.map((existing) => {
@@ -574,23 +826,23 @@ export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = f
       validation: existing.validation || match.validation,
       country: existing.country || match.country,
       specialty: existing.specialty || match.specialty,
+      currentEmploymentVerified: true,
+      employmentCheckedAt: report.checkedAt,
+      employmentStatus: "current",
+      researchVersion: COMPANY_RESEARCH_VERSION,
+      active: existing.active === false && existing.employmentStatus === "former" ? true : existing.active,
     };
     if (JSON.stringify(next) !== JSON.stringify(existing)) contactsUpdated += 1;
     return next;
   });
   const existingIdentities = new Set(enrichedContacts.flatMap((item) => [normalize(item.linkedinUrl), normalize(item.email), normalize(item.name)].filter(Boolean)));
   const discoveredContacts = (report.contactCandidates || []).filter((item) => !matchedCandidates.has(item.linkedinUrl) && !existingIdentities.has(normalize(item.linkedinUrl)) && !existingIdentities.has(normalize(item.email)) && !existingIdentities.has(normalize(item.name)));
-  const filledSegment = !clean(linha.segment, 120) && report.suggestedSegment?.value ? report.suggestedSegment.value : clean(linha.segment, 120);
-  const websiteEnrichment = resolveWebsiteEnrichment({
-    existingWebsite: fields.website,
-    previousResearchWebsite: fields.intelligence?.officialWebsite?.url,
-    officialWebsite: report.officialWebsite?.url,
-    company,
-  });
-  const filledWebsite = websiteEnrichment.value;
-  const filledLinkedin = !clean(fields.linkedinUrl, 1000) && report.linkedinCompany?.url ? report.linkedinCompany.url : clean(fields.linkedinUrl, 1000);
-  const filledHeadquarters = !clean(fields.headquarters, 160) && report.suggestedHeadquarters?.value ? report.suggestedHeadquarters.value : clean(fields.headquarters, 160);
+  const {
+    filledLegalName, filledSegment, filledWebsite, filledLinkedin, filledHeadquarters,
+    websiteEnrichment, qualification, filledQualification,
+  } = buildPublicAccountEnrichment({ line: linha, fields, report, company });
   report.autoEnrichment = {
+    legalNameFilled: !clean(linha.legal_name, 200) && Boolean(filledLegalName),
     segmentFilled: !clean(linha.segment, 120) && Boolean(filledSegment),
     websiteFilled: websiteEnrichment.filled,
     websiteCorrected: websiteEnrichment.corrected,
@@ -599,40 +851,23 @@ export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = f
     headquartersFilled: !clean(fields.headquarters, 160) && Boolean(filledHeadquarters),
     contactsAdded: discoveredContacts.length,
     contactsUpdated,
-    legacyContactsRemoved: 0,
+    legacyContactsRemoved: staleWebContactsRemoved,
     legacyContactsRetained,
+    formerContactsMarkedInactive,
   };
   const nextContacts = [...enrichedContacts, ...discoveredContacts];
-  const qualification = fields.qualification && typeof fields.qualification === "object"
-    ? { ...fields.qualification }
-    : {};
-  const filledQualification = [];
-  if (!clean(qualification.publicProfile, 1000) && (report.officialWebsite || report.linkedinCompany)) {
-    qualification.publicProfile = `Presença institucional pública confirmada${report.officialWebsite ? " em site compatível com a empresa" : ""}${report.linkedinCompany ? " e no LinkedIn" : ""}.`;
-    qualification.publicProfileSource = report.officialWebsite?.url || report.linkedinCompany?.url || "";
-    filledQualification.push("perfil público");
-  }
-  if (!clean(qualification.logisticsSignals, 1000) && (report.procurementPeople.length || report.openRfqs.length)) {
-    qualification.logisticsSignals = report.openRfqs.length
-      ? "Há processo público acionável ligado a logística ou transportes; valide escopo e prazo na fonte."
-      : "Há evidência pública de pessoas ligadas a Procurement de Logística e Transportes no Brasil.";
-    filledQualification.push("sinais logísticos");
-  }
-  if (!clean(qualification.esgCommitments, 1000) && report.esg?.signals?.length) {
-    qualification.esgCommitments = `${report.esg.signals.length} fonte(s) pública(s) indicam agenda ESG relacionada à empresa. Consulte as evidências vinculadas antes de usar em proposta.`;
-    filledQualification.push("sinais ESG");
-  }
   report.autoEnrichment.qualificationFilled = filledQualification;
   const nextFields = { ...fields, website: filledWebsite, linkedinUrl: filledLinkedin, headquarters: filledHeadquarters, qualification, contacts: nextContacts, intelligence: report };
   await env.DB.prepare(
-    `UPDATE todogreen_clients SET segment=?,fields_json=?,revision=revision+1,updated_by=?,updated_at=?
+    `UPDATE todogreen_clients SET legal_name=?,segment=?,fields_json=?,revision=revision+1,updated_by=?,updated_at=?
       WHERE id=? AND tenant_id=? AND workspace_owner_id=?`,
-  ).bind(filledSegment, JSON.stringify(nextFields), userId, report.checkedAt, linha.id, TENANT_ID, ownerId).run();
+  ).bind(filledLegalName, filledSegment, JSON.stringify(nextFields), userId, report.checkedAt, linha.id, TENANT_ID, ownerId).run();
   return {
     relatorio: report,
     enrichment: report.autoEnrichment,
     clientPatch: {
       id: linha.id,
+      legalName: filledLegalName,
       segment: filledSegment,
       revision: Number(linha.revision || 0) + 1,
       updatedAt: report.checkedAt,

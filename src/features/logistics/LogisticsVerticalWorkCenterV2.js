@@ -15,7 +15,20 @@ const AUTH_TOKEN_KEY = "seu-funcionario-auth-token";
 const CACHE_KEY = "todogreen-work-center-api-cache-v1";
 const statuses = ["novo", "em-andamento", "aguardando", "bloqueado", "concluido"];
 const priorities = ["baixa", "media", "alta", "critica"];
-const label = (value) => String(value || "").replace(/-/g, " ");
+const labels = {
+  "item-created": "item criado",
+  "item-updated": "item atualizado",
+  "status-changed": "status alterado",
+  "field-changed": "campo alterado",
+  "date-overdue": "prazo vencido",
+  "change-status": "alterar status",
+  "change-priority": "alterar prioridade",
+  "assign-person": "atribuir responsável",
+  "move-item": "mover item",
+  "research-client": "pesquisar e completar conta",
+  "prepare-whatsapp": "preparar WhatsApp para aprovação",
+};
+const label = (value) => labels[value] || String(value || "").replace(/-/g, " ");
 const today = () => new Date().toISOString().slice(0, 10);
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -35,6 +48,7 @@ let state = {
   aiBusy: false,
   aiResult: "",
   automationRules: [],
+  clients: [],
   showAutomationForm: false,
 };
 
@@ -92,6 +106,7 @@ const sync = async () => {
     state.boards = payload.boards || [];
     state.items = payload.items || [];
     state.automationRules = payload.automationRules || [];
+    state.clients = payload.clients || [];
     state.canWrite = !!payload.access?.canWrite;
     if (!state.boards.some((board) => board.id === state.activeBoardId)) state.activeBoardId = state.boards[0]?.id || "";
     saveCache();
@@ -128,7 +143,11 @@ const createAutomationRule = async (formElement) => {
       ? values.get("priorityValue")
       : actionType === "move-item"
         ? values.get("targetBoardId")
-        : values.get("responsibleValue");
+        : actionType === "research-client"
+          ? values.get("researchFocus")
+          : actionType === "prepare-whatsapp"
+            ? values.get("whatsappMessage")
+            : values.get("responsibleValue");
   state.notice = "Salvando automação...";
   renderWorkCenter();
   try {
@@ -209,6 +228,26 @@ const patchItem = async (item, patch) => {
   }
 };
 
+const confirmWhatsapp = async (item) => {
+  const pending = item.fields?.pendingWhatsapp;
+  if (!state.canWrite || !pending || pending.status !== "pending") return;
+  const confirmed = confirm(`Enviar esta mensagem para ${pending.contactName || "o contato selecionado"}?\n\n${pending.message}`);
+  if (!confirmed) return;
+  state.saving.add(item.id);
+  state.notice = "Enviando WhatsApp confirmado...";
+  renderWorkCenter();
+  try {
+    const payload = await api(`/${encodeURIComponent(item.id)}/whatsapp-confirm`, { method: "POST" });
+    upsertItem(payload.item);
+    state.notice = "WhatsApp enviado e registrado no histórico do item.";
+  } catch (error) {
+    state.error = error.message;
+  } finally {
+    state.saving.delete(item.id);
+    renderWorkCenter();
+  }
+};
+
 const archiveItem = async (item) => {
   if (!state.canWrite || !confirm(`Arquivar “${item.title}”?`)) return;
   state.saving.add(item.id);
@@ -233,6 +272,10 @@ const createItem = async (formElement) => {
   state.notice = "Criando item...";
   renderWorkCenter();
   try {
+    const clientId = values.get("clientId") || "";
+    const selectedClient = state.clients.find((client) => client.id === clientId);
+    const contactId = values.get("contactId") || "";
+    const selectedContact = selectedClient?.contacts?.find((contact) => contact.id === contactId);
     const payload = await api("", {
       method: "POST",
       body: JSON.stringify({
@@ -244,8 +287,13 @@ const createItem = async (formElement) => {
         status: "novo",
         responsible: values.get("responsible"),
         dueDate: values.get("dueDate"),
-        client: values.get("client"),
-        fields: { esgImpact: values.get("esgImpact") || "" },
+        client: selectedClient?.name || values.get("client"),
+        fields: {
+          esgImpact: values.get("esgImpact") || "",
+          clientId,
+          contactId,
+          contactName: selectedContact?.name || "",
+        },
       }),
     });
     upsertItem(payload.item);
@@ -267,7 +315,9 @@ const formHtml = () => {
     <label><span>Prioridade</span><select name="priority">${priorities.map((value) => `<option value="${value}">${label(value)}</option>`).join("")}</select></label>
     <label><span>Responsável</span><input name="responsible" maxlength="160" placeholder="Nome ou equipe"></label>
     <label><span>Prazo</span><input name="dueDate" type="date"></label>
-    <label><span>Cliente/operação</span><input name="client" maxlength="200"></label>
+    <label><span>Conta do CRM</span><select name="clientId" data-work-client><option value="">Sem conta vinculada</option>${state.clients.map((client) => `<option value="${esc(client.id)}">${esc(client.name)}</option>`).join("")}</select></label>
+    <label><span>Contato da ação</span><select name="contactId" data-work-contact disabled><option value="">Selecione primeiro a conta</option></select></label>
+    <label><span>Operação / referência</span><input name="client" maxlength="200" placeholder="Usado quando não houver uma conta do CRM"></label>
     <label><span>Impacto ESG</span><input name="esgImpact" maxlength="300"></label>
     <label class="full"><span>Descrição e critério de conclusão</span><textarea name="description" maxlength="4000"></textarea></label>
     <div class="tdg-work-center-actions full"><button class="tdg-action" type="submit">Criar item</button><button class="tdg-login-secondary" type="button" data-work-cancel>Cancelar</button></div>
@@ -283,11 +333,13 @@ const automationFormHtml = () => {
     <label><span>Campo da condição</span><select name="conditionField"><option value="">Sem condição adicional</option><option value="status">Status</option><option value="priority">Prioridade</option><option value="responsible">Responsável</option><option value="client">Cliente/operação</option><option value="type">Tipo</option><option value="dueDate">Prazo</option></select></label>
     <label><span>Comparação</span><select name="conditionOperator"><option value="equals">é igual a</option><option value="not-equals">é diferente de</option><option value="contains">contém</option><option value="is-empty">está vazio</option><option value="is-not-empty">não está vazio</option></select></label>
     <label class="full"><span>Valor da condição</span><input name="conditionValue" maxlength="240" placeholder="Ex.: bloqueado, Adidas ou crítica"></label>
-    <label><span>Ação</span><select name="actionType"><option value="change-status">Alterar status</option><option value="change-priority">Alterar prioridade</option><option value="assign-person">Atribuir responsável</option><option value="move-item">Mover para outro quadro</option></select></label>
+    <label><span>Ação</span><select name="actionType"><option value="change-status">Alterar status</option><option value="change-priority">Alterar prioridade</option><option value="assign-person">Atribuir responsável</option><option value="move-item">Mover para outro quadro</option><option value="research-client">Pesquisar e completar conta</option><option value="prepare-whatsapp">Preparar WhatsApp para aprovação</option></select></label>
     <label data-action-value="change-status"><span>Novo status</span><select name="statusValue">${statuses.map((value) => `<option value="${value}">${label(value)}</option>`).join("")}</select></label>
     <label data-action-value="change-priority"><span>Nova prioridade</span><select name="priorityValue">${priorities.map((value) => `<option value="${value}">${label(value)}</option>`).join("")}</select></label>
     <label data-action-value="assign-person"><span>Novo responsável</span><input name="responsibleValue" maxlength="160" placeholder="Nome ou equipe"></label>
     <label data-action-value="move-item"><span>Quadro de destino</span><select name="targetBoardId">${state.boards.map((board) => `<option value="${esc(board.id)}">${esc(board.name)}</option>`).join("")}</select></label>
+    <label data-action-value="research-client"><span>O que pesquisar</span><select name="researchFocus"><option value="company">Empresa, site, segmento, ESG e notícias</option><option value="contacts">Contatos brasileiros de logística e procurement</option></select></label>
+    <label class="full" data-action-value="prepare-whatsapp"><span>Mensagem para aprovação</span><textarea name="whatsappMessage" maxlength="1000" placeholder="A mensagem só será enviada depois de uma pessoa confirmar no item."></textarea></label>
     <div class="tdg-work-center-actions full"><button class="tdg-action" type="submit">Ativar automação</button><button class="tdg-login-secondary" type="button" data-automation-cancel>Cancelar</button></div>
   </form>`;
 };
@@ -303,7 +355,7 @@ const rowHtml = (item) => {
   const overdue = item.dueDate && item.dueDate < today() && item.status !== "concluido";
   const disabled = !state.canWrite || state.saving.has(item.id) ? "disabled" : "";
   return `<article class="tdg-work-row" data-item-id="${esc(item.id)}">
-    <div><span class="tdg-work-badge ${item.priority === "critica" ? "critical" : overdue ? "warning" : ""}">${esc(label(item.type))}</span><strong>${esc(item.title)}</strong><small>${esc(item.client || "Sem cliente/operação")}${item.description ? ` · ${esc(item.description)}` : ""}</small><em>rev. ${Number(item.revision || 1)} · ${esc(item.responsible || "sem responsável")}</em></div>
+    <div><span class="tdg-work-badge ${item.priority === "critica" ? "critical" : overdue ? "warning" : ""}">${esc(label(item.type))}</span><strong>${esc(item.title)}</strong><small>${esc(item.client || "Sem cliente/operação")}${item.description ? ` · ${esc(item.description)}` : ""}</small><em>rev. ${Number(item.revision || 1)} · ${esc(item.responsible || "sem responsável")}</em>${item.fields?.pendingWhatsapp?.status === "pending" ? `<button type="button" class="tdg-work-whatsapp-approval" data-whatsapp-confirm>Revisar e confirmar WhatsApp para ${esc(item.fields.pendingWhatsapp.contactName || "contato")}</button>` : item.fields?.pendingWhatsapp?.status === "sent" ? '<small class="tdg-work-whatsapp-sent">WhatsApp enviado com confirmação</small>' : ""}</div>
     <select data-field="status" ${disabled}>${statuses.map((value) => `<option value="${value}" ${value === item.status ? "selected" : ""}>${label(value)}</option>`).join("")}</select>
     <select data-field="priority" ${disabled}>${priorities.map((value) => `<option value="${value}" ${value === item.priority ? "selected" : ""}>${label(value)}</option>`).join("")}</select>
     <input data-field="responsible" value="${esc(item.responsible)}" placeholder="Responsável" ${disabled}>
@@ -319,7 +371,7 @@ const compactItemHtml = (item, mode = "card") => {
     <div><span class="tdg-work-badge ${item.priority === "critica" ? "critical" : overdue ? "warning" : ""}">${esc(label(item.priority))}</span><strong>${esc(item.title)}</strong><small>${esc(item.client || "Sem cliente/operação")}</small></div>
     <p>${esc(item.description || "Sem descrição.")}</p>
     <footer><span>${esc(item.responsible || "Sem responsável")}</span><time>${esc(item.dueDate || "Sem prazo")}</time></footer>
-    <div class="tdg-work-card-actions"><select data-field="status" aria-label="Status" ${disabled}>${statuses.map((value) => `<option value="${value}" ${value === item.status ? "selected" : ""}>${label(value)}</option>`).join("")}</select><button type="button" data-work-remove ${disabled} aria-label="Arquivar item">×</button></div>
+    <div class="tdg-work-card-actions"><select data-field="status" aria-label="Status" ${disabled}>${statuses.map((value) => `<option value="${value}" ${value === item.status ? "selected" : ""}>${label(value)}</option>`).join("")}</select>${item.fields?.pendingWhatsapp?.status === "pending" ? '<button type="button" data-whatsapp-confirm>Confirmar WhatsApp</button>' : ""}<button type="button" data-work-remove ${disabled} aria-label="Arquivar item">×</button></div>
   </article>`;
 };
 
@@ -362,6 +414,18 @@ const renderWorkCenter = () => {
   root.querySelector("[data-work-new]")?.addEventListener("click", () => { state.showForm = true; renderWorkCenter(); });
   root.querySelector("[data-work-cancel]")?.addEventListener("click", () => { state.showForm = false; renderWorkCenter(); });
   root.querySelector("[data-work-form]")?.addEventListener("submit", (event) => { event.preventDefault(); createItem(event.currentTarget); });
+  const itemForm = root.querySelector("[data-work-form]");
+  const syncClientContacts = () => {
+    if (!itemForm) return;
+    const client = state.clients.find((candidate) => candidate.id === itemForm.elements.clientId?.value);
+    const select = itemForm.elements.contactId;
+    if (!select) return;
+    const contacts = client?.contacts || [];
+    select.innerHTML = `<option value="">${contacts.length ? "Selecione o contato" : "Nenhum contato com cadastro"}</option>${contacts.map((contact) => `<option value="${esc(contact.id)}">${esc(contact.name)}${contact.phone ? " · WhatsApp disponível" : " · sem telefone"}</option>`).join("")}`;
+    select.disabled = !contacts.length;
+  };
+  itemForm?.elements.clientId?.addEventListener("change", syncClientContacts);
+  syncClientContacts();
   root.querySelector("[data-automation-new]")?.addEventListener("click", () => { state.showAutomationForm = true; renderWorkCenter(); });
   root.querySelector("[data-automation-cancel]")?.addEventListener("click", () => { state.showAutomationForm = false; renderWorkCenter(); });
   root.querySelector("[data-automation-form]")?.addEventListener("submit", (event) => { event.preventDefault(); createAutomationRule(event.currentTarget); });
@@ -392,6 +456,7 @@ const renderWorkCenter = () => {
     if (!item) return;
     row.querySelectorAll("[data-field]").forEach((field) => field.addEventListener("change", (event) => patchItem(item, { [event.target.dataset.field]: event.target.value })));
     row.querySelector("[data-work-remove]")?.addEventListener("click", () => archiveItem(item));
+    row.querySelector("[data-whatsapp-confirm]")?.addEventListener("click", () => confirmWhatsapp(item));
   });
   root.querySelector("[data-work-ai]")?.addEventListener("click", async () => {
     if (!board || state.aiBusy) return;
