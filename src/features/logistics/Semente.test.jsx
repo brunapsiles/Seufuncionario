@@ -14,9 +14,20 @@ const authHeaders = () => ({ authorization: "Bearer t" });
 
 const corpoEnviado = (indice = -1) => JSON.parse(global.fetch.mock.calls.at(indice)[1].body);
 
+// A Semente busca a pauta do dia ao abrir. Essas chamadas não são perguntas
+// e não entram na contagem — senão todo teste de conversa vira teste de pauta.
+const chamadasDePergunta = () =>
+  global.fetch.mock.calls.filter((chamada) => {
+    const corpo = JSON.parse(chamada[1].body);
+    return Boolean(corpo.pergunta || corpo.executar);
+  });
+
 beforeEach(() => {
   localStorage.clear();
-  global.fetch = vi.fn(() => resposta({ resposta: "Três contas estão paradas.", carteira: 12 }));
+  global.fetch = vi.fn((url, opcoes) =>
+    JSON.parse(opcoes.body).briefing
+      ? resposta({ pautas: [], leitura: "Carteira em dia: 3 conta(s), nenhuma pendência aberta." })
+      : resposta({ resposta: "Três contas estão paradas.", carteira: 12 }));
 });
 
 afterEach(() => {
@@ -104,7 +115,7 @@ describe("a pergunta vai para a vertical, com o contexto da tela", () => {
     await perguntarPor("Primeira pergunta minha");
     await screen.findByText("Três contas estão paradas.");
     await perguntarPor("E o segundo caso?");
-    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(chamadasDePergunta()).toHaveLength(2));
     expect(corpoEnviado().historico).toEqual([
       { role: "user", content: "Primeira pergunta minha" },
       { role: "assistant", content: "Três contas estão paradas." },
@@ -112,8 +123,10 @@ describe("a pergunta vai para a vertical, com o contexto da tela", () => {
   });
 
   it("mostra qual ferramenta foi consultada, para a resposta ser conferível", async () => {
-    global.fetch = vi.fn(() =>
-      resposta({ resposta: "A conta Alfa está sem próxima ação.", consultou: { ferramenta: "carteira" } }),
+    global.fetch = vi.fn((url, opcoes) =>
+      JSON.parse(opcoes.body).briefing
+        ? resposta({ pautas: [], leitura: "" })
+        : resposta({ resposta: "A conta Alfa está sem próxima ação.", consultou: { ferramenta: "carteira" } }),
     );
     render(<Semente pagina="clientes" authHeaders={authHeaders} />);
     abrir();
@@ -135,7 +148,10 @@ describe("a pergunta vai para a vertical, com o contexto da tela", () => {
   });
 
   it("diz que falhou em vez de fingir que respondeu", async () => {
-    global.fetch = vi.fn(() => resposta({ error: "Os provedores de IA não responderam agora." }, false));
+    global.fetch = vi.fn((url, opcoes) =>
+      JSON.parse(opcoes.body).briefing
+        ? resposta({ pautas: [], leitura: "" })
+        : resposta({ error: "Os provedores de IA não responderam agora." }, false));
     render(<Semente pagina="clientes" authHeaders={authHeaders} />);
     abrir();
     await perguntarPor("O que está parado?");
@@ -150,7 +166,61 @@ describe("a pergunta vai para a vertical, com o contexto da tela", () => {
     });
     expect(screen.getByRole("button", { name: /Enviar pergunta/i }).disabled).toBe(true);
     fireEvent.submit(screen.getByPlaceholderText(/Pergunte sobre a sua carteira/i).closest("form"));
-    expect(global.fetch).not.toHaveBeenCalled();
+    expect(chamadasDePergunta()).toHaveLength(0);
+  });
+});
+
+describe("a pauta do dia", () => {
+  it("chega sozinha ao abrir, sem ninguém perguntar", async () => {
+    // É o que separa assistente de campo de busca com boas maneiras.
+    global.fetch = vi.fn((url, opcoes) =>
+      JSON.parse(opcoes.body).briefing
+        ? resposta({
+            leitura: "2 ponto(s) de atenção em 9 conta(s).",
+            pautas: [
+              { id: "prazo-vencido", urgencia: "alta", titulo: "Próxima ação com prazo vencido", quantidade: 2, contas: ["Rede Alfa", "Beta Log"], restantes: 0, pergunta: "Quais contas estão com a próxima ação vencida?" },
+            ],
+          })
+        : resposta({ resposta: "ok" }));
+    render(<Semente pagina="clientes" authHeaders={authHeaders} />);
+    abrir();
+    expect(await screen.findByText("Próxima ação com prazo vencido")).toBeTruthy();
+    // Os nomes ficam à vista: número sem nome obriga a ir procurar.
+    expect(screen.getByText(/Rede Alfa, Beta Log/)).toBeTruthy();
+    expect(chamadasDePergunta()).toHaveLength(0);
+  });
+
+  it("clicar na pauta faz a pergunta correspondente", async () => {
+    global.fetch = vi.fn((url, opcoes) =>
+      JSON.parse(opcoes.body).briefing
+        ? resposta({
+            leitura: "1 ponto de atenção.",
+            pautas: [{ id: "sem-canal", urgencia: "media", titulo: "Conta sem contato com canal", quantidade: 1, contas: ["Alfa"], restantes: 0, pergunta: "Quais contas estão sem contato com canal?" }],
+          })
+        : resposta({ resposta: "A conta Alfa não tem canal." }));
+    render(<Semente pagina="clientes" authHeaders={authHeaders} />);
+    abrir();
+    fireEvent.click(await screen.findByText("Conta sem contato com canal"));
+    expect(await screen.findByText("A conta Alfa não tem canal.")).toBeTruthy();
+    expect(corpoEnviado().pergunta).toBe("Quais contas estão sem contato com canal?");
+  });
+
+  it("carteira em dia mostra os atalhos, não uma pauta inventada", async () => {
+    render(<Semente pagina="clientes" authHeaders={authHeaders} />);
+    abrir();
+    expect(await screen.findByText(/Carteira em dia/)).toBeTruthy();
+    expect(screen.getByText("O que está parado na minha carteira?")).toBeTruthy();
+  });
+
+  it("pauta que falha não impede de usar a Semente", async () => {
+    global.fetch = vi.fn((url, opcoes) =>
+      JSON.parse(opcoes.body).briefing
+        ? Promise.reject(new Error("rede"))
+        : resposta({ resposta: "Respondi assim mesmo." }));
+    render(<Semente pagina="clientes" authHeaders={authHeaders} />);
+    abrir();
+    await perguntarPor("O que está parado?");
+    expect(await screen.findByText("Respondi assim mesmo.")).toBeTruthy();
   });
 });
 
@@ -158,20 +228,24 @@ describe("proposta não é execução", () => {
   const proposta = { tipo: "definir_proxima_acao", cliente: "Rede Alfa", acao: "Enviar proposta", prazo: "2026-08-20" };
 
   it("a proposta chega como botão dizendo exatamente o que vai acontecer", async () => {
-    global.fetch = vi.fn(() => resposta({ resposta: "Sugiro registrar a próxima ação.", proposta }));
+    global.fetch = vi.fn((url, opcoes) =>
+      JSON.parse(opcoes.body).briefing
+        ? resposta({ pautas: [], leitura: "" })
+        : resposta({ resposta: "Sugiro registrar a próxima ação.", proposta }));
     render(<Semente pagina="clientes" authHeaders={authHeaders} />);
     abrir();
     await perguntarPor("O que faço com a Rede Alfa?");
     expect(await screen.findByText(/Definir próxima ação de Rede Alfa/)).toBeTruthy();
     expect(screen.getByText(/Nada foi gravado ainda/)).toBeTruthy();
     // E só a pergunta foi ao servidor — nenhuma execução aconteceu.
-    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(chamadasDePergunta()).toHaveLength(1);
     expect(corpoEnviado().executar).toBeUndefined();
   });
 
   it("confirmar dispara a execução e mostra o resumo do que foi feito", async () => {
     global.fetch = vi.fn((url, opcoes) => {
       const corpo = JSON.parse(opcoes.body);
+      if (corpo.briefing) return resposta({ pautas: [], leitura: "" });
       if (corpo.executar)
         return resposta({ ok: true, tipo: corpo.executar.tipo, resumo: "Próxima ação de Rede Alfa: Enviar proposta." });
       return resposta({ resposta: "Sugiro registrar a próxima ação.", proposta });
@@ -190,6 +264,7 @@ describe("proposta não é execução", () => {
   it("execução recusada pelo servidor aparece como falha, e a proposta continua visível", async () => {
     global.fetch = vi.fn((url, opcoes) => {
       const corpo = JSON.parse(opcoes.body);
+      if (corpo.briefing) return resposta({ pautas: [], leitura: "" });
       if (corpo.executar) return resposta({ error: "Seu papel não cria itens na Central de Trabalho." }, false);
       return resposta({ resposta: "Sugiro criar a tarefa.", proposta: { tipo: "criar_tarefa", titulo: "Ligar" } });
     });

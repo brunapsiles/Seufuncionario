@@ -191,6 +191,22 @@ describe("o contrato com o modelo", () => {
     expect(INSTRUCAO).toContain("português do Brasil");
   });
 
+  it("a instrução carrega o negócio, não só as regras", () => {
+    // Uma assistente comercial de transportadora elétrica que não conhece
+    // ocupação, backhaul, Escopo 3 e procurement responde como buscador.
+    for (const termo of [
+      "frota elétrica", "Middle Mile", "Last Mile", "backhaul", "payload",
+      "ocupação", "piso mínimo", "Escopo 3", "GHG Protocol", "procurement",
+      "RFQ", "homologação", "decisor econômico", "recarga",
+    ]) expect(INSTRUCAO).toContain(termo);
+  });
+
+  it("liga o dado comercial à consequência operacional", () => {
+    // É o que separa "sei o vocabulário" de "sei vender frete".
+    expect(INSTRUCAO).toContain("Ocupação baixa é margem indo embora");
+    expect(INSTRUCAO).toContain("rota que a frota elétrica não faz");
+  });
+
   it("a instrução proíbe recomendar ferramenta externa", () => {
     // Aconteceu em produção: a Semente recomendou Google Sheets e HubSpot
     // dentro do próprio CRM, porque recebia só o resumo do painel e o

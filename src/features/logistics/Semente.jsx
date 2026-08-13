@@ -106,6 +106,7 @@ export default function Semente({ pagina, clienteId, authHeaders, aoAgir }) {
   const [mensagens, setMensagens] = useState([]);
   const [pensando, setPensando] = useState(false);
   const [executando, setExecutando] = useState("");
+  const [pauta, setPauta] = useState(null);
   const conversa = useRef(null);
 
   const especialista = especialistaDaTela(pagina);
@@ -209,6 +210,18 @@ export default function Semente({ pagina, clienteId, authHeaders, aoAgir }) {
     [aoAgir, chamar],
   );
 
+  // A pauta é buscada quando o painel abre, uma vez. Um assistente que só
+  // responde é um campo de busca com boas maneiras: chegar com o que mudou na
+  // carteira é o que separa chat de assistente.
+  useEffect(() => {
+    if (!aberta || pauta) return undefined;
+    let ativo = true;
+    chamar({ briefing: true })
+      .then((dados) => { if (ativo) setPauta(dados); })
+      .catch(() => { if (ativo) setPauta({ pautas: [], leitura: "" }); });
+    return () => { ativo = false; };
+  }, [aberta, chamar, pauta]);
+
   if (!aberta) {
     return (
       <button
@@ -283,8 +296,37 @@ export default function Semente({ pagina, clienteId, authHeaders, aoAgir }) {
         )}
       </div>
 
-      {mensagens.length === 0 && (
+      {mensagens.length === 0 && pauta?.pautas?.length > 0 && (
+        <div className="semente-pauta">
+          <header>
+            <strong>Sua carteira hoje</strong>
+            <small>{pauta.leitura}</small>
+          </header>
+          {pauta.pautas.map((item) => (
+            <button
+              type="button"
+              key={item.id}
+              className={`semente-pauta-item semente-pauta-item--${item.urgencia}`}
+              onClick={() => perguntar(item.pergunta)}
+            >
+              <span className="semente-pauta-topo">
+                <b>{item.titulo}</b>
+                <em>{item.quantidade}</em>
+              </span>
+              {/* Os nomes ficam à vista: número sem nome obriga a pessoa a ir
+                  procurar, e aí ela não usa mais. */}
+              <small>
+                {item.contas.join(", ")}
+                {item.restantes > 0 ? ` e mais ${item.restantes}` : ""}
+              </small>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {mensagens.length === 0 && pauta && !pauta.pautas?.length && (
         <div className="semente-atalhos">
+          {pauta.leitura && <p className="semente-pauta-limpa">{pauta.leitura}</p>}
           {atalhos.map((item) => (
             <button type="button" key={item} onClick={() => perguntar(item)}>
               {item}
