@@ -185,6 +185,9 @@ describe("LogisticsVertical", () => {
     expect(await screen.findByRole("heading", { name: "Páginas e documentos", level: 2 })).toBeTruthy();
     expect(document.querySelectorAll("main.tdg h1")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Mala direta" })).toBeNull();
+
+    fireEvent.click(screen.getAllByRole("button", { name: /^Automações/ })[0]);
+    expect(await screen.findByRole("heading", { name: "Quando isso acontecer, faça aquilo" })).toBeTruthy();
   });
 
   it("mantém a busca de funções disponível em qualquer página", async () => {
