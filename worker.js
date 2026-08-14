@@ -82,6 +82,7 @@ import {
 import { createQuoteHandlers } from "./worker/services/quotes.js";
 import { createWebhookHandlers } from "./worker/services/webhooks.js";
 import { runTodoGreenScheduledWorkAutomations } from "./worker/services/todogreen-work-center.js";
+import { runTodoGreenIntelligenceWatches } from "./worker/services/todogreen-client-intelligence.js";
 
 
 
@@ -4250,6 +4251,11 @@ export default {
     ctx.waitUntil(
       runTodoGreenScheduledWorkAutomations(env, now).catch((error) =>
         console.error("scheduled To Do Green work automations", error),
+      ),
+    );
+    ctx.waitUntil(
+      runTodoGreenIntelligenceWatches(env, now).catch((error) =>
+        console.error("scheduled To Do Green intelligence watches", error),
       ),
     );
   },

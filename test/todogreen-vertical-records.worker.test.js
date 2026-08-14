@@ -340,6 +340,30 @@ describe("contrato nasce de proposta aceita", () => {
     const duplicated = await pedir("/api/todogreen/records/contracts", { metodo: "POST", token: gestora.token, corpo: body });
     expect(duplicated.status).toBe(409);
   });
+
+  it("versiona alterações e preserva a trilha do ciclo contratual", async () => {
+    const clienteId = `cli-ciclo-${crypto.randomUUID()}`;
+    await criarCliente(gestora, clienteId, "Cliente Ciclo");
+    const proposta = (await (await pedir("/api/todogreen/records/proposals", {
+      metodo: "POST", token: gestora.token,
+      corpo: { clientId: clienteId, cliente: "Cliente Ciclo", titulo: "Proposta ciclo", cenarioId: "cen-ciclo", situacao: "accepted" },
+    })).json()).registro;
+    const contrato = (await (await pedir("/api/todogreen/records/contracts", {
+      metodo: "POST", token: gestora.token,
+      corpo: { clientId: clienteId, propostaId: proposta.id, titulo: "Contrato ciclo", renovacao: "automatic" },
+    })).json()).registro;
+
+    const atualizado = await pedir(`/api/todogreen/records/contracts/${contrato.id}`, {
+      metodo: "PATCH", token: gestora.token,
+      corpo: { revision: contrato.revision, assinatura: "signed", assinadoEm: "2026-08-14", nota: "Assinado pelo cliente" },
+    });
+    expect(atualizado.status).toBe(200);
+    expect((await atualizado.json()).registro).toEqual(expect.objectContaining({ assinatura: "signed", versao: 2, revision: 2 }));
+
+    const historico = await pedir(`/api/todogreen/records/contracts/${contrato.id}/events`, { token: gestora.token });
+    expect(historico.status).toBe(200);
+    expect((await historico.json()).eventos.map((evento) => evento.acao)).toEqual(expect.arrayContaining(["created", "updated"]));
+  });
 });
 
 describe("oportunidade ganha abre handoff operacional", () => {
@@ -435,6 +459,56 @@ describe("lançamentos financeiros", () => {
       corpo: { tipo: "cost", valor: 0 },
     });
     expect(r.status).toBe(400);
+  });
+
+  it("registra baixas parciais com histórico e impede pagamento acima do saldo", async () => {
+    const criado = await pedir("/api/todogreen/records/financial", {
+      metodo: "POST", token: gestora.token,
+      corpo: { tipo: "cost", valor: 1000, descricao: "Fornecedor rastreável", vencimentoEm: "2026-08-20" },
+    });
+    const lancamento = (await criado.json()).registro;
+    const baixa = await pedir(`/api/todogreen/records/financial/${lancamento.id}/payments`, {
+      metodo: "POST", token: gestora.token,
+      corpo: { revision: lancamento.revision, valor: 400, pagoEm: "2026-08-14", meioPagamento: "pix", referencia: "PIX-001" },
+    });
+    expect(baixa.status).toBe(201);
+    const aposBaixa = (await baixa.json()).registro;
+    expect(aposBaixa).toEqual(expect.objectContaining({ valorPago: 400, statusFinanceiro: "partial", revision: 2 }));
+
+    const acimaDoSaldo = await pedir(`/api/todogreen/records/financial/${lancamento.id}/payments`, {
+      metodo: "POST", token: gestora.token,
+      corpo: { revision: aposBaixa.revision, valor: 601, pagoEm: "2026-08-15" },
+    });
+    expect(acimaDoSaldo.status).toBe(409);
+
+    const historico = await pedir(`/api/todogreen/records/financial/${lancamento.id}/payments`, { token: gestora.token });
+    expect(historico.status).toBe(200);
+    expect((await historico.json()).pagamentos).toEqual([
+      expect.objectContaining({ valor: 400, meioPagamento: "pix", referencia: "PIX-001" }),
+    ]);
+  });
+});
+
+describe("linha do tempo operacional", () => {
+  it("registra ocorrências sem perder o histórico da execução", async () => {
+    const clienteId = `cli-evento-${crypto.randomUUID()}`;
+    await criarCliente(gestora, clienteId, "Cliente Evento");
+    const operacao = (await (await pedir("/api/todogreen/records/operations", {
+      metodo: "POST", token: gestora.token,
+      corpo: { clientId: clienteId, referencia: "OP-EVENTO", viagens: 1 },
+    })).json()).registro;
+    const evento = await pedir(`/api/todogreen/records/operations/${operacao.id}/events`, {
+      metodo: "POST", token: gestora.token,
+      corpo: { tipo: "ocorrencia", titulo: "Atraso no acesso", descricao: "Fila na portaria", local: "CD Sul" },
+    });
+    expect(evento.status).toBe(201);
+    expect((await evento.json()).registro).toEqual(expect.objectContaining({ ocorrencias: 1, revision: 2 }));
+
+    const historico = await pedir(`/api/todogreen/records/operations/${operacao.id}/events`, { token: gestora.token });
+    expect(historico.status).toBe(200);
+    expect((await historico.json()).eventos).toEqual([
+      expect.objectContaining({ tipo: "ocorrencia", titulo: "Atraso no acesso", local: "CD Sul" }),
+    ]);
   });
 });
 

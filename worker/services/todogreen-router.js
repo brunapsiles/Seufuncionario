@@ -21,6 +21,7 @@ import { handleTodoGreenSemente } from "./todogreen-semente.js";
 import { handleTodoGreenTimeline } from "./todogreen-timeline.js";
 import { handleTodoGreenIntegrations } from "./todogreen-integrations.js";
 import { handleTodoGreenPricingPerformance } from "./todogreen-pricing-performance.js";
+import { handleTodoGreenGovernance } from "./todogreen-governance.js";
 
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
   status,
@@ -167,6 +168,14 @@ export async function routeTodoGreenApi(request, env, ctx) {
       const resolved = await internalAccess(request, env);
       if (resolved.response) return resolved.response;
       return handleTodoGreenIntegrations(request, env, resolved.access);
+    });
+  }
+
+  if (path.startsWith("/api/todogreen/governance")) {
+    return guarded("To Do Green governance error", "Não foi possível carregar a auditoria.", async () => {
+      const resolved = await internalAccess(request, env);
+      if (resolved.response) return resolved.response;
+      return handleTodoGreenGovernance(request, env, resolved.access, resolved.user);
     });
   }
 

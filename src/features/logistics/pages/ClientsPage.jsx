@@ -131,9 +131,9 @@ function AccountSource({ url, evidence }) {
   return sourceUrl ? <small><a href={sourceUrl} target="_blank" rel="noreferrer">Ver fonte <ExternalLink size={11} /></a>{evidence?.checkedAt ? ` · ${formatCheckedAt(evidence.checkedAt)}` : ""}{evidence?.confidence ? ` · confiança ${evidence.confidence}` : ""}</small> : null;
 }
 
-function ExternalIntelligence({ report, researching, error, onResearch }) {
+function ExternalIntelligence({ report, researching, error, onResearch, watch, onToggleWatch }) {
   return <section className="tdg-crm-web-intelligence">
-    <header><div><strong>Inteligência externa</strong><small>{formatCheckedAt(report?.checkedAt)}</small></div><button type="button" onClick={() => onResearch?.("company")} disabled={researching}><RefreshCw size={14} className={researching ? "spin" : ""} />{researching ? "Pesquisando..." : report ? "Atualizar web" : "Pesquisar empresa"}</button></header>
+    <header><div><strong>Inteligência externa</strong><small>{formatCheckedAt(report?.checkedAt)}{watch?.enabled ? ` · monitoramento diário ativo` : ""}</small></div><div><button type="button" onClick={() => onToggleWatch?.(!watch?.enabled)} disabled={researching}>{watch?.enabled ? "Pausar monitoramento" : "Monitorar diariamente"}</button><button type="button" onClick={() => onResearch?.("company")} disabled={researching}><RefreshCw size={14} className={researching ? "spin" : ""} />{researching ? "Pesquisando..." : report ? "Atualizar web" : "Pesquisar empresa"}</button></div></header>
     {error && <p className="tdg-crm-research-error">{error}</p>}
     {!report && !error && <p>A IA ainda não pesquisou esta empresa na web. A busca verifica site, LinkedIn, ESG, fornecedores, RFQs, procurement e notícias.</p>}
     {report && <>
@@ -563,6 +563,7 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
   const [researching, setResearching] = useState(false);
   const [researchError, setResearchError] = useState("");
   const [researchReports, setResearchReports] = useState({});
+  const [researchWatches, setResearchWatches] = useState({});
   const [showCreate, setShowCreate] = useState(false);
   const [clientForm, setClientForm] = useState({ nome: "", documento: "", segmento: "", tier: "Enterprise", stage: "Mapeamento" });
   const [assignment, setAssignment] = useState({ clientId: "", sellerEmail: "", note: "" });
@@ -642,6 +643,7 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
     : "Gasto logístico anual do cliente não informado. O CRM não estima participação sem essa base.";
   const selectedReportCandidate = selected ? researchReports[selected.id] || selected.crm?.intelligence || null : null;
   const selectedReport = Number(selectedReportCandidate?.version || 0) >= 9 ? selectedReportCandidate : null;
+  const selectedWatch = selected ? researchWatches[selected.id] || null : null;
   const logisticsProcurementNames = selectedIntelligence
     ? [...new Set(selectedIntelligence.logisticsProcurementContacts.map((item) => item.name).filter(Boolean))]
     : [];
@@ -680,6 +682,18 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
     });
   }, [onClientContextChange, selected, selectedAccount, selectedIntelligence, selectedReport]);
   useEffect(() => () => onClientContextChange?.(null), [onClientContextChange]);
+  useEffect(() => {
+    if (detailTab !== "intelligence" || !selected?.id) return;
+    let active = true;
+    api(`client-intelligence/${encodeURIComponent(selected.id)}`, authHeaders)
+      .then((data) => {
+        if (!active) return;
+        if (data.intelligence) setResearchReports((current) => ({ ...current, [selected.id]: data.intelligence }));
+        setResearchWatches((current) => ({ ...current, [selected.id]: data.watch || null }));
+      })
+      .catch(() => null);
+    return () => { active = false; };
+  }, [detailTab, selected?.id, authHeaders]);
 
   const openClient = (clientId) => {
     setSelectedId(clientId); setDetailTab("summary"); setAccountInteractions([]); setPortalPreviewOpen(false); setResearchError("");
@@ -737,6 +751,16 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
       setToast?.(`${focus === "contacts" ? "Contatos de Procurement logístico no Brasil pesquisados." : "Empresa pesquisada e ficha atualizada."}${legalName}${segment}${institutional}${correctedWebsite}${headquarters}${qualification}${additions}${updates}${removed}`);
     } catch (reason) { setResearchError(reason.message); }
     finally { setResearching(false); }
+  };
+  const toggleResearchWatch = async (enabled) => {
+    if (!selected) return;
+    try {
+      const data = await api(`client-intelligence/${encodeURIComponent(selected.id)}/watch`, authHeaders, {
+        method: "POST", body: JSON.stringify({ enabled, frequencyHours: 24, focus: "company" }),
+      });
+      setResearchWatches((current) => ({ ...current, [selected.id]: data.watch || null }));
+      setToast?.(enabled ? "Monitoramento diário ativado. Notícias e sinais serão atualizados automaticamente." : "Monitoramento pausado.");
+    } catch (reason) { setResearchError(reason.message); }
   };
   const createTask = async (task) => {
     if (!onCreateTask) throw new Error("Não foi possível conectar a tarefa ao workspace.");
@@ -846,7 +870,7 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
         <section className="tdg-crm-detail-section tdg-crm-account-strategy tdg-account-panel tdg-account-relationship"><header><strong>Mapa de relacionamento</strong><small>Papéis associados às pessoas</small></header><div className="tdg-crm-relationship-map">{[["Quem decide", selectedStrategy.relationshipMap.buyers], ["Quem apoia", selectedStrategy.relationshipMap.influencers], ["Quem bloqueia", selectedStrategy.relationshipMap.blockers], ["Usuário operacional", selectedStrategy.relationshipMap.users]].map(([label, names]) => <div className={label === "Quem bloqueia" && names.length ? "risk" : ""} key={label}><span>{label}</span><strong>{names.length ? names.join(", ") : "Não mapeado"}</strong></div>)}</div></section>
         <section className="tdg-crm-detail-section tdg-crm-account-strategy tdg-account-panel tdg-account-opportunities"><header><strong>White Space</strong><small>Produtos ainda não trabalhados com o cliente</small></header><div className="tdg-crm-chip-list">{selectedStrategy.whiteSpace.length ? selectedStrategy.whiteSpace.map((item) => <span key={item}>{item}</span>) : <span>Portfólio principal já coberto</span>}</div></section>
         <section className="tdg-crm-detail-section tdg-crm-account-strategy tdg-account-panel tdg-account-strategy"><header><strong>Account Plan</strong><small>Cadastro e recomendações derivadas do CRM</small></header><dl className="tdg-crm-account-data"><div><dt>Objetivo</dt><dd>{selectedStrategy.accountPlan.objective || "Não definido"}{selectedStrategy.accountPlan.generated?.objective && <small>Sugerido pelos dados atuais</small>}</dd></div><div><dt>Barreiras</dt><dd>{selectedStrategy.accountPlan.barriers || "Não mapeadas"}{selectedStrategy.accountPlan.generated?.barriers && <small>Derivadas dos alertas reais</small>}</dd></div><div><dt>Concorrentes</dt><dd>{selectedStrategy.accountPlan.competitors || "Não mapeados"}</dd></div><div><dt>30 dias</dt><dd>{selectedStrategy.accountPlan.plan30 || "Não definido"}{selectedStrategy.accountPlan.generated?.plan30 && <small>Próxima melhor ação calculada</small>}</dd></div><div><dt>60 dias</dt><dd>{selectedStrategy.accountPlan.plan60 || "Não definido"}{selectedStrategy.accountPlan.generated?.plan60 && <small>Sugerido pelos dados atuais</small>}</dd></div><div><dt>90 dias</dt><dd>{selectedStrategy.accountPlan.plan90 || "Não definido"}{selectedStrategy.accountPlan.generated?.plan90 && <small>Sugerido pelos dados atuais</small>}</dd></div></dl></section>
-        <div className="tdg-account-panel tdg-account-intelligence"><ExternalIntelligence report={selectedReport} researching={researching} error={researchError} onResearch={researchSelected} /></div>
+        <div className="tdg-account-panel tdg-account-intelligence"><ExternalIntelligence report={selectedReport} researching={researching} error={researchError} onResearch={researchSelected} watch={selectedWatch} onToggleWatch={toggleResearchWatch} /></div>
         <div className="tdg-account-panel tdg-account-relationship"><RelationshipMap contatos={selectedAccount.contacts} conta={selected.name} /></div>
         <section className="tdg-crm-detail-section tdg-account-panel tdg-account-relationship"><header><strong>Contatos</strong><small>{selectedAccount.contacts.length} contato(s)</small></header><div className="tdg-crm-roles">{selectedAccount.contacts.map((contact) => <ContactCard key={contact.id} contact={contact} clientName={selected.name} />)}{selectedAccount.contacts.length === 0 && <p>Nenhum decisor ou patrocinador mapeado.</p>}</div></section>
         <section className="tdg-crm-detail-section tdg-account-panel tdg-account-activity"><header><strong>Atividade da conta</strong><small>Mensagens e movimentações realmente registradas</small></header>{activityLoading ? <p>Carregando histórico...</p> : accountInteractions.length ? <div className="tdg-crm-activity-feed">{accountInteractions.map((item) => <article key={item.id}><span><strong>{item.contactName || item.contactHandle || "Contato"}</strong><small>{item.channel || "atividade"} · {item.direction === "out" ? "enviado" : "recebido"} · {item.createdAt ? new Date(item.createdAt).toLocaleString("pt-BR") : "data não informada"}</small></span>{item.subject && <b>{item.subject}</b>}{item.body && <p>{item.body}</p>}</article>)}</div> : <div className="tdg-crm-activity-empty"><strong>Nenhuma mensagem ou reunião registrada</strong><span>WhatsApp e e-mails enviados pelo app aparecem aqui quando associados a esta conta ou a um de seus contatos.</span></div>}<div className="tdg-crm-activity-list"><article><span>Última atualização da conta</span><strong>{selected.updatedAt ? new Date(selected.updatedAt).toLocaleString("pt-BR") : "Ainda não registrada"}</strong></article><article><span>Próxima ação</span><strong>{selected.crm?.nextAction || selectedIntelligence.nextTask || "Ainda não definida"}</strong><small>{selected.crm?.nextActionAt || "Sem prazo registrado"}</small></article><article><span>Histórico comercial</span><strong>{selectedOpportunities.length} oportunidade(s) vinculada(s)</strong></article></div><p>O CRM não cria atividades que não aconteceram.</p></section>

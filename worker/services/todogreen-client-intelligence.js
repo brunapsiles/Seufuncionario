@@ -1,4 +1,4 @@
-import { recorteDeCarteira, TENANT_ID } from "./todogreen-access.js";
+import { podeNaVertical, recorteDeCarteira, TENANT_ID } from "./todogreen-access.js";
 import { searchWeb, webSearchConfiguration } from "./web-search.js";
 import { normalizedPhone } from "../../src/features/logistics/crmContactNormalizationDomain.js";
 
@@ -803,7 +803,9 @@ export async function handleTodoGreenClientIntelligence(request, env, access, us
   if (!env.DB) return response({ error: "Banco indisponível." }, 503);
   if (!['GET', 'POST'].includes(request.method)) return response({ error: "Método não permitido." }, 405);
   const url = new URL(request.url);
-  const clientId = clean(url.pathname.split("/").filter(Boolean)[3], 60);
+  const path = url.pathname.split("/").filter(Boolean);
+  const clientId = clean(path[3], 60);
+  const subresource = clean(path[4], 40);
   if (!clientId) return response({ error: "Informe o cliente." }, 400);
   const scope = recorteDeCarteira(access, user?.email, "c", "id");
   const row = await env.DB.prepare(
@@ -814,10 +816,49 @@ export async function handleTodoGreenClientIntelligence(request, env, access, us
   if (!row) return response({ error: "Cliente não encontrado na sua carteira." }, 404);
   const fields = parse(row.fields_json, {});
   const cached = fields.intelligence && typeof fields.intelligence === "object" && Number(fields.intelligence.version || 0) >= COMPANY_RESEARCH_VERSION ? fields.intelligence : null;
+  const watch = await env.DB.prepare(
+    `SELECT enabled,frequency_hours,focus,next_run_at,last_run_at,last_status,last_error,revision
+       FROM todogreen_intelligence_watches
+      WHERE tenant_id=? AND workspace_owner_id=? AND client_id=?`,
+  ).bind(TENANT_ID, access.ownerId, clientId).first().catch(() => null);
+  if (subresource === "watch") {
+    if (request.method === "GET") return response({ watch: watch ? {
+      enabled: Boolean(watch.enabled), frequencyHours: watch.frequency_hours, focus: watch.focus,
+      nextRunAt: watch.next_run_at, lastRunAt: watch.last_run_at, status: watch.last_status,
+      error: watch.last_error, revision: watch.revision,
+    } : null });
+    if (!podeNaVertical(access, "crm:manage"))
+      return response({ error: "Seu papel não pode configurar o monitoramento da conta." }, 403);
+    const body = await request.json().catch(() => ({}));
+    const enabled = body.enabled !== false;
+    const frequencyHours = [24, 72, 168].includes(Number(body.frequencyHours)) ? Number(body.frequencyHours) : 24;
+    const focus = body.focus === "contacts" ? "contacts" : "company";
+    const now = new Date().toISOString();
+    const nextRun = enabled ? now : new Date(Date.now() + frequencyHours * 3600000).toISOString();
+    await env.DB.prepare(
+      `INSERT INTO todogreen_intelligence_watches
+         (id,tenant_id,workspace_owner_id,client_id,enabled,frequency_hours,focus,next_run_at,
+          last_run_at,last_status,last_error,revision,created_by,updated_by,created_at,updated_at)
+       VALUES (?,?,?,?,?,?,?,?,NULL,'pending','',1,?,?,?,?)
+       ON CONFLICT(tenant_id,workspace_owner_id,client_id) DO UPDATE SET
+         enabled=excluded.enabled,frequency_hours=excluded.frequency_hours,focus=excluded.focus,
+         next_run_at=excluded.next_run_at,last_status='pending',last_error='',revision=revision+1,
+         updated_by=excluded.updated_by,updated_at=excluded.updated_at`,
+    ).bind(
+      crypto.randomUUID(), TENANT_ID, access.ownerId, clientId, enabled ? 1 : 0,
+      frequencyHours, focus, nextRun, user.id, user.id, now, now,
+    ).run();
+    return response({ watch: { enabled, frequencyHours, focus, nextRunAt: nextRun, status: "pending" } });
+  }
   if (request.method === "GET")
     return response({
       intelligence: cached,
       configured: webSearchConfiguration(env).configured,
+      watch: watch ? {
+        enabled: Boolean(watch.enabled), frequencyHours: watch.frequency_hours, focus: watch.focus,
+        nextRunAt: watch.next_run_at, lastRunAt: watch.last_run_at, status: watch.last_status,
+        error: watch.last_error, revision: watch.revision,
+      } : null,
     });
   const body = await request.json().catch(() => ({}));
   const resultado = await pesquisarEmpresa(env, {
@@ -830,6 +871,44 @@ export async function handleTodoGreenClientIntelligence(request, env, access, us
   if (resultado.erro) return response({ error: resultado.erro, failures: resultado.failures }, resultado.status || 502);
   if (resultado.doCache) return response({ intelligence: resultado.relatorio, cached: true });
   return response({ intelligence: resultado.relatorio, enrichment: resultado.enrichment, client: resultado.clientPatch, cached: false });
+}
+
+export async function runTodoGreenIntelligenceWatches(env, now = new Date()) {
+  if (!env?.DB || !webSearchConfiguration(env).configured) return { processed: 0 };
+  const nowIso = now.toISOString();
+  const { results } = await env.DB.prepare(
+    `SELECT w.id,w.workspace_owner_id,w.client_id,w.frequency_hours,w.focus,w.created_by,
+            c.id AS account_id,c.name,c.legal_name,c.document,c.segment,c.notes,c.fields_json,c.revision
+       FROM todogreen_intelligence_watches w
+       JOIN todogreen_clients c
+         ON c.tenant_id=w.tenant_id AND c.workspace_owner_id=w.workspace_owner_id AND c.id=w.client_id
+      WHERE w.tenant_id=? AND w.enabled=1 AND w.next_run_at<=? AND c.archived_at IS NULL
+      ORDER BY w.next_run_at LIMIT 2`,
+  ).bind(TENANT_ID, nowIso).all();
+  let processed = 0;
+  for (const item of results || []) {
+    const next = new Date(now.getTime() + Math.max(24, Number(item.frequency_hours) || 24) * 3600000).toISOString();
+    try {
+      const result = await pesquisarEmpresa(env, {
+        linha: { ...item, id: item.account_id }, ownerId: item.workspace_owner_id, userId: item.created_by,
+        forcar: true, focus: item.focus === "contacts" ? "contacts" : "company",
+      });
+      if (result.erro) throw new Error(result.erro);
+      await env.DB.prepare(
+        `UPDATE todogreen_intelligence_watches
+            SET last_run_at=?,last_status='success',last_error='',next_run_at=?,updated_at=?,revision=revision+1
+          WHERE id=?`,
+      ).bind(nowIso, next, nowIso, item.id).run();
+      processed += 1;
+    } catch (error) {
+      await env.DB.prepare(
+        `UPDATE todogreen_intelligence_watches
+            SET last_run_at=?,last_status='error',last_error=?,next_run_at=?,updated_at=?,revision=revision+1
+          WHERE id=?`,
+      ).bind(nowIso, clean(error?.message, 500), next, nowIso, item.id).run();
+    }
+  }
+  return { processed };
 }
 
 /** Pesquisa compartilhada pelos botões do CRM e pelas ações confirmadas da Semente. */

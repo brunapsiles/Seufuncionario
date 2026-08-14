@@ -27,6 +27,7 @@
 import { TENANT_ID, paginacao, podeNaVertical, recorteDeCarteira } from "./todogreen-access.js";
 import { doBanco as pedidoDoBanco } from "./todogreen-deal-desk.js";
 import { liberacaoDaProposta } from "../../src/features/logistics/dealDeskDomain.js";
+import { registrarAuditoriaTodoGreen } from "./todogreen-governance.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -221,6 +222,14 @@ const COLECOES = {
       valorTotal: row.total_value,
       situacao: row.status,
       termos: row.terms,
+      assinatura: row.signature_status || "pending",
+      assinadoEm: row.signed_at || "",
+      renovacao: row.renewal_type || "manual",
+      avisoRenovacaoEm: row.renewal_notice_date || "",
+      diaFaturamento: row.billing_day || null,
+      responsavelId: row.responsible_user_id || "",
+      antecedenciaAvisoDias: row.notice_days || 60,
+      versao: row.version || 1,
       campos: parse(row.fields_json, {}),
       revision: row.revision,
       criadoEm: row.created_at,
@@ -239,6 +248,15 @@ const COLECOES = {
       total_value: numero(corpo.valorTotal),
       status: texto(corpo.situacao, 40) || "draft",
       terms: texto(corpo.termos, 8000),
+      signature_status: ["pending", "sent", "signed", "rejected", "expired"].includes(texto(corpo.assinatura, 40))
+        ? texto(corpo.assinatura, 40) : "pending",
+      signed_at: texto(corpo.assinadoEm, 40) || null,
+      renewal_type: ["manual", "automatic", "none"].includes(texto(corpo.renovacao, 40))
+        ? texto(corpo.renovacao, 40) : "manual",
+      renewal_notice_date: texto(corpo.avisoRenovacaoEm, 20) || null,
+      billing_day: Math.min(31, Math.max(1, Math.trunc(numero(corpo.diaFaturamento)))) || null,
+      responsible_user_id: texto(corpo.responsavelId, 120) || null,
+      notice_days: Math.min(365, Math.max(0, Math.trunc(numero(corpo.antecedenciaAvisoDias) || 60))),
       fields_json: JSON.stringify(objeto(corpo.campos)),
     }),
     exigido: (corpo) =>
@@ -263,6 +281,21 @@ const COLECOES = {
       produtoId: row.product_id,
       mesReferencia: row.service_date ? row.service_date.slice(0, 7) : "",
       referencia: row.reference,
+      contratoId: row.contract_id || "",
+      dataServico: row.service_date || "",
+      origem: row.origin || "",
+      destino: row.destination || "",
+      prometidoEm: row.promised_at || "",
+      entregueEm: row.delivered_at || "",
+      etaEm: row.eta_at || "",
+      placa: row.vehicle_plate || "",
+      motorista: row.driver_name || "",
+      sla: row.sla_status || "",
+      comprovanteUrl: row.proof_url || "",
+      comprovanteHash: row.proof_hash || "",
+      ultimaPosicaoEm: row.last_position_at || "",
+      latitude: row.last_position_lat,
+      longitude: row.last_position_lng,
       entregas: numero(parse(row.fields_json, {}).deliveries),
       pacotes: numero(parse(row.fields_json, {}).packages),
       viagens: numero(parse(row.fields_json, {}).trips),
@@ -278,12 +311,28 @@ const COLECOES = {
     colunas: (corpo) => ({
       client_id: texto(corpo.clientId, 120),
       product_id: texto(corpo.produtoId, 120),
+      contract_id: texto(corpo.contratoId, 120),
       reference: texto(corpo.referencia || corpo.rota, 200),
-      service_date: /^\d{4}-\d{2}$/.test(texto(corpo.mesReferencia, 10))
-        ? `${texto(corpo.mesReferencia, 10)}-01`
-        : null,
+      service_date: /^\d{4}-\d{2}-\d{2}$/.test(texto(corpo.dataServico, 10))
+        ? texto(corpo.dataServico, 10)
+        : /^\d{4}-\d{2}$/.test(texto(corpo.mesReferencia, 10))
+          ? `${texto(corpo.mesReferencia, 10)}-01`
+          : null,
+      origin: texto(corpo.origem, 200),
+      destination: texto(corpo.destino, 200),
+      promised_at: texto(corpo.prometidoEm, 40) || null,
+      delivered_at: texto(corpo.entregueEm, 40) || null,
+      eta_at: texto(corpo.etaEm, 40) || null,
+      vehicle_plate: texto(corpo.placa, 20).toUpperCase(),
+      driver_name: texto(corpo.motorista, 160),
       distance_km: numero(corpo.distanciaKm),
       incident_count: numero(corpo.ocorrencias),
+      sla_status: texto(corpo.sla, 40),
+      proof_url: texto(corpo.comprovanteUrl, 2000),
+      proof_hash: texto(corpo.comprovanteHash, 160),
+      last_position_at: texto(corpo.ultimaPosicaoEm, 40) || null,
+      last_position_lat: corpo.latitude === "" || corpo.latitude == null ? null : numero(corpo.latitude),
+      last_position_lng: corpo.longitude === "" || corpo.longitude == null ? null : numero(corpo.longitude),
       status: texto(corpo.situacao, 40) || "active",
       fields_json: JSON.stringify({
         ...objeto(corpo.campos),
@@ -313,6 +362,17 @@ const COLECOES = {
       mesReferencia: row.reference_month,
       situacao: row.status,
       campos: parse(row.fields_json, {}),
+      vencimentoEm: row.due_date || "",
+      pagoEm: row.paid_at || "",
+      valorPago: row.paid_amount || 0,
+      contraparte: row.counterparty || "",
+      numeroDocumento: row.document_number || "",
+      centroCusto: row.cost_center || "",
+      codigoOrcamento: row.budget_code || "",
+      meioPagamento: row.payment_method || "",
+      competenciaEm: row.competence_date || "",
+      contratoId: row.contract_id || "",
+      statusFinanceiro: row.invoice_status || "pending",
       revision: row.revision,
       criadoEm: row.created_at,
       atualizadoEm: row.updated_at,
@@ -327,6 +387,18 @@ const COLECOES = {
       amount: numero(corpo.valor),
       reference_month: texto(corpo.mesReferencia, 10),
       status: texto(corpo.situacao, 40) || "confirmed",
+      due_date: texto(corpo.vencimentoEm, 20) || null,
+      paid_at: texto(corpo.pagoEm, 40) || null,
+      paid_amount: Math.max(0, numero(corpo.valorPago)),
+      counterparty: texto(corpo.contraparte, 200),
+      document_number: texto(corpo.numeroDocumento, 120),
+      cost_center: texto(corpo.centroCusto, 120),
+      budget_code: texto(corpo.codigoOrcamento, 120),
+      payment_method: texto(corpo.meioPagamento, 80),
+      competence_date: texto(corpo.competenciaEm, 20) || null,
+      contract_id: texto(corpo.contratoId, 120),
+      invoice_status: ["pending", "partial", "paid", "overdue", "cancelled"].includes(texto(corpo.statusFinanceiro, 40))
+        ? texto(corpo.statusFinanceiro, 40) : "pending",
       fields_json: JSON.stringify(objeto(corpo.campos)),
     }),
     exigido: (corpo) =>
@@ -336,6 +408,35 @@ const COLECOES = {
           : "Informe o valor do lançamento."
         : "Informe se o lançamento é receita, custo ou comissão.",
   },
+};
+
+const nomeDaColecao = (colecao) =>
+  Object.entries(COLECOES).find(([, configuracao]) => configuracao === colecao)?.[0] || "record";
+
+const validarFinanceiro = (corpo, atual = null) => {
+  const valor = numero(corpo.valor);
+  const pago = Math.max(0, numero(corpo.valorPago));
+  if (pago > valor + 0.0001) return "O valor pago não pode superar o valor do lançamento.";
+  if (!atual && pago > 0)
+    return "Crie o lançamento e use a ação de baixa para registrar o pagamento com histórico.";
+  if (
+    atual
+    && Object.prototype.hasOwnProperty.call(corpo, "valorPago")
+    && Math.abs(pago - numero(atual.paid_amount)) > 0.0001
+  ) return "O valor pago só pode mudar por uma baixa financeira.";
+  return "";
+};
+
+const registrarEventoContrato = async (env, access, user, contractId, action, before, after, note = "") => {
+  await env.DB.prepare(
+    `INSERT INTO todogreen_contract_events
+       (id,tenant_id,workspace_owner_id,contract_id,action,before_json,after_json,note,actor_user_id,created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+  ).bind(
+    crypto.randomUUID(), TENANT_ID, access.ownerId, contractId, action,
+    JSON.stringify(before || {}), JSON.stringify(after || {}), texto(note, 1000), user.id,
+    new Date().toISOString(),
+  ).run();
 };
 
 // A simulação é um retrato, não um cadastro: ela registra o que a régua e as
@@ -416,7 +517,12 @@ const criarCenario = async (env, access, user, corpo) => {
   )
     .bind(id, access.ownerId)
     .first();
-  return json({ registro: CENARIOS.daLinha(row) }, 201);
+  const registro = CENARIOS.daLinha(row);
+  await registrarAuditoriaTodoGreen(env, {
+    access, user, action: "created", resourceType: "scenario", resourceId: id,
+    clientId: registro.clientId, after: registro,
+  });
+  return json({ registro }, 201);
 };
 
 // A leitura carrega o recorte de carteira além do escopo de espaço. São dois
@@ -476,6 +582,10 @@ const proposalLiberada = async (env, access, cenarioId) => {
 const criar = async (env, colecao, access, user, corpo) => {
   const erro = colecao.exigido(corpo);
   if (erro) return json({ error: erro }, 400);
+  if (colecao === COLECOES.financial) {
+    const erroFinanceiro = validarFinanceiro(corpo);
+    if (erroFinanceiro) return json({ error: erroFinanceiro }, 400);
+  }
 
   if (colecao === COLECOES.proposals) {
     const liberacao = await proposalLiberada(env, access, texto(corpo.cenarioId, 120));
@@ -535,7 +645,15 @@ const criar = async (env, colecao, access, user, corpo) => {
   )
     .bind(id, TENANT_ID, access.ownerId)
     .first();
-  return json({ registro: colecao.daLinha(row) }, 201);
+  const registro = colecao.daLinha(row);
+  const tipo = nomeDaColecao(colecao);
+  if (colecao === COLECOES.contracts)
+    await registrarEventoContrato(env, access, user, id, "created", {}, registro, texto(corpo.nota, 1000));
+  await registrarAuditoriaTodoGreen(env, {
+    access, user, action: "created", resourceType: tipo, resourceId: id,
+    clientId: registro.clientId, after: registro,
+  });
+  return json({ registro }, 201);
 };
 
 const atualizar = async (env, colecao, access, user, id, corpo) => {
@@ -561,6 +679,10 @@ const atualizar = async (env, colecao, access, user, id, corpo) => {
   const proximo = { ...colecao.daLinha(atual), ...corpo };
   const erro = colecao.exigido(proximo);
   if (erro) return json({ error: erro }, 400);
+  if (colecao === COLECOES.financial) {
+    const erroFinanceiro = validarFinanceiro(corpo, atual);
+    if (erroFinanceiro) return json({ error: erroFinanceiro }, 400);
+  }
 
   if (colecao === COLECOES.operations) {
     const cliente = await env.DB.prepare(
@@ -578,7 +700,8 @@ const atualizar = async (env, colecao, access, user, id, corpo) => {
   const { meta } = await env.DB.prepare(
     `UPDATE ${colecao.tabela}
         SET ${campos.map((c) => `${c} = ?`).join(", ")},
-            revision = revision + 1, updated_by = ?, updated_at = ?
+            revision = revision + 1${colecao === COLECOES.contracts ? ", version = version + 1" : ""},
+            updated_by = ?, updated_at = ?
       WHERE id = ? AND tenant_id = ? AND workspace_owner_id = ? AND revision = ?`,
   )
     .bind(...campos.map((c) => valores[c]), user.id, agora, id, TENANT_ID, access.ownerId, revisaoEsperada)
@@ -597,14 +720,26 @@ const atualizar = async (env, colecao, access, user, id, corpo) => {
   )
     .bind(id, TENANT_ID, access.ownerId)
     .first();
+  const antes = colecao.daLinha(atual);
+  const depois = colecao.daLinha(row);
   if (colecao === COLECOES.opportunities && deveCriarHandoff(atual.stage, row.stage))
-    await criarHandoffOperacional(env, access, user, colecao.daLinha(row));
-  return json({ registro: colecao.daLinha(row) });
+    await criarHandoffOperacional(env, access, user, depois);
+  if (colecao === COLECOES.contracts)
+    await registrarEventoContrato(env, access, user, id, "updated", antes, depois, texto(corpo.nota, 1000));
+  await registrarAuditoriaTodoGreen(env, {
+    access, user, action: "updated", resourceType: nomeDaColecao(colecao), resourceId: id,
+    clientId: depois.clientId, before: antes, after: depois,
+  });
+  return json({ registro: depois });
 };
 
 const arquivar = async (env, colecao, access, user, id) => {
   if (!(await noAlcanceDaCarteira(env, colecao, access, user.email, id)))
     return json({ error: "Registro não encontrado." }, 404);
+  const atual = await env.DB.prepare(
+    `SELECT * FROM ${colecao.tabela}
+      WHERE id=? AND tenant_id=? AND workspace_owner_id=? AND archived_at IS NULL`,
+  ).bind(id, TENANT_ID, access.ownerId).first();
   const agora = new Date().toISOString();
   // Arquiva em vez de apagar: o histórico é a única defesa quando alguém
   // pergunta, meses depois, de onde veio um número.
@@ -616,7 +751,178 @@ const arquivar = async (env, colecao, access, user, id) => {
     .bind(agora, user.id, agora, id, TENANT_ID, access.ownerId)
     .run();
   if (!meta?.changes) return json({ error: "Registro não encontrado." }, 404);
+  const antes = atual ? colecao.daLinha(atual) : {};
+  if (colecao === COLECOES.contracts)
+    await registrarEventoContrato(env, access, user, id, "archived", antes, {}, "Contrato arquivado.");
+  await registrarAuditoriaTodoGreen(env, {
+    access, user, action: "archived", resourceType: nomeDaColecao(colecao), resourceId: id,
+    clientId: antes.clientId, before: antes,
+  });
   return json({ ok: true });
+};
+
+const listarEventosOperacao = async (env, access, user, operationId) => {
+  if (!(await noAlcanceDaCarteira(env, COLECOES.operations, access, user.email, operationId)))
+    return json({ error: "Operação não encontrada." }, 404);
+  const { results } = await env.DB.prepare(
+    `SELECT id,kind,titulo,descricao,local,ocorrido_em,registrado_por,created_at
+       FROM todogreen_client_operation_events
+      WHERE tenant_id=? AND workspace_owner_id=? AND operation_id=?
+      ORDER BY ocorrido_em DESC, created_at DESC LIMIT 300`,
+  ).bind(TENANT_ID, access.ownerId, operationId).all();
+  return json({
+    eventos: (results || []).map((row) => ({
+      id: row.id, tipo: row.kind, titulo: row.titulo, descricao: row.descricao,
+      local: row.local, ocorridoEm: row.ocorrido_em, registradoPor: row.registrado_por,
+      criadoEm: row.created_at,
+    })),
+  });
+};
+
+const registrarEventoOperacao = async (env, access, user, operationId, corpo) => {
+  if (!(await noAlcanceDaCarteira(env, COLECOES.operations, access, user.email, operationId)))
+    return json({ error: "Operação não encontrada." }, 404);
+  const operacao = await env.DB.prepare(
+    `SELECT * FROM todogreen_client_operations
+      WHERE id=? AND tenant_id=? AND workspace_owner_id=? AND archived_at IS NULL`,
+  ).bind(operationId, TENANT_ID, access.ownerId).first();
+  const tipos = new Set(["coleta", "transito", "chegada", "entrega", "ocorrencia", "reagendamento", "documento"]);
+  const tipo = tipos.has(texto(corpo.tipo, 40)) ? texto(corpo.tipo, 40) : "transito";
+  const titulo = texto(corpo.titulo, 200);
+  const descricao = texto(corpo.descricao, 3000);
+  if (!titulo && !descricao) return json({ error: "Informe o título ou a descrição do evento." }, 400);
+  const ocorridoEm = texto(corpo.ocorridoEm, 40) || new Date().toISOString();
+  const agora = new Date().toISOString();
+  const eventoId = crypto.randomUUID();
+  const atualizacaoIncidente = tipo === "ocorrencia" ? ", incident_count = incident_count + 1" : "";
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO todogreen_client_operation_events
+         (id,tenant_id,operation_id,client_id,workspace_owner_id,kind,titulo,descricao,local,
+          ocorrido_em,registrado_por,created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ).bind(
+      eventoId, TENANT_ID, operationId, operacao.client_id, access.ownerId, tipo, titulo,
+      descricao, texto(corpo.local, 300), ocorridoEm, user.id, agora,
+    ),
+    env.DB.prepare(
+      `UPDATE todogreen_client_operations
+          SET updated_at=?, updated_by=?, revision=revision+1${atualizacaoIncidente}
+        WHERE id=? AND tenant_id=? AND workspace_owner_id=? AND archived_at IS NULL`,
+    ).bind(agora, user.id, operationId, TENANT_ID, access.ownerId),
+  ]);
+  const atualizada = await env.DB.prepare(
+    `SELECT * FROM todogreen_client_operations
+      WHERE id=? AND tenant_id=? AND workspace_owner_id=?`,
+  ).bind(operationId, TENANT_ID, access.ownerId).first();
+  const evento = { id: eventoId, tipo, titulo, descricao, local: texto(corpo.local, 300), ocorridoEm, registradoPor: user.id, criadoEm: agora };
+  await registrarAuditoriaTodoGreen(env, {
+    access, user, action: "event_added", resourceType: "operations", resourceId: operationId,
+    clientId: operacao.client_id, before: COLECOES.operations.daLinha(operacao),
+    after: COLECOES.operations.daLinha(atualizada), details: `${tipo}: ${titulo || descricao}`,
+  });
+  return json({ evento, registro: COLECOES.operations.daLinha(atualizada) }, 201);
+};
+
+const listarPagamentos = async (env, access, user, entryId) => {
+  if (!(await noAlcanceDaCarteira(env, COLECOES.financial, access, user.email, entryId)))
+    return json({ error: "Lançamento não encontrado." }, 404);
+  const { results } = await env.DB.prepare(
+    `SELECT id,amount,paid_at,payment_method,reference,notes,created_by,created_at
+       FROM todogreen_financial_payments
+      WHERE tenant_id=? AND workspace_owner_id=? AND entry_id=?
+      ORDER BY paid_at DESC, created_at DESC LIMIT 300`,
+  ).bind(TENANT_ID, access.ownerId, entryId).all();
+  return json({
+    pagamentos: (results || []).map((row) => ({
+      id: row.id, valor: row.amount, pagoEm: row.paid_at, meioPagamento: row.payment_method,
+      referencia: row.reference, observacoes: row.notes, criadoPor: row.created_by, criadoEm: row.created_at,
+    })),
+  });
+};
+
+const registrarPagamento = async (env, access, user, entryId, corpo) => {
+  if (!(await noAlcanceDaCarteira(env, COLECOES.financial, access, user.email, entryId)))
+    return json({ error: "Lançamento não encontrado." }, 404);
+  const lancamento = await env.DB.prepare(
+    `SELECT * FROM todogreen_financial_entries
+      WHERE id=? AND tenant_id=? AND workspace_owner_id=? AND archived_at IS NULL`,
+  ).bind(entryId, TENANT_ID, access.ownerId).first();
+  const revisao = Number(corpo.revision);
+  if (!Number.isFinite(revisao) || revisao !== Number(lancamento.revision))
+    return json({ error: "O lançamento mudou. Recarregue antes de registrar a baixa." }, 409);
+  if (lancamento.invoice_status === "cancelled")
+    return json({ error: "Um lançamento cancelado não pode receber baixa." }, 409);
+  const valor = numero(corpo.valor);
+  const restante = Math.max(0, numero(lancamento.amount) - numero(lancamento.paid_amount));
+  if (valor <= 0) return json({ error: "Informe um valor de baixa maior que zero." }, 400);
+  if (valor > restante + 0.0001)
+    return json({ error: `A baixa supera o saldo aberto de ${restante.toFixed(2)}.` }, 409);
+  const pagoEm = texto(corpo.pagoEm, 40) || new Date().toISOString();
+  const novoPago = numero(lancamento.paid_amount) + valor;
+  const novoStatus = novoPago >= numero(lancamento.amount) - 0.0001 ? "paid" : "partial";
+  const agora = new Date().toISOString();
+  const pagamentoId = crypto.randomUUID();
+  const [updateResult, insertResult] = await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE todogreen_financial_entries
+          SET paid_amount=?, paid_at=?, payment_method=?, invoice_status=?, revision=revision+1,
+              updated_by=?, updated_at=?
+        WHERE id=? AND tenant_id=? AND workspace_owner_id=? AND revision=? AND archived_at IS NULL`,
+    ).bind(
+      novoPago, novoStatus === "paid" ? pagoEm : lancamento.paid_at,
+      texto(corpo.meioPagamento, 80), novoStatus, user.id, agora,
+      entryId, TENANT_ID, access.ownerId, revisao,
+    ),
+    env.DB.prepare(
+      `INSERT INTO todogreen_financial_payments
+         (id,tenant_id,workspace_owner_id,entry_id,amount,paid_at,payment_method,reference,notes,created_by,created_at)
+       SELECT ?,?,?,?,?,?,?,?,?,?,?
+        WHERE EXISTS (
+          SELECT 1 FROM todogreen_financial_entries
+           WHERE id=? AND tenant_id=? AND workspace_owner_id=? AND revision=?
+        )`,
+    ).bind(
+      pagamentoId, TENANT_ID, access.ownerId, entryId, valor, pagoEm,
+      texto(corpo.meioPagamento, 80), texto(corpo.referencia, 160), texto(corpo.observacoes, 1000),
+      user.id, agora, entryId, TENANT_ID, access.ownerId, revisao + 1,
+    ),
+  ]);
+  if (!updateResult?.meta?.changes || !insertResult?.meta?.changes)
+    return json({ error: "O lançamento mudou. Recarregue antes de registrar a baixa." }, 409);
+  const atualizada = await env.DB.prepare(
+    `SELECT * FROM todogreen_financial_entries
+      WHERE id=? AND tenant_id=? AND workspace_owner_id=?`,
+  ).bind(entryId, TENANT_ID, access.ownerId).first();
+  await registrarAuditoriaTodoGreen(env, {
+    access, user, action: "payment_added", resourceType: "financial", resourceId: entryId,
+    clientId: lancamento.client_id, before: COLECOES.financial.daLinha(lancamento),
+    after: COLECOES.financial.daLinha(atualizada), details: `Baixa ${pagamentoId}`,
+  });
+  return json({
+    pagamento: {
+      id: pagamentoId, valor, pagoEm, meioPagamento: texto(corpo.meioPagamento, 80),
+      referencia: texto(corpo.referencia, 160), observacoes: texto(corpo.observacoes, 1000),
+    },
+    registro: COLECOES.financial.daLinha(atualizada),
+  }, 201);
+};
+
+const listarEventosContrato = async (env, access, user, contractId) => {
+  if (!(await noAlcanceDaCarteira(env, COLECOES.contracts, access, user.email, contractId)))
+    return json({ error: "Contrato não encontrado." }, 404);
+  const { results } = await env.DB.prepare(
+    `SELECT id,action,before_json,after_json,note,actor_user_id,created_at
+       FROM todogreen_contract_events
+      WHERE tenant_id=? AND workspace_owner_id=? AND contract_id=?
+      ORDER BY created_at DESC LIMIT 300`,
+  ).bind(TENANT_ID, access.ownerId, contractId).all();
+  return json({
+    eventos: (results || []).map((row) => ({
+      id: row.id, acao: row.action, antes: parse(row.before_json, {}), depois: parse(row.after_json, {}),
+      nota: row.note, atorId: row.actor_user_id, criadoEm: row.created_at,
+    })),
+  });
 };
 
 export async function handleTodoGreenVerticalRecords(request, env, access, user) {
@@ -624,6 +930,7 @@ export async function handleTodoGreenVerticalRecords(request, env, access, user)
   const partes = url.pathname.split("/").filter(Boolean); // api, todogreen, records, [colecao], [id]
   const nome = partes[3] || "";
   const id = texto(partes[4], 120);
+  const subrecurso = texto(partes[5], 80);
 
   // Sem coleção na URL: a vertical inteira de uma vez, sem filtro nem
   // página — é a carga do painel, que precisa do total para somar, não de um
@@ -635,10 +942,15 @@ export async function handleTodoGreenVerticalRecords(request, env, access, user)
       Promise.all(nomes.map((n) => listar(env, COLECOES[n], access, user.email))),
       listarCenarios(env, access, user.email),
     ]);
-    return json({
+    const payload = {
       ...Object.fromEntries(nomes.map((n, i) => [n, listas[i].registros])),
       scenarios: cenarios.registros,
-    });
+    };
+    if (url.searchParams.get("includeTotals") === "1" || request.headers.get("x-todogreen-include-totals") === "1") payload.totals = {
+        ...Object.fromEntries(nomes.map((n, i) => [n, listas[i].total])),
+        scenarios: cenarios.total,
+      };
+    return json(payload);
   }
 
   if (nome === "scenarios") {
@@ -658,6 +970,31 @@ export async function handleTodoGreenVerticalRecords(request, env, access, user)
 
   const colecao = COLECOES[nome];
   if (!colecao) return json({ error: "Coleção desconhecida." }, 404);
+
+  if (id && subrecurso === "events" && colecao === COLECOES.operations) {
+    if (request.method === "GET") return listarEventosOperacao(env, access, user, id);
+    if (request.method === "POST") {
+      if (!podeNaVertical(access, colecao.permissao))
+        return json({ error: "Seu papel não pode registrar eventos operacionais." }, 403);
+      return registrarEventoOperacao(env, access, user, id, await request.json().catch(() => ({})));
+    }
+    return json({ error: "Método não permitido." }, 405);
+  }
+
+  if (id && subrecurso === "payments" && colecao === COLECOES.financial) {
+    if (request.method === "GET") return listarPagamentos(env, access, user, id);
+    if (request.method === "POST") {
+      if (!podeNaVertical(access, colecao.permissao))
+        return json({ error: "Seu papel não pode registrar baixas." }, 403);
+      return registrarPagamento(env, access, user, id, await request.json().catch(() => ({})));
+    }
+    return json({ error: "Método não permitido." }, 405);
+  }
+
+  if (id && subrecurso === "events" && colecao === COLECOES.contracts) {
+    if (request.method === "GET") return listarEventosContrato(env, access, user, id);
+    return json({ error: "O histórico contratual é gerado pelas alterações do contrato." }, 405);
+  }
 
   if (request.method === "GET") {
     const { limit, offset } = paginacao(url);

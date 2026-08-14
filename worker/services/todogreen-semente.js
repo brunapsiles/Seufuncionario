@@ -53,6 +53,11 @@ export const FERRAMENTAS = Object.freeze({
   contatos: "procura pessoas em toda a carteira por cargo, área ou nome. Requer {\"termo\":\"compras\"}.",
   inteligencia: "devolve a pesquisa externa já feita de uma conta: site oficial, LinkedIn, portais de fornecedor, RFQs, sinais ESG e notícias, com as fontes. Requer {\"cliente\":\"nome ou id\"}.",
   tarefas: "lista as tarefas abertas da Central de Trabalho, com responsável, prazo e situação.",
+  financeiro: "analisa lançamentos, saldo aberto, vencimentos e baixas de receita, custo ou comissão. Aceita {\"tipo\":\"revenue|cost|commission\"} e {\"cliente\":\"nome ou id\"}.",
+  operacoes: "lista execução real, SLA, prazo prometido, ETA, entrega, frota, distância e ocorrências. Aceita {\"cliente\":\"nome ou id\"}.",
+  contratos: "consulta assinatura, vigência, renovação, aviso e valores dos contratos. Aceita {\"cliente\":\"nome ou id\"}.",
+  precificacao: "consulta as simulações salvas, premissas, resultado, margem e aprovações. Aceita {\"cliente\":\"nome ou id\"}.",
+  esg: "consulta cálculos ambientais reais, metodologia e qualidade do dado. Aceita {\"cliente\":\"nome ou id\"}.",
 });
 
 export const ACOES = Object.freeze({
@@ -61,7 +66,7 @@ export const ACOES = Object.freeze({
   pesquisar_empresa: "dispara a pesquisa externa de uma conta na web. Campo: cliente (obrigatório).",
 });
 
-export const INSTRUCAO = `Você é a Semente, a inteligência comercial da To Do Green.
+export const INSTRUCAO = `Você é a Semente, a inteligência operacional da To Do Green. Você cruza CRM, propostas, contratos, preço, financeiro, execução logística e ESG, sempre dentro das permissões da pessoa.
 
 QUEM É A TO DO GREEN
 Transportadora brasileira de logística sustentável, com frota elétrica própria. Vende operação de transporte para embarcadores — varejo, e-commerce, indústria, alimentos, farmacêutico — e o argumento não é só preço: é preço competitivo COM redução comprovada de emissões na cadeia do cliente. Quem compra costuma ter meta pública de descarbonização e precisa de fornecedor que entregue evidência auditável, não promessa.
@@ -384,6 +389,84 @@ export async function executarFerramenta(env, { access, pedido, linhas }) {
         responsavel: item.responsible_label || null,
         cliente: item.client_label || null,
         prazo: item.due_date || null,
+      })),
+    };
+  }
+
+  const clientePedido = clean(pedido?.cliente, 200);
+  let clienteId = "";
+  if (clientePedido) {
+    const { linha, ambiguidade } = escolherCliente(linhas, clientePedido);
+    if (ambiguidade.length) return { ferramenta, erro: "Mais de uma conta corresponde a esse nome.", candidatas: ambiguidade };
+    if (!linha) return { ferramenta, erro: "Nenhuma conta da carteira corresponde a esse nome." };
+    clienteId = linha.id;
+  }
+
+  if (ferramenta === "financeiro") {
+    const scope = recorteDeCarteira(access, access.email, "f");
+    const tipo = ["revenue", "cost", "commission"].includes(clean(pedido?.tipo, 20)) ? clean(pedido?.tipo, 20) : "";
+    const clauses = ["f.tenant_id=?", "f.workspace_owner_id=?", "f.archived_at IS NULL"];
+    const params = [TENANT_ID, access.ownerId];
+    if (tipo) { clauses.push("f.kind=?"); params.push(tipo); }
+    if (clienteId) { clauses.push("f.client_id=?"); params.push(clienteId); }
+    const rows = await env.DB.prepare(
+      `SELECT f.kind,f.client_id,f.category,f.description,f.amount,f.paid_amount,f.due_date,
+              f.invoice_status,f.counterparty,f.document_number,f.cost_center,f.contract_id
+         FROM todogreen_financial_entries f
+        WHERE ${clauses.join(" AND ")} ${scope.sql}
+        ORDER BY COALESCE(f.due_date,'9999-12-31'),f.updated_at DESC LIMIT 120`,
+    ).bind(...params, ...scope.params).all();
+    return { ferramenta, lancamentos: rows.results || [] };
+  }
+
+  if (ferramenta === "operacoes") {
+    const scope = recorteDeCarteira(access, access.email, "o");
+    const clienteClause = clienteId ? "AND o.client_id=?" : "";
+    const rows = await env.DB.prepare(
+      `SELECT o.id,o.client_id,o.reference,o.status,o.service_date,o.origin,o.destination,
+              o.promised_at,o.delivered_at,o.eta_at,o.vehicle_plate,o.driver_name,o.distance_km,
+              o.incident_count,o.sla_status,o.updated_at
+         FROM todogreen_client_operations o
+        WHERE o.tenant_id=? AND o.workspace_owner_id=? AND o.archived_at IS NULL
+              ${clienteClause} ${scope.sql}
+        ORDER BY o.updated_at DESC LIMIT 120`,
+    ).bind(TENANT_ID, access.ownerId, ...(clienteId ? [clienteId] : []), ...scope.params).all();
+    return { ferramenta, operacoes: rows.results || [] };
+  }
+
+  if (ferramenta === "contratos") {
+    const scope = recorteDeCarteira(access, access.email, "c");
+    const clienteClause = clienteId ? "AND c.client_id=?" : "";
+    const rows = await env.DB.prepare(
+      `SELECT c.id,c.client_id,c.client_name,c.title,c.start_date,c.end_date,c.monthly_value,
+              c.total_value,c.status,c.signature_status,c.signed_at,c.renewal_type,
+              c.renewal_notice_date,c.billing_day,c.notice_days,c.version
+         FROM todogreen_contracts c
+        WHERE c.tenant_id=? AND c.workspace_owner_id=? AND c.archived_at IS NULL
+              ${clienteClause} ${scope.sql}
+        ORDER BY COALESCE(c.renewal_notice_date,c.end_date,'9999-12-31') LIMIT 120`,
+    ).bind(TENANT_ID, access.ownerId, ...(clienteId ? [clienteId] : []), ...scope.params).all();
+    return { ferramenta, contratos: rows.results || [] };
+  }
+
+  if (ferramenta === "precificacao" || ferramenta === "esg") {
+    const table = ferramenta === "precificacao" ? "pricing_scenarios" : "environmental_calculations";
+    const alias = "p";
+    const scope = recorteDeCarteira(access, access.email, alias);
+    const clienteClause = clienteId ? `AND ${alias}.client_id=?` : "";
+    const rows = await env.DB.prepare(
+      `SELECT ${alias}.* FROM ${table} ${alias}
+        WHERE ${alias}.tenant_id=? AND ${alias}.workspace_owner_id=? ${clienteClause} ${scope.sql}
+        ORDER BY ${alias}.created_at DESC LIMIT 80`,
+    ).bind(TENANT_ID, access.ownerId, ...(clienteId ? [clienteId] : []), ...scope.params).all();
+    return {
+      ferramenta,
+      registros: (rows.results || []).map((row) => ({
+        id: row.id, clienteId: row.client_id, produtoId: row.product_id,
+        regraOuMetodologia: row.rule_version || row.methodology_version,
+        entradas: parse(row.inputs_json, {}), resultado: parse(row.result_json, {}),
+        aprovacoes: parse(row.approvals_json, {}), qualidadeDoDado: row.data_quality ?? null,
+        situacao: row.status || null, criadoEm: row.created_at,
       })),
     };
   }

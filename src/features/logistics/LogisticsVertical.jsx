@@ -98,6 +98,9 @@ const DealDeskPage = lazy(() => import("./pages/DealDeskPage.jsx"));
 const DocumentVaultPage = lazy(() => import("./pages/DocumentVaultPage.jsx"));
 const IntegrationsPage = lazy(() => import("./pages/IntegrationsPage.jsx"));
 const TodoGreenWorkspace = lazy(() => import("./TodoGreenWorkspace.jsx"));
+const FinancePage = lazy(() => import("./pages/FinancePage.jsx"));
+const OperationsPage = lazy(() => import("./pages/OperationsPage.jsx"));
+const GovernancePage = lazy(() => import("./pages/GovernancePage.jsx"));
 
 const iconMap = {
   Activity,
@@ -883,6 +886,17 @@ const financeiroDaApi = (item) => ({
   status: item.situacao,
   note: item.descricao,
   referenceMonth: item.mesReferencia,
+  dueDate: item.vencimentoEm,
+  paidAt: item.pagoEm,
+  paidAmount: item.valorPago,
+  counterparty: item.contraparte,
+  documentNumber: item.numeroDocumento,
+  costCenter: item.centroCusto,
+  budgetCode: item.codigoOrcamento,
+  paymentMethod: item.meioPagamento,
+  competenceDate: item.competenciaEm,
+  contractId: item.contratoId,
+  invoiceStatus: item.statusFinanceiro,
   revision: item.revision,
   createdAt: item.criadoEm,
 });
@@ -897,8 +911,20 @@ const operacaoDaApi = (item) => ({
   distanceKm: item.distanciaKm,
   occupancyPercent: item.ocupacaoPercent,
   status: item.situacao,
-  route: item.campos?.route || "",
-  referencia: item.campos?.route || item.referencia || "",
+  route: item.referencia || item.campos?.route || "",
+  referencia: item.referencia || item.campos?.route || "",
+  contratoId: item.contratoId,
+  dataServico: item.dataServico,
+  origem: item.origem,
+  destino: item.destino,
+  prometidoEm: item.prometidoEm,
+  entregueEm: item.entregueEm,
+  etaEm: item.etaEm,
+  placa: item.placa,
+  motorista: item.motorista,
+  sla: item.sla,
+  comprovanteUrl: item.comprovanteUrl,
+  ultimaPosicaoEm: item.ultimaPosicaoEm,
   mesReferencia: item.mesReferencia || String(item.criadoEm || "").slice(0, 7),
   produtoId: item.produtoId,
   entregas: item.entregas,
@@ -906,7 +932,8 @@ const operacaoDaApi = (item) => ({
   viagens: item.viagens,
   distanciaKm: item.distanciaKm,
   ocupacaoPercent: item.ocupacaoPercent,
-  incidents: Number(item.campos?.incidents || 0),
+  incidents: Number(item.ocorrencias || 0),
+  ocorrencias: Number(item.ocorrencias || 0),
   revision: item.revision,
   createdAt: item.criadoEm,
 });
@@ -941,6 +968,14 @@ const contratoDaApi = (item) => ({
   totalValue: item.valorTotal,
   status: item.situacao,
   terms: item.termos,
+  signatureStatus: item.assinatura,
+  signedAt: item.assinadoEm,
+  renewalType: item.renovacao,
+  renewalNoticeAt: item.avisoRenovacaoEm,
+  billingDay: item.diaFaturamento,
+  responsibleId: item.responsavelId,
+  noticeDays: item.antecedenciaAvisoDias,
+  version: item.versao,
   revision: item.revision,
   createdAt: item.criadoEm,
 });
@@ -1464,6 +1499,7 @@ const rotuloDoCenario = (item, clients = []) => {
 };
 
 const propostaAceita = (proposal) => ["accepted", "approved", "aceita", "aprovada"].includes(String(proposal?.status || "").toLowerCase());
+const escaparHtml = (value) => String(value || "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
 
 function ProposalPanel({ data, criar, atualizar, pedidosDeAprovacao = [], setToast }) {
   // A proposta é o documento que sai da empresa. Ela só pode nascer de uma
@@ -1495,7 +1531,8 @@ function ProposalPanel({ data, criar, atualizar, pedidosDeAprovacao = [], setToa
   const propostasAceitas = (data.proposals || []).filter(propostaAceita);
   const [propostaContratoId, setPropostaContratoId] = useState("");
   const propostaContrato = propostasAceitas.find((item) => item.id === propostaContratoId) || propostasAceitas[0];
-  const [contrato, setContrato] = useState({ titulo: "Contrato de operação logística", inicioEm: "", fimEm: "", valorMensal: "", valorTotal: "", termos: "" });
+  const contratoVazio = { titulo: "Contrato de operação logística", inicioEm: "", fimEm: "", valorMensal: "", valorTotal: "", termos: "", assinatura: "pending", renovacao: "manual", avisoRenovacaoEm: "", diaFaturamento: "", antecedenciaAvisoDias: "60" };
+  const [contrato, setContrato] = useState(contratoVazio);
   const [salvandoContrato, setSalvandoContrato] = useState(false);
   const save = async (event) => {
     event.preventDefault();
@@ -1536,6 +1573,15 @@ function ProposalPanel({ data, criar, atualizar, pedidosDeAprovacao = [], setToa
       setToast?.("Proposta marcada como aceita. O contrato já pode ser gerado.");
     } catch (error) { setToast?.(error.message); }
   };
+  const baixarProposta = (proposal) => {
+    const html = `<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>${escaparHtml(proposal.title)}</title><style>body{font:16px/1.55 system-ui;margin:48px auto;max-width:760px;color:#17372d}h1{color:#075c45}section{margin:28px 0}small{color:#547067}</style><body><small>To Do Green · proposta vinculada ${escaparHtml(proposal.id)}</small><h1>${escaparHtml(proposal.title)}</h1><p><strong>Cliente:</strong> ${escaparHtml(proposal.client)}</p><section><h2>Proposta</h2><p>${escaparHtml(proposal.proposalText)}</p></section><section><h2>Escopo</h2><p>${escaparHtml(proposal.scope)}</p><h2>Condições comerciais</h2><p>${escaparHtml(proposal.commercialTerms)}</p><h2>Riscos e ressalvas</h2><p>${escaparHtml(proposal.risks)}</p></section><small>Gerada a partir da simulação ${escaparHtml(proposal.scenarioId)}. Valide termos, evidências e aprovações antes do envio.</small></body></html>`;
+    const url = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `proposta-${String(proposal.client || proposal.id).replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.html`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
   const salvarContrato = async (event) => {
     event.preventDefault();
     if (!propostaContrato) { setToast?.("Aceite uma proposta antes de gerar o contrato."); return; }
@@ -1552,10 +1598,16 @@ function ProposalPanel({ data, criar, atualizar, pedidosDeAprovacao = [], setToa
         valorTotal: Number(contrato.valorTotal || 0),
         situacao: "draft",
       });
-      setContrato({ titulo: "Contrato de operação logística", inicioEm: "", fimEm: "", valorMensal: "", valorTotal: "", termos: "" });
+      setContrato(contratoVazio);
       setToast?.("Contrato criado e vinculado à proposta, oportunidade e cliente.");
     } catch (error) { setToast?.(error.message); }
     finally { setSalvandoContrato(false); }
+  };
+  const mudarContrato = async (item, changes, message) => {
+    try {
+      await atualizar("contracts", item.id, { ...changes, revision: item.revision, nota: message });
+      setToast?.(message);
+    } catch (error) { setToast?.(error.message); }
   };
   return (
     <section className="tdg-panel"><div className="tdg-section-head"><div><span className="tdg-kicker">PROPOSTAS</span><h2>Proposta comercial com preço, operação e ROI ambiental</h2></div><strong>{data.proposals.length} proposta(s)</strong></div>
@@ -1573,7 +1625,7 @@ function ProposalPanel({ data, criar, atualizar, pedidosDeAprovacao = [], setToa
         <p className="tdg-esg-nota">{liberacao.motivo}</p>
       )}
       <div className="tdg-method"><strong>Texto gerado</strong><p>{proposalText}</p><small>{translated.disclaimer}</small></div>
-      <div className="tdg-access-list">{data.proposals.map((item) => <div className="tdg-access-row" key={item.id}><span><strong>{item.title}</strong><small>{item.client || "cliente não informado"}</small></span><span>{propostaAceita(item) ? "aceita" : item.scenarioId ? "com simulação" : "rascunho"}</span>{!propostaAceita(item) && <button type="button" onClick={() => aceitarProposta(item)}>Registrar aceite</button>}</div>)}</div>
+      <div className="tdg-access-list">{data.proposals.map((item) => <div className="tdg-access-row" key={item.id}><span><strong>{item.title}</strong><small>{item.client || "cliente não informado"}</small></span><span>{propostaAceita(item) ? "aceita" : item.scenarioId ? "com simulação" : "rascunho"}</span><button type="button" onClick={() => baixarProposta(item)}>Baixar documento</button>{!propostaAceita(item) && <button type="button" onClick={() => aceitarProposta(item)}>Registrar aceite</button>}</div>)}</div>
       <div className="tdg-section-head"><div><span className="tdg-kicker">CONTRATOS</span><h2>Gerar contrato a partir de proposta aceita</h2></div><strong>{data.contracts.length} contrato(s)</strong></div>
       <form className="tdg-access-form" onSubmit={salvarContrato}>
         <label><span>Proposta aceita</span><select value={propostaContrato?.id || ""} onChange={(event) => setPropostaContratoId(event.target.value)}><option value="">Selecione</option>{propostasAceitas.map((item) => <option key={item.id} value={item.id}>{item.client || "Cliente"} · {item.title}</option>)}</select></label>
@@ -1583,9 +1635,13 @@ function ProposalPanel({ data, criar, atualizar, pedidosDeAprovacao = [], setToa
         <label><span>Valor mensal</span><input type="number" value={contrato.valorMensal} onChange={(event) => setContrato((current) => ({ ...current, valorMensal: event.target.value }))} /></label>
         <label><span>Valor total</span><input type="number" value={contrato.valorTotal} onChange={(event) => setContrato((current) => ({ ...current, valorTotal: event.target.value }))} /></label>
         <label><span>Termos e condições</span><input value={contrato.termos} onChange={(event) => setContrato((current) => ({ ...current, termos: event.target.value }))} /></label>
+        <label><span>Renovação</span><select value={contrato.renovacao} onChange={(event) => setContrato((current) => ({ ...current, renovacao: event.target.value }))}><option value="manual">Manual</option><option value="automatic">Automática</option><option value="none">Sem renovação</option></select></label>
+        <label><span>Aviso de renovação</span><input type="date" value={contrato.avisoRenovacaoEm} onChange={(event) => setContrato((current) => ({ ...current, avisoRenovacaoEm: event.target.value }))} /></label>
+        <label><span>Dia de faturamento</span><input type="number" min="1" max="31" value={contrato.diaFaturamento} onChange={(event) => setContrato((current) => ({ ...current, diaFaturamento: event.target.value }))} /></label>
+        <label><span>Antecedência do aviso</span><input type="number" min="0" max="365" value={contrato.antecedenciaAvisoDias} onChange={(event) => setContrato((current) => ({ ...current, antecedenciaAvisoDias: event.target.value }))} /></label>
         <button className="tdg-action" type="submit" disabled={!propostaContrato || salvandoContrato}><FileCheck size={17} />{salvandoContrato ? "Gerando..." : "Gerar contrato"}</button>
       </form>
-      <div className="tdg-access-list">{data.contracts.map((item) => <div className="tdg-access-row" key={item.id}><span><strong>{item.title}</strong><small>{item.client || "cliente não informado"} · {item.startAt || "início pendente"}</small></span><span>{item.status}</span></div>)}</div>
+      <div className="tdg-access-list">{data.contracts.map((item) => <div className="tdg-access-row" key={item.id}><span><strong>{item.title}</strong><small>{item.client || "cliente não informado"} · versão {item.version || 1} · {item.renewalType === "automatic" ? "renovação automática" : "renovação manual"}</small></span><span>{item.signatureStatus === "signed" ? "assinado" : item.signatureStatus === "sent" ? "aguardando assinatura" : "assinatura pendente"}</span><span>{item.status}</span>{item.signatureStatus === "pending" && <button type="button" onClick={() => mudarContrato(item, { assinatura: "sent" }, "Envio para assinatura registrado. Nenhuma mensagem externa foi disparada.")}>Registrar envio</button>}{item.signatureStatus === "sent" && <button type="button" onClick={() => mudarContrato(item, { assinatura: "signed", assinadoEm: new Date().toISOString(), situacao: "active" }, "Assinatura confirmada e contrato ativado.")}>Confirmar assinatura</button>}</div>)}</div>
     </section>
   );
 }
@@ -1612,90 +1668,6 @@ function EsgPanel({ dashboard, data }) {
   );
 }
 
-function OperationsPanel({ data, criar, setToast }) {
-  // Ocupação também nasce vazia aqui: era o único campo com número de fábrica,
-  // e ocupação chutada muda o custo por entrega do painel inteiro.
-  const vazio = { clientId: "", productId: "middle-mile", route: "", trips: "", deliveries: "", packages: "", distanceKm: "", occupancyPercent: "", incidents: "" };
-  const [form, setForm] = useState(vazio);
-  const [salvando, setSalvando] = useState(false);
-  const save = async (event) => {
-    event.preventDefault();
-    setSalvando(true);
-    try {
-      await criar("operations", {
-        clientId: form.clientId,
-        produtoId: form.productId,
-        viagens: Number(form.trips || 0),
-        entregas: Number(form.deliveries || 0),
-        pacotes: Number(form.packages || 0),
-        distanciaKm: Number(form.distanceKm || 0),
-        ocupacaoPercent: Number(form.occupancyPercent || 0),
-        campos: { route: form.route, incidents: Number(form.incidents || 0) },
-      });
-      setForm(vazio);
-      setToast?.("Operação registrada");
-    } catch (razao) {
-      setToast?.(razao.message);
-    } finally {
-      setSalvando(false);
-    }
-  };
-  return (
-    <section className="tdg-panel"><div className="tdg-section-head"><div><span className="tdg-kicker">OPERAÇÕES</span><h2>Controle real de rotas, viagens, entregas, frota e produtividade</h2></div><strong>{data.operations.length} registro(s)</strong></div>
-      <form className="tdg-access-form" onSubmit={save}>{[["clientId", "Cliente"], ["route", "Rota"], ["trips", "Viagens"], ["deliveries", "Entregas"], ["packages", "Pacotes"], ["distanceKm", "Km"], ["occupancyPercent", "Ocupação %"], ["incidents", "Ocorrências"]].map(([key, label]) => <label key={key}><span>{label}</span><input value={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} /></label>)}<label><span>Produto</span><select value={form.productId} onChange={(event) => setForm((current) => ({ ...current, productId: event.target.value }))}>{LOGISTICS_PRODUCTS.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><button className="tdg-action" type="submit" disabled={salvando}><Plus size={17} />{salvando ? "Salvando..." : "Registrar operação"}</button></form>
-      <div className="tdg-access-list">{data.operations.length === 0 && <div className="tdg-empty-access">Nenhuma operação real registrada.</div>}{data.operations.map((item) => <div className="tdg-access-row" key={item.id}><span><strong>{item.route || item.productId}</strong><small>{item.clientId || "sem cliente"}</small></span><span>{number.format(item.trips)} viagens</span><span>{number.format(item.occupancyPercent)}%</span></div>)}</div>
-    </section>
-  );
-}
-
-const TITULO_FINANCEIRO = {
-  revenue: "Receita prevista, faturamento e recebimentos",
-  cost: "Custos, despesas e margem",
-  commission: "Comissões da equipe comercial",
-};
-const CATEGORIA_PADRAO = { revenue: "faturamento", cost: "energia", commission: "comissão sobre contrato" };
-const AVISO_SALVO = { revenue: "Receita registrada", cost: "Custo registrado", commission: "Comissão registrada" };
-
-// Comissão deixou de reaproveitar o lançamento de custo. São o mesmo formato de
-// lançamento — por isso a mesma tabela e o mesmo componente —, mas com nome,
-// categoria e lista próprios: apresentar comissão como "custo" fazia a tela
-// dizer uma coisa e o dado dizer outra.
-function FinancePanel({ type, data, criar, setToast }) {
-  const title = TITULO_FINANCEIRO[type] || TITULO_FINANCEIRO.cost;
-  const vazio = { clientId: "", productId: "middle-mile", category: CATEGORIA_PADRAO[type] || "", amount: "", status: "previsto", note: "" };
-  const [form, setForm] = useState(vazio);
-  const [salvando, setSalvando] = useState(false);
-  const entries =
-    type === "revenue" ? data.revenueEntries : type === "commission" ? data.commissionEntries : data.costEntries;
-  const save = async (event) => {
-    event.preventDefault();
-    setSalvando(true);
-    try {
-      await criar("financial", {
-        tipo: type,
-        clientId: form.clientId,
-        produtoId: form.productId,
-        categoria: form.category,
-        valor: Number(form.amount || 0),
-        situacao: form.status,
-        descricao: form.note,
-      });
-      setForm(vazio);
-      setToast?.(AVISO_SALVO[type] || "Lançamento registrado");
-    } catch (razao) {
-      setToast?.(razao.message);
-    } finally {
-      setSalvando(false);
-    }
-  };
-  return (
-    <section className="tdg-panel"><div className="tdg-section-head"><div><span className="tdg-kicker">FINANCEIRO</span><h2>{title}</h2></div><strong>{BRL.format(entries.reduce((sum, item) => sum + Number(item.amount || 0), 0))}</strong></div>
-      <form className="tdg-access-form" onSubmit={save}>{[["clientId", "Cliente"], ["category", "Categoria"], ["amount", "Valor R$"], ["status", "Status"], ["note", "Observação"]].map(([field, label]) => <label key={field}><span>{label}</span><input value={form[field]} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.value }))} /></label>)}<label><span>Produto</span><select value={form.productId} onChange={(event) => setForm((current) => ({ ...current, productId: event.target.value }))}>{LOGISTICS_PRODUCTS.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><button className="tdg-action" type="submit" disabled={salvando}><Plus size={17} />{salvando ? "Salvando..." : "Salvar lançamento"}</button></form>
-      <div className="tdg-access-list">{entries.length === 0 && <div className="tdg-empty-access">Nenhum lançamento real cadastrado.</div>}{entries.map((item) => <div className="tdg-access-row" key={item.id}><span><strong>{item.category}</strong><small>{item.clientId || "sem cliente"} · {item.productId}</small></span><span>{BRL.format(item.amount)}</span><span>{item.status}</span></div>)}</div>
-    </section>
-  );
-}
-
 function MethodologyPanel() {
   const rows = LOGISTICS_PRODUCTS.map((product) => ({ product, blueprint: getProductPricingBlueprint(product.id) }));
   return (
@@ -1706,19 +1678,12 @@ function MethodologyPanel() {
   );
 }
 
-function GovernancePanel({ role }) {
-  return (
-    <section className="tdg-panel"><div className="tdg-section-head"><div><span className="tdg-kicker">CONTROLE E ACESSOS</span><h2>Quem pode consultar, alterar e aprovar cada informação</h2></div><strong>{role || "sem papel"}</strong></div>
-      <div className="tdg-governance-grid">{[["Custos oficiais", "Bloqueado para vendedores", "cost:manage"], ["Margem mínima", "Alteração exige área de preços ou Financeiro", "pricing:manage"], ["Fatores ambientais", "Sustentabilidade mantém as versões", "esg:manage"], ["Aprovação comercial", "Decisão registrada com justificativa", "deal:approve"], ["Histórico de alterações", "Cálculos, exportações e aprovações", "audit:read"]].map(([title, detail, permission]) => <div className="tdg-rule" key={title}><ShieldCheck size={18} /><strong>{title}</strong><span>{detail}</span><small>{hasTodoGreenPermission(role, permission) ? "permitido" : "sem permissão direta"}</small></div>)}</div>
-    </section>
-  );
-}
-
 function AccessPanel({ role, authHeaders, setToast }) {
   const [emails, setEmails] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ email: "", role: "admin", note: "" });
+  const [loadedAt, setLoadedAt] = useState(0);
+  const [form, setForm] = useState({ email: "", role: "admin", note: "", expiresAt: "" });
   const canManage = role === "admin" || role === "owner";
   const load = useCallback(() => {
     const headers = authHeaders?.() || {};
@@ -1729,6 +1694,7 @@ function AccessPanel({ role, authHeaders, setToast }) {
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(payload.error || "Não foi possível carregar os acessos.");
         setEmails(payload.emails || []);
+        setLoadedAt(Date.now());
       })
       .catch((error) => setToast?.(error.message))
       .finally(() => setLoading(false));
@@ -1740,10 +1706,14 @@ function AccessPanel({ role, authHeaders, setToast }) {
     if (!headers.authorization || !canManage) return;
     setSaving(true);
     try {
-      const response = await fetch(`/api/todogreen/access-list?owner=${encodeURIComponent(ownerId())}`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(form) });
+      const body = {
+        ...form,
+        expiresAt: form.expiresAt ? new Date(`${form.expiresAt}T23:59:59.999Z`).toISOString() : "",
+      };
+      const response = await fetch(`/api/todogreen/access-list?owner=${encodeURIComponent(ownerId())}`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "Não foi possível salvar o acesso.");
-      setForm({ email: "", role: "admin", note: "" });
+      setForm({ email: "", role: "admin", note: "", expiresAt: "" });
       setToast?.("E-mail autorizado na To Do Green");
       load();
     } catch (error) {
@@ -1760,8 +1730,8 @@ function AccessPanel({ role, authHeaders, setToast }) {
       const response = await fetch(`/api/todogreen/access-list?owner=${encodeURIComponent(ownerId())}&email=${encodeURIComponent(email)}`, { method: "DELETE", headers });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "Não foi possível remover o acesso.");
-      setEmails((current) => current.filter((item) => item.email !== email));
-      setToast?.("Acesso removido");
+      load();
+      setToast?.("Acesso revogado e preservado na auditoria");
     } catch (error) {
       setToast?.(error.message);
     }
@@ -1769,8 +1739,8 @@ function AccessPanel({ role, authHeaders, setToast }) {
   if (!canManage) return <section className="tdg-panel"><div className="tdg-section-head"><div><span className="tdg-kicker">ACESSOS</span><h2>Você pode usar a vertical, mas não gerenciar usuários.</h2></div><strong>{role || "sem papel"}</strong></div></section>;
   return (
     <section className="tdg-panel tdg-access-panel"><div className="tdg-section-head"><div><span className="tdg-kicker">ACESSOS</span><h2>Autorize e-mails externos para entrar na vertical sem novo deploy.</h2></div><strong>{loading ? "carregando" : `${emails.length} e-mail(s)`}</strong></div>
-      <form className="tdg-access-form" onSubmit={save}><label><span>E-mail autorizado</span><input value={form.email} type="email" required placeholder="nome@empresa.com.br" onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} /></label><label><span>Papel</span><select value={form.role} onChange={(event) => setForm((current) => ({ ...current, role: event.target.value }))}>{TODO_GREEN_ROLES.filter((item) => item !== "owner").map((item) => <option value={item} key={item}>{item.replace(/_/g, " ")}</option>)}</select></label><label><span>Observação</span><input value={form.note} placeholder="Ex.: teste, cliente, fundador" onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))} /></label><button className="tdg-action" type="submit" disabled={saving}><Plus size={17} />{saving ? "Salvando..." : "Autorizar"}</button></form>
-      <div className="tdg-access-list">{emails.length === 0 && <div className="tdg-empty-access"><ShieldCheck size={18} />Nenhum e-mail autorizado ainda. Sem autorização nesta lista — ou vínculo ativo ao tenant — ninguém entra na vertical, qualquer que seja o domínio do e-mail.</div>}{emails.map((item) => <div className="tdg-access-row" key={item.email}><span><strong>{item.email}</strong><small>{item.note || "sem observação"}</small></span><span>{item.role.replace(/_/g, " ")}</span><span className={item.status === "active" ? "good" : ""}>{item.status === "active" ? "ativo" : "inativo"}</span><button type="button" onClick={() => remove(item.email)} aria-label={`Remover ${item.email}`}><Trash2 size={17} /></button></div>)}</div>
+      <form className="tdg-access-form" onSubmit={save}><label><span>E-mail autorizado</span><input value={form.email} type="email" required placeholder="nome@empresa.com.br" onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} /></label><label><span>Papel</span><select value={form.role} onChange={(event) => setForm((current) => ({ ...current, role: event.target.value }))}>{TODO_GREEN_ROLES.filter((item) => item !== "owner").map((item) => <option value={item} key={item}>{item.replace(/_/g, " ")}</option>)}</select></label><label><span>Validade</span><input type="date" value={form.expiresAt} onChange={(event) => setForm((current) => ({ ...current, expiresAt: event.target.value }))} /><small>Vazio mantém o acesso sem expiração.</small></label><label><span>Observação</span><input value={form.note} placeholder="Ex.: implantação, auditor externo" onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))} /></label><button className="tdg-action" type="submit" disabled={saving}><Plus size={17} />{saving ? "Salvando..." : "Autorizar"}</button></form>
+      <div className="tdg-access-list">{emails.length === 0 && <div className="tdg-empty-access"><ShieldCheck size={18} />Nenhum e-mail autorizado ainda. Sem autorização nesta lista ou vínculo ativo ao tenant, ninguém entra na vertical.</div>}{emails.map((item) => { const expired = item.expiresAt && loadedAt > 0 && Date.parse(item.expiresAt) <= loadedAt; const active = item.status === "active" && !item.revokedAt && !expired; return <div className="tdg-access-row" key={item.email}><span><strong>{item.email}</strong><small>{item.note || "sem observação"}{item.lastAccessAt ? ` · último acesso ${new Date(item.lastAccessAt).toLocaleString("pt-BR")}` : ""}</small></span><span>{item.role.replace(/_/g, " ")}</span><span className={active ? "good" : ""}>{active ? item.expiresAt ? `ativo até ${new Date(item.expiresAt).toLocaleDateString("pt-BR")}` : "ativo" : item.revokedAt ? "revogado" : expired ? "expirado" : "inativo"}</span>{active && <button type="button" onClick={() => remove(item.email)} aria-label={`Revogar ${item.email}`}><Trash2 size={17} /></button>}</div>; })}</div>
     </section>
   );
 }
@@ -1832,7 +1802,15 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
   // A vertical inteira numa chamada só, e só depois que o acesso foi
   // confirmado: pedir os registros antes disso seria bater no servidor para
   // ouvir 403.
-  const { dados: registros, erro: erroDosRegistros, criar, atualizar } = useVerticalRecords(authHeaders, { ativo: allowed });
+  const {
+    dados: registros,
+    erro: erroDosRegistros,
+    criar,
+    atualizar,
+    registrarPagamento,
+    registrarEventoOperacao,
+    listarSubrecurso,
+  } = useVerticalRecords(authHeaders, { ativo: allowed });
   // Os pedidos ao Deal Desk. A proposta precisa deles para saber se sai — e a
   // decisão de sair ou não é do servidor, não de um estado local.
   const [pedidosDeAprovacao, setPedidosDeAprovacao] = useState([]);
@@ -1977,11 +1955,11 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
           <EsgCenter authHeaders={authHeaders} setToast={setToast} />
         </Suspense>
       )}
-      {page === "operacoes" && <OperationsPanel data={verticalData} criar={criar} setToast={setToast} />}
+      {page === "operacoes" && <Suspense fallback={<section className="tdg-panel">Carregando operações...</section>}><OperationsPage operations={registros.operations} clients={clientes} contracts={registros.contracts} criar={criar} registrarEventoOperacao={registrarEventoOperacao} listarSubrecurso={listarSubrecurso} setToast={setToast} /></Suspense>}
       {page === "rastreamento" && <Suspense fallback={<section className="tdg-panel">Carregando TMS Tracker...</section>}><TrackerPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
-      {page === "receita" && <FinancePanel type="revenue" data={verticalData} criar={criar} setToast={setToast} />}
-      {page === "custos" && <Suspense fallback={<section className="tdg-panel">Carregando custos e margem...</section>}><TripViabilityPage authHeaders={authHeaders} /></Suspense>}
-      {page === "comissoes" && <FinancePanel type="commission" data={verticalData} criar={criar} setToast={setToast} />}
+      {page === "receita" && <Suspense fallback={<section className="tdg-panel">Carregando contas a receber...</section>}><FinancePage type="revenue" entries={registros.financial.filter((item) => item.tipo === "revenue")} clients={clientes} contracts={registros.contracts} criar={criar} registrarPagamento={registrarPagamento} listarSubrecurso={listarSubrecurso} setToast={setToast} /></Suspense>}
+      {page === "custos" && <Suspense fallback={<section className="tdg-panel">Carregando custos e margem...</section>}><TripViabilityPage authHeaders={authHeaders} /><FinancePage type="cost" entries={registros.financial.filter((item) => item.tipo === "cost")} clients={clientes} contracts={registros.contracts} criar={criar} registrarPagamento={registrarPagamento} listarSubrecurso={listarSubrecurso} setToast={setToast} /></Suspense>}
+      {page === "comissoes" && <Suspense fallback={<section className="tdg-panel">Carregando comissões...</section>}><FinancePage type="commission" entries={registros.financial.filter((item) => item.tipo === "commission")} clients={clientes} contracts={registros.contracts} criar={criar} registrarPagamento={registrarPagamento} listarSubrecurso={listarSubrecurso} setToast={setToast} /></Suspense>}
       {page === "relatorios" && <Suspense fallback={<section className="tdg-panel">Carregando relatórios...</section>}><ReportsPage dashboard={dashboard} data={verticalData} authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "metodologia" && <MethodologyPanel />}
       {page === "documentos" && (
@@ -1998,7 +1976,7 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
           />
         </Suspense>
       )}
-      {page === "auditoria" && <GovernancePanel role={role} />}
+      {page === "auditoria" && <Suspense fallback={<section className="tdg-panel">Carregando auditoria...</section>}><GovernancePage role={role} permissions={remoteAccess.permissions || []} authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "acessos" && <AccessPanel role={role} authHeaders={authHeaders} setToast={setToast} />}
       {page === "integracoes" && <Suspense fallback={<section className="tdg-panel">Carregando integrações...</section>}><IntegrationsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {!Object.keys(MODULE_IMPLEMENTATION).includes(page) && !["central-trabalho", "green-score", "calculadora-ambiental", "tradutor-esg", "escopo-3", "custos", "comissoes"].includes(page) && <DashboardPanel data={verticalData} dashboard={dashboard} tasks={db?.tasks || []} onNavigate={navigate} />}

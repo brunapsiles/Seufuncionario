@@ -43,6 +43,8 @@ import {
   validarContexto,
 } from "../../src/features/logistics/customerAssistantDomain.js";
 import { runWithFallback } from "./ai.js";
+import { registrarAuditoriaTodoGreen } from "./todogreen-governance.js";
+import { podeVerTodaCarteira } from "./todogreen-access.js";
 import { normalizeCrmContacts } from "../../src/features/logistics/crmContactNormalizationDomain.js";
 
 const TENANT_ID = "todogreen";
@@ -1385,6 +1387,8 @@ export async function handleTodoGreenClients(request, env, access, user) {
     access?.permissions?.includes("*") ||
     access?.permissions?.includes("clients:manage") ||
     access?.permissions?.includes("clients:assign");
+  const podeCriar = podeGerenciar || access?.permissions?.includes("*") || access?.permissions?.includes("crm:manage");
+  const podeVerTodos = podeVerTodaCarteira(access);
   const emailSessao = normalizeEmail(user?.email);
   const clientIdDaRota = clean(url.pathname.split("/").filter(Boolean)[3], 60);
 
@@ -1403,19 +1407,22 @@ export async function handleTodoGreenClients(request, env, access, user) {
           ))
         ORDER BY c.name`,
     )
-      .bind(TENANT_ID, access.ownerId, podeGerenciar ? 1 : 0, emailSessao)
+      .bind(TENANT_ID, access.ownerId, podeVerTodos ? 1 : 0, emailSessao)
       .all()
       .catch(() => ({ results: [] }));
     const ids = (linhas.results || []).map((item) => item.id);
     let atribuicoes = [];
     if (ids.length) {
-      const placeholders = ids.map(() => "?").join(",");
       const resultado = await env.DB.prepare(
-        `SELECT client_id, seller_email, note, updated_at
-           FROM todogreen_client_assignments
-          WHERE tenant_id = ? AND status = 'active' AND client_id IN (${placeholders})
-          ORDER BY seller_email`,
-      ).bind(TENANT_ID, ...ids).all().catch(() => ({ results: [] }));
+        `SELECT a.client_id, a.seller_email, a.note, a.updated_at
+           FROM todogreen_client_assignments a
+           JOIN todogreen_clients c
+             ON c.tenant_id=a.tenant_id AND c.id=a.client_id
+          WHERE a.tenant_id=? AND a.status='active' AND c.workspace_owner_id=?
+            AND c.archived_at IS NULL
+            AND (?=1 OR lower(a.seller_email)=?)
+          ORDER BY a.seller_email`,
+      ).bind(TENANT_ID, access.ownerId, podeVerTodos ? 1 : 0, emailSessao).all().catch(() => ({ results: [] }));
       atribuicoes = resultado.results || [];
     }
     return response({
@@ -1438,7 +1445,7 @@ export async function handleTodoGreenClients(request, env, access, user) {
           .filter((item) => item.client_id === cliente.id)
           .map((item) => ({ email: item.seller_email, observacao: item.note, atualizadoEm: item.updated_at })),
       })),
-      acesso: { podeGerenciar, podeEditar: true, somenteCarteira: !podeGerenciar, vendedor: emailSessao },
+      acesso: { podeGerenciar, podeEditar: true, podeCriar, somenteCarteira: !podeVerTodos, vendedor: emailSessao },
     });
   }
 
@@ -1452,7 +1459,7 @@ export async function handleTodoGreenClients(request, env, access, user) {
              WHERE a.tenant_id = c.tenant_id AND a.client_id = c.id
                AND a.status = 'active' AND lower(a.seller_email) = ?
           ))`,
-    ).bind(clientIdDaRota, TENANT_ID, access.ownerId, podeGerenciar ? 1 : 0, emailSessao).first();
+    ).bind(clientIdDaRota, TENANT_ID, access.ownerId, podeVerTodos ? 1 : 0, emailSessao).first();
     if (!atual) return response({ error: "Cliente não encontrado." }, 404);
     const revisao = Number(body.revision);
     if (!Number.isFinite(revisao) || revisao <= 0)
@@ -1475,11 +1482,17 @@ export async function handleTodoGreenClients(request, env, access, user) {
     ).run();
     if (!meta?.changes)
       return response({ error: "Este cliente mudou enquanto você editava. Recarregue e tente novamente." }, 409);
+    await registrarAuditoriaTodoGreen(env, {
+      access, user, action: "updated", resourceType: "client", resourceId: clientIdDaRota,
+      clientId: clientIdDaRota,
+      before: { name: atual.name, legalName: atual.legal_name, document: atual.document, segment: atual.segment, status: atual.status, notes: atual.notes, crm: parse(atual.fields_json, {}) },
+      after: { name: clean(body.name ?? atual.name, 200), legalName: clean(body.legalName ?? atual.legal_name, 200), document: clean(body.document ?? atual.document, 40), segment: clean(body.segment ?? atual.segment, 80), status: clean(body.status ?? atual.status, 20), notes: clean(body.notes ?? atual.notes, 1000), crm },
+    });
     return response({ ok: true, id: clientIdDaRota });
   }
 
-  if (!podeGerenciar)
-    return response({ error: "Somente uma pessoa autorizada pode alterar clientes e carteiras." }, 403);
+  if (!podeCriar)
+    return response({ error: "Seu papel não pode criar ou importar clientes." }, 403);
 
   if (request.method === "POST" && clientIdDaRota === "import") {
     const body = await request.json().catch(() => ({}));
@@ -1553,6 +1566,10 @@ export async function handleTodoGreenClients(request, env, access, user) {
       }
       await env.DB.batch(statements);
     }
+    await registrarAuditoriaTodoGreen(env, {
+      access, user, action: "imported", resourceType: "client", details: `${preparados.length} cliente(s) importado(s).`,
+      after: { ids: preparados.map((item) => item.id) },
+    });
     return response({ ok: true, importados: preparados.length, vendedor: emailSessao }, 201);
   }
 
@@ -1611,11 +1628,17 @@ export async function handleTodoGreenClients(request, env, access, user) {
         agora,
       )
       .run();
+    await registrarAuditoriaTodoGreen(env, {
+      access, user, action: existente ? "updated" : "created", resourceType: "client",
+      resourceId: id, clientId: id, after: { name: nome, legalName: clean(body.razaoSocial ?? body.legalName, 200), document: clean(body.documento ?? body.document, 40), segment: clean(body.segmento ?? body.segment, 80), status: clean(body.status, 20) || "ativo" },
+    });
     return response({ ok: true, id, nome }, 201);
   }
 
   // Pessoas do cliente: quem, daquele cliente, entra na sala dele.
   if (request.method === "PUT") {
+    if (!podeGerenciar)
+      return response({ error: "Somente uma pessoa autorizada pode gerenciar usuários do portal." }, 403);
     let body = {};
     try {
       body = await request.json();

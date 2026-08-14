@@ -1,6 +1,6 @@
 const SERVICE_VERSION =
   new URL(self.location.href).searchParams.get("v") || "local";
-const CACHE = `seu-funcionario-v3-${SERVICE_VERSION}`;
+const CACHE = `seu-funcionario-v4-${SERVICE_VERSION}`;
 
 self.addEventListener("install", () => self.skipWaiting());
 
