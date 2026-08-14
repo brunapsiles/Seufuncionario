@@ -159,7 +159,7 @@ describe("LogisticsVertical", () => {
     await renderarAutorizada();
     expect(screen.getByRole("heading", { name: "Visão Geral", level: 1 }).hidden).toBe(false);
     expect(screen.getByRole("heading", { name: "O que precisa da sua atenção" })).toBeTruthy();
-    expect(screen.getByRole("navigation", { name: "Navegação To Do Green" }).querySelectorAll("button")).toHaveLength(8);
+    expect(screen.getByRole("navigation", { name: "Navegação To Do Green" }).querySelectorAll("button")).toHaveLength(9);
     expect(screen.getByText("Gestão e configurações")).toBeTruthy();
     expect(screen.queryByText(/Painel operacional/i)).toBeNull();
     expect(screen.queryByText(/ativas.*planejado/i)).toBeNull();
@@ -167,6 +167,14 @@ describe("LogisticsVertical", () => {
     expect(screen.getByText("Middle Mile")).toBeTruthy();
     expect(screen.getByText("Operação a granel")).toBeTruthy();
     expect(screen.getByText("Inteligência ESG")).toBeTruthy();
+  });
+
+  it("abre o espaço de trabalho conectado dentro da vertical", async () => {
+    window.history.pushState({}, "", "/todogreen/espaco");
+    await renderarAutorizada();
+    expect(await screen.findByRole("heading", { name: "Espaço de Trabalho", level: 1 })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "O contexto fica junto do trabalho" })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: /Notas conectadas/ }).length).toBeGreaterThan(0);
   });
 
   it("mantém a busca de funções disponível em qualquer página", async () => {
