@@ -190,6 +190,44 @@ describe("LogisticsVertical", () => {
     expect(await screen.findByRole("heading", { name: "Quando isso acontecer, faça aquilo" })).toBeTruthy();
   });
 
+  it("mantém notícias, contatos, playbook, ajuda e rotinas anteriores visíveis no espaço", async () => {
+    window.history.pushState({}, "", "/todogreen/espaco");
+    stubDeRede({
+      "/api/todogreen/clients": () => jsonOk({
+        clientes: [{
+          id: "cli-1",
+          name: "Empresa Alfa",
+          crm: {
+            contacts: [{ id: "c1", name: "Ana Compras", title: "Gerente de Procurement", email: "ana@alfa.com", source: "Cadastro manual" }],
+            intelligence: {
+              version: 9,
+              checkedAt: "2026-08-14T10:00:00Z",
+              companyNews: [{ title: "Empresa Alfa amplia operação elétrica", url: "https://fonte.example/noticia", snippet: "Expansão confirmada pela fonte." }],
+              segmentNews: [],
+              openRfqs: [{ title: "RFQ de transporte", url: "https://compras.example/rfq" }],
+              supplierLinks: [{ title: "Portal oficial de fornecedores", url: "https://alfa.example/fornecedores" }],
+            },
+          },
+        }],
+        acesso: { podeGerenciar: true, podeEditar: true },
+      }),
+    });
+    await renderarAutorizada();
+
+    expect(await screen.findByText("O que já existia continua acessível")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Clientes e contatos.*Contas, decisores/ })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: /Playbook comercial/ }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: /Central de ajuda/ }).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getAllByRole("button", { name: /Notícias e inteligência/ })[0]);
+    expect(await screen.findByRole("heading", { name: "Notícias, RFQs e mercado" })).toBeTruthy();
+    expect(await screen.findByText("Empresa Alfa amplia operação elétrica")).toBeTruthy();
+
+    fireEvent.click(screen.getAllByRole("button", { name: /^Contatos/ })[0]);
+    expect(await screen.findByRole("heading", { name: "Contatos e decisores" })).toBeTruthy();
+    expect(screen.getByText("Ana Compras")).toBeTruthy();
+  });
+
   it("mantém a busca de funções disponível em qualquer página", async () => {
     window.history.pushState({}, "", "/todogreen/precificacao");
     await renderarAutorizada();
