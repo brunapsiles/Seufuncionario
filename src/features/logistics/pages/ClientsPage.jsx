@@ -185,6 +185,7 @@ function ClientTaskModal({ client, suggestion, currentUserId, onClose, onCreate 
         visibility: "privado", sharedWith: [], sharedTeams: [], subtasks: [], dependsOn: [],
         recurrence: { frequency: "none" }, ownerId: currentUserId || null,
         clientId: client.id, clientName: client.name, source: "todogreen-crm",
+        businessId: "todogreen",
         createdAt: new Date().toISOString(),
       });
       onClose();

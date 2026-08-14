@@ -47,6 +47,7 @@ export const makeNote = (
     date = "",
     tags = [],
     businessId = "",
+    linkedEntities = [],
     createdAt = "",
     updatedAt = "",
   } = {},
@@ -58,6 +59,14 @@ export const makeNote = (
   date,
   tags: [...new Set(tags.map((t) => String(t || "").trim()).filter(Boolean))],
   businessId,
+  linkedEntities: linkedEntities
+    .filter((item) => item && item.id && item.type)
+    .map((item) => ({
+      type: String(item.type),
+      id: String(item.id),
+      name: String(item.name || ""),
+      route: String(item.route || ""),
+    })),
   createdAt: createdAt || new Date().toISOString(),
   updatedAt: updatedAt || createdAt || new Date().toISOString(),
 });

@@ -9,6 +9,7 @@ import {
   Bell,
   BookOpen,
   Boxes,
+  BriefcaseBusiness,
   Calculator,
   CheckCircle2,
   DollarSign,
@@ -96,6 +97,7 @@ const TripViabilityPage = lazy(() => import("./pages/TripViabilityPage.jsx"));
 const DealDeskPage = lazy(() => import("./pages/DealDeskPage.jsx"));
 const DocumentVaultPage = lazy(() => import("./pages/DocumentVaultPage.jsx"));
 const IntegrationsPage = lazy(() => import("./pages/IntegrationsPage.jsx"));
+const TodoGreenWorkspace = lazy(() => import("./TodoGreenWorkspace.jsx"));
 
 const iconMap = {
   Activity,
@@ -106,6 +108,7 @@ const iconMap = {
   Bell,
   BookOpen,
   Boxes,
+  BriefcaseBusiness,
   Calculator,
   CheckCircle2,
   DollarSign,
@@ -233,6 +236,14 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     area: "gestao",
     status: "functional",
     description: "Criação de painéis pessoais ou compartilhados com indicadores escolhidos por cada usuário.",
+  },
+  espaco: {
+    title: "Espaço de Trabalho",
+    navLabel: "Espaço",
+    route: "/todogreen/espaco",
+    area: "gestao",
+    status: "functional",
+    description: "Conhecimento, estrutura, bases, processos, capacidade e quadros conectados ao trabalho e ao CRM.",
   },
   metas: {
     title: "Metas e acompanhamento",
@@ -412,6 +423,7 @@ const MODULE_IMPLEMENTATION = Object.freeze({
 
 const PRIMARY_NAVIGATION = Object.freeze([
   { id: "overview", label: "Visão Geral", route: "/todogreen/dashboard", pages: ["dashboard"] },
+  { id: "workspace", label: "Espaço", route: "/todogreen/espaco", pages: ["espaco"] },
   { id: "commercial", label: "Comercial", route: "/todogreen/oportunidades", pages: ["oportunidades", "propostas", "metas", "performance-comercial"] },
   { id: "pricing", label: "Pricing", route: "/todogreen/precificacao", pages: ["precificacao", "regua", "deal-desk", "custos", "receita"] },
   { id: "operations", label: "Operação", route: "/todogreen/operacoes", pages: ["operacoes", "rastreamento", "solicitacoes"] },
@@ -1941,6 +1953,11 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
       )}
 
       {page === "dashboard" && <DashboardPanel data={verticalData} dashboard={dashboard} tasks={db?.tasks || []} onNavigate={navigate} />}
+      {page === "espaco" && (
+        <Suspense fallback={<section className="tdg-panel">Abrindo o espaço de trabalho...</section>}>
+          <TodoGreenWorkspace db={db} update={update} verticalData={verticalData} setToast={setToast} onNavigate={navigate} />
+        </Suspense>
+      )}
       {page === "dashboards" && <Suspense fallback={<section className="tdg-panel">Carregando seus painéis...</section>}><DashboardBuilderPage authHeaders={authHeaders} summary={dashboard} setToast={setToast} /></Suspense>}
       {page === "metas" && <Suspense fallback={<section className="tdg-panel">Carregando metas...</section>}><GoalsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "performance-comercial" && <Suspense fallback={<section className="tdg-panel">Carregando performance comercial...</section>}><SalesPerformancePage authHeaders={authHeaders} onNavigate={navigate} /></Suspense>}

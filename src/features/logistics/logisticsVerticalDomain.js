@@ -266,6 +266,11 @@ export const TODO_GREEN_MODULE_CATALOG = [
   module("energia", "Energia", "operacional", "/todogreen/esg", { icon: "Zap", order: 50 }),
   module("ocorrencias", "Ocorrências", "operacional", "/todogreen/operacoes", { icon: "AlertTriangle", order: 51 }),
   module("tarefas", "Tarefas", "gestao", "/todogreen/dashboard", { icon: "ListTodo", order: 60 }),
+  module("espaco", "Espaço de trabalho", "gestao", "/todogreen/espaco", {
+    icon: "BriefcaseBusiness",
+    order: 60.5,
+    description: "Notas conectadas, estrutura, bases relacionais, processos, capacidade e quadros no mesmo contexto.",
+  }),
   module("documentos", "Documentos", "gestao", "/todogreen/relatorios", { icon: "FileText", order: 61 }),
   module("aprovacoes", "Aprovações", "gestao", "/todogreen/precificacao", { icon: "ShieldCheck", order: 62 }),
   module("notificacoes", "Notificações", "gestao", "/todogreen/dashboard", { icon: "Bell", order: 63 }),

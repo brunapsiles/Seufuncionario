@@ -1,0 +1,232 @@
+.tdg-space {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.tdg-space-tabs {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding: 4px 2px 8px;
+  scrollbar-width: thin;
+}
+
+.tdg-space-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--tdg-line, #dce7e2);
+  border-radius: 10px;
+  background: var(--tdg-card, #fff);
+  color: var(--tdg-muted, #5a6f68);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 760;
+  cursor: pointer;
+}
+
+.tdg-space-tabs button.active {
+  border-color: #17624f;
+  background: #17624f;
+  color: #fff;
+}
+
+.tdg-space-overview {
+  display: grid;
+  gap: 16px;
+}
+
+.tdg-space-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 25px;
+  overflow: hidden;
+  border: 1px solid #cfe2da;
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 92% 5%, rgba(52, 183, 143, .22), transparent 33%),
+    linear-gradient(145deg, #f8fcfa, #eef8f3);
+}
+
+.tdg-space-hero > div { max-width: 760px; }
+.tdg-space-hero h2 { margin: 6px 0 8px; font-size: clamp(24px, 3vw, 34px); color: #10241f; }
+.tdg-space-hero p { margin: 0; color: #526861; line-height: 1.6; }
+
+.tdg-space-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tdg-space-metrics button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  min-height: 102px;
+  padding: 16px;
+  border: 1px solid var(--tdg-line, #dce7e2);
+  border-radius: 14px;
+  background: var(--tdg-card, #fff);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tdg-space-metrics span { grid-column: 1 / -1; color: var(--tdg-muted, #60736d); font-size: 12px; font-weight: 700; }
+.tdg-space-metrics strong { font-size: 27px; color: #17372e; }
+.tdg-space-metrics svg { align-self: center; color: #2c8c70; }
+
+.tdg-space-attention {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  padding: 14px 16px;
+  border: 1px solid #f2d18a;
+  border-radius: 13px;
+  background: #fffaf0;
+  color: #684812;
+}
+
+.tdg-space-attention div { display: grid; gap: 2px; }
+.tdg-space-attention span { font-size: 13px; }
+.tdg-space-attention button { border: 0; background: transparent; color: inherit; font-weight: 800; cursor: pointer; }
+
+.tdg-space-context,
+.tdg-space-tools {
+  padding: 20px;
+  border: 1px solid var(--tdg-line, #dce7e2);
+  border-radius: 17px;
+  background: var(--tdg-card, #fff);
+}
+
+.tdg-space-context > header > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #17624f;
+}
+
+.tdg-space-context > header span { display: grid; gap: 2px; color: #17372e; }
+.tdg-space-context > header small { color: var(--tdg-muted, #60736d); font-weight: 400; }
+
+.tdg-space-context-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.tdg-space-context-grid > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+}
+
+.tdg-space-context-grid > div > span { grid-column: 1 / -1; font-size: 12px; font-weight: 800; color: #425a52; }
+.tdg-space-context-grid select {
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--tdg-line, #dce7e2);
+  border-radius: 9px;
+  background: var(--tdg-card, #fff);
+  color: inherit;
+}
+
+.tdg-space-context-grid button {
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: #e7f5ef;
+  color: #17624f;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.tdg-space-context-grid button:disabled { opacity: .45; cursor: not-allowed; }
+.tdg-space-empty { margin: 14px 0 0; color: var(--tdg-muted, #60736d); font-size: 13px; }
+
+.tdg-space-tools > header h3 { margin: 5px 0 15px; font-size: 20px; }
+.tdg-space-tools > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.tdg-space-tools > div > button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 11px;
+  padding: 14px;
+  border: 1px solid var(--tdg-line, #dce7e2);
+  border-radius: 12px;
+  background: #fff;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tdg-space-tools > div > button:hover { border-color: #79b9a4; background: #f8fcfa; }
+.tdg-space-tool-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; background: #e7f5ef; color: #17624f; }
+.tdg-space-tools button > span:nth-child(2) { display: grid; gap: 3px; min-width: 0; }
+.tdg-space-tools button small { color: var(--tdg-muted, #60736d); line-height: 1.35; }
+.tdg-space-tools button b { display: grid; place-items: center; min-width: 29px; height: 29px; border-radius: 999px; background: #f0f4f2; color: #476159; font-size: 12px; }
+.tdg-space-tools button > svg { color: #79a296; }
+
+.tdg-space-loading {
+  min-height: 240px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--tdg-line, #dce7e2);
+  border-radius: 16px;
+  color: var(--tdg-muted, #60736d);
+}
+
+.tdg-space-embedded-tool:empty { display: none; }
+.tdg-space-embedded-tool .work-structure-page,
+.tdg-space-embedded-tool .capacity-page,
+.tdg-space-embedded-tool .page { max-width: none; padding: 20px; }
+
+.nt-linked-entities {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin: -2px 0 10px;
+  color: #17624f;
+}
+
+.nt-linked-entities button {
+  padding: 5px 9px;
+  border: 1px solid #bcded1;
+  border-radius: 999px;
+  background: #eff9f5;
+  color: #17624f;
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.nt-linked-entities button:disabled { cursor: default; }
+
+@media (max-width: 980px) {
+  .tdg-space-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tdg-space-context-grid,
+  .tdg-space-tools > div { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .tdg-space-hero { display: grid; padding: 19px; }
+  .tdg-space-hero .tdg-action { width: 100%; justify-content: center; }
+  .tdg-space-metrics { grid-template-columns: 1fr 1fr; }
+  .tdg-space-context-grid > div { grid-template-columns: 1fr; }
+  .tdg-space-context-grid > div > span { grid-column: auto; }
+  .tdg-space-attention { grid-template-columns: auto 1fr; }
+  .tdg-space-attention button { grid-column: 1 / -1; text-align: left; padding-left: 30px; }
+  .tdg-space-tools > div > button { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .tdg-space-tools button > svg { display: none; }
+}

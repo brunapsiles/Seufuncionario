@@ -92,9 +92,9 @@ const GraphView = ({ graph, centerId }) => {
   );
 };
 
-export default function ConnectedNotes({ db, update, business, setToast }) {
+export default function ConnectedNotes({ db, update, business, setToast, initialNoteId = "", onNavigate }) {
   const [aba, setAba] = useState("notas");
-  const [selecionada, setSelecionada] = useState("");
+  const [selecionada, setSelecionada] = useState(initialNoteId);
   const [busca, setBusca] = useState("");
   const [rascunho, setRascunho] = useState(null);
   const [revendo, setRevendo] = useState(null);
@@ -408,6 +408,21 @@ export default function ConnectedNotes({ db, update, business, setToast }) {
                   }
                   onBlur={gravarRascunho}
                 />
+                {(atual.linkedEntities || []).length > 0 && (
+                  <div className="nt-linked-entities" aria-label="Registros conectados">
+                    <Link2 size={15} />
+                    {(atual.linkedEntities || []).map((entity) => (
+                      <button
+                        type="button"
+                        onClick={() => entity.route && onNavigate?.(entity.route)}
+                        disabled={!entity.route || !onNavigate}
+                        key={`${entity.type}-${entity.id}`}
+                      >
+                        {entity.type === "client" ? "Cliente" : "Oportunidade"}: {entity.name || entity.id}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <textarea
                   className="nt-body"
                   aria-label="Conteúdo da nota"

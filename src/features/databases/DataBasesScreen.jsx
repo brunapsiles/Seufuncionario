@@ -183,9 +183,12 @@ function DbCell({ field, value, onChange, bases }) {
   );
 }
 
-function DataBases({ db, update, business, setToast }) {
+function DataBases({ db, update, business, setToast, excludedTemplates = [] }) {
   const bases = (db.databases || []).filter(
     (b) => !business || b.businessId === business.id,
+  );
+  const availableTemplates = DB_TEMPLATES.filter(
+    (template) => !excludedTemplates.includes(template.name),
   );
   const [selectedId, setSelectedId] = useState(bases[0]?.id || null);
   const [view, setView] = useState("table");
@@ -424,7 +427,7 @@ function DataBases({ db, update, business, setToast }) {
         <div className="card db-starter">
           <h3>Comece com um modelo</h3>
           <div className="db-template-grid">
-            {DB_TEMPLATES.map((t) => (
+            {availableTemplates.map((t) => (
               <button key={t.name} className="template-card" onClick={() => createBase(t)}>
                 <span className="template-card-type">Modelo</span>
                 <strong>{t.name}</strong>
