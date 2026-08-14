@@ -2,16 +2,20 @@ import { Suspense, lazy, useMemo, useState } from "react";
 import {
   ArrowRight,
   BookOpen,
+  BookOpenCheck,
   Boxes,
   BriefcaseBusiness,
   CircleAlert,
+  CircleHelp,
   Database,
   GitBranch,
   LayoutDashboard,
   FileText,
   Network,
+  Newspaper,
   Plus,
   Sparkles,
+  UserRoundSearch,
   Users,
   Workflow,
 } from "lucide-react";
@@ -27,6 +31,8 @@ import {
 const ConnectedNotes = lazy(() => import("../notes/ConnectedNotes.jsx"));
 const Documents = lazy(() => import("../documents/DocumentsScreen.jsx"));
 const TodoGreenAutomations = lazy(() => import("./TodoGreenAutomations.jsx"));
+const TodoGreenIntelligenceHub = lazy(() => import("./TodoGreenIntelligenceHub.jsx"));
+const TodoGreenGuides = lazy(() => import("./TodoGreenGuides.jsx"));
 const WorkStructure = lazy(() => import("../work/WorkStructure.jsx"));
 const DataBases = lazy(() => import("../databases/DataBasesScreen.jsx"));
 const ProcessStudio = lazy(() => import("../processes/ProcessStudio.jsx"));
@@ -35,9 +41,13 @@ const CanvasBoard = lazy(() => import("../canvas/CanvasBoard.jsx"));
 
 const TOOL_ICONS = {
   "visao-geral": LayoutDashboard,
+  inteligencia: Newspaper,
+  contatos: UserRoundSearch,
   notas: BookOpen,
   paginas: FileText,
   automacoes: Workflow,
+  playbook: BookOpenCheck,
+  ajuda: CircleHelp,
   estrutura: Network,
   bases: Database,
   processos: GitBranch,
@@ -68,15 +78,30 @@ function WorkspaceOverview({ verticalData, summary, onOpenTool, onNavigate, onCr
   ];
 
   const toolCounts = {
+    inteligencia: summary.news + summary.rfqs + summary.supplierLinks,
+    contatos: summary.contacts,
     notas: summary.notes,
     paginas: summary.pages,
     automacoes: "Ao vivo",
+    playbook: "Abrir",
+    ajuda: "Abrir",
     estrutura: summary.workNodes,
     bases: summary.bases,
     processos: summary.processes,
     capacidade: summary.resources,
     "quadro-livre": summary.boards,
   };
+
+  const routineLinks = [
+    ["Clientes e contatos", "Contas, decisores, histórico e inteligência", "/todogreen/clientes"],
+    ["Oportunidades", "Pipeline, forecast e próximos passos", "/todogreen/oportunidades"],
+    ["Precificação", "Custos, margem e preço recomendado", "/todogreen/precificacao"],
+    ["Propostas", "Condições, aprovação e contratos", "/todogreen/propostas"],
+    ["Operações", "Rotas, viagens, entregas e ocorrências", "/todogreen/operacoes"],
+    ["ESG", "Green Score, emissões, método e evidências", "/todogreen/central-esg"],
+    ["Relatórios", "Leitura executiva comercial, operacional e ambiental", "/todogreen/relatorios"],
+    ["Central de trabalho", "Projetos, tarefas, quadros e execução", "/todogreen/central-trabalho"],
+  ];
 
   return (
     <div className="tdg-space-overview">
@@ -162,6 +187,11 @@ function WorkspaceOverview({ verticalData, summary, onOpenTool, onNavigate, onCr
             );
           })}
         </div>
+      </section>
+
+      <section className="tdg-space-routines">
+        <header><div><span className="tdg-kicker">ROTINAS PRESERVADAS</span><h3>O que já existia continua acessível</h3></div></header>
+        <div>{routineLinks.map(([label, description, route]) => <button type="button" onClick={() => onNavigate(route)} key={route}><span><strong>{label}</strong><small>{description}</small></span><ArrowRight size={16} /></button>)}</div>
       </section>
     </div>
   );
@@ -288,6 +318,10 @@ export default function TodoGreenWorkspace({ db, update, verticalData, setToast,
           {tool === "automacoes" && (
             <TodoGreenAutomations setToast={setToast} onNavigate={onNavigate} />
           )}
+          {tool === "inteligencia" && <TodoGreenIntelligenceHub verticalData={verticalData} onNavigate={onNavigate} />}
+          {tool === "contatos" && <TodoGreenIntelligenceHub key="contatos" verticalData={verticalData} initialView="contacts" onNavigate={onNavigate} />}
+          {tool === "playbook" && <TodoGreenGuides mode="playbook" onNavigate={onNavigate} />}
+          {tool === "ajuda" && <TodoGreenGuides mode="ajuda" onNavigate={onNavigate} />}
           {tool === "estrutura" && <WorkStructure {...commonProps} />}
           {tool === "bases" && <DataBases {...commonProps} excludedTemplates={["Clientes"]} />}
           {tool === "processos" && <ProcessStudio {...commonProps} />}

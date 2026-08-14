@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildTodoGreenWorkspaceIntelligence,
   buildTodoGreenWorkspaceSummary,
   findLinkedDocument,
   findLinkedNote,
@@ -7,6 +8,37 @@ import {
 } from "./features/logistics/todoGreenWorkspaceDomain.js";
 
 describe("espaço de trabalho To Do Green", () => {
+  it("reúne notícias, RFQs e contatos reais sem aceitar contato web não comprovado", () => {
+    const intelligence = buildTodoGreenWorkspaceIntelligence({
+      clients: [{
+        id: "cli-1",
+        name: "Empresa Alfa",
+        crm: {
+          contacts: [
+            { id: "c1", name: "Ana", email: "ana@alfa.com", source: "Cadastro manual" },
+            { id: "c2", name: "Ex-contato", employmentStatus: "former" },
+            { id: "c3", name: "Sem prova", source: "Pesquisa web", country: "Brasil" },
+            { id: "c4", name: "Bruno", source: "Pesquisa web", country: "Brasil", verifiedBrazil: true, currentEmploymentVerified: true, researchVersion: 9 },
+          ],
+          intelligence: {
+            version: 9,
+            checkedAt: "2026-08-14T10:00:00Z",
+            companyNews: [{ title: "Alfa amplia operação", url: "https://fonte.example/noticia" }],
+            segmentNews: [{ title: "Logística elétrica cresce", url: "https://setor.example/tendencia" }],
+            openRfqs: [{ title: "RFQ de transporte", url: "https://compras.example/rfq" }],
+            supplierLinks: [{ title: "Portal de fornecedores", url: "https://alfa.example/fornecedores" }],
+          },
+        },
+      }],
+    });
+
+    expect(intelligence.contacts.map((item) => item.name)).toEqual(["Ana", "Bruno"]);
+    expect(intelligence.news).toHaveLength(2);
+    expect(intelligence.news[0]).toMatchObject({ clientId: "cli-1", clientName: "Empresa Alfa" });
+    expect(intelligence.rfqs[0].title).toBe("RFQ de transporte");
+    expect(intelligence.supplierLinks[0].title).toBe("Portal de fornecedores");
+  });
+
   it("resume apenas o trabalho da vertical sem inventar registros", () => {
     const summary = buildTodoGreenWorkspaceSummary({
       today: "2026-08-13",
@@ -35,6 +67,9 @@ describe("espaço de trabalho To Do Green", () => {
 
     expect(summary).toMatchObject({
       clients: 1,
+      contacts: 0,
+      news: 0,
+      rfqs: 0,
       openOpportunities: 1,
       openTasks: 1,
       overdueTasks: 1,
