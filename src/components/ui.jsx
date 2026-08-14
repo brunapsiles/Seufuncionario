@@ -105,13 +105,15 @@ export function PageTitle({
   action,
   children,
   className = "",
+  headingLevel = "h1",
 }) {
+  const Heading = headingLevel;
   return (
     <>
       <div className={`page-title ${className}`.trim()}>
         <div>
           <span className="eyebrow">{eyebrow}</span>
-          <h1>{title}</h1>
+          <Heading>{title}</Heading>
           <p>{text}</p>
         </div>
         {action}

@@ -8,6 +8,11 @@ const baseDb = {
   businesses: [],
   tasks: [],
   notifications: [],
+  documents: [],
+  syncedBlocks: [],
+  databases: [],
+  publicForms: [],
+  projects: [],
 };
 
 const jsonOk = (corpo) =>
@@ -175,6 +180,11 @@ describe("LogisticsVertical", () => {
     expect(await screen.findByRole("heading", { name: "Espaço de Trabalho", level: 1 })).toBeTruthy();
     expect(await screen.findByRole("heading", { name: "O contexto fica junto do trabalho" })).toBeTruthy();
     expect(screen.getAllByRole("button", { name: /Notas conectadas/ }).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getAllByRole("button", { name: /Páginas e documentos/ })[0]);
+    expect(await screen.findByRole("heading", { name: "Páginas e documentos", level: 2 })).toBeTruthy();
+    expect(document.querySelectorAll("main.tdg h1")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Mala direta" })).toBeNull();
   });
 
   it("mantém a busca de funções disponível em qualquer página", async () => {
