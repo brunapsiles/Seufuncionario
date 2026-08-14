@@ -31,9 +31,17 @@ const ensureTab = () => {
   nav.appendChild(button);
 };
 
+// Esconde só o que precisa dar lugar à frota — não a barra de navegação nem o
+// cabeçalho. A versão antiga escondia "tudo, exceto uma lista de classes", e
+// essa lista citava `.tdg-hero`: uma classe que não existe mais no cabeçalho
+// (hoje `.tdg-shell-header`). Resultado: título, busca e o menu de "Gestão e
+// configurações" desapareciam inteiros sempre que a aba Frota ficava ativa.
 const hideOtherContent = (active) => {
   const main = document.querySelector("main.tdg"); if (!main) return;
-  [...main.children].forEach((child) => { if (child.matches(".tdg-hero,.tdg-tabs,.tdg-metrics,[data-tdg-fleet-root]")) return; child.style.display = active ? "none" : ""; });
+  const pageContent = main.querySelector("[data-tdg-page-content]");
+  if (pageContent) pageContent.style.display = active ? "none" : "";
+  const workCenterRoot = main.querySelector("[data-tdg-work-center-root]");
+  if (active && workCenterRoot) workCenterRoot.style.display = "none";
 };
 
 const form = () => !showForm ? "" : `<form class="tdg-fleet-form" data-fleet-form>
@@ -65,4 +73,20 @@ const renderFleet = () => {
 
 const load = async () => { loading=true;renderFleet();try{const payload=await api();vehicles=payload.vehicles||[];canWrite=!!payload.access?.canWrite;}catch(error){console.error(error);}finally{loading=false;renderFleet();} };
 const render = () => { ensureTab(); const active=location.pathname.startsWith("/todogreen/frota"); hideOtherContent(active); let root=document.querySelector("[data-tdg-fleet-root]"); if(active&&!root){root=document.createElement("div");root.dataset.tdgFleetRoot="true";document.querySelector("main.tdg")?.appendChild(root);load();} if(root) root.style.display=active?"":"none"; if(active) renderFleet(); };
-if(typeof window!=="undefined"){const start=()=>{render();window.setTimeout(render,0);window.setTimeout(render,100);addEventListener("popstate",render);};document.readyState==="loading"?document.addEventListener("DOMContentLoaded",start,{once:true}):start();}
+// `main.tdg` só existe depois que o React termina de verificar acesso e
+// montar a vertical — um número fixo de tentativas (`setTimeout(render, 0/100)`)
+// adivinhava esse tempo e, numa sessão nova (mais chamadas de rede antes do
+// primeiro render), perdia a janela: a aba "Frota" simplesmente não aparecia,
+// sem erro nenhum. Em vez de adivinhar, espera o elemento existir de verdade —
+// um observer de UM disparo só, que se desliga assim que encontra `main.tdg`.
+const waitForShell = () => {
+  if (document.querySelector("main.tdg")) { render(); return; }
+  const alvo = document.getElementById("root") || document.body;
+  const observer = new MutationObserver(() => {
+    if (!document.querySelector("main.tdg")) return;
+    observer.disconnect();
+    render();
+  });
+  observer.observe(alvo, { childList: true, subtree: true });
+};
+if(typeof window!=="undefined"){const start=()=>{waitForShell();addEventListener("popstate",render);addEventListener("pageshow",render);};document.readyState==="loading"?document.addEventListener("DOMContentLoaded",start,{once:true}):start();}

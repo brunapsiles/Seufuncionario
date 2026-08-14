@@ -493,18 +493,38 @@ const render = () => {
   if (!root) { root = document.createElement("div"); root.dataset.tdgWorkCenterRoot = "true"; main.appendChild(root); }
   const pageContent = main.querySelector("[data-tdg-page-content]");
   if (pageContent) pageContent.style.display = active ? "none" : "";
+  // Simétrico ao que a Frota já faz: se os dois painéis chegarem a existir ao
+  // mesmo tempo, cada um esconde o do outro ao assumir a tela — nenhum fica
+  // visível por baixo do que a pessoa está de fato vendo.
+  const fleetRoot = main.querySelector("[data-tdg-fleet-root]");
+  if (active && fleetRoot) fleetRoot.style.display = "none";
   root.style.display = active ? "block" : "none";
   document.querySelector("[data-tdg-work-center-tab]")?.classList.toggle("active", active);
   if (active) { renderWorkCenter(); if (!state.boards.length && !state.loading) sync(); }
+};
+
+// Ver o comentário equivalente em LogisticsVerticalFleet.js: um número fixo de
+// tentativas (`setTimeout(render, 0/100)`) adivinhava quando `main.tdg`
+// ficaria pronto; numa sessão nova a adivinhação podia perder a janela e o
+// painel de Gestão de Projetos ficava com estado inconsistente (raiz sem
+// visibilidade nunca aplicada). Espera o elemento existir de verdade, com um
+// observer de um disparo só.
+const waitForShell = () => {
+  if (document.querySelector("main.tdg")) { render(); return; }
+  const alvo = document.getElementById("root") || document.body;
+  const observer = new MutationObserver(() => {
+    if (!document.querySelector("main.tdg")) return;
+    observer.disconnect();
+    render();
+  });
+  observer.observe(alvo, { childList: true, subtree: true });
 };
 
 if (typeof window !== "undefined") {
   loadCache();
   state.loading = false;
   const start = () => {
-    render();
-    window.setTimeout(render, 0);
-    window.setTimeout(render, 100);
+    waitForShell();
   };
   window.addEventListener("popstate", render);
   window.addEventListener("pageshow", render);

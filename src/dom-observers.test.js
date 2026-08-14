@@ -15,8 +15,8 @@ const arquivo = (nome) =>
 
 const OBSERVADORES = [
   "LogisticsVerticalPolish.js",
-  "LogisticsVerticalSalesPerformance.js",
   "LogisticsVerticalCredentials.js",
+  "LogisticsVerticalNavigation.js",
 ];
 
 describe("gravar o mesmo texto realimenta o observador", () => {
