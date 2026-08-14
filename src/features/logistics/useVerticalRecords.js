@@ -27,6 +27,7 @@ const pedir = async (caminho, authHeaders, opcoes = {}) => {
     method: opcoes.method || "GET",
     headers: {
       ...(opcoes.body ? { "content-type": "application/json" } : {}),
+      ...(opcoes.includeTotals ? { "x-todogreen-include-totals": "1" } : {}),
       ...(authHeaders?.() || {}),
     },
     body: opcoes.body ? JSON.stringify(opcoes.body) : undefined,
@@ -49,8 +50,21 @@ export function useVerticalRecords(authHeaders, { ativo = true } = {}) {
     if (!ativo) return;
     setCarregando(true);
     try {
-      const corpo = await pedir("", authHeaders);
-      setDados({ ...VAZIO, ...corpo });
+      const corpo = await pedir("", authHeaders, { includeTotals: true });
+      const completo = { ...VAZIO, ...corpo };
+      const colecoes = Object.keys(VAZIO);
+      await Promise.all(colecoes.map(async (colecao) => {
+        const total = Number(corpo.totals?.[colecao] || completo[colecao]?.length || 0);
+        let offset = completo[colecao]?.length || 0;
+        while (offset < total) {
+          const pagina = await pedir(`/${colecao}?limit=200&offset=${offset}`, authHeaders);
+          const items = pagina.registros || [];
+          completo[colecao] = [...(completo[colecao] || []), ...items];
+          if (!items.length) break;
+          offset += items.length;
+        }
+      }));
+      setDados(Object.fromEntries(Object.keys(VAZIO).map((key) => [key, completo[key] || []])));
       setErro("");
     } catch (razao) {
       // Lista vazia com o motivo à vista, e nunca dado velho fingindo ser
@@ -111,7 +125,52 @@ export function useVerticalRecords(authHeaders, { ativo = true } = {}) {
     [authHeaders],
   );
 
-  return { dados, carregando, erro, recarregar, criar, atualizar, arquivar };
+  const registrarPagamento = useCallback(
+    async (id, corpo) => {
+      const resposta = await pedir(`/financial/${encodeURIComponent(id)}/payments`, authHeaders, {
+        method: "POST",
+        body: corpo,
+      });
+      if (resposta.registro) {
+        setDados((atual) => ({
+          ...atual,
+          financial: atual.financial.map((item) => (item.id === id ? resposta.registro : item)),
+        }));
+        setErro("");
+      }
+      return resposta;
+    },
+    [authHeaders],
+  );
+
+  const registrarEventoOperacao = useCallback(
+    async (id, corpo) => {
+      const resposta = await pedir(`/operations/${encodeURIComponent(id)}/events`, authHeaders, {
+        method: "POST",
+        body: corpo,
+      });
+      if (resposta.registro) {
+        setDados((atual) => ({
+          ...atual,
+          operations: atual.operations.map((item) => (item.id === id ? resposta.registro : item)),
+        }));
+        setErro("");
+      }
+      return resposta;
+    },
+    [authHeaders],
+  );
+
+  const listarSubrecurso = useCallback(
+    async (colecao, id, subrecurso) =>
+      pedir(`/${colecao}/${encodeURIComponent(id)}/${subrecurso}`, authHeaders),
+    [authHeaders],
+  );
+
+  return {
+    dados, carregando, erro, recarregar, criar, atualizar, arquivar,
+    registrarPagamento, registrarEventoOperacao, listarSubrecurso,
+  };
 }
 
 export const REGISTROS_VAZIOS = VAZIO;

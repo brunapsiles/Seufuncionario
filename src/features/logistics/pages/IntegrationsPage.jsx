@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, CircleDashed, MessageCircle, RefreshCw, Search, Workflow, Zap } from "lucide-react";
+import { Cable, CheckCircle2, CircleDashed, Mail, MessageCircle, RefreshCw, Search, Workflow, Zap } from "lucide-react";
 import "./TodoGreenPages.css";
 
 const ProviderList = ({ title, icon: Icon, items = [], testing, onTest }) => (
@@ -66,6 +66,8 @@ export default function IntegrationsPage({ authHeaders, setToast }) {
       <ProviderList title="Cascata de IA" icon={Zap} items={status?.ai} testing={testing} onTest={test} />
       <ProviderList title="Busca web" icon={Search} items={searchItems} />
       <ProviderList title="WhatsApp" icon={MessageCircle} items={status?.messaging} />
+      <ProviderList title="E-mail e produtividade" icon={Mail} items={status?.communication} />
+      <ProviderList title="API e troca de dados" icon={Cable} items={status?.dataExchange} />
       <ProviderList title="Automação ativa na Cloudflare" icon={Workflow} items={status?.automation} />
       <section className="tdg-panel"><h2>Fora da vertical</h2><p>Whisper e geração de imagens permanecem desligados porque não fazem parte da jornada comercial, logística ou ESG.</p></section>
     </div>

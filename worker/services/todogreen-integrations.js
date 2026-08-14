@@ -60,7 +60,7 @@ const messagingIntegrations = (env = {}) => {
   ];
 };
 
-export function todoGreenIntegrationStatus(env = {}) {
+export function todoGreenIntegrationStatus(env = {}, { activeWebhooks = 0 } = {}) {
   const search = webSearchConfiguration(env);
   return {
     ai: configuredAiProviders(env),
@@ -70,6 +70,40 @@ export function todoGreenIntegrationStatus(env = {}) {
     },
     automation: nativeAutomations(env),
     messaging: messagingIntegrations(env),
+    communication: [
+      {
+        id: "transactional-email",
+        name: "E-mail transacional",
+        configured: Boolean(env.BREVO_API_KEY && env.MAIL_SENDER),
+        detail: env.BREVO_API_KEY && env.MAIL_SENDER
+          ? "Remetente e provedor configurados para notificações do produto."
+          : "Requer chave do provedor e remetente verificado.",
+      },
+      {
+        id: "google-account",
+        name: "Conta Google",
+        configured: Boolean(env.GOOGLE_CLIENT_ID),
+        detail: env.GOOGLE_CLIENT_ID
+          ? "Login Google configurado. Gmail e Agenda só agem com confirmação da pessoa."
+          : "Login Google não configurado; links de composição continuam disponíveis.",
+      },
+    ],
+    dataExchange: [
+      {
+        id: "outbound-webhooks",
+        name: "Webhooks de saída",
+        configured: activeWebhooks > 0,
+        detail: activeWebhooks > 0
+          ? `${activeWebhooks} webhook(s) ativo(s) neste espaço.`
+          : "Motor disponível, sem destino ativo neste espaço.",
+      },
+      {
+        id: "public-api",
+        name: "API pública com idempotência",
+        configured: Boolean(env.DB),
+        detail: "Compartilha a infraestrutura da plataforma, com chaves, escopo e proteção contra duplicidade.",
+      },
+    ],
     automationEngine: {
       id: "cloudflare-native",
       name: "Cloudflare Worker + Cron + D1",
@@ -84,7 +118,12 @@ export function todoGreenIntegrationStatus(env = {}) {
 }
 
 export async function handleTodoGreenIntegrations(request, env, access) {
-  if (request.method === "GET") return json(todoGreenIntegrationStatus(env));
+  if (request.method === "GET") {
+    const activeWebhooks = await env.DB.prepare(
+      "SELECT COUNT(*) AS total FROM webhooks WHERE owner_id=? AND enabled=1",
+    ).bind(access.ownerId).first().then((row) => Number(row?.total || 0)).catch(() => 0);
+    return json(todoGreenIntegrationStatus(env, { activeWebhooks }));
+  }
   if (request.method !== "POST") return json({ error: "Método não permitido." }, 405);
   if (!podeNaVertical(access, "integration:manage"))
     return json({ error: "Seu papel não pode testar integrações." }, 403);

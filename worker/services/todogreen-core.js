@@ -11,6 +11,7 @@ import {
 
 import { resolveTodoGreenAccess } from "./todogreen-access.js";
 import { handleTodoGreenGoals } from "./todogreen-goals.js";
+import { registrarAuditoriaTodoGreen } from "./todogreen-governance.js";
 
 const response = (data, status = 200) => new Response(JSON.stringify(data), {
   status,
@@ -108,7 +109,8 @@ export async function handleTodoGreenCore(request, env, user, url, dependencies)
     await seedCatalog(env);
     if (request.method === "GET") {
       const rows = await env.DB.prepare(
-        `SELECT email,role,status,note,created_at AS createdAt,updated_at AS updatedAt
+        `SELECT email,role,status,note,expires_at AS expiresAt,revoked_at AS revokedAt,
+                last_access_at AS lastAccessAt,created_at AS createdAt,updated_at AS updatedAt
          FROM todogreen_access_emails WHERE tenant_id=? ORDER BY status='active' DESC,email`,
       ).bind(TODO_GREEN_TENANT.id).all();
       return response({ emails: rows.results || [] });
@@ -131,23 +133,40 @@ export async function handleTodoGreenCore(request, env, user, url, dependencies)
         ? body.permissions.map((item) => String(item).slice(0,80)).slice(0,30)
         : TODO_GREEN_PERMISSIONS[role] || ["read"];
       const now = new Date().toISOString();
+      const expiresAt = String(body.expiresAt || "").trim().slice(0, 40) || null;
+      if (expiresAt && (!Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now()))
+        return response({ error: "A validade do acesso precisa estar no futuro." }, 400);
       await env.DB.prepare(
         `INSERT INTO todogreen_access_emails
-         (id,tenant_id,email,role,status,permissions_json,note,created_by,created_at,updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id,email) DO UPDATE SET
+         (id,tenant_id,email,role,status,permissions_json,note,expires_at,revoked_at,created_by,created_at,updated_at)
+         VALUES (?,?,?,?,?,?,?,?,NULL,?,?,?) ON CONFLICT(tenant_id,email) DO UPDATE SET
           role=excluded.role,status=excluded.status,permissions_json=excluded.permissions_json,
-          note=excluded.note,updated_at=excluded.updated_at`,
+          note=excluded.note,expires_at=excluded.expires_at,revoked_at=NULL,updated_at=excluded.updated_at`,
       ).bind(crypto.randomUUID(),TODO_GREEN_TENANT.id,normalized,role,body.status === "inactive" ? "inactive" : "active",
-        JSON.stringify(permissions),String(body.note || "").trim().slice(0,240),user.id,now,now).run();
+        JSON.stringify(permissions),String(body.note || "").trim().slice(0,240),expiresAt,user.id,now,now).run();
       await dependencies.audit(env,access.ownerId,user,"todogreen_acesso_autorizado",normalized,`papel: ${role}`);
-      return response({ ok:true,email:normalized,role,status:body.status === "inactive" ? "inactive" : "active",permissions },201);
+      await registrarAuditoriaTodoGreen(env, {
+        access, user, action: "authorized", resourceType: "access", resourceId: normalized,
+        after: { email: normalized, role, status: body.status === "inactive" ? "inactive" : "active", expiresAt },
+      });
+      return response({ ok:true,email:normalized,role,status:body.status === "inactive" ? "inactive" : "active",permissions,expiresAt },201);
     }
     if (request.method === "DELETE") {
       const normalized = email(url.searchParams.get("email"));
       if (!normalized) return response({ error:"Informe o e-mail."},400);
-      await env.DB.prepare("DELETE FROM todogreen_access_emails WHERE tenant_id=? AND email=?")
-        .bind(TODO_GREEN_TENANT.id,normalized).run();
+      const atual = await env.DB.prepare(
+        `SELECT email,role,status,note,expires_at AS expiresAt,last_access_at AS lastAccessAt
+           FROM todogreen_access_emails WHERE tenant_id=? AND email=?`,
+      ).bind(TODO_GREEN_TENANT.id,normalized).first();
+      const now = new Date().toISOString();
+      await env.DB.prepare(
+        "UPDATE todogreen_access_emails SET status='inactive',revoked_at=?,updated_at=? WHERE tenant_id=? AND email=?",
+      ).bind(now,now,TODO_GREEN_TENANT.id,normalized).run();
       await dependencies.audit(env,access.ownerId,user,"todogreen_acesso_removido",normalized,"");
+      await registrarAuditoriaTodoGreen(env, {
+        access, user, action: "revoked", resourceType: "access", resourceId: normalized,
+        before: atual || {}, after: { ...(atual || {}), status: "inactive", revokedAt: now },
+      });
       return response({ok:true});
     }
     return response({error:"Método não permitido."},405);

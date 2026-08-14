@@ -99,11 +99,12 @@ export async function resolveTodoGreenAccess(env, user, requestedOwnerId) {
 
   const autorizado = await env.DB
     .prepare(
-      `SELECT role, permissions_json
+      `SELECT id, role, permissions_json
          FROM todogreen_access_emails
-        WHERE tenant_id = ? AND lower(email) = ? AND status = 'active'`,
+        WHERE tenant_id = ? AND lower(email) = ? AND status = 'active'
+          AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)`,
     )
-    .bind(TENANT_ID, email)
+    .bind(TENANT_ID, email, new Date().toISOString())
     .first()
     .catch(() => null);
 
@@ -162,6 +163,12 @@ export async function resolveTodoGreenAccess(env, user, requestedOwnerId) {
   const pedido = clean(requestedOwnerId, 100);
   if (pedido && !ehAdministrador && !permitidos.has(pedido))
     return { access: null, motivo: NEGADO.espacoNaoAutorizado };
+
+  if (autorizado?.id) {
+    await env.DB.prepare(
+      "UPDATE todogreen_access_emails SET last_access_at=? WHERE id=? AND tenant_id=?",
+    ).bind(new Date().toISOString(), autorizado.id, TENANT_ID).run().catch(() => null);
+  }
 
   return {
     access: {
@@ -223,7 +230,7 @@ export async function exigirAcessoTodoGreen(request, env) {
 // evidências — tê-la num lugar só evita que uma consulta esqueça o recorte e
 // devolva a carteira alheia.
 export const podeVerTodaCarteira = (access) =>
-  ["owner", "admin"].includes(access?.role) ||
+  ["owner", "admin", "lideranca_comercial", "pricing", "financeiro", "operacoes", "sustentabilidade"].includes(access?.role) ||
   (Array.isArray(access?.permissions) &&
     (access.permissions.includes("*") ||
       access.permissions.includes("clients:manage") ||
