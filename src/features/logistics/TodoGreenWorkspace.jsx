@@ -13,6 +13,7 @@ import {
   Plus,
   Sparkles,
   Users,
+  Workflow,
 } from "lucide-react";
 import { makeNote } from "../notes/notesDomain.js";
 import {
@@ -25,6 +26,7 @@ import {
 
 const ConnectedNotes = lazy(() => import("../notes/ConnectedNotes.jsx"));
 const Documents = lazy(() => import("../documents/DocumentsScreen.jsx"));
+const TodoGreenAutomations = lazy(() => import("./TodoGreenAutomations.jsx"));
 const WorkStructure = lazy(() => import("../work/WorkStructure.jsx"));
 const DataBases = lazy(() => import("../databases/DataBasesScreen.jsx"));
 const ProcessStudio = lazy(() => import("../processes/ProcessStudio.jsx"));
@@ -35,6 +37,7 @@ const TOOL_ICONS = {
   "visao-geral": LayoutDashboard,
   notas: BookOpen,
   paginas: FileText,
+  automacoes: Workflow,
   estrutura: Network,
   bases: Database,
   processos: GitBranch,
@@ -67,6 +70,7 @@ function WorkspaceOverview({ verticalData, summary, onOpenTool, onNavigate, onCr
   const toolCounts = {
     notas: summary.notes,
     paginas: summary.pages,
+    automacoes: "Ao vivo",
     estrutura: summary.workNodes,
     bases: summary.bases,
     processos: summary.processes,
@@ -280,6 +284,9 @@ export default function TodoGreenWorkspace({ db, update, verticalData, setToast,
               text="Escreva por blocos, incorpore bases e tarefas e mantenha o histórico de cada versão."
               headingLevel="h2"
             />
+          )}
+          {tool === "automacoes" && (
+            <TodoGreenAutomations setToast={setToast} onNavigate={onNavigate} />
           )}
           {tool === "estrutura" && <WorkStructure {...commonProps} />}
           {tool === "bases" && <DataBases {...commonProps} excludedTemplates={["Clientes"]} />}

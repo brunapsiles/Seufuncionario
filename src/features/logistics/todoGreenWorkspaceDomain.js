@@ -17,6 +17,11 @@ export const TODO_GREEN_WORKSPACE_TOOLS = Object.freeze([
     description: "Editor em blocos, arquivos, versões e páginas ligadas ao CRM.",
   },
   {
+    id: "automacoes",
+    label: "Automações",
+    description: "Gatilhos, condições e ações executadas no servidor com histórico.",
+  },
+  {
     id: "estrutura",
     label: "Estrutura",
     description: "Workspaces, espaços, pastas e listas sem duplicar projetos.",
