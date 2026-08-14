@@ -12,6 +12,11 @@ export const TODO_GREEN_WORKSPACE_TOOLS = Object.freeze([
     description: "Cadernos, diário, backlinks, grafo e notas ligadas ao CRM.",
   },
   {
+    id: "paginas",
+    label: "Páginas e documentos",
+    description: "Editor em blocos, arquivos, versões e páginas ligadas ao CRM.",
+  },
+  {
     id: "estrutura",
     label: "Estrutura",
     description: "Workspaces, espaços, pastas e listas sem duplicar projetos.",
@@ -74,6 +79,7 @@ export const buildTodoGreenWorkspaceSummary = ({
       (item) => !["Concluído", "done", "completed"].includes(item.status),
     ).length,
     notes: scoped(db.notes, businessId).length,
+    pages: scoped(db.documents, businessId).length,
     bases: scoped(db.databases, businessId).length,
     processes: processes.length,
     openCases: openCases.length,
@@ -100,6 +106,13 @@ export const linkedEntityFor = (type, record = {}) => {
 export const findLinkedNote = (notes, entity) =>
   list(notes).find((note) =>
     list(note.linkedEntities).some(
+      (linked) => linked.type === entity?.type && linked.id === entity?.id,
+    ),
+  ) || null;
+
+export const findLinkedDocument = (documents, entity) =>
+  list(documents).find((document) =>
+    list(document.linkedEntities).some(
       (linked) => linked.type === entity?.type && linked.id === entity?.id,
     ),
   ) || null;

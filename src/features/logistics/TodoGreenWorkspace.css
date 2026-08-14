@@ -151,6 +151,9 @@
   cursor: pointer;
 }
 
+.tdg-space-context-actions { display: flex; gap: 6px; }
+.tdg-space-context-actions button { flex: 1; }
+
 .tdg-space-context-grid button:disabled { opacity: .45; cursor: not-allowed; }
 .tdg-space-empty { margin: 14px 0 0; color: var(--tdg-muted, #60736d); font-size: 13px; }
 
@@ -212,6 +215,8 @@
 }
 
 .nt-linked-entities button:disabled { cursor: default; }
+
+.tdg-space .document-grid .nt-linked-entities { margin: 0; }
 
 @media (max-width: 980px) {
   .tdg-space-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }

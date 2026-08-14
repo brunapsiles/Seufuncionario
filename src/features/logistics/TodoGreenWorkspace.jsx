@@ -8,6 +8,7 @@ import {
   Database,
   GitBranch,
   LayoutDashboard,
+  FileText,
   Network,
   Plus,
   Sparkles,
@@ -17,11 +18,13 @@ import { makeNote } from "../notes/notesDomain.js";
 import {
   TODO_GREEN_WORKSPACE_TOOLS,
   buildTodoGreenWorkspaceSummary,
+  findLinkedDocument,
   findLinkedNote,
   linkedEntityFor,
 } from "./todoGreenWorkspaceDomain.js";
 
 const ConnectedNotes = lazy(() => import("../notes/ConnectedNotes.jsx"));
+const Documents = lazy(() => import("../documents/DocumentsScreen.jsx"));
 const WorkStructure = lazy(() => import("../work/WorkStructure.jsx"));
 const DataBases = lazy(() => import("../databases/DataBasesScreen.jsx"));
 const ProcessStudio = lazy(() => import("../processes/ProcessStudio.jsx"));
@@ -31,6 +34,7 @@ const CanvasBoard = lazy(() => import("../canvas/CanvasBoard.jsx"));
 const TOOL_ICONS = {
   "visao-geral": LayoutDashboard,
   notas: BookOpen,
+  paginas: FileText,
   estrutura: Network,
   bases: Database,
   processos: GitBranch,
@@ -45,7 +49,7 @@ const newId = () =>
 
 const LoadingTool = () => <section className="tdg-space-loading">Abrindo a ferramenta...</section>;
 
-function WorkspaceOverview({ verticalData, summary, onOpenTool, onNavigate, onCreateLinkedNote }) {
+function WorkspaceOverview({ verticalData, summary, onOpenTool, onNavigate, onCreateLinkedNote, onCreateLinkedPage }) {
   const [clientId, setClientId] = useState("");
   const [opportunityId, setOpportunityId] = useState("");
   const clients = verticalData.clients || [];
@@ -62,6 +66,7 @@ function WorkspaceOverview({ verticalData, summary, onOpenTool, onNavigate, onCr
 
   const toolCounts = {
     notas: summary.notes,
+    paginas: summary.pages,
     estrutura: summary.workNodes,
     bases: summary.bases,
     processos: summary.processes,
@@ -108,7 +113,7 @@ function WorkspaceOverview({ verticalData, summary, onOpenTool, onNavigate, onCr
 
       <section className="tdg-space-context">
         <header>
-          <div><Sparkles size={19} /><span><strong>Começar com contexto</strong><small>Crie uma nota já conectada a um registro real.</small></span></div>
+          <div><Sparkles size={19} /><span><strong>Começar com contexto</strong><small>Crie uma nota rápida ou uma página completa conectada a um registro real.</small></span></div>
         </header>
         <div className="tdg-space-context-grid">
           <div>
@@ -117,9 +122,10 @@ function WorkspaceOverview({ verticalData, summary, onOpenTool, onNavigate, onCr
               <option value="">Selecione um cliente</option>
               {clients.map((client) => <option value={client.id} key={client.id}>{client.name || client.company || "Cliente sem nome"}</option>)}
             </select>
-            <button type="button" disabled={!selectedClient} onClick={() => onCreateLinkedNote("client", selectedClient)}>
-              Criar ou abrir nota do cliente
-            </button>
+            <div className="tdg-space-context-actions">
+              <button type="button" disabled={!selectedClient} onClick={() => onCreateLinkedNote("client", selectedClient)}>Nota</button>
+              <button type="button" disabled={!selectedClient} onClick={() => onCreateLinkedPage("client", selectedClient)}>Página</button>
+            </div>
           </div>
           <div>
             <span>Oportunidade</span>
@@ -127,9 +133,10 @@ function WorkspaceOverview({ verticalData, summary, onOpenTool, onNavigate, onCr
               <option value="">Selecione uma oportunidade</option>
               {opportunities.map((opportunity) => <option value={opportunity.id} key={opportunity.id}>{opportunity.title || opportunity.name || "Oportunidade sem título"}</option>)}
             </select>
-            <button type="button" disabled={!selectedOpportunity} onClick={() => onCreateLinkedNote("opportunity", selectedOpportunity)}>
-              Criar ou abrir nota da oportunidade
-            </button>
+            <div className="tdg-space-context-actions">
+              <button type="button" disabled={!selectedOpportunity} onClick={() => onCreateLinkedNote("opportunity", selectedOpportunity)}>Nota</button>
+              <button type="button" disabled={!selectedOpportunity} onClick={() => onCreateLinkedPage("opportunity", selectedOpportunity)}>Página</button>
+            </div>
           </div>
         </div>
         {clients.length === 0 && opportunities.length === 0 && (
@@ -159,6 +166,7 @@ function WorkspaceOverview({ verticalData, summary, onOpenTool, onNavigate, onCr
 export default function TodoGreenWorkspace({ db, update, verticalData, setToast, onNavigate }) {
   const [tool, setTool] = useState("visao-geral");
   const [focusNoteId, setFocusNoteId] = useState("");
+  const [focusPageId, setFocusPageId] = useState("");
   const business = useMemo(() => ({ id: "todogreen", name: "To Do Green" }), []);
   const summary = useMemo(
     () => buildTodoGreenWorkspaceSummary({ db, verticalData, businessId: business.id }),
@@ -168,7 +176,10 @@ export default function TodoGreenWorkspace({ db, update, verticalData, setToast,
   const createLinkedNote = (type, record) => {
     const entity = linkedEntityFor(type, record);
     if (!entity) return;
-    const existing = findLinkedNote(db.notes, entity);
+    const existing = findLinkedNote(
+      (db.notes || []).filter((note) => note.businessId === business.id),
+      entity,
+    );
     if (existing) {
       setFocusNoteId(existing.id);
       setTool("notas");
@@ -187,6 +198,48 @@ export default function TodoGreenWorkspace({ db, update, verticalData, setToast,
     setToast?.("Nota conectada criada");
   };
 
+  const createLinkedPage = (type, record) => {
+    const entity = linkedEntityFor(type, record);
+    if (!entity) return;
+    const existing = findLinkedDocument(
+      (db.documents || []).filter((document) => document.businessId === business.id),
+      entity,
+    );
+    if (existing) {
+      setFocusPageId(existing.id);
+      setTool("paginas");
+      setToast?.("Página conectada aberta");
+      return;
+    }
+    const page = {
+      id: newId().replace(/^nt-/, "doc-"),
+      title: `${entity.type === "client" ? "Cliente" : "Oportunidade"} · ${entity.name}`,
+      type: "Página de conhecimento",
+      content: "Contexto\n\nDecisões\n\nPróximas ações\n\nRegistros relacionados",
+      blocks: [],
+      signatures: [],
+      versions: [],
+      visibility: "privado",
+      sharingPermission: "visualizar",
+      sharedWith: [],
+      sharedTeams: [],
+      project: "",
+      businessId: business.id,
+      ownerId: db.user?.id || null,
+      linkedEntities: [entity],
+      updatedAt: new Date().toISOString(),
+    };
+    update((current) => ({ ...current, documents: [page, ...(current.documents || [])] }));
+    setFocusPageId(page.id);
+    setTool("paginas");
+    setToast?.("Página conectada criada");
+  };
+
+  const openTool = (nextTool) => {
+    if (nextTool === "paginas") setFocusPageId("");
+    setTool(nextTool);
+  };
+
   const commonProps = { db, update, business, setToast };
 
   return (
@@ -195,7 +248,7 @@ export default function TodoGreenWorkspace({ db, update, verticalData, setToast,
         {TODO_GREEN_WORKSPACE_TOOLS.map((item) => {
           const Icon = TOOL_ICONS[item.id] || BriefcaseBusiness;
           return (
-            <button type="button" className={tool === item.id ? "active" : ""} onClick={() => setTool(item.id)} key={item.id}>
+            <button type="button" className={tool === item.id ? "active" : ""} onClick={() => openTool(item.id)} key={item.id}>
               <Icon size={16} /> {item.label}
             </button>
           );
@@ -206,14 +259,28 @@ export default function TodoGreenWorkspace({ db, update, verticalData, setToast,
         <WorkspaceOverview
           verticalData={verticalData}
           summary={summary}
-          onOpenTool={setTool}
+          onOpenTool={openTool}
           onNavigate={onNavigate}
           onCreateLinkedNote={createLinkedNote}
+          onCreateLinkedPage={createLinkedPage}
         />
       )}
       <Suspense fallback={<LoadingTool />}>
         <div className="tdg-space-embedded-tool">
           {tool === "notas" && <ConnectedNotes key={focusNoteId || "notas"} {...commonProps} initialNoteId={focusNoteId} onNavigate={onNavigate} />}
+          {tool === "paginas" && (
+            <Documents
+              key={focusPageId || "paginas"}
+              {...commonProps}
+              initialDocumentId={focusPageId}
+              onNavigate={onNavigate}
+              hideMailMerge
+              eyebrow="CONHECIMENTO"
+              title="Páginas e documentos"
+              text="Escreva por blocos, incorpore bases e tarefas e mantenha o histórico de cada versão."
+              headingLevel="h2"
+            />
+          )}
           {tool === "estrutura" && <WorkStructure {...commonProps} />}
           {tool === "bases" && <DataBases {...commonProps} excludedTemplates={["Clientes"]} />}
           {tool === "processos" && <ProcessStudio {...commonProps} />}

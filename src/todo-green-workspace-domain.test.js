@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildTodoGreenWorkspaceSummary,
+  findLinkedDocument,
   findLinkedNote,
   linkedEntityFor,
 } from "./features/logistics/todoGreenWorkspaceDomain.js";
@@ -15,6 +16,7 @@ describe("espaço de trabalho To Do Green", () => {
           { id: "t2", businessId: "outro", status: "A fazer", due: "2026-08-01" },
         ],
         notes: [{ id: "n1", businessId: "todogreen" }, { id: "n2", businessId: "outro" }],
+        documents: [{ id: "d1", businessId: "todogreen" }, { id: "d2", businessId: "outro" }],
         databases: [],
         processes: [{ id: "p1", businessId: "todogreen" }],
         processCases: [{ id: "c1", processId: "p1", status: "review" }],
@@ -37,6 +39,7 @@ describe("espaço de trabalho To Do Green", () => {
       openTasks: 1,
       overdueTasks: 1,
       notes: 1,
+      pages: 1,
       processes: 1,
       openCases: 1,
       bases: 0,
@@ -55,5 +58,8 @@ describe("espaço de trabalho To Do Green", () => {
     expect(findLinkedNote([
       { id: "n1", linkedEntities: [{ type: "client", id: "cli 1" }] },
     ], entity)?.id).toBe("n1");
+    expect(findLinkedDocument([
+      { id: "d1", linkedEntities: [{ type: "client", id: "cli 1" }] },
+    ], entity)?.id).toBe("d1");
   });
 });

@@ -32,6 +32,20 @@ const BlockDocumentEditor = lazy(
   () => import("./BlockDocumentEditor.jsx"),
 );
 
+const createBlankDocument = () => ({
+  title: "",
+  type: "Proposta comercial",
+  content: "",
+  blocks: [],
+  signatures: [],
+  visibility: "privado",
+  sharingPermission: "visualizar",
+  sharedWith: [],
+  sharedTeams: [],
+  project: "",
+  linkedEntities: [],
+});
+
 const mergeValuesFromBase = (base, row, bases) => {
   const values = {};
   for (const f of base.fields || []) {
@@ -404,9 +418,59 @@ function SignatureList({ doc, onRemove }) {
   );
 }
 
-function Documents({ db, update, business, setToast, go, searchSeed, clearSearchSeed, AreaToolkit }) {
-  const [modal, setModal] = useState(false),
-    [editing, setEditing] = useState(null),
+function Documents({
+  db,
+  update,
+  business,
+  setToast,
+  go,
+  searchSeed,
+  clearSearchSeed,
+  AreaToolkit = null,
+  hideMailMerge = false,
+  initialDocumentId = "",
+  onNavigate,
+  eyebrow = "DOCUMENTOS",
+  title = "Crie, edite e leve seu trabalho com você",
+  text = "Propostas, planos, relatórios e materiais ficam organizados por negócio.",
+  headingLevel = "h1",
+}) {
+  const inBusiness = (record) => !business || record?.businessId === business.id;
+  const documentList = db.documents || [];
+  const editorDb = {
+    ...db,
+    syncedBlocks: (db.syncedBlocks || []).filter(inBusiness),
+    databases: (db.databases || []).filter(inBusiness),
+    publicForms: (db.publicForms || []).filter(inBusiness),
+    documents: documentList.filter(inBusiness),
+    projects: (db.projects || []).filter(inBusiness),
+    tasks: (db.tasks || []).filter(inBusiness),
+  };
+  const blockContext = {
+    syncedBlocks: editorDb.syncedBlocks,
+    databases: editorDb.databases,
+    forms: editorDb.publicForms,
+    documents: editorDb.documents,
+    projects: editorDb.projects,
+  };
+  const resolvedDocumentContent = (document) =>
+    Array.isArray(document?.blocks) && document.blocks.length
+      ? documentBlocksToText(document.blocks, blockContext)
+      : document?.content || "";
+  const blankDocument = createBlankDocument();
+  const initialDocument = initialDocumentId
+    ? documentList.find((document) => document.id === initialDocumentId && inBusiness(document))
+    : null;
+  const initialForm = () => {
+    const next = initialDocument
+      ? { ...blankDocument, ...initialDocument }
+      : { ...blankDocument };
+    next.blocks = normalizeDocumentBlocks(initialDocument?.blocks, initialDocument?.content);
+    next.content = resolvedDocumentContent(next);
+    return next;
+  };
+  const [modal, setModal] = useState(Boolean(initialDocument)),
+    [editing, setEditing] = useState(initialDocument?.id || null),
     [search, setSearch] = useState(""),
     [aiBusy, setAiBusy] = useState(false),
     [exportBusy, setExportBusy] = useState(""),
@@ -430,18 +494,7 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
     return () => clearTimeout(id);
   }, [searchTerm]);
   const uploadRef = useRef(null);
-  const blockContext = {
-    syncedBlocks: db.syncedBlocks || [],
-    databases: db.databases || [],
-    forms: db.publicForms || [],
-    documents: db.documents || [],
-    projects: db.projects || [],
-  };
-  const resolvedDocumentContent = (document) =>
-    Array.isArray(document?.blocks) && document.blocks.length
-      ? documentBlocksToText(document.blocks, blockContext)
-      : document?.content || "";
-  const docs = db.documents.filter(
+  const docs = documentList.filter(
     (document) =>
       (!business || document.businessId === business.id) &&
       `${document.title} ${document.type || ""} ${
@@ -450,23 +503,11 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
         .toLowerCase()
         .includes(searchTerm.toLowerCase()),
   );
-  const blankDocument = {
-    title: "",
-    type: "Proposta comercial",
-    content: "",
-    blocks: [],
-    signatures: [],
-    visibility: "privado",
-    sharingPermission: "visualizar",
-    sharedWith: [],
-    sharedTeams: [],
-    project: "",
-  };
-  const [form, setForm] = useState(blankDocument);
+  const [form, setForm] = useState(initialForm);
   const taskProjects = [
     ...new Set([
-      ...(db.projects || []).map((p) => p.name),
-      ...(db.tasks || []).map((t) => t.project).filter(Boolean),
+      ...editorDb.projects.map((p) => p.name),
+      ...editorDb.tasks.map((t) => t.project).filter(Boolean),
     ]),
   ];
   const open = (d) => {
@@ -477,7 +518,7 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
     setEditing(d?.id || null);
     setModal(true);
   };
-  const signingRecord = db.documents.find((d) => d.id === signingId) || null;
+  const signingRecord = documentList.find((d) => d.id === signingId && inBusiness(d)) || null;
   const signingDoc = signingRecord
     ? { ...signingRecord, content: resolvedDocumentContent(signingRecord) }
     : null;
@@ -791,9 +832,10 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
     }));
   return (
     <PageTitle
-      eyebrow="DOCUMENTOS"
-      title="Crie, edite e leve seu trabalho com você"
-      text="Propostas, planos, relatórios e materiais ficam organizados por negócio."
+      eyebrow={eyebrow}
+      title={title}
+      text={text}
+      headingLevel={headingLevel}
       action={
         <div className="page-actions">
           <Button
@@ -811,13 +853,15 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
           >
             Modelos prontos
           </Button>
-          <Button
-            variant="secondary"
-            icon={Users}
-            onClick={() => setMergeOpen(true)}
-          >
-            Mala direta
-          </Button>
+          {!hideMailMerge && (
+            <Button
+              variant="secondary"
+              icon={Users}
+              onClick={() => setMergeOpen(true)}
+            >
+              Mala direta
+            </Button>
+          )}
           <Button icon={Plus} onClick={() => open(null)}>
             Novo documento
           </Button>
@@ -865,14 +909,16 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
           </div>
         </Modal>
       )}
-      <AreaToolkit
-        area="documentos"
-        db={db}
-        update={update}
-        business={business}
-        setToast={setToast}
-        go={go}
-      />
+      {AreaToolkit && (
+        <AreaToolkit
+          area="documentos"
+          db={db}
+          update={update}
+          business={business}
+          setToast={setToast}
+          go={go}
+        />
+      )}
       <div id="document-library" />
       <input
         ref={uploadRef}
@@ -959,6 +1005,20 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
               <p>
                 {resolvedDocumentContent(d).slice(0, 100) || "Documento vazio"}
               </p>
+              {(d.linkedEntities || []).length > 0 && (
+                <div className="nt-linked-entities" aria-label="Registros conectados">
+                  {(d.linkedEntities || []).map((entity) => (
+                    <button
+                      type="button"
+                      key={`${entity.type}-${entity.id}`}
+                      onClick={() => entity.route && onNavigate?.(entity.route)}
+                      disabled={!entity.route || !onNavigate}
+                    >
+                      {entity.type === "client" ? "Cliente" : "Oportunidade"}: {entity.name}
+                    </button>
+                  ))}
+                </div>
+              )}
               {d.originalFileName && (
                 <small className="document-source">
                   <Upload /> {d.originalFileName} ·{" "}
@@ -1078,6 +1138,7 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
                     "Apresentação",
                     "Briefing",
                     "Plano de ação",
+                    "Página de conhecimento",
                     "Documento Word",
                     "PDF importado",
                     "Documento importado",
@@ -1099,6 +1160,20 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
                 </span>
               </div>
             )}
+            {(form.linkedEntities || []).length > 0 && (
+              <div className="nt-linked-entities" aria-label="Registros conectados">
+                {(form.linkedEntities || []).map((entity) => (
+                  <button
+                    type="button"
+                    key={`${entity.type}-${entity.id}`}
+                    onClick={() => entity.route && onNavigate?.(entity.route)}
+                    disabled={!entity.route || !onNavigate}
+                  >
+                    {entity.type === "client" ? "Cliente" : "Oportunidade"}: {entity.name}
+                  </button>
+                ))}
+              </div>
+            )}
             <Field label="Conteúdo">
               <Suspense
                 fallback={
@@ -1116,9 +1191,9 @@ function Documents({ db, update, business, setToast, go, searchSeed, clearSearch
                       content: documentBlocksToText(blocks, blockContext),
                     }))
                   }
-                  db={db}
+                  db={editorDb}
                   business={business}
-                  syncedBlocks={db.syncedBlocks || []}
+                  syncedBlocks={editorDb.syncedBlocks}
                   onCreateSyncedBlock={createSyncedBlock}
                   onUpdateSyncedBlock={updateSyncedBlock}
                 />
