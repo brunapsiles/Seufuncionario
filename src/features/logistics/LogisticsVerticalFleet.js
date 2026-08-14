@@ -73,17 +73,21 @@ const renderFleet = () => {
 
 const load = async () => { loading=true;renderFleet();try{const payload=await api();vehicles=payload.vehicles||[];canWrite=!!payload.access?.canWrite;}catch(error){console.error(error);}finally{loading=false;renderFleet();} };
 const render = () => { ensureTab(); const active=location.pathname.startsWith("/todogreen/frota"); hideOtherContent(active); let root=document.querySelector("[data-tdg-fleet-root]"); if(active&&!root){root=document.createElement("div");root.dataset.tdgFleetRoot="true";document.querySelector("main.tdg")?.appendChild(root);load();} if(root) root.style.display=active?"":"none"; if(active) renderFleet(); };
-// `main.tdg` só existe depois que o React termina de verificar acesso e
-// montar a vertical — um número fixo de tentativas (`setTimeout(render, 0/100)`)
-// adivinhava esse tempo e, numa sessão nova (mais chamadas de rede antes do
-// primeiro render), perdia a janela: a aba "Frota" simplesmente não aparecia,
-// sem erro nenhum. Em vez de adivinhar, espera o elemento existir de verdade —
-// um observer de UM disparo só, que se desliga assim que encontra `main.tdg`.
+// `[data-tdg-page-content]` só existe depois que o React termina de verificar
+// acesso e montar a vertical inteira — um número fixo de tentativas
+// (`setTimeout(render, 0/100)`) adivinhava esse tempo e, numa sessão nova
+// (mais chamadas de rede antes do primeiro render), perdia a janela: a aba
+// "Frota" simplesmente não aparecia, sem erro nenhum. Esperar só por
+// `main.tdg` não bastava — ele pode existir num commit do React anterior ao
+// que acrescenta `[data-tdg-page-content]`, e `render()` rodar entre os dois
+// deixava o conteúdo do dashboard sem esconder. Em vez de adivinhar, espera o
+// elemento que `render()` de fato precisa — um observer de UM disparo só, que
+// se desliga assim que o encontra.
 const waitForShell = () => {
-  if (document.querySelector("main.tdg")) { render(); return; }
+  if (document.querySelector("[data-tdg-page-content]")) { render(); return; }
   const alvo = document.getElementById("root") || document.body;
   const observer = new MutationObserver(() => {
-    if (!document.querySelector("main.tdg")) return;
+    if (!document.querySelector("[data-tdg-page-content]")) return;
     observer.disconnect();
     render();
   });

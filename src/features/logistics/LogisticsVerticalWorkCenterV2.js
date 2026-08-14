@@ -503,17 +503,16 @@ const render = () => {
   if (active) { renderWorkCenter(); if (!state.boards.length && !state.loading) sync(); }
 };
 
-// Ver o comentário equivalente em LogisticsVerticalFleet.js: um número fixo de
-// tentativas (`setTimeout(render, 0/100)`) adivinhava quando `main.tdg`
-// ficaria pronto; numa sessão nova a adivinhação podia perder a janela e o
-// painel de Gestão de Projetos ficava com estado inconsistente (raiz sem
-// visibilidade nunca aplicada). Espera o elemento existir de verdade, com um
-// observer de um disparo só.
+// Ver o comentário equivalente em LogisticsVerticalFleet.js: esperar só por
+// `main.tdg` não bastava, porque `[data-tdg-page-content]` — o que `render()`
+// de fato precisa achar pra esconder o conteúdo do dashboard — pode chegar num
+// commit do React posterior. Espera o elemento certo, com um observer de um
+// disparo só.
 const waitForShell = () => {
-  if (document.querySelector("main.tdg")) { render(); return; }
+  if (document.querySelector("[data-tdg-page-content]")) { render(); return; }
   const alvo = document.getElementById("root") || document.body;
   const observer = new MutationObserver(() => {
-    if (!document.querySelector("main.tdg")) return;
+    if (!document.querySelector("[data-tdg-page-content]")) return;
     observer.disconnect();
     render();
   });
