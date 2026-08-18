@@ -5,40 +5,35 @@ import { contaNova, criarConta, habilitarTodoGreen } from "./apoio.js";
 // refactors seguintes — ligar entidades por ID e separar os arquivos
 // monolíticos — mais têm chance de quebrar sem ninguém perceber.
 //
-// ESTADO: instável, e por isso marcada como pendente em vez de ficar vermelha
-// sem explicação.
+// ESTADO: ativa. Ficou pendente por muito tempo porque a suíte era instável —
+// e suíte que fica vermelha sem motivo ensina a ignorar vermelho, que é o pior
+// estrago que uma rede de proteção pode causar. As duas causas foram
+// encontradas e corrigidas. Ficam registradas porque as duas eram do
+// FERRAMENTAL: nenhuma era defeito do produto.
 //
-// Rodando sozinho, o arquivo de login passa inteiro em 18 segundos. Rodando a
-// suíte completa, os testes daqui começam a estourar o tempo de espera do
-// login — sempre em `criarConta`, nunca numa asserção de produto.
+//   1. `wrangler dev` carimba `cf-connecting-ip: 127.0.0.1` em toda requisição
+//      local — não deixa o cabeçalho ausente, como a suíte de
+//      vitest-pool-workers simulava. O limite de tentativas de `/api/auth/*`
+//      lia esse loopback como IP de borda de produção e cortava em 8 por
+//      minuto. Resolvido em `edgeIp()` (worker/lib/http.js).
 //
-// UMA causa real já foi encontrada e corrigida: `wrangler dev` carimba
-// `cf-connecting-ip: 127.0.0.1` em toda requisição local (não deixa o
-// cabeçalho ausente, como a suíte de vitest-pool-workers simulava), e o
-// limite de tentativas de `/api/auth/*` tratava esse loopback como IP de
-// borda de produção — 8 por minuto. `edgeIp()` (worker/lib/http.js) corrigiu
-// isso, e `vertical-acesso.spec.js` já roda com `.fixme` removido, os quatro
-// testes passando em sequência, inclusive dentro da suíte `e2e/` inteira.
+//   2. `sair()` (apoio.js) limpava o `localStorage` inteiro, e junto ia a
+//      preferência de modo: o app passava a abrir o onboarding em vez da tela
+//      de acesso, e o teste esperava 45 segundos por um `.auth-shell` que não
+//      viria. Apagar só a sessão também não bastava — uma sincronização em voo
+//      REGRAVAVA o usuário ativo depois da limpeza, e a aba recarregava já
+//      logada. Era essa corrida que fazia a falha ir e vir.
 //
-// Mesmo com essa causa corrigida, rodando `e2e/` inteiro ainda sobra: (1)
-// `login.spec.js` "entra de novo depois de sair" trava no `.auth-shell`
-// depois do logout — não é rate limit de auth, é outra coisa; (2) o teste de
-// oportunidades deste arquivo salva o registro mas a lista não mostra
-// "Distribuidora E2E" a tempo. Nenhum dos dois reproduz rodando isolado.
+// Com as duas resolvidas, `e2e/` inteiro passa de ponta a ponta de forma
+// repetida. Se voltar a piscar, investigue com
+// `npx playwright test e2e/vertical.spec.js --grep <nome>` — e prefira achar a
+// causa a marcar como pendente de novo.
 //
-// Falta descobrir se o que sobra é memória do miniflare, o tamanho do bundle
-// servido a cada navegação, ou contenção de D1. Enquanto isso não estiver
-// resolvido, deixar estes testes ativos ensinaria a equipe a ignorar
-// vermelho — que é o pior estrago que uma suíte pode causar.
-//
-// Para investigar: `npx playwright test e2e/vertical.spec.js --grep <nome>`.
-//
-// Os testes de CONTROLE DE ACESSO saíram daqui para `vertical-acesso.spec.js`
-// — poucos, sem formulário de produto, estáveis o bastante para travar
-// publicação. Regra de isolamento quebrada não podia esperar o resto da
-// suíte ficar estável para virar gate; o que enche tela de campo é que pode.
+// Os testes de CONTROLE DE ACESSO ficam em `vertical-acesso.spec.js`: poucos,
+// sem formulário de produto, e sempre foram gate de publicação. Regra de
+// isolamento quebrada não podia esperar o resto da suíte ficar estável.
 
-test.describe.fixme("vertical To Do Green", () => {
+test.describe("vertical To Do Green", () => {
   test("nenhuma aba aparece com rótulo quebrado", async ({ page }) => {
     await criarConta(page, contaNova("abas"));
     await habilitarTodoGreen(page);

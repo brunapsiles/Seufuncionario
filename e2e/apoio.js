@@ -46,11 +46,39 @@ export async function esperarEntrar(page) {
 }
 
 export async function sair(page) {
-  await page.evaluate(() => {
-    localStorage.clear();
-    sessionStorage.clear();
-  });
-  await page.goto("/");
+  // Encerra a SESSÃO do mesmo jeito que o produto encerra.
+  //
+  // Isto limpava `localStorage` inteiro. Junto com a sessão ia embora a
+  // preferência de modo — e sem ela o app faz o que faria com quem nunca
+  // entrou: abre "Como você pretende usar o Seu Funcionário?" em vez da tela
+  // de acesso. O teste esperava 45 segundos por um `.auth-shell` que nunca ia
+  // aparecer e falhava com cara de instabilidade, sem ser.
+  //
+  // As duas chaves abaixo são exatamente as que `logoutFromExpiredSession` e o
+  // botão "Sair da conta" removem em App.jsx. Só o token não basta: sem
+  // apagar também o usuário ativo, o app continua entendendo que há alguém
+  // logado e nunca volta para a porta de entrada.
+  // Por que em laço, e não uma vez só: apagar as chaves não para o app que
+  // ainda está rodando nesta aba. Uma sincronização em voo termina depois e
+  // REGRAVA o usuário ativo — medido: a chave reaparecia antes mesmo de a
+  // navegação começar, e a aba recarregava já "logada". Era esta a corrida
+  // por trás da falha intermitente que fazia estes testes parecerem instáveis.
+  //
+  // Depois do primeiro recarregamento não há mais nada em voo para regravar,
+  // então uma segunda volta basta; o limite existe para falhar com mensagem
+  // em vez de girar para sempre.
+  for (let tentativa = 1; tentativa <= 4; tentativa += 1) {
+    await page.evaluate(() => {
+      localStorage.removeItem("seu-funcionario-auth-token");
+      localStorage.removeItem("seu-funcionario-active-user");
+    });
+    await page.goto("/");
+    const saiu = await page
+      .waitForSelector(".auth-shell", { timeout: 8_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (saiu) return;
+  }
   // Esperar a porta de entrada voltar, e não só mandar navegar: sem isso o
   // teste segue enquanto o app ainda está decidindo o que mostrar.
   await page.waitForSelector(".auth-shell", { timeout: 45_000 });
