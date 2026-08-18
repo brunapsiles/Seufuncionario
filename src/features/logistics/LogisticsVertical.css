@@ -3,10 +3,25 @@
   --tdg-card: #ffffff;
   --tdg-soft: #e8f5ef;
   --tdg-ink: #10241f;
-  --tdg-muted: #62766f;
+  /* Era #62766f, que dava 4,3:1 sobre os fundos claros da própria vertical —
+     abaixo do mínimo de 4,5:1 para texto pequeno. Como quase todo texto
+     secundário do produto usa esta variável, o "quase não dá para ler" vinha
+     em grande parte daqui. #52645c mantém o mesmo verde-acinzentado e sobe
+     para 5,6:1 no pior fundo. */
+  --tdg-muted: #52645c;
   --tdg-line: #d6e8df;
   --tdg-green: #17624f;
+  /* O lima da marca. Serve para PREENCHER (folha do avatar, olho da Semente,
+     realce sobre verde escuro) — nunca para escrever sobre fundo claro: ali
+     ele dá 1,8:1. Para texto existe --tdg-lime-texto. */
   --tdg-lime: #92c83e;
+  /* O mesmo lima, escurecido até virar legível sobre branco e sobre os
+     fundos claros (5,6:1). É o que os rótulos e selos usam. */
+  --tdg-lime-texto: #3d6b1f;
+  /* E o caminho inverso: sobre o verde escuro (cartão ativo, cabeçalho da
+     tela de acesso) quem fica ilegível é o tom escuro. Ali vale o lima
+     clareado — 5,1:1 sobre --tdg-green. */
+  --tdg-lime-texto-escuro: #bfe56b;
   --tdg-shadow: 0 18px 46px rgba(16, 36, 31, 0.1);
   color: var(--tdg-ink);
   display: grid;
@@ -195,7 +210,11 @@
 .tdg-hero aside small { color: rgba(255, 255, 255, 0.82); }
 
 .tdg-kicker {
-  color: var(--tdg-lime);
+  /* Este rótulo abre quase toda seção da vertical ("CENTRAL ESG", "FROTA",
+     "CALCULAR PREÇO"...). Em lima puro dava 2:1 sobre o branco do cartão:
+     media 11px, em maiúsculas e espaçado — a pior combinação possível para
+     ler. Sobre fundo ESCURO o lima continua sendo usado (regra adiante). */
+  color: var(--tdg-lime-texto);
   font-size: 11px;
   font-weight: 850;
   letter-spacing: 0.12em;
@@ -685,7 +704,12 @@
 }
 
 .tdg-product-card.active { background: var(--tdg-green); color: #fff; }
-.tdg-product-card span { color: var(--tdg-lime); font-size: 11px; font-weight: 850; }
+/* As siglas dos serviços (MM, LM, DED, TRF...) ficavam em lima sobre o verde
+   claro do cartão: 1,8:1, praticamente invisível. */
+.tdg-product-card span { color: var(--tdg-lime-texto); font-size: 11px; font-weight: 850; }
+/* O cartão selecionado inverte o fundo para verde escuro — e ali o tom escuro
+   do rótulo desaparece (1,1:1). Sobre escuro, o lima claro. */
+.tdg-product-card.active span { color: var(--tdg-lime-texto-escuro); }
 .tdg-product-card small { color: inherit; opacity: 0.78; }
 
 .tdg-calculator-grid {
