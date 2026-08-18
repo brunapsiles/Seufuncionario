@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   normalizeSearchQuery,
+  probeWebSearch,
   normalizeSearchResults,
   searchWeb,
   shouldSearchWeb,
@@ -217,5 +218,70 @@ describe("proteção contra ordem vinda de site", () => {
     // A marca forjada é neutralizada; sobram só as marcas legítimas do par.
     expect(contexto.split("<<<FONTE_EXTERNA>>>").length - 1).toBe(3);
     expect(contexto).toContain("[marca removida]");
+  });
+});
+
+// ===== O teste que a tela de Integrações usa =====
+//
+// A tela dizia só "configurada / pendente". Quando a pesquisa de empresa
+// parava de trazer resultado, não havia como saber, de fora, se a chave estava
+// errada, se o provedor recusou, ou se ele respondeu certinho e não achou
+// nada. Os três se pareciam com "a pesquisa não está funcionando" — e um deles
+// nem é defeito.
+//
+// O provedor simulado abaixo permite separar os três desfechos sem depender de
+// rede nem de chave real.
+
+describe("probeWebSearch separa os desfechos que se pareciam", () => {
+  const respostaBrave = (resultados) => ({
+    ok: true,
+    json: async () => ({ web: { results: resultados } }),
+  });
+
+  it("sem nenhuma fonte configurada, avisa que não há o que testar", async () => {
+    const laudo = await probeWebSearch({}, { fetcher: async () => respostaBrave([]) });
+    expect(laudo.configured).toBe(false);
+    expect(laudo.providers).toEqual([]);
+  });
+
+  it("provedor que responde COM resultado é reportado com a contagem", async () => {
+    const laudo = await probeWebSearch(
+      { BRAVE_SEARCH_API_KEY: "chave" },
+      {
+        fetcher: async () =>
+          respostaBrave([
+            { title: "Transportadora", url: "https://exemplo.com.br", description: "frota" },
+          ]),
+      },
+    );
+    expect(laudo.configured).toBe(true);
+    expect(laudo.providers).toContain("Brave Search");
+    expect(laudo.resultCount).toBe(1);
+    expect(laudo.failures).toEqual([]);
+  });
+
+  // Este é o caso que enganava: no ar, respondendo, e sem nada para devolver.
+  it("provedor que responde VAZIO não é confundido com provedor fora do ar", async () => {
+    const laudo = await probeWebSearch(
+      { BRAVE_SEARCH_API_KEY: "chave" },
+      { fetcher: async () => respostaBrave([]) },
+    );
+    expect(laudo.configured).toBe(true);
+    expect(laudo.providers).toContain("Brave Search");
+    expect(laudo.failures).toEqual([]);
+    // É por `resultCount` que a tela distingue um do outro.
+    expect(laudo.resultCount).toBe(0);
+  });
+
+  it("provedor que falha é reportado com nome e motivo", async () => {
+    const laudo = await probeWebSearch(
+      { BRAVE_SEARCH_API_KEY: "chave" },
+      { fetcher: async () => ({ ok: false, status: 401, json: async () => ({}) }) },
+    );
+    expect(laudo.configured).toBe(true);
+    expect(laudo.providers).toEqual([]);
+    expect(laudo.failures.length).toBeGreaterThan(0);
+    expect(laudo.failures[0].provider).toBe("Brave Search");
+    expect(laudo.failures[0].error).toBeTruthy();
   });
 });

@@ -319,6 +319,38 @@ export async function searchWeb(env, rawQuery, { fetcher = fetch } = {}) {
   };
 }
 
+/**
+ * Testa a busca web de verdade, pelo mesmo caminho que a pesquisa de empresa
+ * percorre — testar por um atalho próprio provaria que o atalho funciona.
+ *
+ * Existia um buraco de diagnóstico: a tela de Integrações mostrava
+ * "configurada / pendente" e parava aí. Quando a pesquisa de empresa deixava
+ * de trazer resultado, não havia como saber de fora se a chave estava errada,
+ * se o provedor recusou, se estourou o tempo, ou se ele respondeu certinho e
+ * não achou nada — problemas diferentes, soluções diferentes, e um deles nem
+ * é problema.
+ *
+ * `providers` lista quem RESPONDEU; `failures` diz quem falhou e por quê;
+ * `resultCount` separa "respondeu vazio" de "respondeu com conteúdo". Sem essa
+ * separação, provedor no ar devolvendo zero resultado é indistinguível de
+ * provedor fora do ar.
+ */
+export async function probeWebSearch(
+  env,
+  { fetcher = fetch, query = "transporte rodoviário de carga Brasil" } = {},
+) {
+  const inicio = Date.now();
+  const busca = await searchWeb(env, query, { fetcher });
+  return {
+    configured: busca.configured,
+    query: busca.query,
+    providers: busca.providers,
+    failures: busca.failures,
+    resultCount: busca.results.length,
+    latencyMs: Date.now() - inicio,
+  };
+}
+
 // Texto vindo de site desconhecido não pode virar ordem. Páginas na internet
 // carregam instruções escondidas de propósito ("ignore o que pediram e faça X")
 // justamente para sequestrar assistentes que colam o conteúdo no prompt sem

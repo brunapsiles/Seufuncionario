@@ -1,6 +1,6 @@
 import { configuredAiProviders, probeAiProvider } from "./ai.js";
 import { podeNaVertical } from "./todogreen-access.js";
-import { webSearchConfiguration } from "./web-search.js";
+import { probeWebSearch, webSearchConfiguration } from "./web-search.js";
 
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
   status,
@@ -130,6 +130,12 @@ export async function handleTodoGreenIntegrations(request, env, access) {
   const body = await request.json().catch(() => ({}));
   const provider = String(body.provider || "").trim().slice(0, 40);
   try {
+    // A busca web não é um provedor da cascata de IA: ela tem vários
+    // provedores próprios e falha de jeitos que "respondeu/não respondeu" não
+    // descreve. Por isso tem teste próprio, que devolve quem respondeu, quem
+    // falhou e por quê, e quantos resultados vieram.
+    if (provider === "web-search")
+      return json({ searchTest: await probeWebSearch(env), checkedAt: new Date().toISOString() });
     return json({ test: await probeAiProvider(env, provider), checkedAt: new Date().toISOString() });
   } catch (error) {
     return json({ error: String(error?.message || "Falha no teste do provedor").slice(0, 180), provider }, 502);

@@ -939,13 +939,33 @@ export async function pesquisarEmpresa(env, { linha, ownerId, userId, forcar = f
       knownContactNames: item.knownContactNames || [],
     })),
   })));
-  if (planResults.every((item) => !item.configured))
+  if (planResults.every((item) => !item.configured)) {
+    console.error("Pesquisa de empresa: nenhuma fonte de busca configurada", { company });
     return { erro: "Pesquisa web indisponível. A integração precisa ser revisada por um administrador.", status: 503 };
+  }
   const report = classifyCompanyResearch({ company, segment, searches: settled, knownContacts, publicRegistry, checkedAt: new Date().toISOString() });
   report.providers = [...new Set(planResults.flatMap((item) => item.providers || []))];
   report.failures = planResults.flatMap((item) => item.failures || []).slice(0, 12);
-  if (!report.providers.length && report.failures.length)
+  if (!report.providers.length && report.failures.length) {
+    console.error("Pesquisa de empresa: nenhum provedor respondeu", { company, failures: report.failures });
     return { erro: "A pesquisa web está configurada, mas o provedor não respondeu. Tente novamente em instantes.", failures: report.failures, status: 502 };
+  }
+  // O caso silencioso: o provedor RESPONDEU, então nenhum dos dois erros acima
+  // dispara — mas veio vazio, e a pessoa recebe uma pesquisa que não achou
+  // nada, sem distinguir isso de "esta empresa não tem presença na web". Não é
+  // erro a ponto de recusar a resposta; é sinal a ponto de precisar aparecer
+  // em algum lugar quando alguém for investigar "a pesquisa não funciona".
+  if (!report.failures.length && !settled.some((item) => item.results.length))
+    console.error("Pesquisa de empresa: provedor respondeu sem nenhum resultado", {
+      company,
+      providers: report.providers,
+    });
+  else if (report.failures.length)
+    console.error("Pesquisa de empresa: parte dos provedores falhou", {
+      company,
+      providers: report.providers,
+      failures: report.failures,
+    });
   const allExistingContacts = Array.isArray(fields.contacts) ? fields.contacts : [];
   const {
     contacts: existingContacts,

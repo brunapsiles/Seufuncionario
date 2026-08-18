@@ -34,6 +34,20 @@ export default function IntegrationsPage({ authHeaders, setToast }) {
     }
   };
   useEffect(() => { load(); }, []);
+  // O teste da busca não cabe em "respondeu em N ms": ela tem vários
+  // provedores, e o desfecho que mais confunde é o provedor que responde
+  // certinho e não traz nada — que se parece com estar fora do ar, sem ser.
+  // Cada caso ganha uma frase que diz o que está acontecendo.
+  const resumoDaBusca = (t) => {
+    if (!t) return "Não foi possível testar a busca.";
+    if (!t.configured) return "Nenhuma fonte de pesquisa está configurada.";
+    const falhas = (t.failures || []).map((f) => `${f.provider}: ${f.error}`).join(" · ");
+    if (!t.providers?.length)
+      return `Nenhum provedor respondeu. ${falhas || "Sem detalhe do erro."}`;
+    if (!t.resultCount)
+      return `${t.providers.join(", ")} respondeu em ${t.latencyMs} ms, mas sem nenhum resultado.${falhas ? ` Falhas: ${falhas}` : ""}`;
+    return `${t.providers.join(", ")}: ${t.resultCount} resultado(s) em ${t.latencyMs} ms.${falhas ? ` Falhas: ${falhas}` : ""}`;
+  };
   const test = async (provider) => {
     setTesting(provider);
     try {
@@ -44,7 +58,11 @@ export default function IntegrationsPage({ authHeaders, setToast }) {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "O provedor não respondeu.");
-      setToast?.(`${data.test.provider} respondeu em ${data.test.latencyMs} ms.`);
+      setToast?.(
+        data.searchTest
+          ? resumoDaBusca(data.searchTest)
+          : `${data.test.provider} respondeu em ${data.test.latencyMs} ms.`,
+      );
     } catch (error) {
       setToast?.(error.message);
     } finally {
@@ -52,19 +70,35 @@ export default function IntegrationsPage({ authHeaders, setToast }) {
     }
   };
   if (loading && !status) return <section className="tdg-panel" aria-busy="true">Carregando integrações...</section>;
-  const searchItems = [{
-    id: "web-search",
-    name: "Pesquisa web pública",
-    configured: Boolean(status?.search?.configured),
-    detail: status?.search?.configured
-      ? "Operacional com redundância e fontes vinculadas"
-      : "Pendente de uma fonte de pesquisa",
-  }];
+  // "Configurada" respondia à pergunta errada. A pesquisa de empresa podia
+  // falhar com a busca marcada como configurada, e a tela não tinha como
+  // dizer o motivo — nem sequer QUAL fonte estava ligada. Agora cada provedor
+  // aparece com nome, e o de "Pesquisa web" pode ser testado de verdade.
+  const nomeDaFonte = {
+    searxng: "SearXNG",
+    brave: "Brave Search",
+    tavily: "Tavily",
+    serper: "Serper",
+    exa: "Exa",
+    jina: "Jina Search",
+    google: "Google Search",
+  };
+  const fontes = (status?.search?.providers || []).filter((p) => p.configured);
+  const searchItems = [
+    {
+      id: "web-search",
+      name: "Pesquisa web pública",
+      configured: Boolean(status?.search?.configured),
+      detail: status?.search?.configured
+        ? `Fonte(s) ligada(s): ${fontes.map((p) => nomeDaFonte[p.id] || p.id).join(", ") || "nenhuma"}. Use "Testar" para ver se respondem e se trazem resultado.`
+        : "Pendente de uma fonte de pesquisa",
+    },
+  ];
   return (
     <div className="tdg-page">
       <header className="tdg-page-title"><div><span>CONFIABILIDADE</span><h2>Integrações de IA, busca e automação</h2><p>A Semente usa uma cascata de provedores. As automações essenciais rodam na própria Cloudflare, sem exigir n8n ou servidores externos.</p></div><button className="tdg-action" type="button" onClick={load}><RefreshCw size={16} />Atualizar</button></header>
       <ProviderList title="Cascata de IA" icon={Zap} items={status?.ai} testing={testing} onTest={test} />
-      <ProviderList title="Busca web" icon={Search} items={searchItems} />
+      <ProviderList title="Busca web" icon={Search} items={searchItems} testing={testing} onTest={test} />
       <ProviderList title="WhatsApp" icon={MessageCircle} items={status?.messaging} />
       <ProviderList title="E-mail e produtividade" icon={Mail} items={status?.communication} />
       <ProviderList title="API e troca de dados" icon={Cable} items={status?.dataExchange} />
