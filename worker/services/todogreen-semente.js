@@ -655,8 +655,15 @@ export async function handleTodoGreenSemente(request, env, access, user) {
   ].join("\n");
 
   const primeira = await runWithFallback(env, { prompt: cabecalho, system: INSTRUCAO, deep: true });
-  if (!primeira.ok)
+  if (!primeira.ok) {
+    // O motivo de CADA provedor ter falhado ia para o lixo aqui — cota
+    // estourada, chave inválida, tempo esgotado, tudo virava a mesma frase
+    // genérica na tela e nada no log. "A Semente não está funcionando" ficava
+    // impossível de diagnosticar sem reproduzir. O assistente do portal já
+    // registra isso (todogreen-customer-portal.js); a Semente não registrava.
+    console.error("Semente: todos os provedores de IA falharam", primeira.errors);
     return response({ error: "Os provedores de IA não responderam agora. Tente novamente em instantes." }, 502);
+  }
 
   let decisao = lerDecisao(primeira.result?.content);
   let consultou = null;
@@ -679,6 +686,12 @@ export async function handleTodoGreenSemente(request, env, access, user) {
     if (segunda.ok) {
       const nova = lerDecisao(segunda.result?.content);
       decisao = { ...nova, consultar: null };
+    } else {
+      // Cair para a primeira resposta é de propósito: é melhor responder com o
+      // que já se tem do que devolver erro depois de a ferramenta ter rodado.
+      // Mas cair em silêncio esconde uma resposta pior — a pessoa recebe algo
+      // que ignora o dado que o banco acabou de entregar, e nada indica isso.
+      console.error("Semente: segunda chamada falhou, respondendo sem o resultado da ferramenta", segunda.errors);
     }
   }
 

@@ -133,7 +133,11 @@
   padding: 14px;
 }
 
-.semente-boas-vindas { color: var(--tdg-ink, #10241f); display: grid; gap: 10px; }
+.semente-boas-vindas { display: grid; gap: 10px; }
+/* Prefixo `.semente` pelo mesmo motivo das bolhas (ver bloco em .semente-msg):
+   sem ele, `.tdg p` pinta esta abertura de cinza e a saudação chega apagada. */
+.semente .semente-boas-vindas,
+.semente .semente-boas-vindas p { color: var(--tdg-ink, #10241f); }
 .semente-boas-vindas p { font-size: 13px; line-height: 1.5; margin: 0; }
 
 .semente-habilidades {
@@ -181,18 +185,30 @@
 .semente-msg--voce {
   background: var(--tdg-green, #17624f);
   border-bottom-right-radius: 5px;
+}
+
+/* ===== Por que TODA regra de cor de mensagem começa com `.semente` =====
+   As bolhas do chat são <p>. A vertical carrega uma regra `.tdg p` que pinta
+   qualquer parágrafo de --tdg-muted (cinza), e `.tdg p` (0,1,1) ganha de
+   `.semente-msg--voce` (0,1,0). Medido no navegador: a mensagem da pessoa
+   saía CINZA sobre o verde escuro da bolha, e o erro saía cinza no lugar do
+   vermelho — quase ilegível, exatamente como foi relatado.
+   O prefixo `.semente` leva estas regras a (0,2,0) e devolve ao componente o
+   controle do próprio texto. Vencer por especificidade e não por ordem de
+   carregamento é de propósito: empate resolvido por ordem volta a quebrar no
+   dia em que alguém reordenar um import. */
+.semente .semente-msg--voce {
   color: #fff;
 }
 
 /* A resposta é o produto: ela precisa ser o texto mais legível do painel.
    A cor é fixada aqui e nos filhos porque o corpo da mensagem é Markdown
-   renderizado em <p>, <li> e <strong> — herdar deixava qualquer regra de
-   parágrafo do app decidir a cor da resposta, e o resultado era cinza. */
-.semente-msg--semente,
-.semente-msg--semente p,
-.semente-msg--semente li,
-.semente-msg--semente strong,
-.semente-msg--semente em {
+   renderizado em <p>, <li> e <strong>. */
+.semente .semente-msg--semente,
+.semente .semente-msg--semente p,
+.semente .semente-msg--semente li,
+.semente .semente-msg--semente strong,
+.semente .semente-msg--semente em {
   color: #0d1f1a;
 }
 
@@ -204,8 +220,10 @@
   line-height: 1.55;
 }
 
-.semente-msg--erro { background: #fdecec; border-color: #f4c4c4; color: #8c2f2f; }
-.semente-msg--pensando { align-self: flex-start; color: #46594f; font-style: italic; }
+.semente-msg--erro { background: #fdecec; border-color: #f4c4c4; }
+.semente-msg--pensando { align-self: flex-start; font-style: italic; }
+.semente .semente-msg--erro { color: #8c2f2f; }
+.semente .semente-msg--pensando { color: #46594f; }
 
 /* De onde a resposta veio: qual ferramenta ela consultou. */
 .semente-consulta {
