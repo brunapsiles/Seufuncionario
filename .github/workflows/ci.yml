@@ -48,8 +48,32 @@ jobs:
         run: npm run build
       # Só o Chromium — é o único navegador que os specs usam, e baixar os
       # outros dois só alongaria o job à toa.
+      #
+      # O limite de tempo não é excesso de zelo: este passo já pendurou o job
+      # duas vezes (`f747fbe`, `eb2a0c2`), 25 e 20+ minutos, com TODOS os testes
+      # já aprovados antes dele. Sem limite, o download preso consome a rodada
+      # inteira e o E2E acaba pulado — a validação some por causa do passo que
+      # não valida nada, só baixa arquivo.
+      #
+      # A repetição é dentro do MESMO passo, de propósito. Um segundo passo com
+      # `if: failure()` não serviria: uma vez que o job entra em estado de
+      # falha, os passos seguintes são pulados — o E2E não rodaria nem com o
+      # download recuperado, que é exatamente o estrago que se quer evitar.
+      #
+      # Cada tentativa é limitada por `timeout` para que uma conexão pendurada
+      # ceda lugar à próxima, que costuma cair em outro espelho. Três tentativas
+      # de 4 minutos ainda custam menos que uma pendurada de 25.
       - name: Instalar Chromium para o E2E
-        run: npx playwright install --with-deps chromium
+        timeout-minutes: 14
+        run: |
+          for tentativa in 1 2 3; do
+            if timeout 240 npx playwright install --with-deps chromium; then
+              exit 0
+            fi
+            echo "::warning::Tentativa $tentativa de baixar o Chromium falhou ou passou de 4 min; repetindo."
+          done
+          echo "::error::As três tentativas de baixar o Chromium falharam."
+          exit 1
       # `wrangler dev` serve `dist/`, por isso este passo vem depois de
       # "Construir". Só o arquivo de controle de acesso: é o único E2E
       # promovido — ver o comentário no topo de vertical-acesso.spec.js.
