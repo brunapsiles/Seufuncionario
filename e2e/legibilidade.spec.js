@@ -31,6 +31,9 @@ const TELAS = [
   ["Relatórios", "/todogreen/relatorios"],
   ["Dashboards", "/todogreen/dashboards"],
   ["Frota", "/todogreen/frota"],
+  ["Cadastros do ERP", "/todogreen/cadastros"],
+  ["Estoque", "/todogreen/estoque"],
+  ["Compras", "/todogreen/compras"],
   ["Central de trabalho", "/todogreen/central-trabalho"],
   ["Acessos", "/todogreen/acessos"],
 ];

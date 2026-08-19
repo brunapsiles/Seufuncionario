@@ -90,6 +90,9 @@ const GoalsPage = lazy(() => import("./pages/GoalsPage.jsx"));
 const SalesPerformancePage = lazy(() => import("./pages/SalesPerformancePage.jsx"));
 const ClientsPage = lazy(() => import("./pages/ClientsPage.jsx"));
 const TrackerPage = lazy(() => import("./pages/TrackerPage.jsx"));
+const StockPage = lazy(() => import("./pages/StockPage.jsx"));
+const ErpRegistriesPage = lazy(() => import("./pages/ErpRegistriesPage.jsx"));
+const PurchasingPage = lazy(() => import("./pages/PurchasingPage.jsx"));
 const OpportunitiesPage = lazy(() => import("./pages/OpportunitiesPage.jsx"));
 const ClientRequestsPage = lazy(() => import("./pages/ClientRequestsPage.jsx"));
 const ReportsPage = lazy(() => import("./pages/ReportsPage.jsx"));
@@ -221,6 +224,9 @@ const IMPLEMENTED_MODULE_IDS = new Set([
   "performance-comercial",
   "rastreamento",
   "solicitacoes",
+  "estoque",
+  "compras",
+  "cadastros",
 ]);
 
 const MODULE_IMPLEMENTATION = Object.freeze({
@@ -344,6 +350,30 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     status: "functional",
     description: "Configuração, teste e sincronização segura de posições e eventos da frota em modo somente leitura.",
   },
+  cadastros: {
+    title: "Cadastros do ERP",
+    navLabel: "Cadastros",
+    route: "/todogreen/cadastros",
+    area: "operacional",
+    status: "functional",
+    description: "Materiais, depósitos, fornecedores, centros de custo e plano de contas — a base que Estoque e Compras consultam.",
+  },
+  estoque: {
+    title: "Estoque",
+    navLabel: "Estoque",
+    route: "/todogreen/estoque",
+    area: "operacional",
+    status: "functional",
+    description: "Saldos por material e depósito, entradas, saídas, transferências e contagens — com o saldo derivado dos movimentos.",
+  },
+  compras: {
+    title: "Compras",
+    navLabel: "Compras",
+    route: "/todogreen/compras",
+    area: "operacional",
+    status: "functional",
+    description: "Requisição, aprovação, pedido ao fornecedor e recebimento, com o que chegou dando entrada no estoque.",
+  },
   receita: {
     title: "Receita, forecast e faturamento",
     navLabel: "Receita",
@@ -429,7 +459,7 @@ const PRIMARY_NAVIGATION = Object.freeze([
   { id: "workspace", label: "Espaço", route: "/todogreen/espaco", pages: ["espaco"] },
   { id: "commercial", label: "Comercial", route: "/todogreen/oportunidades", pages: ["oportunidades", "propostas", "metas", "performance-comercial"] },
   { id: "pricing", label: "Pricing", route: "/todogreen/precificacao", pages: ["precificacao", "regua", "deal-desk", "custos", "receita"] },
-  { id: "operations", label: "Operação", route: "/todogreen/operacoes", pages: ["operacoes", "rastreamento", "solicitacoes"] },
+  { id: "operations", label: "Operação", route: "/todogreen/operacoes", pages: ["operacoes", "rastreamento", "solicitacoes", "cadastros", "estoque", "compras"] },
   { id: "esg", label: "ESG", route: "/todogreen/central-esg", pages: ["central-esg", "esg", "metodologia", "documentos"] },
   { id: "clients", label: "Clientes", route: "/todogreen/clientes", pages: ["clientes"] },
   { id: "reports", label: "Relatórios", route: "/todogreen/relatorios", pages: ["relatorios", "auditoria"] },
@@ -1940,6 +1970,9 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
       {page === "metas" && <Suspense fallback={<section className="tdg-panel">Carregando metas...</section>}><GoalsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "performance-comercial" && <Suspense fallback={<section className="tdg-panel">Carregando performance comercial...</section>}><SalesPerformancePage authHeaders={authHeaders} onNavigate={navigate} /></Suspense>}
       {page === "solicitacoes" && <Suspense fallback={<section className="tdg-panel">Carregando solicitações...</section>}><ClientRequestsPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
+      {page === "cadastros" && <Suspense fallback={<section className="tdg-panel">Carregando cadastros...</section>}><ErpRegistriesPage registros={registros} criar={criar} setToast={setToast} /></Suspense>}
+      {page === "estoque" && <Suspense fallback={<section className="tdg-panel">Carregando estoque...</section>}><StockPage authHeaders={authHeaders} setToast={setToast} registros={registros} /></Suspense>}
+      {page === "compras" && <Suspense fallback={<section className="tdg-panel">Carregando compras...</section>}><PurchasingPage authHeaders={authHeaders} setToast={setToast} registros={registros} /></Suspense>}
       {page === "clientes" && <Suspense fallback={<section className="tdg-panel">Carregando clientes...</section>}><ClientsPage authHeaders={authHeaders} opportunities={verticalData.opportunities} onNavigate={navigate} setToast={setToast} currentUserId={db?.user?.id} onCreateTask={(task) => update?.((current) => ({ ...current, tasks: [task, ...(current.tasks || [])] }))} /></Suspense>}
       {page === "oportunidades" && <Suspense fallback={<section className="tdg-panel">Carregando oportunidades...</section>}><OpportunitiesPage clients={clientes} opportunities={verticalData.opportunities} scenarios={verticalData.pricingScenarios} onCreate={(registro) => criar("opportunities", registro)} onUpdate={(id, alteracoes) => atualizar("opportunities", id, alteracoes)} onNavigate={navigate} setToast={setToast} /></Suspense>}
       {page === "propostas" && <ProposalPanel data={verticalData} criar={criar} atualizar={atualizar} pedidosDeAprovacao={pedidosDeAprovacao} setToast={setToast} />}

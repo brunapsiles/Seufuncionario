@@ -770,3 +770,111 @@
 @media (max-width: 800px) { .tdg-crm-detail-hero { display: grid; } .tdg-crm-detail-actions { justify-content: flex-start; } .tdg-crm-detail-metrics,.tdg-crm-portal-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); } .tdg-crm-portal-content { grid-template-columns: minmax(0,1fr); } }
 @media (max-width: 560px) { .tdg-crm-filter-grid,.tdg-crm-card-grid,.tdg-crm-detail-metrics,.tdg-crm-portal-metrics,.tdg-crm-detail-section .tdg-crm-roles,.tdg-crm-task-form > div,.tdg-crm-strategy-grid,.tdg-crm-relationship-map { grid-template-columns: 1fr; } .tdg-crm-portal-preview > header { display: grid; } }
 @media (max-width: 900px) { .tdg-metric-manager-grid { grid-template-columns: 1fr; } .tdg-metric-manager-grid > aside { border-bottom: 1px solid #e1e9e5; border-right: 0; padding: 0 0 12px; } .tdg-metric-criterion { grid-template-columns: 1fr 1fr; } }
+
+
+/* ===== Abas internas dos cadastros do ERP =====
+   Diferentes da navegação da vertical de propósito: aquela troca de TELA, esta
+   troca de LISTA dentro da mesma tela. Duas barras com o mesmo desenho na
+   mesma página fariam a pessoa procurar a diferença no clique. */
+.tdg-registry-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tdg-registry-tabs button {
+  background: var(--tdg-card);
+  border: 1px solid var(--tdg-line);
+  border-radius: 10px;
+  color: var(--tdg-muted);
+  cursor: pointer;
+  font-size: .82rem;
+  font-weight: 700;
+  padding: 8px 12px;
+}
+
+.tdg-registry-tabs button:hover {
+  border-color: var(--tdg-green);
+  color: var(--tdg-green);
+}
+
+.tdg-registry-tabs button.active {
+  background: var(--tdg-soft);
+  border-color: var(--tdg-green);
+  color: var(--tdg-green);
+}
+
+/* ===== Tabela de listagem do ERP =====
+   Usa as variáveis da vertical em vez de cores próprias: foi justamente a
+   folha da Frota, que trazia cinza e borda só dela, que deixou a tela
+   destoando do resto do produto.
+
+   O container rola sozinho no horizontal. Sem ele, uma tabela larga empurra a
+   página inteira e cria rolagem lateral no corpo — que é o defeito que aparece
+   primeiro no celular. */
+.tdg-table-wrap {
+  border: 1px solid var(--tdg-line);
+  border-radius: 14px;
+  overflow-x: auto;
+}
+
+.tdg-table {
+  border-collapse: collapse;
+  min-width: 100%;
+  width: max-content;
+}
+
+.tdg-table th,
+.tdg-table td {
+  padding: 11px 14px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.tdg-table th {
+  background: var(--tdg-soft);
+  color: var(--tdg-muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.tdg-table tbody tr + tr td {
+  border-top: 1px solid var(--tdg-line);
+}
+
+.tdg-table tbody tr:hover td {
+  background: var(--tdg-bg);
+}
+
+/* Estado vazio: explica o que fazer, não só que não há nada. */
+.tdg-empty {
+  border: 1px dashed var(--tdg-line);
+  border-radius: 14px;
+  color: var(--tdg-muted);
+  margin: 0;
+  padding: 26px;
+  text-align: center;
+}
+
+.tdg-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.tdg-form-actions button:not(.tdg-action) {
+  background: var(--tdg-card);
+  border: 1px solid var(--tdg-line);
+  border-radius: 12px;
+  color: var(--tdg-ink);
+  cursor: pointer;
+  font-weight: 700;
+  padding: 10px 14px;
+}
+
+@media (max-width: 560px) {
+  .tdg-table th,
+  .tdg-table td { padding: 9px 10px; }
+}
