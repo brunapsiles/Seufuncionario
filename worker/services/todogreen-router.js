@@ -14,6 +14,7 @@ import { handleTodoGreenPricingParameters } from "./todogreen-pricing-parameters
 import { handleTodoGreenDashboards } from "./todogreen-dashboards.js";
 import { handleTodoGreenRequests } from "./todogreen-requests.js";
 import { handleTodoGreenVerticalRecords } from "./todogreen-vertical-records.js";
+import { handleTodoGreenStock } from "./todogreen-stock.js";
 import { handleTodoGreenDealDesk } from "./todogreen-deal-desk.js";
 import { entregarArquivo, handleTodoGreenEvidences } from "./todogreen-evidences.js";
 import { handleTodoGreenClientIntelligence } from "./todogreen-client-intelligence.js";
@@ -126,6 +127,17 @@ export async function routeTodoGreenApi(request, env, ctx) {
       const resolved = await internalAccess(request, env);
       if (resolved.response) return resolved.response;
       return handleTodoGreenVerticalRecords(request, env, resolved.access, resolved.user);
+    });
+  }
+
+  // Estoque tem serviço próprio porque não é CRUD: movimento é INSERT sempre, e
+  // a saída é recusada quando o saldo não cobre — conferido na mesma instrução
+  // que grava, para duas saídas simultâneas não passarem as duas.
+  if (path.startsWith("/api/todogreen/stock")) {
+    return guarded("To Do Green stock error", "Não foi possível movimentar o estoque.", async () => {
+      const resolved = await internalAccess(request, env);
+      if (resolved.response) return resolved.response;
+      return handleTodoGreenStock(request, env, resolved.access, resolved.user);
     });
   }
 
