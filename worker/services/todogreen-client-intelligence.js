@@ -110,8 +110,11 @@ export function classifyCompanyResearch({ company, segment, searches, checkedAt 
   const esgSignals = unique((byKind.esg || []).filter((item) => includesAny(normalize(`${item.title} ${item.snippet}`), ESG) && !isVacancy(item))).map((item) => source(item, "esg"));
   const procurementPeople = unique(all.filter((item) => /linkedin\.com\/in\//i.test(item.url) && includesAny(normalize(`${item.title} ${item.snippet}`), PROCUREMENT) && !isVacancy(item))).map((item) => source(item, "procurement_contact", { currentness: "A função deve ser confirmada no perfil antes do contato." }));
   const contactCandidates = procurementPeople.map(publicContact).filter(Boolean);
-  const companyNews = unique((byKind.news || []).filter((item) => !isVacancy(item))).map((item) => source(item, "company_news"));
-  const segmentNews = unique((byKind.segment || []).filter((item) => !isVacancy(item))).map((item) => source(item, "segment_news"));
+  const newsSegmentPool = unique([...(byKind.news || []), ...(byKind.segment || [])].filter((item) => !isVacancy(item)), 16);
+  const marketTerms = (SEGMENTS.find(([value]) => normalize(value) === normalize(segment)) || [])[1] || TRANSPORT;
+  const mentionsCompany = (item) => Boolean(companyToken) && normalize(`${item.title} ${item.snippet} ${item.url}`).includes(companyToken);
+  const companyNews = newsSegmentPool.filter((item) => mentionsCompany(item) || !companyToken).map((item) => source(item, "company_news"));
+  const segmentNews = newsSegmentPool.filter((item) => !mentionsCompany(item) && includesAny(normalize(`${item.title} ${item.snippet}`), marketTerms)).map((item) => source(item, "segment_news"));
   const esgRelevance = esgSignals.length ? "Alta" : segment && includesAny(normalize(segment), TRANSPORT.concat(["varejo", "industria", "e-commerce", "alimentos", "energia"])) ? "Provável" : "A validar";
 
   const nextActions = [];

@@ -421,7 +421,7 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
     setResearching(true); setResearchError("");
     try {
       const data = await api(`client-intelligence/${encodeURIComponent(selected.id)}`, authHeaders, {
-        method: "POST", body: JSON.stringify({ force: Boolean(selectedReport), focus }),
+        method: "POST", body: JSON.stringify({ focus }),
       });
       setResearchReports((current) => ({ ...current, [selected.id]: data.intelligence || null }));
       await load();
