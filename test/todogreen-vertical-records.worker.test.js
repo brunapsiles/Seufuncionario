@@ -607,12 +607,17 @@ describe("a vertical inteira numa chamada só", () => {
     expect(r.status).toBe(200);
     const corpo = await r.json();
     expect(Object.keys(corpo).sort()).toEqual([
+      "accounts",
       "contracts",
+      "costCenters",
       "financial",
+      "items",
       "operations",
       "opportunities",
+      "parties",
       "proposals",
       "scenarios",
+      "warehouses",
     ]);
     expect(Array.isArray(corpo.opportunities)).toBe(true);
   });

@@ -20,6 +20,15 @@ const VAZIO = Object.freeze({
   operations: [],
   financial: [],
   scenarios: [],
+  // Cadastros de base do ERP (migração 0053). São listas pequenas e estáveis,
+  // consultadas por quase toda tela do ERP — material, depósito, parte, conta e
+  // centro de custo —, então vêm na mesma carga inicial em vez de uma chamada
+  // por tela que precisa preencher um seletor.
+  items: [],
+  warehouses: [],
+  parties: [],
+  accounts: [],
+  costCenters: [],
 });
 
 const pedir = async (caminho, authHeaders, opcoes = {}) => {
