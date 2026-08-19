@@ -38,6 +38,10 @@ export const TODO_GREEN_ROLES = [
   "operacoes",
   "sustentabilidade",
   "auditor",
+  // Papel próprio para folha e cadastro de pessoal. Não cabe em `financeiro`:
+  // salário, CPF e dependentes são dado sensível (LGPD), e quem lança uma
+  // despesa não precisa ver a remuneração de ninguém.
+  "rh",
 ];
 
 // crm:manage, proposal:manage, operations:manage e finance:manage são exigidas
@@ -56,10 +60,15 @@ export const TODO_GREEN_PERMISSIONS = {
   lideranca_comercial: ["read", "crm:manage", "proposal:create", "proposal:manage", "deal:approve", "pricing:simulate", "goal:read", "goal:create", "goal:update", "goal:checkin", "goal:approve", "goal:close", "goal:manage-team", "goal:export"],
   vendedor: ["read", "crm:manage", "proposal:create", "proposal:manage", "pricing:simulate", "goal:read", "goal:checkin"],
   pricing: ["read", "pricing:simulate", "pricing:manage", "deal:review", "goal:read", "goal:checkin"],
-  financeiro: ["read", "cost:manage", "revenue:manage", "commission:manage", "finance:manage", "deal:review", "goal:read", "goal:checkin", "goal:validate"],
-  operacoes: ["read", "operation:manage", "operations:manage", "deal:review", "evidence:manage", "goal:read", "goal:checkin", "goal:validate"],
+  financeiro: ["read", "cost:manage", "revenue:manage", "commission:manage", "finance:manage", "purchase:manage", "fiscal:manage", "deal:review", "goal:read", "goal:checkin", "goal:validate"],
+  operacoes: ["read", "operation:manage", "operations:manage", "stock:manage", "purchase:manage", "production:manage", "tms:manage", "deal:review", "evidence:manage", "goal:read", "goal:checkin", "goal:validate"],
   sustentabilidade: ["read", "esg:manage", "deal:review", "audit:read", "evidence:manage", "goal:read", "goal:checkin", "goal:validate"],
   auditor: ["read", "audit:read", "export:read", "goal:read", "goal:export"],
+  // RH lê a vertical e administra pessoal — e nada além disso. Em particular,
+  // não recebe `finance:manage`: fechar a folha não é o mesmo que lançar no
+  // caixa, e juntar os dois num papel só tiraria a segregação que a auditoria
+  // de folha depende.
+  rh: ["read", "hr:manage", "goal:read", "goal:checkin"],
 };
 
 // A regra de permissão da vertical, uma só, usada pelo front e pelo worker.
