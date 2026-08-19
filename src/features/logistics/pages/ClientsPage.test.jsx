@@ -140,3 +140,58 @@ describe("página de clientes", () => {
     expect(patchRequest.crm.completedSuggestedActions).toContain("request-procurement-referral");
   });
 });
+
+// ===== O cache da pesquisa 360 precisa poder valer =====
+//
+// `force` existe para ignorar o cache de 24 horas, e a tela o mandava em TODA
+// pesquisa. Resultado: o cache nunca valia pelo botão, e cada clique disparava
+// a rodada inteira de consultas ao provedor de busca — mesmo tendo pesquisado
+// a mesma conta minutos antes. Numa cota gratuita isso se gasta rápido, e
+// provedor sem crédito se parece exatamente com "a pesquisa parou de
+// funcionar", que foi como o problema chegou.
+describe("consumo da pesquisa 360", () => {
+  afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+  const abrirFicha = async (fetchMock) => {
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ClientsPage authHeaders={() => ({})} />);
+    expect(await screen.findByRole("heading", { name: "CRM e carteira 360º" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Rede Alfa/ }));
+    expect(await screen.findByRole("heading", { name: "Rede Alfa" })).toBeInTheDocument();
+  };
+
+  const respostaPadrao = () => new Response(JSON.stringify({
+    clientes: [{ id: "client-1", name: "Rede Alfa", segment: "Varejo", status: "ativo", revision: 1, vendedores: [], crm: { contacts: [] } }],
+    acesso: { podeGerenciar: true, podeEditar: true, somenteCarteira: false },
+    intelligence: {},
+  }), { status: 200 });
+
+  const corpoDaPesquisa = (fetchMock) => {
+    const chamada = fetchMock.mock.calls.find(([url]) => String(url).includes("client-intelligence"));
+    return chamada ? JSON.parse(chamada[1].body) : null;
+  };
+
+  it("'Pesquisar empresa' não força: deixa o cache de 24h valer", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(respostaPadrao());
+    await abrirFicha(fetchMock);
+
+    fireEvent.click(screen.getAllByRole("button", { name: /Pesquisar empresa/ })[0]);
+    await waitFor(() => expect(corpoDaPesquisa(fetchMock)).not.toBeNull());
+
+    const corpo = corpoDaPesquisa(fetchMock);
+    expect(corpo.focus).toBe("company");
+    // `force: true` aqui gasta cota do provedor a cada clique, sem necessidade.
+    expect(corpo.force).toBeUndefined();
+  });
+
+  it("'Atualizar contatos' continua indo à web, pelo foco e não pelo force", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(respostaPadrao());
+    await abrirFicha(fetchMock);
+
+    fireEvent.click(screen.getAllByRole("button", { name: /Atualizar contatos/ })[0]);
+    await waitFor(() => expect(corpoDaPesquisa(fetchMock)).not.toBeNull());
+
+    // É `focus: "contacts"` que faz o servidor ignorar o cache — por desenho.
+    expect(corpoDaPesquisa(fetchMock).focus).toBe("contacts");
+  });
+});

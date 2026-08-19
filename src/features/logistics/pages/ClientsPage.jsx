@@ -724,8 +724,18 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
     if (!selected) return;
     setResearching(true); setResearchError("");
     try {
+      // Sem `force`. Ele serve para ignorar o cache de 24 horas, e a tela o
+      // mandava em TODA pesquisa — então o cache nunca valia pelo botão: cada
+      // clique disparava a rodada inteira de consultas ao provedor, mesmo
+      // tendo pesquisado a mesma conta minutos antes. Numa cota gratuita isso
+      // se gasta rápido, e provedor sem crédito se parece exatamente com "a
+      // pesquisa parou de funcionar".
+      //
+      // "Atualizar contatos" continua sempre indo à web: o servidor já ignora
+      // o cache quando `focus` é "contacts", por desenho. Quem pede contato
+      // novo quer buscar; quem abre a ficha quer ver a ficha.
       const data = await api(`client-intelligence/${encodeURIComponent(selected.id)}`, authHeaders, {
-        method: "POST", body: JSON.stringify({ force: true, focus }),
+        method: "POST", body: JSON.stringify({ focus }),
       });
       setResearchReports((current) => ({ ...current, [selected.id]: data.intelligence || null }));
       if (data.client?.id) setClients((current) => current.map((client) => client.id === data.client.id ? {
