@@ -15,6 +15,7 @@ import { handleTodoGreenDashboards } from "./todogreen-dashboards.js";
 import { handleTodoGreenRequests } from "./todogreen-requests.js";
 import { handleTodoGreenVerticalRecords } from "./todogreen-vertical-records.js";
 import { handleTodoGreenStock } from "./todogreen-stock.js";
+import { handleTodoGreenPurchasing } from "./todogreen-purchasing.js";
 import { handleTodoGreenDealDesk } from "./todogreen-deal-desk.js";
 import { entregarArquivo, handleTodoGreenEvidences } from "./todogreen-evidences.js";
 import { handleTodoGreenClientIntelligence } from "./todogreen-client-intelligence.js";
@@ -138,6 +139,17 @@ export async function routeTodoGreenApi(request, env, ctx) {
       const resolved = await internalAccess(request, env);
       if (resolved.response) return resolved.response;
       return handleTodoGreenStock(request, env, resolved.access, resolved.user);
+    });
+  }
+
+  // Compras tem serviço próprio porque o pedido tem linhas em tabela separada,
+  // a mudança de status obedece a uma máquina de estados declarada, e o
+  // recebimento tem efeito: gera movimento de estoque e título a pagar.
+  if (path.startsWith("/api/todogreen/purchasing")) {
+    return guarded("To Do Green purchasing error", "Não foi possível processar a compra.", async () => {
+      const resolved = await internalAccess(request, env);
+      if (resolved.response) return resolved.response;
+      return handleTodoGreenPurchasing(request, env, resolved.access, resolved.user);
     });
   }
 
