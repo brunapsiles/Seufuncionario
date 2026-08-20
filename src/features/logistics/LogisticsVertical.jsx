@@ -455,15 +455,20 @@ const MODULE_IMPLEMENTATION = Object.freeze({
 });
 
 const PRIMARY_NAVIGATION = Object.freeze([
-  { id: "overview", label: "Visão Geral", route: "/todogreen/dashboard", pages: ["dashboard"] },
-  { id: "workspace", label: "Espaço", route: "/todogreen/espaco", pages: ["espaco"] },
-  { id: "commercial", label: "Comercial", route: "/todogreen/oportunidades", pages: ["oportunidades", "propostas", "metas", "performance-comercial"] },
-  { id: "pricing", label: "Pricing", route: "/todogreen/precificacao", pages: ["precificacao", "regua", "deal-desk", "custos", "receita"] },
+  { id: "overview", label: "Início", route: "/todogreen/dashboard", pages: ["dashboard"] },
+  { id: "commercial", label: "Comercial", route: "/todogreen/clientes", pages: ["clientes", "oportunidades", "precificacao", "regua", "propostas", "deal-desk", "metas", "performance-comercial"] },
   { id: "operations", label: "Operação", route: "/todogreen/operacoes", pages: ["operacoes", "rastreamento", "solicitacoes", "cadastros", "estoque", "compras"] },
+  { id: "finance", label: "Financeiro", route: "/todogreen/receita", pages: ["receita", "custos", "comissoes"] },
   { id: "esg", label: "ESG", route: "/todogreen/central-esg", pages: ["central-esg", "esg", "metodologia", "documentos"] },
-  { id: "clients", label: "Clientes", route: "/todogreen/clientes", pages: ["clientes"] },
-  { id: "reports", label: "Relatórios", route: "/todogreen/relatorios", pages: ["relatorios", "auditoria"] },
-  { id: "dashboards", label: "Dashboards", route: "/todogreen/dashboards", pages: ["dashboards"] },
+  { id: "management", label: "Gestão", route: "/todogreen/espaco", pages: ["espaco", "central-trabalho", "dashboards", "relatorios", "auditoria", "integracoes", "acessos"] },
+]);
+
+const WORK_AREAS = Object.freeze([
+  { id: "commercial", label: "Comercial", outcome: "Da conta ao contrato", icon: BriefcaseBusiness, links: [["Clientes", "/todogreen/clientes"], ["Oportunidades", "/todogreen/oportunidades"], ["Precificação", "/todogreen/precificacao"], ["Propostas e contratos", "/todogreen/propostas"]] },
+  { id: "operations", label: "Operação", outcome: "Do contrato à entrega", icon: Truck, links: [["Ordens e operações", "/todogreen/operacoes"], ["Rastreamento", "/todogreen/rastreamento"], ["Solicitações", "/todogreen/solicitacoes"], ["Estoque e compras", "/todogreen/estoque"]] },
+  { id: "finance", label: "Financeiro", outcome: "Da execução ao recebimento", icon: WalletCards, links: [["Receita e faturamento", "/todogreen/receita"], ["Custos e margem", "/todogreen/custos"], ["Comissões", "/todogreen/comissoes"]] },
+  { id: "esg", label: "ESG", outcome: "Do dado à evidência", icon: Leaf, links: [["Central ESG", "/todogreen/central-esg"], ["Indicadores", "/todogreen/esg"], ["Documentos", "/todogreen/documentos"], ["Metodologia", "/todogreen/metodologia"]] },
+  { id: "management", label: "Gestão", outcome: "Do plano ao acompanhamento", icon: Settings, links: [["Espaço de trabalho", "/todogreen/espaco"], ["Projetos", "/todogreen/central-trabalho"], ["Dashboards", "/todogreen/dashboards"], ["Relatórios", "/todogreen/relatorios"]] },
 ]);
 
 const MANAGEMENT_TOOLS = Object.freeze([
@@ -1238,6 +1243,36 @@ function DashboardPanel({ data, dashboard, tasks, onNavigate }) {
   );
 }
 
+function WorkAreaMap({ onNavigate }) {
+  return (
+    <section className="tdg-work-map" aria-labelledby="tdg-work-map-title">
+      <header>
+        <div>
+          <span className="tdg-kicker">MAPA DE TRABALHO</span>
+          <h2 id="tdg-work-map-title">Escolha a área pelo resultado que você precisa gerar</h2>
+          <p>As ferramentas seguem a mesma jornada: cliente, contrato, operação, financeiro e evidências.</p>
+        </div>
+      </header>
+      <div className="tdg-journey" aria-label="Jornada principal">
+        <span>Cliente</span><ArrowRight size={14} /><span>Contrato</span><ArrowRight size={14} /><span>Operação</span><ArrowRight size={14} /><span>Financeiro</span><ArrowRight size={14} /><span>ESG</span>
+      </div>
+      <div className="tdg-work-area-grid">
+        {WORK_AREAS.map((area) => {
+          const Icon = area.icon;
+          return (
+            <article className={`tdg-work-area ${area.id}`} key={area.id}>
+              <div className="tdg-work-area-heading"><span><Icon size={20} /></span><div><strong>{area.label}</strong><small>{area.outcome}</small></div></div>
+              <div className="tdg-work-area-links">
+                {area.links.map(([label, route]) => <button type="button" onClick={() => onNavigate?.(route)} key={route}>{label}<ArrowRight size={14} /></button>)}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function PricingPanel({ role, criar, db, authHeaders, setToast, opportunities = [] }) {
   const opportunityId =
     typeof window === "undefined"
@@ -1828,6 +1863,11 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
     ? MANAGEMENT_TOOLS[0]
     : MANAGEMENT_TOOLS.find((item) => item.id === page) || null;
   const currentPage = activeManagement || MODULE_IMPLEMENTATION[page] || MODULE_IMPLEMENTATION.dashboard;
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    document.title = `${currentPage.title} | To Do Green`;
+    return undefined;
+  }, [currentPage.title]);
   const catalogRequested = new URLSearchParams(path.split("?")[1] || "").get("ferramentas") === "1";
   // A vertical inteira numa chamada só, e só depois que o acesso foi
   // confirmado: pedir os registros antes disso seria bater no servidor para
@@ -1906,7 +1946,7 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
             <Search size={15} />Buscar ferramenta
           </button>
           <details className="tdg-management-menu">
-            <summary>Gestão e configurações</summary>
+            <summary>Configurações</summary>
             <div data-tdg-management-tools="true">
               {MANAGEMENT_TOOLS
                 .filter((item) => !item.permission || hasTodoGreenPermission(role, item.permission))
@@ -1930,7 +1970,7 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
         {PRIMARY_NAVIGATION.map((item) => (
           <button
             type="button"
-            className={!activeManagement && primaryNavigation.id === item.id ? "active" : ""}
+            className={primaryNavigation.id === item.id ? "active" : ""}
             onClick={() => navigate(item.route)}
             key={item.id}
           >
@@ -1960,6 +2000,7 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
         </div>
       )}
 
+      {page === "dashboard" && <WorkAreaMap onNavigate={navigate} />}
       {page === "dashboard" && <DashboardPanel data={verticalData} dashboard={dashboard} tasks={db?.tasks || []} onNavigate={navigate} />}
       {page === "espaco" && (
         <Suspense fallback={<section className="tdg-panel">Abrindo o espaço de trabalho...</section>}>
@@ -2017,8 +2058,8 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
       {isOverview && (
         <details className="tdg-tool-catalog" open={catalogRequested || undefined}>
           <summary>
-            <span><strong>Todas as ferramentas</strong><small>Encontre uma função específica sem aumentar o menu principal.</small></span>
-            <span>Explorar</span>
+            <span><strong>Índice completo de funcionalidades</strong><small>Use quando você já souber a função específica que procura.</small></span>
+            <span>Abrir índice</span>
           </summary>
           <div className="tdg-tool-catalog-content">
             <div className="tdg-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar função, área, produto ou especialista" aria-label="Buscar funções da vertical To Do Green" /></div>

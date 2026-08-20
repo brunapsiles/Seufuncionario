@@ -43,7 +43,7 @@ const renderRecovery = (node) => {
       <p>A versão salva no navegador pode estar desatualizada. Atualize os arquivos do aplicativo para continuar.</p>
       <div class="tdg-load-recovery-actions">
         <button type="button" data-tdg-retry>Tentar novamente</button>
-        <a href="/">Voltar ao Seu Funcionário</a>
+        <a href="/todogreen">Voltar ao início</a>
       </div>
       <small>Se a conexão estiver instável, aguarde alguns segundos e tente novamente.</small>
     </div>

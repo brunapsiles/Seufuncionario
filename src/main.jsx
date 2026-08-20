@@ -12,6 +12,7 @@ import "./features/logistics/LogisticsVerticalCredentials.js";
 import "./features/logistics/LogisticsVerticalWorkCenterV2.js";
 import "./features/logistics/LogisticsVerticalFleet.js";
 import "./features/logistics/LogisticsVerticalNavigation.js";
+import "./features/logistics/LogisticsVerticalBranding.js";
 
 const reportError = (message, stack, componentStack) => {
   try {
@@ -54,7 +55,7 @@ class ErrorBoundary extends React.Component {
     return (
       <div className="crash-screen">
         <div className="crash-card">
-          <strong>Seu Funcionário</strong>
+          <strong>{/^\/todogreen(?:\/|$)/.test(location.pathname) ? "To Do Green" : "Seu Funcionário"}</strong>
           <h1>Algo deu errado</h1>
           <p>
             Encontramos um problema inesperado. Seus dados estão salvos; tente

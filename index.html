@@ -12,6 +12,13 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Seu Funcionário" />
     <title>Seu Funcionário</title>
+    <script>
+      if (/^\/todogreen(?:\/|$)/.test(location.pathname)) {
+        document.title = "To Do Green";
+        document.querySelector('meta[name="description"]').content = "To Do Green — comercial, operação, financeiro, gestão e ESG no mesmo fluxo.";
+        document.querySelector('meta[name="apple-mobile-web-app-title"]').content = "To Do Green";
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
