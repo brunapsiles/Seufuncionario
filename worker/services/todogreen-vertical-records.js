@@ -244,6 +244,18 @@ const COLECOES = {
       responsavelId: row.responsible_user_id || "",
       antecedenciaAvisoDias: row.notice_days || 60,
       versao: row.version || 1,
+      servicoId: row.service_id || "",
+      tabelaPrecoId: row.price_table_id || "",
+      sla: parse(row.sla_json, {}),
+      condicoesComerciais: parse(row.commercial_terms_json, {}),
+      impostos: parse(row.taxes_json, {}),
+      regrasFaturamento: parse(row.billing_rules_json, {}),
+      indiceReajuste: row.adjustment_index || "",
+      dataBaseReajuste: row.adjustment_base_date || "",
+      compromissoMinimo: row.minimum_commitment || 0,
+      aprovacao: row.approval_status || "pending",
+      aprovadoPor: row.approved_by || "",
+      aprovadoEm: row.approved_at || "",
       campos: parse(row.fields_json, {}),
       revision: row.revision,
       criadoEm: row.created_at,
@@ -271,6 +283,19 @@ const COLECOES = {
       billing_day: Math.min(31, Math.max(1, Math.trunc(numero(corpo.diaFaturamento)))) || null,
       responsible_user_id: texto(corpo.responsavelId, 120) || null,
       notice_days: Math.min(365, Math.max(0, Math.trunc(numero(corpo.antecedenciaAvisoDias) || 60))),
+      service_id: texto(corpo.servicoId, 120),
+      price_table_id: texto(corpo.tabelaPrecoId, 120),
+      sla_json: JSON.stringify(objeto(corpo.sla)),
+      commercial_terms_json: JSON.stringify(objeto(corpo.condicoesComerciais)),
+      taxes_json: JSON.stringify(objeto(corpo.impostos)),
+      billing_rules_json: JSON.stringify(objeto(corpo.regrasFaturamento)),
+      adjustment_index: texto(corpo.indiceReajuste, 80),
+      adjustment_base_date: texto(corpo.dataBaseReajuste, 20) || null,
+      minimum_commitment: Math.max(0, numero(corpo.compromissoMinimo)),
+      approval_status: ["pending", "approved", "rejected"].includes(texto(corpo.aprovacao, 40))
+        ? texto(corpo.aprovacao, 40) : "pending",
+      approved_by: texto(corpo.aprovadoPor, 120) || null,
+      approved_at: texto(corpo.aprovadoEm, 40) || null,
       fields_json: JSON.stringify(objeto(corpo.campos)),
     }),
     exigido: (corpo) =>
@@ -853,6 +878,8 @@ const criar = async (env, colecao, access, user, corpo) => {
       cliente: corpo.cliente || proposta.client_name,
       oportunidadeId: corpo.oportunidadeId || proposta.opportunity_id,
       cenarioId: corpo.cenarioId || proposta.scenario_id,
+      aprovadoPor: texto(corpo.aprovacao, 40) === "approved" ? user.id : "",
+      aprovadoEm: texto(corpo.aprovacao, 40) === "approved" ? new Date().toISOString() : "",
     };
   }
 
@@ -916,6 +943,10 @@ const atualizar = async (env, colecao, access, user, id, corpo) => {
     return json({ error: "Informe a revisão do registro que você leu." }, 400);
 
   const proximo = { ...colecao.daLinha(atual), ...corpo };
+  if (colecao === COLECOES.contracts && texto(corpo.aprovacao, 40)) {
+    proximo.aprovadoPor = texto(corpo.aprovacao, 40) === "approved" ? user.id : "";
+    proximo.aprovadoEm = texto(corpo.aprovacao, 40) === "approved" ? new Date().toISOString() : "";
+  }
   const erro = colecao.exigido(proximo);
   if (erro) return json({ error: erro }, 400);
   if (colecao === COLECOES.financial) {
