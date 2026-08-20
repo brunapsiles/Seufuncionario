@@ -645,6 +645,16 @@ describe("LogisticsVertical", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/todogreen/clients", expect.any(Object)));
   });
 
+  it("expõe a espinha transacional em telas operáveis de operação e financeiro", async () => {
+    window.history.pushState({}, "", "/todogreen/ordens-servico");
+    await renderarAutorizada();
+    expect(await screen.findByRole("heading", { name: "Ordens de serviço", level: 2 })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Financeiro" }));
+    expect(await screen.findByRole("heading", { name: "Fila de faturamento", level: 2 })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: /Seções de Financeiro/ }).textContent).toContain("Títulos e baixas");
+    expect(screen.getByRole("navigation", { name: /Seções de Financeiro/ }).textContent).toContain("Rateio de custos");
+  });
+
   it("filters functions while preserving real workflow navigation", async () => {
     await renderarAutorizada();
     fireEvent.change(screen.getByLabelText("Buscar funções da vertical To Do Green"), {

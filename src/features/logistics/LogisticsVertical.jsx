@@ -104,6 +104,7 @@ const TodoGreenWorkspace = lazy(() => import("./TodoGreenWorkspace.jsx"));
 const FinancePage = lazy(() => import("./pages/FinancePage.jsx"));
 const OperationsPage = lazy(() => import("./pages/OperationsPage.jsx"));
 const GovernancePage = lazy(() => import("./pages/GovernancePage.jsx"));
+const TransactionalSpinePage = lazy(() => import("./pages/TransactionalSpinePage.jsx"));
 
 const iconMap = {
   Activity,
@@ -342,6 +343,14 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     status: "functional",
     description: "Registro de rotas, viagens, entregas, frota, ocupação, produtividade, energia e ocorrências.",
   },
+  "ordens-servico": {
+    title: "Ordens de serviço",
+    navLabel: "Ordens de serviço",
+    route: "/todogreen/ordens-servico",
+    area: "operacional",
+    status: "functional",
+    description: "Execução canônica vinculada ao contrato, com progressão controlada até a elegibilidade de faturamento.",
+  },
   rastreamento: {
     title: "TMS Tracker",
     navLabel: "TMS Tracker",
@@ -381,6 +390,30 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     area: "financeiro",
     status: "functional",
     description: "Entradas financeiras por cliente/produto, forecast, faturamento, recebimento e comissão prevista.",
+  },
+  faturamento: {
+    title: "Faturamento operacional",
+    navLabel: "Faturamento",
+    route: "/todogreen/faturamento",
+    area: "financeiro",
+    status: "functional",
+    description: "Fila de operações concluídas, conferência, fechamento, documento fiscal e geração do título.",
+  },
+  titulos: {
+    title: "Títulos e baixas",
+    navLabel: "Títulos e baixas",
+    route: "/todogreen/titulos",
+    area: "financeiro",
+    status: "functional",
+    description: "Contas a pagar e receber com competência, vencimento, saldo, parcelas e liquidações rastreáveis.",
+  },
+  rateios: {
+    title: "Rateio de custos",
+    navLabel: "Rateio de custos",
+    route: "/todogreen/rateios",
+    area: "financeiro",
+    status: "functional",
+    description: "Distribuição integral do custo por OS, operação, cliente, contrato, veículo, fornecedor e centro de custo.",
   },
   custos: {
     title: "Custo, margem e decisão de aceite",
@@ -457,16 +490,16 @@ const MODULE_IMPLEMENTATION = Object.freeze({
 const PRIMARY_NAVIGATION = Object.freeze([
   { id: "overview", label: "Início", route: "/todogreen/dashboard", pages: ["dashboard"] },
   { id: "commercial", label: "Comercial", route: "/todogreen/clientes", pages: ["clientes", "oportunidades", "precificacao", "regua", "propostas", "deal-desk", "metas", "performance-comercial"] },
-  { id: "operations", label: "Operação", route: "/todogreen/operacoes", pages: ["operacoes", "rastreamento", "solicitacoes", "cadastros", "estoque", "compras"] },
-  { id: "finance", label: "Financeiro", route: "/todogreen/receita", pages: ["receita", "custos", "comissoes"] },
+  { id: "operations", label: "Operação", route: "/todogreen/ordens-servico", pages: ["ordens-servico", "operacoes", "rastreamento", "solicitacoes", "cadastros", "estoque", "compras"] },
+  { id: "finance", label: "Financeiro", route: "/todogreen/faturamento", pages: ["faturamento", "titulos", "rateios", "receita", "custos", "comissoes"] },
   { id: "esg", label: "ESG", route: "/todogreen/central-esg", pages: ["central-esg", "esg", "metodologia", "documentos"] },
   { id: "management", label: "Gestão", route: "/todogreen/espaco", pages: ["espaco", "central-trabalho", "dashboards", "relatorios", "auditoria", "integracoes", "acessos"] },
 ]);
 
 const WORK_AREAS = Object.freeze([
   { id: "commercial", label: "Comercial", outcome: "Da conta ao contrato", icon: BriefcaseBusiness, links: [["Clientes", "/todogreen/clientes"], ["Oportunidades", "/todogreen/oportunidades"], ["Precificação", "/todogreen/precificacao"], ["Propostas e contratos", "/todogreen/propostas"]] },
-  { id: "operations", label: "Operação", outcome: "Do contrato à entrega", icon: Truck, links: [["Ordens e operações", "/todogreen/operacoes"], ["Rastreamento", "/todogreen/rastreamento"], ["Solicitações", "/todogreen/solicitacoes"], ["Estoque e compras", "/todogreen/estoque"]] },
-  { id: "finance", label: "Financeiro", outcome: "Da execução ao recebimento", icon: WalletCards, links: [["Receita e faturamento", "/todogreen/receita"], ["Custos e margem", "/todogreen/custos"], ["Comissões", "/todogreen/comissoes"]] },
+  { id: "operations", label: "Operação", outcome: "Do contrato à entrega", icon: Truck, links: [["Ordens de serviço", "/todogreen/ordens-servico"], ["Operações", "/todogreen/operacoes"], ["Rastreamento", "/todogreen/rastreamento"], ["Solicitações", "/todogreen/solicitacoes"]] },
+  { id: "finance", label: "Financeiro", outcome: "Da execução ao recebimento", icon: WalletCards, links: [["Faturamento", "/todogreen/faturamento"], ["Títulos e baixas", "/todogreen/titulos"], ["Rateio de custos", "/todogreen/rateios"], ["Receita e margem", "/todogreen/receita"]] },
   { id: "esg", label: "ESG", outcome: "Do dado à evidência", icon: Leaf, links: [["Central ESG", "/todogreen/central-esg"], ["Indicadores", "/todogreen/esg"], ["Documentos", "/todogreen/documentos"], ["Metodologia", "/todogreen/metodologia"]] },
   { id: "management", label: "Gestão", outcome: "Do plano ao acompanhamento", icon: Settings, links: [["Espaço de trabalho", "/todogreen/espaco"], ["Projetos", "/todogreen/central-trabalho"], ["Dashboards", "/todogreen/dashboards"], ["Relatórios", "/todogreen/relatorios"]] },
 ]);
@@ -768,7 +801,6 @@ const TODO_GREEN_PAGE_ALIASES = Object.freeze({
   alcada: "deal-desk",
   remuneracao: "comissoes",
   forecast: "receita",
-  faturamento: "receita",
   recebimento: "receita",
   opex: "custos",
   margem: "custos",
@@ -1011,6 +1043,16 @@ const contratoDaApi = (item) => ({
   responsibleId: item.responsavelId,
   noticeDays: item.antecedenciaAvisoDias,
   version: item.versao,
+  serviceId: item.servicoId,
+  priceTableId: item.tabelaPrecoId,
+  sla: item.sla || {},
+  commercialTerms: item.condicoesComerciais || {},
+  taxes: item.impostos || {},
+  billingRules: item.regrasFaturamento || {},
+  adjustmentIndex: item.indiceReajuste,
+  adjustmentBaseDate: item.dataBaseReajuste,
+  minimumCommitment: item.compromissoMinimo,
+  approvalStatus: item.aprovacao,
   revision: item.revision,
   createdAt: item.criadoEm,
 });
@@ -1596,7 +1638,7 @@ function ProposalPanel({ data, criar, atualizar, pedidosDeAprovacao = [], setToa
   const propostasAceitas = (data.proposals || []).filter(propostaAceita);
   const [propostaContratoId, setPropostaContratoId] = useState("");
   const propostaContrato = propostasAceitas.find((item) => item.id === propostaContratoId) || propostasAceitas[0];
-  const contratoVazio = { titulo: "Contrato de operação logística", inicioEm: "", fimEm: "", valorMensal: "", valorTotal: "", termos: "", assinatura: "pending", renovacao: "manual", avisoRenovacaoEm: "", diaFaturamento: "", antecedenciaAvisoDias: "60" };
+  const contratoVazio = { titulo: "Contrato de operação logística", inicioEm: "", fimEm: "", valorMensal: "", valorTotal: "", termos: "", assinatura: "pending", aprovacao: "pending", renovacao: "manual", avisoRenovacaoEm: "", diaFaturamento: "", antecedenciaAvisoDias: "60", servicoId: "", tabelaPrecoId: "", indiceReajuste: "", dataBaseReajuste: "", compromissoMinimo: "", slaPrazoHoras: "", prazoPagamentoDias: "", aliquotaImposto: "", eventoFaturamento: "delivery" };
   const [contrato, setContrato] = useState(contratoVazio);
   const [salvandoContrato, setSalvandoContrato] = useState(false);
   const save = async (event) => {
@@ -1661,6 +1703,11 @@ function ProposalPanel({ data, criar, atualizar, pedidosDeAprovacao = [], setToa
         ...contrato,
         valorMensal: Number(contrato.valorMensal || 0),
         valorTotal: Number(contrato.valorTotal || 0),
+        compromissoMinimo: Number(contrato.compromissoMinimo || 0),
+        sla: { prazoEntregaHoras: Number(contrato.slaPrazoHoras || 0) },
+        condicoesComerciais: { prazoPagamentoDias: Number(contrato.prazoPagamentoDias || 0) },
+        impostos: { aliquotaPercentual: Number(contrato.aliquotaImposto || 0) },
+        regrasFaturamento: { evento: contrato.eventoFaturamento },
         situacao: "draft",
       });
       setContrato(contratoVazio);
@@ -1699,6 +1746,15 @@ function ProposalPanel({ data, criar, atualizar, pedidosDeAprovacao = [], setToa
         <label><span>Fim</span><input type="date" value={contrato.fimEm} onChange={(event) => setContrato((current) => ({ ...current, fimEm: event.target.value }))} /></label>
         <label><span>Valor mensal</span><input type="number" value={contrato.valorMensal} onChange={(event) => setContrato((current) => ({ ...current, valorMensal: event.target.value }))} /></label>
         <label><span>Valor total</span><input type="number" value={contrato.valorTotal} onChange={(event) => setContrato((current) => ({ ...current, valorTotal: event.target.value }))} /></label>
+        <label><span>Serviço</span><input value={contrato.servicoId} onChange={(event) => setContrato((current) => ({ ...current, servicoId: event.target.value }))} placeholder="Código do serviço" /></label>
+        <label><span>Tabela de preço</span><input value={contrato.tabelaPrecoId} onChange={(event) => setContrato((current) => ({ ...current, tabelaPrecoId: event.target.value }))} placeholder="Código da tabela" /></label>
+        <label><span>SLA de entrega</span><input type="number" min="0" value={contrato.slaPrazoHoras} onChange={(event) => setContrato((current) => ({ ...current, slaPrazoHoras: event.target.value }))} placeholder="Horas" /></label>
+        <label><span>Prazo de pagamento</span><input type="number" min="0" value={contrato.prazoPagamentoDias} onChange={(event) => setContrato((current) => ({ ...current, prazoPagamentoDias: event.target.value }))} placeholder="Dias" /></label>
+        <label><span>Imposto estimado</span><input type="number" min="0" step="0.01" value={contrato.aliquotaImposto} onChange={(event) => setContrato((current) => ({ ...current, aliquotaImposto: event.target.value }))} placeholder="%" /></label>
+        <label><span>Compromisso mínimo</span><input type="number" min="0" step="0.01" value={contrato.compromissoMinimo} onChange={(event) => setContrato((current) => ({ ...current, compromissoMinimo: event.target.value }))} /></label>
+        <label><span>Índice de reajuste</span><input value={contrato.indiceReajuste} onChange={(event) => setContrato((current) => ({ ...current, indiceReajuste: event.target.value }))} placeholder="Ex.: IPCA" /></label>
+        <label><span>Data-base do reajuste</span><input type="date" value={contrato.dataBaseReajuste} onChange={(event) => setContrato((current) => ({ ...current, dataBaseReajuste: event.target.value }))} /></label>
+        <label><span>Gatilho do faturamento</span><select value={contrato.eventoFaturamento} onChange={(event) => setContrato((current) => ({ ...current, eventoFaturamento: event.target.value }))}><option value="delivery">Entrega concluída</option><option value="monthly">Fechamento mensal</option><option value="milestone">Marco contratual</option></select></label>
         <label><span>Termos e condições</span><input value={contrato.termos} onChange={(event) => setContrato((current) => ({ ...current, termos: event.target.value }))} /></label>
         <label><span>Renovação</span><select value={contrato.renovacao} onChange={(event) => setContrato((current) => ({ ...current, renovacao: event.target.value }))}><option value="manual">Manual</option><option value="automatic">Automática</option><option value="none">Sem renovação</option></select></label>
         <label><span>Aviso de renovação</span><input type="date" value={contrato.avisoRenovacaoEm} onChange={(event) => setContrato((current) => ({ ...current, avisoRenovacaoEm: event.target.value }))} /></label>
@@ -1706,7 +1762,7 @@ function ProposalPanel({ data, criar, atualizar, pedidosDeAprovacao = [], setToa
         <label><span>Antecedência do aviso</span><input type="number" min="0" max="365" value={contrato.antecedenciaAvisoDias} onChange={(event) => setContrato((current) => ({ ...current, antecedenciaAvisoDias: event.target.value }))} /></label>
         <button className="tdg-action" type="submit" disabled={!propostaContrato || salvandoContrato}><FileCheck size={17} />{salvandoContrato ? "Gerando..." : "Gerar contrato"}</button>
       </form>
-      <div className="tdg-access-list">{data.contracts.map((item) => <div className="tdg-access-row" key={item.id}><span><strong>{item.title}</strong><small>{item.client || "cliente não informado"} · versão {item.version || 1} · {item.renewalType === "automatic" ? "renovação automática" : "renovação manual"}</small></span><span>{item.signatureStatus === "signed" ? "assinado" : item.signatureStatus === "sent" ? "aguardando assinatura" : "assinatura pendente"}</span><span>{item.status}</span>{item.signatureStatus === "pending" && <button type="button" onClick={() => mudarContrato(item, { assinatura: "sent" }, "Envio para assinatura registrado. Nenhuma mensagem externa foi disparada.")}>Registrar envio</button>}{item.signatureStatus === "sent" && <button type="button" onClick={() => mudarContrato(item, { assinatura: "signed", assinadoEm: new Date().toISOString(), situacao: "active" }, "Assinatura confirmada e contrato ativado.")}>Confirmar assinatura</button>}</div>)}</div>
+      <div className="tdg-access-list">{data.contracts.map((item) => <div className="tdg-access-row" key={item.id}><span><strong>{item.title}</strong><small>{item.client || "cliente não informado"} · versão {item.version || 1} · {item.serviceId || "serviço pendente"} · mínimo {BRL.format(item.minimumCommitment || 0)}</small></span><span>{item.approvalStatus === "approved" ? "aprovado" : "aprovação pendente"}</span><span>{item.signatureStatus === "signed" ? "assinado" : item.signatureStatus === "sent" ? "aguardando assinatura" : "assinatura pendente"}</span>{item.approvalStatus !== "approved" && <button type="button" onClick={() => mudarContrato(item, { aprovacao: "approved" }, "Contrato aprovado e liberado para assinatura.")}>Aprovar</button>}{item.signatureStatus === "pending" && <button type="button" onClick={() => mudarContrato(item, { assinatura: "sent" }, "Envio para assinatura registrado. Nenhuma mensagem externa foi disparada.")}>Registrar envio</button>}{item.signatureStatus === "sent" && <button type="button" onClick={() => mudarContrato(item, { assinatura: "signed", assinadoEm: new Date().toISOString(), situacao: "active" }, "Assinatura confirmada e contrato ativado.")}>Confirmar assinatura</button>}</div>)}</div>
     </section>
   );
 }
@@ -2030,8 +2086,12 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
         </Suspense>
       )}
       {page === "operacoes" && <Suspense fallback={<section className="tdg-panel">Carregando operações...</section>}><OperationsPage operations={registros.operations} clients={clientes} contracts={registros.contracts} criar={criar} registrarEventoOperacao={registrarEventoOperacao} listarSubrecurso={listarSubrecurso} setToast={setToast} /></Suspense>}
+      {page === "ordens-servico" && <Suspense fallback={<section className="tdg-panel">Carregando ordens de serviço...</section>}><TransactionalSpinePage mode="service-orders" authHeaders={authHeaders} clients={clientes} contracts={registros.contracts} operations={registros.operations} setToast={setToast} /></Suspense>}
       {page === "rastreamento" && <Suspense fallback={<section className="tdg-panel">Carregando TMS Tracker...</section>}><TrackerPage authHeaders={authHeaders} setToast={setToast} /></Suspense>}
       {page === "receita" && <Suspense fallback={<section className="tdg-panel">Carregando contas a receber...</section>}><FinancePage type="revenue" entries={registros.financial.filter((item) => item.tipo === "revenue")} clients={clientes} contracts={registros.contracts} criar={criar} registrarPagamento={registrarPagamento} listarSubrecurso={listarSubrecurso} setToast={setToast} /></Suspense>}
+      {page === "faturamento" && <Suspense fallback={<section className="tdg-panel">Carregando faturamento...</section>}><TransactionalSpinePage mode="billing" authHeaders={authHeaders} clients={clientes} setToast={setToast} /></Suspense>}
+      {page === "titulos" && <Suspense fallback={<section className="tdg-panel">Carregando títulos...</section>}><TransactionalSpinePage mode="titles" authHeaders={authHeaders} clients={clientes} setToast={setToast} /></Suspense>}
+      {page === "rateios" && <Suspense fallback={<section className="tdg-panel">Carregando rateios...</section>}><TransactionalSpinePage mode="costs" authHeaders={authHeaders} clients={clientes} contracts={registros.contracts} operations={registros.operations} setToast={setToast} /></Suspense>}
       {page === "custos" && <Suspense fallback={<section className="tdg-panel">Carregando custos e margem...</section>}><TripViabilityPage authHeaders={authHeaders} /><FinancePage type="cost" entries={registros.financial.filter((item) => item.tipo === "cost")} clients={clientes} contracts={registros.contracts} criar={criar} registrarPagamento={registrarPagamento} listarSubrecurso={listarSubrecurso} setToast={setToast} /></Suspense>}
       {page === "comissoes" && <Suspense fallback={<section className="tdg-panel">Carregando comissões...</section>}><FinancePage type="commission" entries={registros.financial.filter((item) => item.tipo === "commission")} clients={clientes} contracts={registros.contracts} criar={criar} registrarPagamento={registrarPagamento} listarSubrecurso={listarSubrecurso} setToast={setToast} /></Suspense>}
       {page === "relatorios" && <Suspense fallback={<section className="tdg-panel">Carregando relatórios...</section>}><ReportsPage dashboard={dashboard} data={verticalData} authHeaders={authHeaders} setToast={setToast} /></Suspense>}

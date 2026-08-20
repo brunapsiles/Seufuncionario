@@ -240,6 +240,23 @@ async function createCost(env, access, user, body) {
   return json({ costEntryId: id, amount, allocations: allocations.map((item) => item.id) }, 201);
 }
 
+async function listCosts(env, access, url) {
+  const { limit, offset } = paginacao(url);
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM todogreen_cost_entries WHERE tenant_id=? AND workspace_owner_id=?
+      ORDER BY competence_date DESC,created_at DESC LIMIT ? OFFSET ?`,
+  ).bind(TENANT_ID, access.ownerId, limit, offset).all();
+  const records = [];
+  for (const row of results || []) {
+    const allocationRows = await env.DB.prepare(
+      `SELECT * FROM todogreen_cost_allocations WHERE tenant_id=? AND workspace_owner_id=?
+        AND cost_entry_id=? ORDER BY created_at,id`,
+    ).bind(TENANT_ID, access.ownerId, row.id).all();
+    records.push({ ...row, allocations: allocationRows.results || [] });
+  }
+  return json({ records, limit, offset });
+}
+
 export async function handleTodoGreenTransactions(request, env, access, user) {
   const url = new URL(request.url);
   const parts = url.pathname.replace(/^\/api\/todogreen\/transactions\/?/, "").split("/").filter(Boolean);
@@ -255,6 +272,7 @@ export async function handleTodoGreenTransactions(request, env, access, user) {
   if (resource === "billing-runs" && request.method === "POST" && !id) return closeBilling(env, access, user, body);
   if (resource === "titles" && request.method === "GET" && !id) return listTitles(env, access, url);
   if (resource === "titles" && request.method === "POST" && id && action === "settle") return settleTitle(env, access, user, id, body);
+  if (resource === "costs" && request.method === "GET" && !id) return listCosts(env, access, url);
   if (resource === "costs" && request.method === "POST" && !id) return createCost(env, access, user, body);
   return json({ error: "Rota transacional não encontrada." }, 404);
 }
