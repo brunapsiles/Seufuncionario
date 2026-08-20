@@ -208,6 +208,72 @@ async function searxngSearch(query, baseUrl, fetcher) {
   return normalizeSearchResults(data?.results, "SearXNG");
 }
 
+
+// ===== Provedores gratuitos sem chave =====
+//
+// Os que já existiam aqui exigem cadastro e todos têm cota: quando ela estoura,
+// a pesquisa simplesmente para. Estes três não pedem chave nenhuma, então
+// entram no FIM da cascata como rede de segurança: quando os melhores
+// acabarem a cota do mês, a pesquisa continua respondendo alguma coisa em vez
+// de morrer.
+//
+// A qualidade é menor que a dos pagos — por isso vêm por último, e não no
+// lugar deles.
+
+// A API pública da Wikipédia. Não serve para achar RFQ nem contato, mas
+// resolve bem a parte de IDENTIDADE da ficha — razão social, setor, porte —
+// que é o primeiro plano da pesquisa de empresa. Sem chave e sem cota.
+async function wikipediaSearch(query, fetcher) {
+  const endpoint = new URL("https://pt.wikipedia.org/w/api.php");
+  endpoint.searchParams.set("action", "query");
+  endpoint.searchParams.set("list", "search");
+  endpoint.searchParams.set("srsearch", query);
+  endpoint.searchParams.set("srlimit", String(MAX_RESULTS));
+  endpoint.searchParams.set("format", "json");
+  endpoint.searchParams.set("origin", "*");
+  // A política de uso da API da Wikimedia pede um User-Agent que identifique
+  // quem chama. Sem ele, o acesso automatizado é bloqueado — e o bloqueio
+  // chegaria justamente quando a reserva fosse necessária.
+  const response = await fetcher(endpoint, {
+    headers: {
+      accept: "application/json",
+      "user-agent": "SeuFuncionario/1.0 (https://seufuncionario-expo.brunapsiles.workers.dev)",
+    },
+  });
+  if (!response.ok) throw new Error(`Wikipédia indisponível (${response.status})`);
+  const data = await response.json();
+  const itens = (data?.query?.search || []).map((item) => ({
+    title: item?.title,
+    url: `https://pt.wikipedia.org/wiki/${encodeURIComponent(String(item?.title || "").replace(/ /g, "_"))}`,
+    // O trecho vem com marcação HTML de destaque; sem limpar, ela apareceria
+    // como texto na ficha.
+    description: String(item?.snippet || "").replace(/<[^>]*>/g, ""),
+  }));
+  return normalizeSearchResults(itens, "Wikipédia");
+}
+
+// DuckDuckGo Instant Answer: oficial, documentada e sem chave. Só responde
+// quando existe uma resposta direta, então acerta pouco — mas quando acerta,
+// acerta identidade de empresa, que é o que mais importa aqui.
+async function duckduckgoSearch(query, fetcher) {
+  const endpoint = new URL("https://api.duckduckgo.com/");
+  endpoint.searchParams.set("q", query);
+  endpoint.searchParams.set("format", "json");
+  endpoint.searchParams.set("no_html", "1");
+  endpoint.searchParams.set("skip_disambig", "1");
+  const response = await fetcher(endpoint, { headers: { accept: "application/json" } });
+  if (!response.ok) throw new Error(`DuckDuckGo indisponível (${response.status})`);
+  const data = await response.json();
+  const itens = [];
+  if (data?.AbstractURL && data?.Heading)
+    itens.push({ title: data.Heading, url: data.AbstractURL, description: data.AbstractText || "" });
+  for (const topico of data?.RelatedTopics || []) {
+    if (topico?.FirstURL && topico?.Text)
+      itens.push({ title: topico.Text.slice(0, 120), url: topico.FirstURL, description: topico.Text });
+  }
+  return normalizeSearchResults(itens, "DuckDuckGo");
+}
+
 function deduplicateResults(groups) {
   const seen = new Set();
   const combined = [];
@@ -240,6 +306,14 @@ export function webSearchConfiguration(env = {}) {
         env.SEARCH_ENGINE_ID,
     ),
   };
+  // Os sem chave estão sempre disponíveis, a não ser que alguém desligue.
+  // É por causa deles que `configured` deixa de depender de haver cadastro em
+  // algum serviço: mesmo sem nenhuma chave, a pesquisa responde. Deixar
+  // `configured: false` nesse caso faria a vertical recusar a pesquisa antes
+  // de tentar, e a rede de segurança nunca seria usada.
+  const gratuitosLigados = String(env.SEM_BUSCA_GRATUITA || "") !== "1";
+  providers.duckduckgo = gratuitosLigados;
+  providers.wikipedia = gratuitosLigados;
   return {
     configured: Object.values(providers).some(Boolean),
     providers,
@@ -286,6 +360,20 @@ export async function searchWeb(env, rawQuery, { fetcher = fetch } = {}) {
         run: () =>
           googleSearch(query, googleKey, env.SEARCH_ENGINE_ID, fetcher),
       },
+    // Daqui para baixo, os que NÃO pedem chave. Ficam por último porque a
+    // qualidade é menor que a dos provedores com cadastro — mas são eles que
+    // impedem a pesquisa de morrer quando a cota dos de cima acaba, que é
+    // exatamente o modo de falha que motivou tudo isto.
+    //
+    // Como a cascata para no primeiro que entrega, ter três aqui não custa
+    // três chamadas: custa zero enquanto os de cima estiverem respondendo.
+    //
+    // `SEM_BUSCA_GRATUITA=1` desliga, para quem preferir a pesquisa falhar a
+    // devolver resultado fraco.
+    ...(String(env.SEM_BUSCA_GRATUITA || "") === "1" ? [] : [
+      { name: "DuckDuckGo", run: () => duckduckgoSearch(query, fetcher) },
+      { name: "Wikipédia", run: () => wikipediaSearch(query, fetcher) },
+    ]),
   ].filter(Boolean);
 
   if (!configured.length)
@@ -297,26 +385,38 @@ export async function searchWeb(env, rawQuery, { fetcher = fetch } = {}) {
       failures: [],
     };
 
-  const settled = await Promise.allSettled(configured.map((item) => item.run()));
-  const successful = settled
-    .map((result, index) => ({ result, provider: configured[index].name }))
-    .filter((item) => item.result.status === "fulfilled");
-  const failures = settled
-    .map((result, index) => ({ result, provider: configured[index].name }))
-    .filter((item) => item.result.status === "rejected")
-    .map((item) => ({
-      provider: item.provider,
-      error: String(item.result.reason?.message || "Falha na busca").slice(0, 160),
-    }));
-  return {
-    configured: true,
-    query,
-    results: deduplicateResults(
-      successful.map((item) => item.result.value || []),
-    ),
-    providers: successful.map((item) => item.provider),
-    failures,
-  };
+  // ===== Cascata, não disparo simultâneo =====
+  //
+  // Isto era `Promise.allSettled(configured.map(...))`: TODO provedor
+  // configurado era chamado em TODA consulta. Com três provedores ligados, uma
+  // pesquisa de empresa de 8 consultas virava 24 chamadas — cada uma queimando
+  // a cota de um serviço diferente, ao mesmo tempo, para responder a mesma
+  // pergunta. Ligar mais provedores gratuitos naquele desenho gastava MAIS
+  // cota, não menos.
+  //
+  // Agora vale o mesmo desenho que a cascata de IA (`runWithFallback` em
+  // ai.js) já usava: tenta um; se ele falhar OU voltar vazio, tenta o
+  // seguinte. Um provedor saudável atende tudo sozinho e os demais ficam de
+  // reserva — que é o que faz sentido quando a redundância existe para
+  // sobreviver a cota estourada, e não para somar resultados.
+  //
+  // "Voltar vazio" conta como não atendido de propósito: provedor no ar sem
+  // resultado é indistinguível, para quem usa, de provedor fora do ar.
+  const failures = [];
+  for (const item of configured) {
+    try {
+      const resultados = deduplicateResults([(await item.run()) || []]);
+      if (resultados.length)
+        return { configured: true, query, results: resultados, providers: [item.name], failures };
+      failures.push({ provider: item.name, error: "Respondeu sem resultado." });
+    } catch (erro) {
+      failures.push({
+        provider: item.name,
+        error: String(erro?.message || "Falha na busca").slice(0, 160),
+      });
+    }
+  }
+  return { configured: true, query, results: [], providers: [], failures };
 }
 
 /**

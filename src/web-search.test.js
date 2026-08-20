@@ -21,8 +21,24 @@ describe("web search service", () => {
         exa: false,
         jina: false,
         google: false,
+        // Os sem chave estão sempre disponíveis: são a reserva que mantém a
+        // pesquisa de pé quando a cota dos outros acaba.
+        duckduckgo: true,
+        wikipedia: true,
       },
     });
+  });
+
+  it("sem chave nenhuma, a pesquisa continua configurada pelos gratuitos", () => {
+    // Antes disto, ambiente sem chave respondia `configured: false` e a
+    // vertical recusava a pesquisa ANTES de tentar — a reserva nunca seria
+    // usada justamente no cenário em que ela existe para servir.
+    const semChave = webSearchConfiguration({});
+    expect(semChave.configured).toBe(true);
+    expect(semChave.providers.duckduckgo).toBe(true);
+
+    // E quem preferir falhar a receber resultado fraco pode desligar.
+    expect(webSearchConfiguration({ SEM_BUSCA_GRATUITA: "1" }).configured).toBe(false);
   });
 
   it("usa SearXNG autohospedado sem chave e com recorte em português", async () => {
@@ -100,7 +116,12 @@ describe("web search service", () => {
     );
   });
 
-  it("combina provedores e remove links repetidos", async () => {
+  // Era "combina provedores": os dois eram chamados e os resultados somados.
+  // Chamar todo provedor em toda consulta multiplicava o gasto de cota para
+  // responder a mesma pergunta. A redundância existe para SOBREVIVER a uma
+  // cota estourada, não para somar resultado — então agora é cascata: o
+  // segundo provedor só entra quando o primeiro não entrega.
+  it("cai para o próximo provedor só quando o primeiro não entrega", async () => {
     const fetcher = vi.fn(async (url) => {
       if (String(url).includes("tavily"))
         return {
@@ -138,7 +159,36 @@ describe("web search service", () => {
       "pesquisa profunda",
       { fetcher },
     );
-    expect(result.providers).toEqual(["Tavily", "Serper"]);
+    // O Tavily respondeu, então o Serper nem foi chamado: uma cota gasta, não
+    // duas.
+    expect(result.providers).toEqual(["Tavily"]);
+    expect(fetcher.mock.calls.some(([url]) => String(url).includes("serper"))).toBe(false);
+  });
+
+  it("quando o primeiro falha, o seguinte atende — e a pesquisa não morre", async () => {
+    const fetcher = vi.fn(async (url) => {
+      if (String(url).includes("tavily")) return { ok: false, status: 429, json: async () => ({}) };
+      return {
+        ok: true,
+        json: async () => ({
+          organic: [
+            { title: "Mesma fonte", link: "https://example.com/noticia?ref=google", snippet: "Resumo" },
+            { title: "Outra fonte", link: "https://example.com/noticia", snippet: "Repetida" },
+            { title: "Terceira", link: "https://example.org/", snippet: "Outro resumo" },
+          ],
+        }),
+      };
+    });
+    const result = await searchWeb(
+      { TAVILY_API_KEY: "t", SERPER_API_KEY: "s" },
+      "cota estourada",
+      { fetcher },
+    );
+    expect(result.providers).toEqual(["Serper"]);
+    // O motivo da queda do primeiro não se perde: é ele que explica, depois,
+    // por que "a pesquisa parou de funcionar".
+    expect(result.failures[0]).toEqual(expect.objectContaining({ provider: "Tavily" }));
+    // E a remoção de link repetido continua valendo dentro do que atendeu.
     expect(result.results).toHaveLength(2);
   });
 
@@ -239,7 +289,11 @@ describe("probeWebSearch separa os desfechos que se pareciam", () => {
   });
 
   it("sem nenhuma fonte configurada, avisa que não há o que testar", async () => {
-    const laudo = await probeWebSearch({}, { fetcher: async () => respostaBrave([]) });
+    // Precisa desligar os gratuitos: com eles, sempre há o que testar.
+    const laudo = await probeWebSearch(
+      { SEM_BUSCA_GRATUITA: "1" },
+      { fetcher: async () => respostaBrave([]) },
+    );
     expect(laudo.configured).toBe(false);
     expect(laudo.providers).toEqual([]);
   });
@@ -261,16 +315,19 @@ describe("probeWebSearch separa os desfechos que se pareciam", () => {
   });
 
   // Este é o caso que enganava: no ar, respondendo, e sem nada para devolver.
-  it("provedor que responde VAZIO não é confundido com provedor fora do ar", async () => {
+  // Sob cascata ele conta como "não atendeu" — para quem usa, provedor no ar
+  // sem resultado é indistinguível de provedor fora do ar — mas o motivo fica
+  // escrito, e é ele que separa um do outro na tela de Integrações.
+  it("provedor que responde VAZIO é reportado com esse motivo, não como queda", async () => {
     const laudo = await probeWebSearch(
-      { BRAVE_SEARCH_API_KEY: "chave" },
+      { BRAVE_SEARCH_API_KEY: "chave", SEM_BUSCA_GRATUITA: "1" },
       { fetcher: async () => respostaBrave([]) },
     );
     expect(laudo.configured).toBe(true);
-    expect(laudo.providers).toContain("Brave Search");
-    expect(laudo.failures).toEqual([]);
-    // É por `resultCount` que a tela distingue um do outro.
     expect(laudo.resultCount).toBe(0);
+    expect(laudo.failures).toEqual([
+      expect.objectContaining({ provider: "Brave Search", error: "Respondeu sem resultado." }),
+    ]);
   });
 
   it("provedor que falha é reportado com nome e motivo", async () => {
@@ -283,5 +340,69 @@ describe("probeWebSearch separa os desfechos que se pareciam", () => {
     expect(laudo.failures.length).toBeGreaterThan(0);
     expect(laudo.failures[0].provider).toBe("Brave Search");
     expect(laudo.failures[0].error).toBeTruthy();
+  });
+});
+
+// ===== A pesquisa não pode morrer quando a cota acaba =====
+//
+// Este é o cenário que motivou tudo: os provedores com cadastro têm cota
+// mensal, e quando ela estoura eles passam a recusar. Antes, isso significava
+// pesquisa parada — e "a pesquisa parou de funcionar" foi exatamente como o
+// problema chegou.
+describe("rede de segurança quando a cota acaba", () => {
+  it("todos os pagos recusando, um gratuito atende", async () => {
+    const fetcher = vi.fn(async (url) => {
+      const alvo = String(url);
+      // 429 é a resposta típica de cota estourada.
+      if (alvo.includes("tavily") || alvo.includes("serper") || alvo.includes("brave"))
+        return { ok: false, status: 429, json: async () => ({}) };
+      if (alvo.includes("duckduckgo"))
+        return {
+          ok: true,
+          json: async () => ({
+            Heading: "Transportadora Exemplo",
+            AbstractURL: "https://exemplo.com.br",
+            AbstractText: "Logística e transporte",
+            RelatedTopics: [],
+          }),
+        };
+      return { ok: true, json: async () => ({}) };
+    });
+
+    const resultado = await searchWeb(
+      { TAVILY_API_KEY: "t", SERPER_API_KEY: "s", BRAVE_SEARCH_API_KEY: "b" },
+      "Transportadora Exemplo Brasil",
+      { fetcher },
+    );
+
+    expect(resultado.providers).toEqual(["DuckDuckGo"]);
+    expect(resultado.results.length).toBeGreaterThan(0);
+    // Os três que recusaram ficam registrados: é o que permite descobrir DEPOIS
+    // que foi cota, e não outra coisa.
+    expect(resultado.failures.map((f) => f.provider)).toEqual(
+      expect.arrayContaining(["Tavily", "Serper", "Brave Search"]),
+    );
+  });
+
+  it("com o provedor de cima saudável, os gratuitos nem são chamados", async () => {
+    const fetcher = vi.fn(async (url) => {
+      if (String(url).includes("tavily"))
+        return {
+          ok: true,
+          json: async () => ({
+            results: [{ title: "Achou", url: "https://exemplo.com.br", content: "ok" }],
+          }),
+        };
+      return { ok: true, json: async () => ({}) };
+    });
+
+    await searchWeb({ TAVILY_API_KEY: "t" }, "consulta comum", { fetcher });
+
+    // A cascata para no primeiro que entrega. Se os gratuitos fossem chamados
+    // aqui, ter reserva custaria uma chamada extra em TODA consulta — que é
+    // justamente o desperdício que a cascata veio corrigir.
+    const chamados = fetcher.mock.calls.map(([url]) => String(url));
+    expect(chamados.some((url) => url.includes("duckduckgo"))).toBe(false);
+    expect(chamados.some((url) => url.includes("wikipedia"))).toBe(false);
   });
 });
