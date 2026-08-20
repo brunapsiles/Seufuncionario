@@ -21,9 +21,14 @@ describe("web search service", () => {
         exa: false,
         jina: false,
         google: false,
+        firecrawl: false,
+        search1: false,
+        you: false,
+        serpapi: false,
         // Os sem chave estão sempre disponíveis: são a reserva que mantém a
         // pesquisa de pé quando a cota dos outros acaba.
         duckduckgo: true,
+        wikidata: true,
         wikipedia: true,
       },
     });
@@ -159,22 +164,23 @@ describe("web search service", () => {
       "pesquisa profunda",
       { fetcher },
     );
-    // O Tavily respondeu, então o Serper nem foi chamado: uma cota gasta, não
-    // duas.
-    expect(result.providers).toEqual(["Tavily"]);
-    expect(fetcher.mock.calls.some(([url]) => String(url).includes("serper"))).toBe(false);
+    // O Serper vem antes do Tavily na cascata (cota gratuita maior), então é
+    // ele quem atende — e o Tavily nem é chamado. Uma cota gasta, não duas.
+    expect(result.providers).toEqual(["Serper"]);
+    expect(fetcher.mock.calls.some(([url]) => String(url).includes("tavily"))).toBe(false);
   });
 
   it("quando o primeiro falha, o seguinte atende — e a pesquisa não morre", async () => {
     const fetcher = vi.fn(async (url) => {
-      if (String(url).includes("tavily")) return { ok: false, status: 429, json: async () => ({}) };
+      // O Serper é o primeiro da fila; simulamos a cota dele estourada.
+      if (String(url).includes("serper")) return { ok: false, status: 429, json: async () => ({}) };
       return {
         ok: true,
         json: async () => ({
-          organic: [
-            { title: "Mesma fonte", link: "https://example.com/noticia?ref=google", snippet: "Resumo" },
-            { title: "Outra fonte", link: "https://example.com/noticia", snippet: "Repetida" },
-            { title: "Terceira", link: "https://example.org/", snippet: "Outro resumo" },
+          results: [
+            { title: "Mesma fonte", url: "https://example.com/noticia?ref=google", content: "Resumo" },
+            { title: "Outra fonte", url: "https://example.com/noticia", content: "Repetida" },
+            { title: "Terceira", url: "https://example.org/", content: "Outro resumo" },
           ],
         }),
       };
@@ -184,10 +190,10 @@ describe("web search service", () => {
       "cota estourada",
       { fetcher },
     );
-    expect(result.providers).toEqual(["Serper"]);
+    expect(result.providers).toEqual(["Tavily"]);
     // O motivo da queda do primeiro não se perde: é ele que explica, depois,
     // por que "a pesquisa parou de funcionar".
-    expect(result.failures[0]).toEqual(expect.objectContaining({ provider: "Tavily" }));
+    expect(result.failures[0]).toEqual(expect.objectContaining({ provider: "Serper" }));
     // E a remoção de link repetido continua valendo dentro do que atendeu.
     expect(result.results).toHaveLength(2);
   });

@@ -82,7 +82,12 @@ export default function IntegrationsPage({ authHeaders, setToast }) {
     exa: "Exa",
     jina: "Jina Search",
     google: "Google Search",
+    firecrawl: "Firecrawl",
+    search1: "Search1API",
+    you: "You.com",
+    serpapi: "SerpApi",
     duckduckgo: "DuckDuckGo (sem chave)",
+    wikidata: "Wikidata (sem chave)",
     wikipedia: "Wikipédia (sem chave)",
   };
   const fontes = (status?.search?.providers || []).filter((p) => p.configured);

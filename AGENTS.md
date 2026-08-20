@@ -42,6 +42,37 @@ gratuito da Cloudflare. O workflow `Publicar` do GitHub é apenas uma contingên
 
 **Pendente de cadastro pela titular** (a sessão que implementou não tem acesso ao `wrangler login`/cofre de produção): `VAPID_PUBLIC_KEY` e `VAPID_PRIVATE_KEY` — sem eles, `pushEnabled(env)` fica `false` e o app funciona normalmente, só sem notificações do navegador. Gerar um par novo com `crypto.subtle.generateKey({name:"ECDSA", namedCurve:"P-256"}, true, ["sign","verify"])`, exportar a chave pública como `raw` (base64url) e a privada como `jwk.d` (veja `handleAuth`/`vapidHeaders` em `worker.js` para o formato exato esperado). Opcional: `VAPID_SUBJECT` (um `mailto:` ou URL identificando o operador) — se ausente, usa a URL de produção como padrão.
 
+## Busca web: cascata, nunca disparo simultâneo
+
+`worker/services/web-search.js` tenta UM provedor por vez e só cai para o
+seguinte se ele falhar ou voltar vazio — o mesmo desenho de `runWithFallback`
+em `ai.js`. **Não voltar a chamar todos em paralelo**: já foi assim, e com três
+provedores ligados uma pesquisa de empresa de 8 consultas virava 24 chamadas,
+queimando a cota de três serviços ao mesmo tempo para responder a mesma
+pergunta. Nesse desenho, ligar mais provedor gratuito gastava MAIS cota.
+
+Ordem da cascata (de cima para baixo): SearXNG auto-hospedado, Serper, Brave,
+Tavily, Exa, Jina, Firecrawl, Search1API, You.com, Google CSE, SerpApi e, por
+último, os que não pedem chave — DuckDuckGo, Wikidata e Wikipédia. O critério é
+cota maior primeiro, para a menor sobrar de reserva.
+
+Os três últimos existem para a pesquisa NÃO MORRER quando a cota dos outros
+acaba; como a cascata para no primeiro que entrega, eles não custam chamada
+extra enquanto os de cima respondem. Por isso `webSearchConfiguration` responde
+`configured: true` mesmo sem chave nenhuma — marcar `false` faria a vertical
+recusar a pesquisa antes de tentar, e a reserva nunca serviria justamente
+quando é necessária. `SEM_BUSCA_GRATUITA=1` desliga essa reserva.
+
+Chaves opcionais, todas com cota gratuita: `SERPER_API_KEY`,
+`BRAVE_SEARCH_API_KEY`, `TAVILY_API_KEY`, `EXA_API_KEY`, `JINA_API_KEY`,
+`FIRECRAWL_API_KEY`, `SEARCH1_API_KEY`, `YOU_API_KEY`, `SERPAPI_API_KEY`,
+`GOOGLE_SEARCH_API_KEY` + `SEARCH_ENGINE_ID`. `SEARXNG_BASE_URL` não é chave:
+é a URL de uma instância própria, e é a única saída sem cota.
+
+Cadastrada uma chave, confira com **Integrações → Busca web → Testar**: ele roda
+o mesmo caminho da pesquisa de empresa e diz quem respondeu, quem falhou e
+quantos resultados vieram.
+
 ## Regras inegociáveis
 
 1. **Gratuidade**: nada de serviços pagos, cartão ou dependência obrigatória de API paga. xAI (Grok) não entra na cascata automática; exige `confirmPaid: true` por consumir créditos.

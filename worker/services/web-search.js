@@ -2,6 +2,13 @@ const MAX_QUERY_LENGTH = 500;
 const MAX_RESULTS = 6;
 const MAX_COMBINED_RESULTS = 12;
 
+// A política de uso das APIs da Wikimedia (Wikipédia e Wikidata) pede um
+// User-Agent que identifique quem chama. Sem ele o acesso automatizado é
+// bloqueado — e o bloqueio chegaria justamente quando a reserva fosse
+// necessária.
+const WIKIMEDIA_USER_AGENT =
+  "SeuFuncionario/1.0 (https://seufuncionario-expo.brunapsiles.workers.dev)";
+
 // Neste app "buscar", "pesquisar" e "procurar" quase sempre querem dizer
 // "acha no MEU workspace" — "busca o pedido 123", "procurar a nota da Ana".
 // Usar esses verbos sozinhos como gatilho mandava a pergunta da titular para
@@ -220,6 +227,113 @@ async function searxngSearch(query, baseUrl, fetcher) {
 // A qualidade é menor que a dos pagos — por isso vêm por último, e não no
 // lugar deles.
 
+// Wikidata: dados estruturados de empresa, sem chave e sem cota. Não acha RFQ
+// nem contato, mas responde bem identidade — razão social, setor, país — que é
+// o primeiro plano da pesquisa de empresa. Verificado contra a API real.
+async function wikidataSearch(query, fetcher) {
+  const endpoint = new URL("https://www.wikidata.org/w/api.php");
+  endpoint.searchParams.set("action", "wbsearchentities");
+  endpoint.searchParams.set("search", query);
+  endpoint.searchParams.set("language", "pt");
+  endpoint.searchParams.set("uselang", "pt");
+  endpoint.searchParams.set("format", "json");
+  endpoint.searchParams.set("limit", String(MAX_RESULTS));
+  endpoint.searchParams.set("origin", "*");
+  const response = await fetcher(endpoint, {
+    headers: {
+      accept: "application/json",
+      "user-agent": WIKIMEDIA_USER_AGENT,
+    },
+  });
+  if (!response.ok) throw new Error(`Wikidata indisponível (${response.status})`);
+  const data = await response.json();
+  const itens = (data?.search || []).map((item) => ({
+    title: item?.label,
+    // `concepturi` vem em http; a página canônica é https.
+    url: String(item?.concepturi || "").replace(/^http:/, "https:"),
+    description: item?.description || "",
+  }));
+  return normalizeSearchResults(itens, "Wikidata");
+}
+
+// ===== Provedores com cadastro e cota gratuita =====
+//
+// Escritos a partir da documentação de cada serviço; não deu para conferir
+// contra a API real aqui, porque cada um exige chave. Por isso o botão
+// "Testar" da tela de Integrações existe: cadastrada a chave, ele exercita o
+// caminho de verdade e diz se o formato bate.
+
+// SerpApi: 100 buscas/mês no plano gratuito.
+async function serpapiSearch(query, key, fetcher) {
+  const endpoint = new URL("https://serpapi.com/search.json");
+  endpoint.searchParams.set("q", query);
+  endpoint.searchParams.set("api_key", key);
+  endpoint.searchParams.set("engine", "google");
+  endpoint.searchParams.set("gl", "br");
+  endpoint.searchParams.set("hl", "pt-br");
+  endpoint.searchParams.set("num", String(MAX_RESULTS));
+  const response = await fetcher(endpoint, { headers: { accept: "application/json" } });
+  if (!response.ok) throw new Error(`SerpApi indisponível (${response.status})`);
+  const data = await response.json();
+  return normalizeSearchResults(data?.organic_results, "SerpApi");
+}
+
+// Search1API: cota gratuita mensal.
+async function search1Search(query, key, fetcher) {
+  const response = await fetcher("https://api.search1api.com/search", {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      authorization: `Bearer ${key}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      query,
+      search_service: "google",
+      max_results: MAX_RESULTS,
+      crawl_results: 0,
+    }),
+  });
+  if (!response.ok) throw new Error(`Search1API indisponível (${response.status})`);
+  const data = await response.json();
+  return normalizeSearchResults(data?.results, "Search1API");
+}
+
+// You.com: cota gratuita para desenvolvedor.
+async function youSearch(query, key, fetcher) {
+  const endpoint = new URL("https://api.ydc-index.io/search");
+  endpoint.searchParams.set("query", query);
+  endpoint.searchParams.set("country", "BR");
+  const response = await fetcher(endpoint, {
+    headers: { accept: "application/json", "x-api-key": key },
+  });
+  if (!response.ok) throw new Error(`You.com indisponível (${response.status})`);
+  const data = await response.json();
+  const itens = (data?.hits || []).map((item) => ({
+    title: item?.title,
+    url: item?.url,
+    // Os trechos vêm em lista; juntar preserva o contexto que cada um traz.
+    description: Array.isArray(item?.snippets) ? item.snippets.join(" ") : item?.description || "",
+  }));
+  return normalizeSearchResults(itens, "You.com");
+}
+
+// Firecrawl: créditos gratuitos no cadastro.
+async function firecrawlSearch(query, key, fetcher) {
+  const response = await fetcher("https://api.firecrawl.dev/v1/search", {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      authorization: `Bearer ${key}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ query, limit: MAX_RESULTS, lang: "pt", country: "br" }),
+  });
+  if (!response.ok) throw new Error(`Firecrawl indisponível (${response.status})`);
+  const data = await response.json();
+  return normalizeSearchResults(data?.data, "Firecrawl");
+}
+
 // A API pública da Wikipédia. Não serve para achar RFQ nem contato, mas
 // resolve bem a parte de IDENTIDADE da ficha — razão social, setor, porte —
 // que é o primeiro plano da pesquisa de empresa. Sem chave e sem cota.
@@ -237,7 +351,7 @@ async function wikipediaSearch(query, fetcher) {
   const response = await fetcher(endpoint, {
     headers: {
       accept: "application/json",
-      "user-agent": "SeuFuncionario/1.0 (https://seufuncionario-expo.brunapsiles.workers.dev)",
+      "user-agent": WIKIMEDIA_USER_AGENT,
     },
   });
   if (!response.ok) throw new Error(`Wikipédia indisponível (${response.status})`);
@@ -305,6 +419,10 @@ export function webSearchConfiguration(env = {}) {
       (env.GOOGLE_SEARCH_API_KEY || env.SEARCH_API_KEY) &&
         env.SEARCH_ENGINE_ID,
     ),
+    firecrawl: Boolean(env.FIRECRAWL_API_KEY),
+    search1: Boolean(env.SEARCH1_API_KEY),
+    you: Boolean(env.YOU_API_KEY),
+    serpapi: Boolean(env.SERPAPI_API_KEY),
   };
   // Os sem chave estão sempre disponíveis, a não ser que alguém desligue.
   // É por causa deles que `configured` deixa de depender de haver cadastro em
@@ -313,6 +431,7 @@ export function webSearchConfiguration(env = {}) {
   // de tentar, e a rede de segurança nunca seria usada.
   const gratuitosLigados = String(env.SEM_BUSCA_GRATUITA || "") !== "1";
   providers.duckduckgo = gratuitosLigados;
+  providers.wikidata = gratuitosLigados;
   providers.wikipedia = gratuitosLigados;
   return {
     configured: Object.values(providers).some(Boolean),
@@ -329,22 +448,33 @@ export async function searchWeb(env, rawQuery, { fetcher = fetch } = {}) {
     env.BRAVE_SEARCH_API_KEY ||
     (env.SEARCH_API_KEY && !env.SEARCH_ENGINE_ID ? env.SEARCH_API_KEY : "");
   const googleKey = env.GOOGLE_SEARCH_API_KEY || env.SEARCH_API_KEY;
+  // ===== A ordem da cascata =====
+  //
+  // A cascata para no primeiro que entrega, então esta ordem decide QUEM gasta
+  // cota. O critério, de cima para baixo:
+  //
+  //   1. SearXNG auto-hospedado: sem chave e sem cota. Quando existe, atende
+  //      tudo e nenhum dos outros é tocado — é a saída definitiva do problema
+  //      de cota.
+  //   2. Os de cota mensal maior primeiro, para a menor sobrar de reserva.
+  //   3. Por último, os que não pedem chave: qualidade menor, mas é o que
+  //      mantém a pesquisa de pé quando todo o resto acabou.
   const configured = [
     env.SEARXNG_BASE_URL && {
       name: "SearXNG",
       run: () => searxngSearch(query, env.SEARXNG_BASE_URL, fetcher),
     },
-    env.TAVILY_API_KEY && {
-      name: "Tavily",
-      run: () => tavilySearch(query, env.TAVILY_API_KEY, fetcher),
+    env.SERPER_API_KEY && {
+      name: "Serper",
+      run: () => serperSearch(query, env.SERPER_API_KEY, fetcher),
     },
     braveKey && {
       name: "Brave Search",
       run: () => braveSearch(query, braveKey, fetcher),
     },
-    env.SERPER_API_KEY && {
-      name: "Serper",
-      run: () => serperSearch(query, env.SERPER_API_KEY, fetcher),
+    env.TAVILY_API_KEY && {
+      name: "Tavily",
+      run: () => tavilySearch(query, env.TAVILY_API_KEY, fetcher),
     },
     env.EXA_API_KEY && {
       name: "Exa",
@@ -354,24 +484,37 @@ export async function searchWeb(env, rawQuery, { fetcher = fetch } = {}) {
       name: "Jina Search",
       run: () => jinaSearch(query, env.JINA_API_KEY, fetcher),
     },
+    env.FIRECRAWL_API_KEY && {
+      name: "Firecrawl",
+      run: () => firecrawlSearch(query, env.FIRECRAWL_API_KEY, fetcher),
+    },
+    env.SEARCH1_API_KEY && {
+      name: "Search1API",
+      run: () => search1Search(query, env.SEARCH1_API_KEY, fetcher),
+    },
+    env.YOU_API_KEY && {
+      name: "You.com",
+      run: () => youSearch(query, env.YOU_API_KEY, fetcher),
+    },
     googleKey &&
       env.SEARCH_ENGINE_ID && {
         name: "Google Search",
         run: () =>
           googleSearch(query, googleKey, env.SEARCH_ENGINE_ID, fetcher),
       },
-    // Daqui para baixo, os que NÃO pedem chave. Ficam por último porque a
-    // qualidade é menor que a dos provedores com cadastro — mas são eles que
-    // impedem a pesquisa de morrer quando a cota dos de cima acaba, que é
-    // exatamente o modo de falha que motivou tudo isto.
-    //
-    // Como a cascata para no primeiro que entrega, ter três aqui não custa
-    // três chamadas: custa zero enquanto os de cima estiverem respondendo.
+    env.SERPAPI_API_KEY && {
+      name: "SerpApi",
+      run: () => serpapiSearch(query, env.SERPAPI_API_KEY, fetcher),
+    },
+    // Daqui para baixo, os que NÃO pedem chave nem têm cota. Como a cascata
+    // para no primeiro que entrega, ter esta reserva não custa chamada extra
+    // enquanto os de cima respondem — custa zero até o dia em que fazem falta.
     //
     // `SEM_BUSCA_GRATUITA=1` desliga, para quem preferir a pesquisa falhar a
     // devolver resultado fraco.
     ...(String(env.SEM_BUSCA_GRATUITA || "") === "1" ? [] : [
       { name: "DuckDuckGo", run: () => duckduckgoSearch(query, fetcher) },
+      { name: "Wikidata", run: () => wikidataSearch(query, fetcher) },
       { name: "Wikipédia", run: () => wikipediaSearch(query, fetcher) },
     ]),
   ].filter(Boolean);
