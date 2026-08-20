@@ -645,10 +645,12 @@ describe("LogisticsVertical", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/todogreen/clients", expect.any(Object)));
   });
 
-  it("expõe a espinha transacional em telas operáveis de operação e financeiro", async () => {
+  it("expõe a espinha transacional em telas operáveis de planejamento e financeiro", async () => {
     window.history.pushState({}, "", "/todogreen/ordens-servico");
     await renderarAutorizada();
-    expect(await screen.findByRole("heading", { name: "Ordens de serviço", level: 2 })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Aceite e ordens de serviço", level: 2 })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Planejamento" }));
+    expect(screen.getByRole("navigation", { name: /Seções de Planejamento/ }).textContent).toContain("CIOT");
     fireEvent.click(screen.getByRole("button", { name: "Financeiro" }));
     expect(await screen.findByRole("heading", { name: "Fila de faturamento", level: 2 })).toBeTruthy();
     expect(screen.getByRole("navigation", { name: /Seções de Financeiro/ }).textContent).toContain("Títulos e baixas");
