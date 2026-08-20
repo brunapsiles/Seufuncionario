@@ -16,6 +16,7 @@ import { handleTodoGreenRequests } from "./todogreen-requests.js";
 import { handleTodoGreenVerticalRecords } from "./todogreen-vertical-records.js";
 import { handleTodoGreenStock } from "./todogreen-stock.js";
 import { handleTodoGreenPurchasing } from "./todogreen-purchasing.js";
+import { handleTodoGreenTransactions } from "./todogreen-transactions.js";
 import { handleTodoGreenDealDesk } from "./todogreen-deal-desk.js";
 import { entregarArquivo, handleTodoGreenEvidences } from "./todogreen-evidences.js";
 import { handleTodoGreenClientIntelligence } from "./todogreen-client-intelligence.js";
@@ -150,6 +151,16 @@ export async function routeTodoGreenApi(request, env, ctx) {
       const resolved = await internalAccess(request, env);
       if (resolved.response) return resolved.response;
       return handleTodoGreenPurchasing(request, env, resolved.access, resolved.user);
+    });
+  }
+
+  // Espinha transacional: contrato -> OS -> execução -> faturamento -> título
+  // -> baixa, com custos rateados pelas mesmas chaves canônicas.
+  if (path.startsWith("/api/todogreen/transactions")) {
+    return guarded("To Do Green transactions error", "Não foi possível processar a transação.", async () => {
+      const resolved = await internalAccess(request, env);
+      if (resolved.response) return resolved.response;
+      return handleTodoGreenTransactions(request, env, resolved.access, resolved.user);
     });
   }
 
