@@ -164,8 +164,10 @@ describe("LogisticsVertical", () => {
     await renderarAutorizada();
     expect(screen.getByRole("heading", { name: "Visão Geral", level: 1 }).hidden).toBe(false);
     expect(screen.getByRole("heading", { name: "O que precisa da sua atenção" })).toBeTruthy();
-    expect(screen.getByRole("navigation", { name: "Navegação To Do Green" }).querySelectorAll("button")).toHaveLength(9);
-    expect(screen.getByText("Gestão e configurações")).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Navegação To Do Green" }).querySelectorAll("button")).toHaveLength(6);
+    expect(screen.getByText("Configurações")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /Escolha a área pelo resultado/ })).toBeTruthy();
+    expect(screen.getByText("Da execução ao recebimento")).toBeTruthy();
     expect(screen.queryByText(/Painel operacional/i)).toBeNull();
     expect(screen.queryByText(/ativas.*planejado/i)).toBeNull();
     expect(screen.queryByText(/Recursos organizados por área/i)).toBeNull();
@@ -626,7 +628,7 @@ describe("LogisticsVertical", () => {
   it("a aba do Deal Desk existe e não é apelido da precificação", async () => {
     window.history.pushState({}, "", "/todogreen/precificacao");
     await renderarAutorizada();
-    const secoes = screen.getByRole("navigation", { name: /Seções de Pricing/ });
+    const secoes = screen.getByRole("navigation", { name: /Seções de Comercial/ });
     expect(secoes.textContent).toContain("Deal Desk");
   });
 

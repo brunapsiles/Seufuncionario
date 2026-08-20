@@ -408,7 +408,7 @@ const renderWorkCenter = () => {
     <section class="tdg-work-automation"><div><strong>Automações</strong><span>As regras são executadas no servidor e registradas no histórico do item.</span></div>${state.canWrite ? '<button class="tdg-login-secondary" type="button" data-automation-new>+ Criar regra</button>' : ""}</section>
     ${automationFormHtml()}${automationRulesHtml()}
     ${formHtml()}${itemsViewHtml()}
-    <div class="tdg-ai-panel"><strong>Assistente da Central</strong><small>Analisa somente os registros carregados e usa o roteador de IA do Seu Funcionário.</small><textarea readonly placeholder="A análise aparecerá aqui.">${esc(state.aiResult)}</textarea>${state.aiBusy ? "<small>Analisando...</small>" : ""}</div></div></div></section>`;
+    <div class="tdg-ai-panel"><strong>Assistente da Central</strong><small>Analisa somente os registros carregados e usa a camada de IA da To Do Green.</small><textarea readonly placeholder="A análise aparecerá aqui.">${esc(state.aiResult)}</textarea>${state.aiBusy ? "<small>Analisando...</small>" : ""}</div></div></div></section>`;
 
   root.querySelector("[data-work-sync]")?.addEventListener("click", sync);
   root.querySelector("[data-work-new]")?.addEventListener("click", () => { state.showForm = true; renderWorkCenter(); });
