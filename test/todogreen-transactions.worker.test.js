@@ -92,5 +92,9 @@ describe("espinha transacional", () => {
     expect(valid.status).toBe(201);
     const rows = await env.DB.prepare("SELECT SUM(amount) AS total FROM todogreen_cost_allocations WHERE cost_entry_id=?").bind((await valid.json()).costEntryId).first();
     expect(rows.total).toBe(100);
+    const listed = await request("/api/todogreen/transactions/costs");
+    const records = (await listed.json()).records;
+    expect(records[0]).toMatchObject({ description: "Energia", amount: 100 });
+    expect(records[0].allocations).toHaveLength(2);
   });
 });
