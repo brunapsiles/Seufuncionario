@@ -484,7 +484,7 @@ const MODULE_IMPLEMENTATION = Object.freeze({
   },
   rh: {
     title: "DP/RH",
-    navLabel: "DP/RH",
+    navLabel: "Gestão de pessoas",
     route: "/todogreen/rh",
     area: "rh",
     status: "functional",
