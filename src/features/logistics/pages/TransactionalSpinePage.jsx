@@ -74,6 +74,7 @@ function Billing({ authHeaders, clients, setToast }) {
 
 function Ciot({ authHeaders, clients, contracts, operations, setToast }) {
   const [integration, setIntegration] = useState(null);
+  const [regulatoryProfile, setRegulatoryProfile] = useState(null);
   const [integrationForm, setIntegrationForm] = useState({
     environment: "homologation",
     certificateType: "A1",
@@ -96,7 +97,7 @@ function Ciot({ authHeaders, clients, contracts, operations, setToast }) {
   const [credentialSaving, setCredentialSaving] = useState(false);
   const [form, setForm] = useState({
     serviceOrderId: "", operationType: "carga_lotacao", responsibleType: "etc",
-    contractorDocument: "", carrierDocument: "", driverDocument: "", vehiclePlate: "",
+    contractorDocument: "", carrierDocument: "", rntrc: "", driverDocument: "", vehiclePlate: "",
     originCity: "", originState: "", destinationCity: "", destinationState: "", cargoDescription: "",
     freightAmount: "", floorAmount: "", startsAt: "", endsAt: "", contingencyReason: "",
   });
@@ -105,6 +106,12 @@ function Ciot({ authHeaders, clients, contracts, operations, setToast }) {
       const [setup, serviceOrders, ciots] = await Promise.all([request("ciot-integration", authHeaders), request("service-orders", authHeaders), request("ciot", authHeaders)]);
       const nextIntegration = setup.integration || null;
       setIntegration(nextIntegration);
+      setRegulatoryProfile(setup.regulatoryProfile || null);
+      if (setup.regulatoryProfile) setForm((current) => ({
+        ...current,
+        carrierDocument: current.carrierDocument || setup.regulatoryProfile.document || "",
+        rntrc: current.rntrc || setup.regulatoryProfile.rntrc || "",
+      }));
       if (nextIntegration) setIntegrationForm({
         environment: nextIntegration.environment || "homologation",
         certificateType: nextIntegration.certificateType || "A1",
@@ -150,7 +157,7 @@ function Ciot({ authHeaders, clients, contracts, operations, setToast }) {
   const save = async (event) => {
     event.preventDefault(); setSaving(true);
     try {
-      const body = { ...form, environment: integrationForm.environment, certificateType: integrationForm.certificateType, operationId: selectedOrder?.operationId || "", freightAmount: Number(form.freightAmount || selectedOrder?.netAmount || 0), floorAmount: Number(form.floorAmount || 0) };
+      const body = { ...form, fields: { rntrc: form.rntrc }, environment: integrationForm.environment, certificateType: integrationForm.certificateType, operationId: selectedOrder?.operationId || "", freightAmount: Number(form.freightAmount || selectedOrder?.netAmount || 0), floorAmount: Number(form.floorAmount || 0) };
       await request("ciot", authHeaders, { method: "POST", body: JSON.stringify(body) });
       setToast?.(body.contingencyReason ? "CIOT registrado em contingência" : "CIOT preparado para emissão");
       setForm((current) => ({ ...current, floorAmount: "", contingencyReason: "" }));
@@ -208,14 +215,16 @@ function Ciot({ authHeaders, clients, contracts, operations, setToast }) {
       {integration?.connectorConfigured ? " Conector encontrado." : " Configure a URL do conector no Worker."}
       {integration?.certificateConfigured ? ` Credencial encontrada${integration?.credentialFilename ? `: ${integration.credentialFilename}` : ""}.` : " Envie o A1 ou configure o conector A3 abaixo."}
     </div>
+    {regulatoryProfile && <div className="tdg-txn-empty">Cadastro regulatório pré-preenchido: {regulatoryProfile.legalName} · CNPJ {regulatoryProfile.document} · RNTRC {regulatoryProfile.rntrc} ({regulatoryProfile.rntrcStatus}) · {regulatoryProfile.vehicles?.length || 0} veículos ativos. Confirme os dados variáveis de cada viagem.</div>}
     <form className="tdg-txn-form" onSubmit={save}>
       <label><span>OS vinculada</span><select value={form.serviceOrderId} onChange={(e) => { const order = orders.find((item) => item.id === e.target.value); setForm((v) => ({ ...v, serviceOrderId: e.target.value, freightAmount: order?.netAmount ? String(order.netAmount) : v.freightAmount, startsAt: order?.scheduledStartAt || v.startsAt, endsAt: order?.scheduledEndAt || v.endsAt })); }}><option value="">Sem OS</option>{orders.map((item) => <option value={item.id} key={item.id}>{item.number} · {clientName(clients, item.clientId)}</option>)}</select><small>{selectedContract ? `Contrato: ${selectedContract.titulo || selectedContract.title || selectedContract.id}` : ""}</small></label>
       <label><span>Tipo de operação</span><select value={form.operationType} onChange={(e) => change("operationType", e.target.value)}><option value="carga_lotacao">Carga lotação</option><option value="carga_fracionada">Carga fracionada</option><option value="tac_agregado">TAC agregado</option></select></label>
       <label><span>Responsável</span><select value={form.responsibleType} onChange={(e) => change("responsibleType", e.target.value)}><option value="etc">ETC própria</option><option value="tac">TAC/TAC equiparado via pagamento</option><option value="subcontratada">ETC subcontratada</option></select></label>
       <label><span>CNPJ contratante</span><input value={form.contractorDocument} onChange={(e) => change("contractorDocument", e.target.value)} /></label>
       <label><span>CNPJ/CPF transportador</span><input value={form.carrierDocument} onChange={(e) => change("carrierDocument", e.target.value)} /></label>
+      <label><span>RNTRC transportador</span><input value={form.rntrc} onChange={(e) => change("rntrc", e.target.value)} /></label>
       <label><span>CPF motorista</span><input value={form.driverDocument} onChange={(e) => change("driverDocument", e.target.value)} /></label>
-      <label><span>Placa veículo</span><input value={form.vehiclePlate} onChange={(e) => change("vehiclePlate", e.target.value.toUpperCase())} placeholder={selectedOperation?.vehiclePlate || ""} /></label>
+      <label><span>Placa veículo</span><input list="tdg-ciot-vehicles" value={form.vehiclePlate} onChange={(e) => change("vehiclePlate", e.target.value.toUpperCase())} placeholder={selectedOperation?.vehiclePlate || ""} /><datalist id="tdg-ciot-vehicles">{regulatoryProfile?.vehicles?.map((plate) => <option value={plate} key={plate} />)}</datalist></label>
       <label><span>Origem</span><input value={form.originCity} onChange={(e) => change("originCity", e.target.value)} placeholder="Cidade" /></label>
       <label><span>UF origem</span><input maxLength={2} value={form.originState} onChange={(e) => change("originState", e.target.value.toUpperCase())} /></label>
       <label><span>Destino</span><input value={form.destinationCity} onChange={(e) => change("destinationCity", e.target.value)} placeholder="Cidade" /></label>

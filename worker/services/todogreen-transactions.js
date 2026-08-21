@@ -26,6 +26,22 @@ const parseJson = (value) => {
   try { return JSON.parse(value || "{}"); } catch { return {}; }
 };
 const envValue = (env, key) => key ? env[key] : "";
+const TODO_GREEN_REGULATORY_PROFILE = Object.freeze({
+  legalName: "TO DO TECNOLOGIA E SERVICOS LTDA",
+  tradeName: "TO DO GREEN",
+  document: "41.385.427/0001-32",
+  rntrc: "054901444",
+  rntrcCategory: "ETC",
+  rntrcStatus: "ATIVO",
+  rntrcCheckedAt: "2026-03-12",
+  address: "Rua Quatá, 157 - Vila Olímpia - São Paulo/SP - CEP 04546-041",
+  vehicles: ["STE-2B24", "SUH-7C24", "SWS-6I38", "TJA-1B60", "TJR-7D58", "TKU-7E76", "TLC-7I74", "TLK-9D50", "TAR-3I91", "TAR-5E78", "TAR-5E98", "TAS-0B35", "TAU-2I61"],
+  insurance: [
+    { type: "RCTR-C", policy: "10654660040013250000", limit: 1000000, validUntil: "2027-02-13" },
+    { type: "RC-DC", policy: "10655660040009710000", limit: 1000000, validUntil: "2027-02-13" },
+    { type: "RC-V", policy: "10654660040013250000", limit: 470000, validUntil: "2027-02-13" },
+  ],
+});
 const bytesToBase64 = (bytes) => { let value = ""; for (let i = 0; i < bytes.length; i += 0x8000) value += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(value); };
 const base64ToBytes = (value) => Uint8Array.from(atob(String(value || "")), (char) => char.charCodeAt(0));
 async function ciotVaultKey(env) {
@@ -299,7 +315,7 @@ async function getCiotIntegration(env, access) {
       WHERE tenant_id=? AND workspace_owner_id=? AND mode='direct_api' AND archived_at IS NULL
       ORDER BY updated_at DESC LIMIT 1`,
   ).bind(TENANT_ID, access.ownerId).first();
-  return json({ integration: ciotIntegrationView(row, env) });
+  return json({ integration: ciotIntegrationView(row, env), regulatoryProfile: TODO_GREEN_REGULATORY_PROFILE });
 }
 
 async function saveCiotIntegration(env, access, user, body) {
