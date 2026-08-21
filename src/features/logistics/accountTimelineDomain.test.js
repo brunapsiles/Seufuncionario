@@ -48,7 +48,7 @@ describe("um evento da conta", () => {
 describe("a linha do tempo", () => {
   const eventos = [
     criarEvento({ id: "a", tipo: "oportunidade", quando: "2026-08-08T09:00:00Z", titulo: "Reunião com Supply" }),
-    criarEvento({ id: "b", tipo: "pesquisa", quando: "2026-08-09T09:00:00Z", titulo: "Semente encontrou expansão em Cajamar" }),
+    criarEvento({ id: "b", tipo: "pesquisa", quando: "2026-08-09T09:00:00Z", titulo: "Plantû encontrou expansão em Cajamar" }),
     criarEvento({ id: "c", tipo: "proposta", quando: "2026-08-10T08:00:00Z", titulo: "Proposta MM-234 enviada" }),
     criarEvento({ id: "d", tipo: "portal", quando: "2026-08-10T18:00:00Z", titulo: "Cliente abriu proposta" }),
     criarEvento({ id: "e", tipo: "contrato", quando: "2026-08-20T10:00:00Z", titulo: "Contrato aprovado" }),
@@ -59,7 +59,7 @@ describe("a linha do tempo", () => {
   });
 
   it("junta módulos diferentes na mesma linha", () => {
-    // O ponto do recurso: proposta, portal, contrato e Semente vinham de
+    // O ponto do recurso: proposta, portal, contrato e Plantû vinham de
     // quatro telas separadas e agora contam uma história só.
     expect(new Set(montarLinhaDoTempo(eventos).map((item) => item.tipo)).size).toBe(5);
   });
