@@ -39,8 +39,8 @@ export default function PricingPerformancePanel({ authHeaders, canManage, setToa
   };
   return <section className="tdg-price-guidance" aria-label="Planejado versus realizado">
     <div>
-      <span className="tdg-kicker">PLANNED VS ACTUAL</span>
-      <h3>Pricing × operação real</h3>
+      <span className="tdg-kicker">PLANEJADO X REALIZADO</span>
+      <h3>Precificação x operação real</h3>
       <p>Compara o snapshot aprovado com receita e custo executados. A régua só recebe recomendação após três períodos reais.</p>
       <button type="button" onClick={load} disabled={loading}><RefreshCw size={14} />{loading ? "Atualizando..." : "Atualizar"}</button>
       <div className="tdg-price-details">

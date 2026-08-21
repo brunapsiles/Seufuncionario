@@ -272,13 +272,13 @@ export const TODO_GREEN_MODULE_CATALOG = [
   module("produtos-logisticos", "Produtos logísticos", "produtos", "/todogreen/produtos", {
     icon: "Boxes",
     order: 23,
-    description: "Catálogo operacional e comercial dos serviços vendáveis da transportadora elétrica.",
+    description: "Catálogo operacional e comercial dos serviços contratados.",
     permissions: ["read", "product:manage"],
   }),
   module("catalogo-produtos", "Catálogo de produtos", "produtos", "/todogreen/produtos", {
     icon: "PackageCheck",
     order: 24,
-    description: "Regras, restrições, insumos obrigatórios, indicadores e outputs de cada produto logístico.",
+    description: "Regras, restrições, premissas, indicadores e evidências de cada produto logístico.",
     permissions: ["read", "product:manage"],
   }),
   module("planejamento", "Planejamento e aceite", "planejamento", "/todogreen/planejamento", {
@@ -849,7 +849,7 @@ export const dealDeskTriggers = (summary = {}, productConfig = {}) => {
     required: triggers.length > 0,
     triggers,
     flow: triggers.length
-      ? ["Comercial", "Liderança comercial", "Pricing/Financeiro", "Operações", "Sustentabilidade", "Aprovador final"]
+      ? ["Comercial", "Liderança comercial", "Precificação/Financeiro", "Operações", "Sustentabilidade", "Aprovador final"]
       : [],
   };
 };

@@ -122,8 +122,8 @@ export function todoGreenIntegrationStatus(env = {}, { activeWebhooks = 0 } = {}
       requiresExternalServer: false,
     },
     exclusions: [
-      { id: "whisper", name: "Transcrição Whisper", reason: "Não faz parte da jornada da vertical." },
-      { id: "image-generation", name: "Geração de imagens", reason: "Não faz parte da jornada da vertical." },
+      { id: "whisper", name: "Transcrição Whisper", reason: "Não faz parte da operação To Do Green." },
+      { id: "image-generation", name: "Geração de imagens", reason: "Não faz parte da operação To Do Green." },
     ],
   };
 }

@@ -87,6 +87,13 @@ describe("ela não ocupa a tela sem ser chamada", () => {
       Object.defineProperty(window, "localStorage", original);
     }
   });
+
+  it("abre como assistente do ERP, não como área comercial", async () => {
+    render(<Semente pagina="clientes" authHeaders={authHeaders} />);
+    abrir();
+    expect(await screen.findByText("Assistente do ERP")).toBeTruthy();
+    expect(screen.queryByText("Especialista Comercial")).toBeNull();
+  });
 });
 
 describe("a pergunta vai para a vertical, com o contexto da tela", () => {
@@ -151,11 +158,11 @@ describe("a pergunta vai para a vertical, com o contexto da tela", () => {
     global.fetch = vi.fn((url, opcoes) =>
       JSON.parse(opcoes.body).briefing
         ? resposta({ pautas: [], leitura: "" })
-        : resposta({ error: "Os provedores de IA não responderam agora." }, false));
+        : resposta({ error: "Plantû não respondeu agora. Tente novamente em instantes." }, false));
     render(<Semente pagina="clientes" authHeaders={authHeaders} />);
     abrir();
     await perguntarPor("O que está parado?");
-    expect(await screen.findByText("Os provedores de IA não responderam agora.")).toBeTruthy();
+    expect(await screen.findByText("Plantû não respondeu agora. Tente novamente em instantes.")).toBeTruthy();
   });
 
   it("não envia pergunta curta demais", async () => {

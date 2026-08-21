@@ -42,7 +42,7 @@ const CAMPOS_OPERACAO = [
   { key: "viagensMes", label: "Viagens por mês", type: "number" },
   { key: "ocupacaoPrevistaPercent", label: "Ocupação prevista (%)", type: "number" },
   { key: "frotaLimpaPercent", label: "Frota de baixa emissão (%)", type: "number" },
-  { key: "veiculosDisponiveis", label: "Veículos disponíveis hoje", type: "number" },
+  { key: "veiculosDisponiveis", label: "Veículos alocados hoje", type: "number" },
 ];
 
 const CAMPOS_CONTRATO = [

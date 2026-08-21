@@ -3,7 +3,7 @@ import { ArrowRight, Boxes, CheckCircle2, FileText, Route, Target, TrendingUp, U
 const cards = {
   products: {
     kicker: "PRODUTOS",
-    title: "Produtos logísticos vendáveis",
+    title: "Produtos logísticos",
     description: "A área define o que pode ser vendido e executado: first mile, middle mile, last mile, operação dedicada, transferência, coletas em fornecedores e projetos especiais.",
     icon: Boxes,
     actions: [
@@ -12,8 +12,8 @@ const cards = {
     ],
     responsibilities: [
       "Governar escopo, SLA, unidade de cobrança e restrições de cada produto.",
-      "Definir premissas obrigatórias antes de proposta, aceite e execução.",
-      "Manter margem alvo, indicadores operacionais e outputs ESG por serviço.",
+      "Definir premissas comerciais antes de proposta, aceite e execução.",
+      "Manter margem alvo, indicadores operacionais e evidências ESG por serviço.",
     ],
     handoff: [
       ["Comercial vende com escopo correto", "Comercial"],
@@ -38,7 +38,7 @@ const cards = {
     ],
     handoff: [
       ["Comercial entrega contrato aprovado", "Comercial"],
-      ["Produtos confirma o serviço vendável", "Produtos"],
+      ["Produtos confirma o serviço contratado", "Produtos"],
       ["Operação recebe somente o que foi aceito", "Operação"],
     ],
   },
@@ -121,7 +121,7 @@ export default function EnterpriseAreaPage({ area, products = [], onNavigate }) 
           </ul>
         </article>
         <article className="tdg-work-area">
-          <div className="tdg-work-area-heading"><span><FileText size={20} /></span><div><strong>Handoff</strong><small>Como fecha a cadeia</small></div></div>
+          <div className="tdg-work-area-heading"><span><FileText size={20} /></span><div><strong>Passagem entre áreas</strong><small>Como fecha a cadeia</small></div></div>
           <ul className="tdg-work-area-list">
             {config.handoff.map(([label, owner]) => <li key={label}><strong>{owner}</strong> {label}</li>)}
           </ul>

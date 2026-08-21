@@ -164,7 +164,7 @@ export const WORK_CENTER_AUTOMATION_ACTIONS = [
 ];
 
 export const WORK_CENTER_AI_SPECIALISTS = {
-  commercial: "Especialista Comercial",
+  commercial: "Especialista em Contas e Vendas",
   pricing: "Especialista em Precificação Logística",
   finance: "Especialista Financeiro",
   operations: "Especialista em Operações Logísticas",

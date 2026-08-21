@@ -146,7 +146,7 @@ describe("aceito esta viagem?", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Contrato recorrente/ }));
     expect(screen.getByLabelText("Viagens por mês")).toBeInTheDocument();
-    expect(screen.getByLabelText("Veículos disponíveis")).toBeInTheDocument();
+    expect(screen.getByLabelText("Veículos alocados")).toBeInTheDocument();
     expect(screen.queryByLabelText("Quantas viagens")).not.toBeInTheDocument();
   });
 

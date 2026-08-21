@@ -151,7 +151,7 @@ const ensureCredentialsLogin = () => {
   if (!isTodoGreenRoute()) return false;
   const card = document.querySelector(".tdg-denied-card");
   if (!card) return false;
-  // "Confirmando seu acesso..." usa o mesmo cartão que "acesso negado" — a
+  // "Confirmando permissão" usa o mesmo cartão que "acesso negado" — a
   // diferença é só o `aria-busy` no <main> pai, ligado enquanto a checagem
   // ainda está no ar. Sem essa distinção, QUALQUER pessoa autorizada via
   // "Login privado" nesse instante normal de carregamento, antes do painel

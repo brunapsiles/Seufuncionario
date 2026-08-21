@@ -773,7 +773,7 @@ export default function ClientsPage({ authHeaders, opportunities = [], onNavigat
     } catch (reason) { setResearchError(reason.message); }
   };
   const createTask = async (task) => {
-    if (!onCreateTask) throw new Error("Não foi possível conectar a tarefa ao workspace.");
+    if (!onCreateTask) throw new Error("Não foi possível vincular a tarefa ao cliente.");
     await onCreateTask(task); setToast?.("Tarefa criada e vinculada ao cliente.");
   };
   const completeSuggestedAction = async () => {

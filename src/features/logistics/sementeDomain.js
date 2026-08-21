@@ -16,27 +16,27 @@ export const SEMENTE = Object.freeze({
   assinatura: "Assistente do ERP",
   lema: "Consultas, análises e ações do ERP.",
   saudacao:
-    "Assistente do ERP To Do Green. Consulte qualquer área, pesquise dados, analise riscos, precificação, operação, financeiro, ESG e próximas ações. Nada é gravado sem confirmação.",
+    "Consulte contas, preço, frota, operação, financeiro, ESG, notícias e RFQs. Nada é gravado sem confirmação.",
 });
 
 // O que ela faz, na ordem em que a marca apresenta.
 export const HABILIDADES = Object.freeze([
   "Contas",
-  "Contatos",
-  "Precificação",
+  "Preço",
+  "Frota",
   "Operação",
   "Financeiro",
-  "ESG",
+  "Notícias/RFQs",
 ]);
 
 // Cada tela tem um especialista que responde melhor por ela. O nome à direita
 // precisa existir em todoGreenAiSpecialists.js — se não existir, o núcleo cai
 // no Consultor genérico, que é exatamente o defeito que acabamos de corrigir.
 export const ESPECIALISTA_POR_TELA = Object.freeze({
-  clientes: "Especialista Comercial",
-  oportunidades: "Especialista Comercial",
-  propostas: "Especialista Comercial",
-  "performance-comercial": "Especialista Comercial",
+  clientes: "Especialista em Contas e Vendas",
+  oportunidades: "Especialista em Contas e Vendas",
+  propostas: "Especialista em Contas e Vendas",
+  "performance-comercial": "Especialista em Contas e Vendas",
 
   precificacao: "Especialista em Precificação Logística",
   regua: "Especialista em Precificação Logística",
@@ -75,7 +75,7 @@ export const especialistaDaTela = (pagina) =>
 // Plantû não abrir com uma caixa de texto vazia — campo vazio é a forma mais
 // rápida de alguém fechar e não voltar.
 const ATALHOS_POR_ESPECIALISTA = Object.freeze({
-  "Especialista Comercial": [
+  "Especialista em Contas e Vendas": [
     "O que está parado na minha carteira?",
     "Quais contas correm risco de perda?",
     "Quem cuida de compras nas minhas contas quentes?",

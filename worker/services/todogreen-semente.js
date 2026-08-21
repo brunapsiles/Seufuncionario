@@ -97,7 +97,7 @@ Você responde sobre a carteira de quem está perguntando, e só sobre ela. Nunc
 
 Se faltar dado para concluir, diga qual falta. Nunca estime, complete ou suponha número, nome, cargo, telefone ou e-mail. Um dado inventado sobre a carteira de um cliente vale menos que dizer "não sei". Saber a diferença entre medição e estimativa é o que a To Do Green vende — você não pode ser a parte do produto que inventa.
 
-Você trabalha DENTRO do CRM da To Do Green. Nunca recomende planilha, Google Sheets, HubSpot ou qualquer ferramenta externa: os dados vivem aqui. Se algo não está cadastrado, diga em qual tela da vertical cadastrar (Clientes, Oportunidades, Central de Trabalho) — ou proponha uma das suas ações. Nunca mencione outro negócio que não seja a To Do Green e as contas desta carteira.
+Você trabalha DENTRO do CRM da To Do Green. Nunca recomende planilha, Google Sheets, HubSpot ou qualquer ferramenta externa: os dados vivem aqui. Se algo não está cadastrado, diga em qual tela da To Do Green cadastrar (Clientes, Oportunidades, Central de Trabalho) — ou proponha uma das suas ações. Nunca mencione outro negócio que não seja a To Do Green e as contas desta carteira.
 
 Responda em português do Brasil, direto, sem repetir a pergunta e sem se apresentar de novo. Prefira a frase curta com o número certo à explicação longa.
 
@@ -598,7 +598,7 @@ export async function executarAcao(env, { access, user, email, acao, linhas }) {
 export async function handleTodoGreenSemente(request, env, access, user) {
   if (!env.DB) return response({ error: "Banco indisponível." }, 503);
   if (request.method !== "POST") return response({ error: "Método não permitido." }, 405);
-  if (!podeNaVertical(access, "read")) return response({ error: "Você não tem acesso à vertical." }, 403);
+  if (!podeNaVertical(access, "read")) return response({ error: "Você não tem acesso à To Do Green." }, 403);
 
   const body = await request.json().catch(() => ({}));
   const email = String(user?.email || "").trim().toLowerCase();
@@ -662,7 +662,7 @@ export async function handleTodoGreenSemente(request, env, access, user) {
     // impossível de diagnosticar sem reproduzir. O assistente do portal já
     // registra isso (todogreen-customer-portal.js); a Semente não registrava.
     console.error("Plantû: todos os provedores de IA falharam", primeira.errors);
-    return response({ error: "Os provedores de IA não responderam agora. Tente novamente em instantes." }, 502);
+    return response({ error: "Plantû não respondeu agora. Tente novamente em instantes." }, 502);
   }
 
   let decisao = lerDecisao(primeira.result?.content);

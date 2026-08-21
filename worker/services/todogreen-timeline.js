@@ -260,7 +260,7 @@ export async function inteligenciaDaConta(env, { ownerId, clientId, conta, diasS
 export async function handleTodoGreenTimeline(request, env, access, user) {
   if (!env.DB) return response({ error: "Banco indisponível." }, 503);
   if (request.method !== "GET") return response({ error: "Método não permitido." }, 405);
-  if (!podeNaVertical(access, "read")) return response({ error: "Você não tem acesso à vertical." }, 403);
+  if (!podeNaVertical(access, "read")) return response({ error: "Você não tem acesso à To Do Green." }, 403);
 
   const url = new URL(request.url);
   const clientId = clean(url.pathname.split("/").filter(Boolean)[3], 60) || clean(url.searchParams.get("cliente"), 60);

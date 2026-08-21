@@ -85,7 +85,7 @@ export async function routeTodoGreenApi(request, env, ctx) {
     return guarded("To Do Green pricing parameters error", "Não foi possível carregar os parâmetros comerciais.",
       () => handleTodoGreenPricingParameters(request, env));
   if (path.startsWith("/api/todogreen/pricing-performance")) {
-    return guarded("To Do Green pricing performance error", "Não foi possível comparar pricing e operação.", async () => {
+    return guarded("To Do Green pricing performance error", "Não foi possível comparar preço e operação.", async () => {
       const resolved = await internalAccess(request, env);
       if (resolved.response) return resolved.response;
       return handleTodoGreenPricingPerformance(request, env, resolved.access, resolved.user);
@@ -125,7 +125,7 @@ export async function routeTodoGreenApi(request, env, ctx) {
   }
 
   if (path.startsWith("/api/todogreen/records")) {
-    return guarded("To Do Green records error", "Não foi possível carregar os registros da vertical.", async () => {
+    return guarded("To Do Green records error", "Não foi possível carregar os registros da To Do Green.", async () => {
       const resolved = await internalAccess(request, env);
       if (resolved.response) return resolved.response;
       return handleTodoGreenVerticalRecords(request, env, resolved.access, resolved.user);

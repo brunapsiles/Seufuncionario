@@ -6,7 +6,6 @@ import {
   SEMENTE,
   atalhosDaTela,
   corpoDaPergunta,
-  especialistaDaTela,
   textoDaProposta,
 } from "./sementeDomain.js";
 import "./Semente.css";
@@ -109,7 +108,6 @@ export default function Semente({ pagina, clienteId, authHeaders, aoAgir }) {
   const [pauta, setPauta] = useState(null);
   const conversa = useRef(null);
 
-  const especialista = especialistaDaTela(pagina);
   const atalhos = atalhosDaTela(pagina);
 
   useEffect(() => {
@@ -242,7 +240,7 @@ export default function Semente({ pagina, clienteId, authHeaders, aoAgir }) {
         <SementeAvatar estado={pensando ? "pensando" : "calma"} tamanho={34} />
         <div>
           <strong>{SEMENTE.nome}</strong>
-          <small>{pensando ? "Analisando..." : especialista}</small>
+          <small>{pensando ? "Analisando..." : SEMENTE.assinatura}</small>
         </div>
         <button type="button" onClick={() => alternar(false)} aria-label="Fechar o Plantû">
           <X size={17} />

@@ -110,7 +110,7 @@ export default function IntegrationsPage({ authHeaders, setToast }) {
       <ProviderList title="E-mail e produtividade" icon={Mail} items={status?.communication} />
       <ProviderList title="API e troca de dados" icon={Cable} items={status?.dataExchange} />
       <ProviderList title="Automação ativa na Cloudflare" icon={Workflow} items={status?.automation} />
-      <section className="tdg-panel"><h2>Fora da vertical</h2><p>Whisper e geração de imagens permanecem desligados porque não fazem parte da jornada comercial, logística ou ESG.</p></section>
+      <section className="tdg-panel"><h2>Fora do escopo atual</h2><p>Whisper e geração de imagens permanecem desligados porque não fazem parte da jornada comercial, logística ou ESG.</p></section>
     </div>
   );
 }

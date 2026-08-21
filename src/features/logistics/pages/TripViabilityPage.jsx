@@ -208,7 +208,7 @@ export default function TripViabilityPage({ authHeaders }) {
                     <input type="number" value={viagem.meses} onChange={campo("meses")} />
                   </label>
                   <label>
-                    <span>Veículos disponíveis</span>
+                    <span>Veículos alocados</span>
                     <input
                       type="number"
                       value={viagem.veiculosDisponiveis}
