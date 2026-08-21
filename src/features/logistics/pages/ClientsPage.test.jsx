@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ClientsPage from "./ClientsPage.jsx";
 
@@ -57,6 +57,38 @@ describe("página de clientes", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Atividade" }));
     expect(await screen.findByText("Nenhuma mensagem ou reunião registrada")).toBeInTheDocument();
+  });
+
+  it("oferece kanban por cliente e agrupa a carteira por etapa", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      clientes: [
+        {
+          id: "client-1", accountCode: "TDG-000001", name: "Rede Alfa", segment: "Varejo", status: "ativo", revision: 2,
+          vendedores: [], crm: { stage: "Implantação", temperature: "Quente", contacts: [] },
+        },
+        {
+          id: "client-2", accountCode: "TDG-000002", name: "Rede Beta", segment: "Indústria", status: "ativo", revision: 1,
+          vendedores: [], crm: { stage: "Diagnóstico", temperature: "Morno", contacts: [] },
+        },
+      ],
+      acesso: { podeGerenciar: true, podeEditar: true, somenteCarteira: false },
+    }), { status: 200 })));
+
+    render(<ClientsPage authHeaders={() => ({})} opportunities={[{
+      id: "opp-1", clientId: "client-1", cliente: "Rede Alfa", estagio: "Proposta",
+      valorContrato: 750_000, probabilidade: 80, nextStep: "Kickoff de implantação",
+    }]} />);
+
+    expect(await screen.findByRole("heading", { name: "CRM e carteira 360º" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Kanban" }));
+    expect(screen.getByRole("button", { name: "Kanban" })).toHaveClass("active");
+
+    const board = screen.getByLabelText("Kanban de clientes por etapa");
+    const implantacao = within(board).getByRole("region", { name: /Implantação/ });
+    expect(within(implantacao).getByRole("button", { name: /Rede Alfa/ })).toBeInTheDocument();
+    expect(within(implantacao).getByText("1 conta(s)")).toBeInTheDocument();
+    expect(within(board).getByRole("button", { name: /Rede Beta/ })).toBeInTheDocument();
+    expect(window.localStorage.getItem("todogreen-crm-view")).toBe("kanban");
   });
 
   it("reconhece os contatos salvos sem fingir que são procurement logístico", async () => {
