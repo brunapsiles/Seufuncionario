@@ -75,6 +75,28 @@ Na tela de CIOT:
 
 O processo pode rodar em HTTP local atras de IIS, Caddy, Nginx ou Cloudflare Tunnel. A URL exposta para o ERP precisa ser HTTPS.
 
+## Instalar em servidor Windows
+
+No servidor Windows que ficara com a DLL/EXE da ANTT:
+
+```powershell
+cd connectors\antt-ciot\scripts
+.\bootstrap-windows.ps1 `
+  -AnttPackageUrl "https://url-oficial-da-antt/pacote-ciot.zip" `
+  -DcsUrl "https://url-oficial-da-antt/dcs-ciot.pdf"
+```
+
+O script:
+
+- baixa o pacote oficial da ANTT;
+- baixa o DCS, se a URL for informada;
+- publica o microservico .NET;
+- gera token forte;
+- grava `appsettings.Production.json`;
+- instala e inicia o Windows Service.
+
+Depois disso, exponha `http://127.0.0.1:8088` por HTTPS usando IIS, Caddy, Nginx ou Cloudflare Tunnel e configure a URL publica no ERP.
+
 ## Ponto que ainda depende da ANTT
 
 `AnttProcess:ExecutablePath` deve apontar para um adaptador que saiba chamar a DLL/EXE oficial da ANTT com o DCS vigente. O microservico ja isola essa chamada, mas a assinatura final do adaptador precisa respeitar o pacote tecnico baixado no portal da ANTT.
