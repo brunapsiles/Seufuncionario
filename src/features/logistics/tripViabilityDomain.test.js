@@ -16,11 +16,12 @@ import {
   volumeDaOperacao,
 } from "./tripViabilityDomain.js";
 
-// Os dois custos essenciais. Sem eles o motor se recusa a recomendar, então
+// Custos essenciais. Sem eles o motor se recusa a recomendar, então
 // quase todo teste precisa deles.
 const custosBasicos = (extra = []) => [
   { id: "combustivel", rotulo: "Combustível", unidade: "por_km", valor: 1.8 },
   { id: "motorista", rotulo: "Motorista", unidade: "por_viagem", valor: 320 },
+  { id: "custo_frota", rotulo: "Custo do veículo", unidade: "por_veiculo_mes", valor: 4400 },
   ...extra,
 ];
 
@@ -30,6 +31,7 @@ const spot = (extra = {}) => ({
   kmRetornoVazio: 0,
   horasPorViagem: 8,
   freteOferecido: 2200,
+  veiculosAlocados: 1,
   ...extra,
 });
 
@@ -225,7 +227,7 @@ describe("receita por produto", () => {
 describe("custos essenciais", () => {
   it("aponta combustível e motorista quando faltam", () => {
     const faltando = custosFaltando([{ id: "pedagio", unidade: "por_viagem", valor: 90 }]);
-    expect(faltando.map((f) => f.id)).toEqual(["combustivel", "motorista"]);
+    expect(faltando.map((f) => f.id)).toEqual(["combustivel", "motorista", "custo_frota"]);
   });
 
   it("rubrica com valor zero conta como não informada", () => {
@@ -233,10 +235,10 @@ describe("custos essenciais", () => {
       { id: "combustivel", unidade: "por_km", valor: 0 },
       { id: "motorista", unidade: "por_viagem", valor: 300 },
     ]);
-    expect(faltando.map((f) => f.id)).toEqual(["combustivel"]);
+    expect(faltando.map((f) => f.id)).toEqual(["combustivel", "custo_frota"]);
   });
 
-  it("com os dois lançados, não sobra pendência", () => {
+  it("com os essenciais lançados, não sobra pendência", () => {
     expect(custosFaltando(custosBasicos())).toEqual([]);
   });
 });
@@ -244,8 +246,8 @@ describe("custos essenciais", () => {
 describe("margem calculada", () => {
   it("a margem sai da conta, não de um campo digitado", () => {
     const a = avaliarViagem(spot(), custosBasicos());
-    // custo direto = 1,8 × 400 + 320 = 1040
-    expect(a.economia.custoDireto).toBe(1040);
+    // custo direto = combustível + motorista + rateio do veículo.
+    expect(a.economia.custoDireto).toBe(1240);
     // encargos sobre o custo direto, pela régua padrão
     expect(a.economia.encargos.total).toBeGreaterThan(0);
     expect(a.economia.custoCarregado).toBeGreaterThan(a.economia.custoDireto);
@@ -276,6 +278,7 @@ describe("margem calculada", () => {
         viagensPorMes: 20,
         meses: 6,
         freteOferecido: 500,
+        veiculosAlocados: 1,
       },
       custosBasicos(),
     );
@@ -311,6 +314,7 @@ describe("margem calculada", () => {
         meses: 6,
         freteOferecido: 60000,
         fretePorViagem: false,
+        veiculosAlocados: 1,
       },
       custosBasicos(),
     );
@@ -319,7 +323,7 @@ describe("margem calculada", () => {
 
   it("devolve o preço mínimo e o alvo, por viagem também", () => {
     const a = avaliarViagem(
-      { modalidade: "recorrente", kmPorViagem: 100, viagensPorMes: 10, meses: 2, freteOferecido: 400 },
+      { modalidade: "recorrente", kmPorViagem: 100, viagensPorMes: 10, meses: 2, freteOferecido: 400, veiculosAlocados: 1 },
       custosBasicos(),
     );
     expect(a.economia.precoMinimoPorViagem).toBe(
@@ -413,7 +417,7 @@ describe("recomendação", () => {
 
   it("contrato recorrente aprovado lembra de confirmar a frota", () => {
     const base = avaliarViagem(
-      { modalidade: "recorrente", kmPorViagem: 100, viagensPorMes: 20, meses: 6, freteOferecido: 500 },
+      { modalidade: "recorrente", kmPorViagem: 100, viagensPorMes: 20, meses: 6, freteOferecido: 500, veiculosAlocados: 1 },
       custosBasicos(),
     );
     const bom = avaliarViagem(
@@ -423,6 +427,7 @@ describe("recomendação", () => {
         viagensPorMes: 20,
         meses: 6,
         freteOferecido: (base.economia.precoAlvo / 120) * 1.3,
+        veiculosAlocados: 1,
       },
       custosBasicos(),
     );

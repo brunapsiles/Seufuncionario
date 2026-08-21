@@ -67,10 +67,10 @@ describe("quem responde por cada tela", () => {
     expect(especialistaDaTela("receita")).toBe("Especialista Financeiro");
   });
 
-  it("sem tela conhecida atende o comercial, não um erro", () => {
-    expect(especialistaDaTela(undefined)).toBe("Especialista Comercial");
-    expect(especialistaDaTela("")).toBe("Especialista Comercial");
-    expect(especialistaDaTela("tela-que-nao-existe")).toBe("Especialista Comercial");
+  it("sem tela conhecida atende o ERP, não só o comercial", () => {
+    expect(especialistaDaTela(undefined)).toBe("Especialista em Operações Logísticas");
+    expect(especialistaDaTela("")).toBe("Especialista em Operações Logísticas");
+    expect(especialistaDaTela("tela-que-nao-existe")).toBe("Especialista em Operações Logísticas");
     expect(especialistaDaTela("  precificacao  ")).toBe("Especialista em Precificação Logística");
   });
 });
@@ -167,17 +167,17 @@ describe("a proposta dita em português", () => {
   });
 });
 
-describe("identidade da Semente", () => {
+describe("identidade do Plantû", () => {
   it("carrega o nome, a assinatura e o lema da marca", () => {
-    expect(SEMENTE.nome).toBe("Semente");
-    expect(SEMENTE.assinatura).toBe("A inteligência comercial da To Do Green");
-    expect(SEMENTE.lema).toBe("Planta oportunidades. Colhe resultados.");
+    expect(SEMENTE.nome).toBe("Plantû");
+    expect(SEMENTE.assinatura).toBe("Assistente do ERP");
+    expect(SEMENTE.lema).toBe("Consultas, análises e ações do ERP.");
     expect(SEMENTE.saudacao.length).toBeGreaterThan(40);
   });
 
   it("anuncia só o que ela realmente faz", () => {
-    expect(HABILIDADES).toContain("Analisa empresas");
-    expect(HABILIDADES).toContain("Avalia riscos ESG");
+    expect(HABILIDADES).toContain("Precificação");
+    expect(HABILIDADES).toContain("Operação");
     expect(HABILIDADES.length).toBe(6);
   });
 });

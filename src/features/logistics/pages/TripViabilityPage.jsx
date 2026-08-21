@@ -33,6 +33,8 @@ const VIAGEM_INICIAL = {
   meses: "12",
   entregas: "",
   entregasPorViagem: "",
+  alocacaoVeiculo: "compartilhado",
+  veiculosAlocados: "1",
   veiculosDedicados: "",
   diasOperacao: "",
   prazoPagamentoDias: "",
@@ -119,10 +121,9 @@ export default function TripViabilityPage({ authHeaders }) {
           <span>PLANEJAMENTO E PRODUTOS</span>
           <h2>Aceito esta viagem?</h2>
           <p>
-            Planejamento lança capacidade e custos; o sistema calcula a margem que sobra e
-            recomenda aceitar ou não, usando a régua comercial em vigor. A decisão pertence a Planejamento/Produtos. Enquanto faltar
-            custo essencial, a recomendação fica suspensa: margem calculada sem combustível
-            e sem motorista fica alta demais e não representa a viagem.
+            Avalia viagem avulsa, first mile, middle mile, last mile e frota dedicada com custo real,
+            veículo alocado, entregas e régua comercial em vigor. Sem custo essencial, o ERP suspende
+            a recomendação.
           </p>
         </div>
       </header>
@@ -185,6 +186,17 @@ export default function TripViabilityPage({ authHeaders }) {
                 <span>Horas por viagem</span>
                 <input type="number" value={viagem.horasPorViagem} onChange={campo("horasPorViagem")} />
               </label>
+              <label>
+                <span>Alocação do veículo</span>
+                <select value={viagem.alocacaoVeiculo} onChange={campo("alocacaoVeiculo")}>
+                  <option value="compartilhado">Compartilhado em várias entregas</option>
+                  <option value="dedicado">Dedicado ao cliente/operação</option>
+                </select>
+              </label>
+              <label>
+                <span>Veículos na operação</span>
+                <input type="number" min="0" value={viagem.veiculosAlocados} onChange={campo("veiculosAlocados")} />
+              </label>
               {recorrente ? (
                 <>
                   <label>
@@ -222,7 +234,7 @@ export default function TripViabilityPage({ authHeaders }) {
                   </label>
                 </>
               )}
-              {(viagem.produto === "dedicada" || viagem.modeloReceita.includes("veiculo")) && (
+              {(viagem.produto === "dedicada" || viagem.modeloReceita.includes("veiculo") || viagem.alocacaoVeiculo === "dedicado") && (
                 <>
                   <label>
                     <span>Veículos dedicados</span>
@@ -248,8 +260,8 @@ export default function TripViabilityPage({ authHeaders }) {
           <fieldset className="tdg-via-bloco">
             <legend>Os seus custos</legend>
             <p className="tdg-via-ressalva">
-              Cada transportadora tem o seu custo. A unidade é o que faz a conta fechar: km
-              rodado inclui o retorno vazio, km com carga não.
+              Lance combustível, motorista e custo do veículo. A unidade define a conta:
+              km rodado inclui retorno vazio; veículo/mês é rateado pela alocação informada.
             </p>
             <ul className="tdg-via-rubricas">
               {rubricas.map((rubrica, indice) => (
@@ -393,7 +405,8 @@ export default function TripViabilityPage({ authHeaders }) {
             <p className="tdg-via-ressalva">
               Régua {avaliacao.economia.versaoRegua || "padrão"} · custo de{" "}
               {BRL.format(avaliacao.economia.custoPorKm)} por km rodado ·{" "}
-              {NUM.format(avaliacao.volume.kmTotal)} km no total
+              {NUM.format(avaliacao.volume.kmTotal)} km no total ·{" "}
+              {NUM.format(avaliacao.volume.veiculos)} veículo(s) em alocação {avaliacao.volume.alocacaoVeiculo}
               {avaliacao.volume.percentVazio > 0
                 ? `, sendo ${NUM.format(avaliacao.volume.percentVazio)}% vazio`
                 : ""}

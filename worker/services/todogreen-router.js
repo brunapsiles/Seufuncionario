@@ -191,7 +191,7 @@ export async function routeTodoGreenApi(request, env, ctx) {
   }
 
   if (path.startsWith("/api/todogreen/semente")) {
-    return guarded("To Do Green Semente error", "A Semente não conseguiu responder agora.", async () => {
+    return guarded("To Do Green Plantû error", "O Plantû não conseguiu responder agora.", async () => {
       const resolved = await internalAccess(request, env);
       if (resolved.response) return resolved.response;
       return handleTodoGreenSemente(request, env, resolved.access, resolved.user);

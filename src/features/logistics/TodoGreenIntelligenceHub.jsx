@@ -18,6 +18,14 @@ const formatDate = (value) => {
   return Number.isNaN(date.getTime()) ? "Data da pesquisa não registrada" : `Pesquisa atualizada em ${date.toLocaleDateString("pt-BR")}`;
 };
 
+const staleInfo = (value) => {
+  const date = new Date(value || "");
+  if (Number.isNaN(date.getTime())) return { stale: true, label: "Atualização necessária" };
+  const ageDays = Math.floor((Date.now() - date.getTime()) / 86400000);
+  if (ageDays > 3) return { stale: true, label: `Fonte com ${ageDays} dia(s)` };
+  return { stale: false, label: "Fonte recente" };
+};
+
 const host = (value) => {
   try { return new URL(value).hostname.replace(/^www\./, ""); }
   catch { return "fonte externa"; }
@@ -38,16 +46,19 @@ function EmptyIntelligence({ type, onNavigate }) {
 function SourceList({ items, empty, onNavigate }) {
   if (!items.length) return <EmptyIntelligence type={empty} onNavigate={onNavigate} />;
   return <div className="tdg-intelligence-source-list">
-    {items.map((item) => <article key={`${item.kind}-${item.url}`}>
-      <div className="tdg-intelligence-source-icon">{item.kind === "rfq" ? <FileSearch size={19} /> : item.kind === "supplier" ? <Building2 size={19} /> : <Newspaper size={19} />}</div>
-      <div>
-        <span>{item.clientName} · {item.kind === "segment" ? "Setor" : item.kind === "company" ? "Empresa" : item.kind === "rfq" ? "RFQ" : "Fornecedores"}</span>
-        <a href={item.url} target="_blank" rel="noreferrer">{item.title || host(item.url)} <ExternalLink size={13} /></a>
-        {item.snippet && <p>{item.snippet}</p>}
-        <small>{formatDate(item.checkedAt)} · {host(item.url)}</small>
-      </div>
-      <button type="button" onClick={() => onNavigate?.(`/todogreen/clientes?client=${encodeURIComponent(item.clientId)}`)}>Abrir conta</button>
-    </article>)}
+    {items.map((item) => {
+      const freshness = staleInfo(item.checkedAt);
+      return <article className={freshness.stale ? "is-stale" : ""} key={`${item.kind}-${item.url}`}>
+        <div className="tdg-intelligence-source-icon">{item.kind === "rfq" ? <FileSearch size={19} /> : item.kind === "supplier" ? <Building2 size={19} /> : <Newspaper size={19} />}</div>
+        <div>
+          <span>{item.clientName} · {item.kind === "segment" ? "Setor" : item.kind === "company" ? "Empresa" : item.kind === "rfq" ? "RFQ" : "Fornecedores"} · {freshness.label}</span>
+          <a href={item.url} target="_blank" rel="noreferrer">{item.title || host(item.url)} <ExternalLink size={13} /></a>
+          {item.snippet && <p>{item.snippet}</p>}
+          <small>{formatDate(item.checkedAt)} · {host(item.url)}</small>
+        </div>
+        <button type="button" onClick={() => onNavigate?.(`/todogreen/clientes?client=${encodeURIComponent(item.clientId)}`)}>{freshness.stale ? "Atualizar conta" : "Abrir conta"}</button>
+      </article>;
+    })}
   </div>;
 }
 
@@ -97,7 +108,7 @@ export default function TodoGreenIntelligenceHub({ verticalData = {}, initialVie
 
   return <section className="tdg-intelligence">
     <header className="tdg-intelligence-hero">
-      <div><span className="tdg-kicker">INTELIGÊNCIA COM FONTE</span><h2>Notícias, RFQs e mercado</h2><p>Um painel único com as fontes já encontradas nas pesquisas das contas. Nada é inventado e cada item abre a origem e o cliente relacionado.</p></div>
+      <div><span className="tdg-kicker">INTELIGÊNCIA COM FONTE</span><h2>Notícias, RFQs e mercado</h2><p>Fontes vinculadas às contas, com data de pesquisa e alerta quando precisam ser atualizadas.</p></div>
       <button type="button" className="tdg-action" onClick={() => onNavigate?.("/todogreen/clientes")}><Globe2 size={16} />Pesquisar uma conta</button>
     </header>
     <nav className="tdg-intelligence-tabs" aria-label="Visões de inteligência">

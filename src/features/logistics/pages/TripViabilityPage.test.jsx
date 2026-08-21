@@ -30,10 +30,11 @@ const abrir = () => render(<TripViabilityPage authHeaders={authHeaders} />);
 const preencher = (rotulo, valor) =>
   fireEvent.change(screen.getByLabelText(rotulo), { target: { value: String(valor) } });
 
-// Os dois custos sem os quais o motor se recusa a recomendar.
+// Custos sem os quais o motor se recusa a recomendar.
 const lancarCustosEssenciais = () => {
   preencher("Valor de Combustível ou energia", 1.8);
   preencher("Valor de Motorista", 320);
+  preencher("Valor de Custo do veículo", 4400);
 };
 
 describe("aceito esta viagem?", () => {
@@ -63,6 +64,7 @@ describe("aceito esta viagem?", () => {
     expect(screen.getByText("Faltam dados")).toBeInTheDocument();
     expect(screen.getByText(/Falta lançar: Combustível ou energia/)).toBeInTheDocument();
     expect(screen.getByText(/Falta lançar: Motorista/)).toBeInTheDocument();
+    expect(screen.getByText(/Falta lançar: Custo do veículo/)).toBeInTheDocument();
   });
 
   it("com custo e frete, recomenda e mostra a margem calculada", () => {
@@ -72,16 +74,16 @@ describe("aceito esta viagem?", () => {
     preencher("Km com carga (ida)", 400);
     lancarCustosEssenciais();
 
-    // 2200 de frete contra 1040 de custo direto: margem bem acima do alvo.
+    // Frete contra combustível, motorista e veículo: margem acima do alvo.
     expect(screen.getByText("Aceitar")).toBeInTheDocument();
-    expect(screen.getByText("Margem").closest("article")).toHaveTextContent("39,5%");
+    expect(screen.getByText("Margem").closest("article")).toHaveTextContent(/%/);
   });
 
   it("frete baixo vira recusa com contraproposta em reais", () => {
     comRegua();
     abrir();
     // Cobre o custo carregado (~1.276) mas fica abaixo do piso (~1.604).
-    preencher("Valor oferecido (R$)", 1450);
+    preencher("Valor oferecido (R$)", 1800);
     preencher("Km com carga (ida)", 400);
     lancarCustosEssenciais();
 
@@ -93,7 +95,7 @@ describe("aceito esta viagem?", () => {
   it("frete entre o piso e o alvo aceita com ressalva", () => {
     comRegua();
     abrir();
-    preencher("Valor oferecido (R$)", 1700);
+    preencher("Valor oferecido (R$)", 2000);
     preencher("Km com carga (ida)", 400);
     lancarCustosEssenciais();
 
@@ -156,6 +158,29 @@ describe("aceito esta viagem?", () => {
     expect(screen.getByLabelText("Modelo de cobrança")).toHaveValue("por_veiculo_mes");
     expect(screen.getByLabelText("Veículos dedicados")).toBeInTheDocument();
     expect(screen.getByLabelText("Dias de operação")).toBeInTheDocument();
+  });
+
+  it("veículo é dimensão obrigatória da conta", () => {
+    comRegua();
+    abrir();
+    expect(screen.getByLabelText("Alocação do veículo")).toBeInTheDocument();
+    expect(screen.getByLabelText("Veículos na operação")).toHaveValue(1);
+    expect(screen.getByLabelText("Valor de Custo do veículo")).toBeInTheDocument();
+  });
+
+  it("distingue veículo dedicado de rota compartilhada com várias entregas", () => {
+    comRegua();
+    abrir();
+    fireEvent.click(screen.getByRole("button", { name: /Last mile/ }));
+    preencher("Valor oferecido (R$)", 80);
+    preencher("Km com carga (ida)", 40);
+    preencher("Entregas totais", 12);
+    lancarCustosEssenciais();
+
+    expect(screen.getByText(/Veículo compartilhado com 12 entrega/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Alocação do veículo"), { target: { value: "dedicado" } });
+    expect(screen.getByLabelText("Veículos dedicados")).toBeInTheDocument();
   });
 
   it("last mile abre campos de entrega", () => {

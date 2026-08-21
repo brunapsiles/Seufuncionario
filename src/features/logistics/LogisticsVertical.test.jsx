@@ -163,10 +163,10 @@ describe("LogisticsVertical", () => {
   it("renders the private hub for authorized To Do Green users", async () => {
     await renderarAutorizada();
     expect(screen.getByRole("heading", { name: "Visão Geral", level: 1 }).hidden).toBe(false);
-    expect(screen.getByRole("heading", { name: "O que precisa da sua atenção" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Painel operacional" })).toBeTruthy();
     expect(screen.getByRole("navigation", { name: "Navegação To Do Green" }).querySelectorAll("button")).toHaveLength(10);
     expect(screen.getByText("Configurações")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: /Escolha a área pelo resultado/ })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /ERP To Do Green/ })).toBeTruthy();
     expect(screen.getByText("Da OS concluída ao recebimento")).toBeTruthy();
     expect(screen.queryByText(/Painel operacional/i)).toBeNull();
     expect(screen.queryByText(/ativas.*planejado/i)).toBeNull();
