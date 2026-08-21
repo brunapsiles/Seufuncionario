@@ -963,7 +963,7 @@ export const esgTranslator = (co2Kg, factors = {}) => {
     },
     proposalText: `Estimativa de ${roundMoney(value / 1000, 2)} tCO2e evitadas na cadeia logística, sujeita à validação conforme metodologia e fatores informados.`,
     reportText: `Memória de cálculo: CO2 evitado dividido pelos fatores de equivalência da metodologia ${f.methodologyVersion}.`,
-    disclaimer: "Equivalências ilustrativas. Use como apoio de comunicação, não como certificação oficial.",
+    disclaimer: "Estimativa operacional. Não substitui certificação oficial.",
     factors: f,
     formula: "equivalente = kgCO2e evitado / fator",
   };
