@@ -34,7 +34,7 @@ export const TIPOS_DE_EVENTO = Object.freeze({
   operacao: { rotulo: "Operação", cor: "operacao" },
   solicitacao: { rotulo: "Solicitação", cor: "operacao" },
   portal: { rotulo: "Portal do cliente", cor: "cliente" },
-  pesquisa: { rotulo: "Semente", cor: "inteligencia" },
+  pesquisa: { rotulo: "Plantû", cor: "inteligencia" },
 });
 
 export const TIPOS = Object.freeze(Object.keys(TIPOS_DE_EVENTO));
