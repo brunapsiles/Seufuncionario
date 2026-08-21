@@ -244,7 +244,7 @@ export default function Semente({ pagina, clienteId, authHeaders, aoAgir }) {
           <strong>{SEMENTE.nome}</strong>
           <small>{pensando ? "Analisando..." : especialista}</small>
         </div>
-        <button type="button" onClick={() => alternar(false)} aria-label="Fechar a Semente">
+        <button type="button" onClick={() => alternar(false)} aria-label="Fechar o Plantû">
           <X size={17} />
         </button>
       </header>
@@ -299,7 +299,7 @@ export default function Semente({ pagina, clienteId, authHeaders, aoAgir }) {
       {mensagens.length === 0 && pauta?.pautas?.length > 0 && (
         <div className="semente-pauta">
           <header>
-            <strong>Sua carteira hoje</strong>
+            <strong>Pendências do ERP</strong>
             <small>{pauta.leitura}</small>
           </header>
           {pauta.pautas.map((item) => (
@@ -345,7 +345,7 @@ export default function Semente({ pagina, clienteId, authHeaders, aoAgir }) {
         <input
           value={pergunta}
           onChange={(evento) => setPergunta(evento.target.value)}
-          placeholder="Pergunte sobre a sua carteira..."
+          placeholder="Pergunte sobre o ERP..."
           aria-label={`Perguntar para a ${SEMENTE.nome}`}
         />
         <button
