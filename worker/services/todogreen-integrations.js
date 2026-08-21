@@ -103,6 +103,17 @@ export function todoGreenIntegrationStatus(env = {}, { activeWebhooks = 0 } = {}
         configured: Boolean(env.DB),
         detail: "Compartilha a infraestrutura da plataforma, com chaves, escopo e proteção contra duplicidade.",
       },
+      {
+        id: "antt-ciot-direct",
+        name: "ANTT CIOT direto sem IPEF",
+        configured: Boolean(
+          env.TODOGREEN_ANTT_CIOT_BASE_URL &&
+          env.TODOGREEN_ANTT_CIOT_CONNECTOR_URL &&
+          ((env.TODOGREEN_ANTT_CIOT_CERTIFICATE_PFX && env.TODOGREEN_ANTT_CIOT_CERTIFICATE_PASSWORD) ||
+            env.TODOGREEN_ANTT_CIOT_A3_CONNECTOR_URL)
+        ),
+        detail: "Conector preparado para ETC/frota própria com certificado ICP-Brasil A1 ou A3 e retorno do código CIOT de 12 dígitos.",
+      },
     ],
     automationEngine: {
       id: "cloudflare-native",

@@ -47,6 +47,72 @@ describe("espinha transacional", () => {
     expect(order.netAmount).toBe(250);
   });
 
+  it("prepara CIOT e bloqueia frete abaixo do piso mínimo", async () => {
+    const setup = await request("/api/todogreen/transactions/ciot-integration", "POST", {
+      environment: "homologation",
+      certificateType: "A1",
+      baseUrl: "https://appservices-hml.antt.gov.br/ciot",
+      certificateEnvKey: "TODOGREEN_ANTT_CIOT_CERTIFICATE_PFX",
+      certificatePasswordEnvKey: "TODOGREEN_ANTT_CIOT_CERTIFICATE_PASSWORD",
+      connectorUrlEnvKey: "TODOGREEN_ANTT_CIOT_CONNECTOR_URL",
+      connectorTokenEnvKey: "TODOGREEN_ANTT_CIOT_CONNECTOR_TOKEN",
+    });
+    expect(setup.status).toBe(201);
+    const integration = (await setup.json()).integration;
+    expect(integration).toMatchObject({ mode: "direct_api", requiresIpef: false, environment: "homologation" });
+
+    const belowFloor = await request("/api/todogreen/transactions/ciot", "POST", {
+      serviceOrderId: order.id,
+      operationType: "carga_lotacao",
+      responsibleType: "etc",
+      vehiclePlate: "ABC1D23",
+      originCity: "São Paulo",
+      originState: "SP",
+      destinationCity: "Campinas",
+      destinationState: "SP",
+      cargoDescription: "Carga geral",
+      freightAmount: 200,
+      floorAmount: 250,
+    });
+    expect(belowFloor.status).toBe(409);
+
+    const prepared = await request("/api/todogreen/transactions/ciot", "POST", {
+      serviceOrderId: order.id,
+      operationType: "carga_lotacao",
+      responsibleType: "etc",
+      contractorDocument: "11222333000144",
+      carrierDocument: "11222333000144",
+      driverDocument: "12345678901",
+      vehiclePlate: "ABC1D23",
+      originCity: "São Paulo",
+      originState: "SP",
+      destinationCity: "Campinas",
+      destinationState: "SP",
+      cargoDescription: "Carga geral",
+      freightAmount: 250,
+      floorAmount: 250,
+    });
+    expect(prepared.status).toBe(201);
+    const ciot = (await prepared.json()).record;
+    expect(ciot.number).toMatch(/^CIOT-PREP-/);
+    expect(ciot.status).toBe("ready");
+    expect(ciot.payload).toMatchObject({ serviceOrderNumber: order.number, floorAmount: 250, integrationMode: "direct_api", requiresIpef: false });
+
+    const missingConnector = await request(`/api/todogreen/transactions/ciot/${ciot.id}/submit`, "POST", {
+      revision: ciot.revision,
+    });
+    expect(missingConnector.status).toBe(409);
+    expect((await missingConnector.json()).error).toMatch(/conector direto/i);
+
+    const issued = await request(`/api/todogreen/transactions/ciot/${ciot.id}/issue`, "POST", {
+      ciotCode: "123456789012",
+      protocol: "PROTO-1",
+      revision: ciot.revision,
+    });
+    expect(issued.status).toBe(200);
+    expect((await issued.json()).record).toMatchObject({ status: "issued", ciotCode: "123456789012" });
+  });
+
   it("não pula etapas e gera elegibilidade apenas ao concluir", async () => {
     const skipped = await request(`/api/todogreen/transactions/service-orders/${order.id}/transition`, "POST", { status: "completed", revision: 1 });
     expect(skipped.status).toBe(409);

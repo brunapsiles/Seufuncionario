@@ -285,6 +285,11 @@
 .tdg-work-area-links button { align-items: center; background: transparent; border: 0; border-top: 1px solid var(--tdg-line); color: var(--tdg-ink); cursor: pointer; display: flex; font: inherit; font-size: .75rem; font-weight: 720; gap: 6px; justify-content: space-between; padding: 9px 0; text-align: left; }
 .tdg-work-area-links button:hover, .tdg-work-area-links button:focus-visible { color: var(--tdg-green); outline: none; }
 .tdg-work-area-links button svg { flex: 0 0 auto; }
+.tdg-enterprise-area-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.tdg-work-area-list { display: grid; gap: 0; list-style: none; margin: 0; padding: 0; }
+.tdg-work-area-list li { border-top: 1px solid var(--tdg-line); color: var(--tdg-ink); font-size: .75rem; font-weight: 650; line-height: 1.35; padding: 9px 0; }
+.tdg-work-area-list li:first-child { border-top: 0; }
+.tdg-work-area-list strong { color: var(--tdg-green); display: block; font-size: .68rem; text-transform: uppercase; }
 
 .tdg-subtabs {
   align-items: center;
