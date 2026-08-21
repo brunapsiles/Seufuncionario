@@ -166,7 +166,7 @@ export async function reunirEventos(env, { ownerId, clientId, conta }) {
         titulo: `Tarefa concluída — ${clean(item.title, 160)}`, referencia: item.id });
   }
 
-  // A pesquisa da Semente já fica gravada na conta; ela também é história.
+  // A pesquisa do Plantû já fica gravada na conta; ela também é história.
   const inteligencia = parse(conta?.fields_json, {})?.intelligence;
   if (inteligencia?.checkedAt) {
     const achados = [
@@ -175,9 +175,9 @@ export async function reunirEventos(env, { ownerId, clientId, conta }) {
       inteligencia.esg?.signals?.length ? `${inteligencia.esg.signals.length} sinal(is) ESG` : "",
     ].filter(Boolean);
     add({ id: `sem-${inteligencia.checkedAt}`, tipo: "pesquisa", quando: inteligencia.checkedAt,
-      titulo: "Semente pesquisou a empresa na web",
+      titulo: "Plantû pesquisou a empresa na web",
       detalhe: achados.length ? achados.join(" · ") : "Nenhum sinal acionável comprovado nesta pesquisa.",
-      autor: "Semente" });
+      autor: "Plantû" });
   }
 
   return eventos;
