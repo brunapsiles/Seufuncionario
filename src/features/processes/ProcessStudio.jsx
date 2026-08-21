@@ -119,6 +119,9 @@ export default function ProcessStudio({ db, update, business, setToast }) {
   });
   const selected =
     processes.find((process) => process.id === selectedId) || processes[0] || null;
+  const selectedTemplate =
+    PROCESS_TEMPLATES.find((template) => template.id === templateId) ||
+    PROCESS_TEMPLATES[0];
   const selectedCases = cases.filter((item) => item.processId === selected?.id);
   const metrics = selected ? processMetrics(selected, cases) : null;
   const selectedCase = selectedCases.find((item) => item.id === selectedCaseId);
@@ -358,6 +361,27 @@ export default function ProcessStudio({ db, update, business, setToast }) {
               </button>
             ))}
           </div>
+          {selectedTemplate && (
+            <div className="process-template-summary">
+              <div>
+                <strong>{selectedTemplate.stages.length} etapas</strong>
+                <span>{selectedTemplate.stages.map((stage) => stage.name).join(" → ")}</span>
+              </div>
+              <div>
+                <strong>{selectedTemplate.fields.length} campos</strong>
+                <span>
+                  {selectedTemplate.fields
+                    .filter((field) => field.required)
+                    .slice(0, 8)
+                    .map((field) => field.name)
+                    .join(", ")}
+                  {selectedTemplate.fields.filter((field) => field.required).length > 8
+                    ? "..."
+                    : ""}
+                </span>
+              </div>
+            </div>
+          )}
           <label>
             Nome do processo
             <input

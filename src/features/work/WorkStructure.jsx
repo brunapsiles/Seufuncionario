@@ -512,7 +512,7 @@ export default function WorkStructure({ db, update, business, setToast }) {
           onClose={() => setModal(false)}
         >
           <form className="work-create-form" onSubmit={create}>
-            <p>A hierarquia impede combinações inválidas automaticamente.</p>
+            <p>Escolha o tipo de estrutura, dê um nome claro e defina quem pode acessar.</p>
             <label>
               Tipo
               <select
