@@ -1,0 +1,5 @@
+# Exemplo para publicar o conector local com HTTPS via Caddy.
+# DNS de ciot.todogreen.com.br deve apontar para este servidor.
+ciot.todogreen.com.br {
+  reverse_proxy 127.0.0.1:8088
+}
