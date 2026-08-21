@@ -136,6 +136,8 @@ describe("espinha transacional", () => {
     expect(closed.status).toBe(201);
     const result = await closed.json();
     expect(result.amount).toBe(250);
+    expect(result).toMatchObject({ documentType: "cte" });
+    expect(result.invoiceNumber).toMatch(/^CTE-/);
     const titles = await request("/api/todogreen/transactions/titles?kind=receivable");
     title = (await titles.json()).records[0];
     expect(title.open_amount).toBe(250);

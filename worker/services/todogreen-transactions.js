@@ -547,7 +547,9 @@ async function closeBilling(env, access, user, body) {
   const invoiceId = crypto.randomUUID();
   const titleId = crypto.randomUUID();
   const runNumber = `FAT-${now.slice(0, 10).replaceAll("-", "")}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
-  const invoiceNumber = await reserveNumber(env, access.ownerId, "nota_fiscal", "NF-", now);
+  const documentType = ["cte", "nfse", "nfe"].includes(text(body.documentType, 20)) ? text(body.documentType, 20) : "cte";
+  const documentPrefix = { cte: "CTE-", nfse: "NFSE-", nfe: "NFE-" }[documentType];
+  const invoiceNumber = await reserveNumber(env, access.ownerId, documentType, documentPrefix, now);
   const titleNumber = await reserveNumber(env, access.ownerId, "titulo", "REC-", now);
   const dueDate = text(body.dueDate, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return json({ error: "Informe o vencimento do título." }, 400);
@@ -558,8 +560,8 @@ async function closeBilling(env, access, user, body) {
       (id,tenant_id,workspace_owner_id,number,client_id,contract_id,status,competence_date,gross_amount,net_amount,closed_by,closed_at)
       VALUES (?,?,?,?,?,?,'closed',?,?,?,?,?)`).bind(runId,TENANT_ID,access.ownerId,runNumber,items[0].client_id,contractId,competence,amount,amount,user.id,now),
     env.DB.prepare(`INSERT INTO todogreen_invoices
-      (id,tenant_id,workspace_owner_id,billing_run_id,number,series,status,issued_at,amount,created_by,created_at)
-      VALUES (?,?,?,?,?,'1','issued',?,?,?,?)`).bind(invoiceId,TENANT_ID,access.ownerId,runId,invoiceNumber,now,amount,user.id,now),
+      (id,tenant_id,workspace_owner_id,billing_run_id,number,series,document_type,status,issued_at,amount,created_by,created_at)
+      VALUES (?,?,?,?,?,'1',?,'issued',?,?,?,?)`).bind(invoiceId,TENANT_ID,access.ownerId,runId,invoiceNumber,documentType,now,amount,user.id,now),
     env.DB.prepare(`INSERT INTO todogreen_financial_titles
       (id,tenant_id,workspace_owner_id,number,kind,client_id,contract_id,billing_run_id,invoice_id,
        competence_date,issue_date,due_date,original_amount,open_amount,status,created_by,updated_by,created_at,updated_at)
@@ -568,7 +570,7 @@ async function closeBilling(env, access, user, body) {
       WHERE tenant_id=? AND workspace_owner_id=? AND id IN (${placeholders}) AND status='checked'`).bind(runId,user.id,now,TENANT_ID,access.ownerId,...ids),
   ];
   await env.DB.batch(statements);
-  return json({ billingRunId: runId, invoiceId, invoiceNumber, titleId, titleNumber, amount }, 201);
+  return json({ billingRunId: runId, invoiceId, invoiceNumber, documentType, titleId, titleNumber, amount }, 201);
 }
 
 async function listTitles(env, access, url) {
