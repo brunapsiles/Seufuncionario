@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   MODALIDADES,
+  PRODUTOS_OPERACIONAIS,
   RECOMENDACOES,
   REGUA_PADRAO,
   RUBRICAS_SUGERIDAS,
@@ -9,6 +10,8 @@ import {
   custoDireto,
   custosFaltando,
   modalidadeValida,
+  produtoValido,
+  receitaDaOperacao,
   resumirViagens,
   volumeDaOperacao,
 } from "./tripViabilityDomain.js";
@@ -45,6 +48,23 @@ describe("modalidade", () => {
   });
 });
 
+describe("produto operacional", () => {
+  it("first, middle, last mile e frota dedicada existem como produtos separados", () => {
+    expect(Object.keys(PRODUTOS_OPERACIONAIS)).toEqual([
+      "spot",
+      "first_mile",
+      "middle_mile",
+      "last_mile",
+      "dedicada",
+    ]);
+  });
+
+  it("produto desconhecido cai em spot", () => {
+    expect(produtoValido("middle_mile")).toBe("middle_mile");
+    expect(produtoValido("x")).toBe("spot");
+  });
+});
+
 describe("volume da operação", () => {
   it("spot é uma viagem quando nada for informado", () => {
     expect(volumeDaOperacao({ modalidade: "spot", kmPorViagem: 300 }).viagens).toBe(1);
@@ -59,6 +79,29 @@ describe("volume da operação", () => {
     });
     expect(v.viagens).toBe(240);
     expect(v.kmCarregado).toBe(24000);
+  });
+
+  it("frota dedicada calcula veículo/mês e veículo/dia", () => {
+    const v = volumeDaOperacao({
+      produto: "dedicada",
+      modalidade: "recorrente",
+      veiculosDedicados: 4,
+      meses: 3,
+      diasOperacao: 66,
+    });
+    expect(v.veiculoMes).toBe(12);
+    expect(v.veiculoDia).toBe(264);
+  });
+
+  it("last mile calcula entregas totais a partir de entregas por viagem", () => {
+    const v = volumeDaOperacao({
+      produto: "last_mile",
+      modalidade: "recorrente",
+      viagensPorMes: 20,
+      meses: 2,
+      entregasPorViagem: 35,
+    });
+    expect(v.entregas).toBe(1400);
   });
 
   it("o retorno vazio entra no km rodado, não no km faturado", () => {
@@ -88,9 +131,10 @@ describe("custo direto", () => {
         { id: "comb", rotulo: "Combustível", unidade: "por_km", valor: 2 },
         { id: "ped", rotulo: "Pedágio", unidade: "por_viagem", valor: 90 },
         { id: "aju", rotulo: "Ajudante", unidade: "por_hora", valor: 25 },
+        { id: "entrega", rotulo: "Baixa", unidade: "por_entrega", valor: 2 },
         { id: "seg", rotulo: "Seguro", unidade: "fixo", valor: 150 },
       ],
-      volume,
+      { ...volume, entregas: 30, veiculoDia: 2, veiculoMes: 1 },
       1000,
     );
     const porId = Object.fromEntries(r.itens.map((i) => [i.id, i]));
@@ -98,6 +142,7 @@ describe("custo direto", () => {
     expect(porId.comb.subtotal).toBe(1000);
     expect(porId.ped.subtotal).toBe(90);
     expect(porId.aju.subtotal).toBe(200);
+    expect(porId.entrega.subtotal).toBe(60);
     expect(porId.seg.subtotal).toBe(150);
   });
 
@@ -160,6 +205,23 @@ describe("custo direto", () => {
   });
 });
 
+describe("receita por produto", () => {
+  it("middle mile continua podendo cobrar por viagem", () => {
+    const volume = volumeDaOperacao({ produto: "middle_mile", modalidade: "recorrente", viagensPorMes: 20, meses: 2 });
+    expect(receitaDaOperacao({ produto: "middle_mile", freteOferecido: 900 }, volume)).toBe(36000);
+  });
+
+  it("last mile cobra por entrega quando este é o modelo", () => {
+    const volume = volumeDaOperacao({ produto: "last_mile", viagens: 2, entregasPorViagem: 60 });
+    expect(receitaDaOperacao({ produto: "last_mile", freteOferecido: 12 }, volume)).toBe(1440);
+  });
+
+  it("frota dedicada cobra por veículo/mês", () => {
+    const volume = volumeDaOperacao({ produto: "dedicada", modalidade: "recorrente", veiculosDedicados: 3, meses: 2 });
+    expect(receitaDaOperacao({ produto: "dedicada", freteOferecido: 18000 }, volume)).toBe(108000);
+  });
+});
+
 describe("custos essenciais", () => {
   it("aponta combustível e motorista quando faltam", () => {
     const faltando = custosFaltando([{ id: "pedagio", unidade: "por_viagem", valor: 90 }]);
@@ -219,6 +281,25 @@ describe("margem calculada", () => {
     );
     expect(a.volume.viagens).toBe(120);
     expect(a.economia.receitaBruta).toBe(60000);
+  });
+
+  it("frota dedicada expõe preço alvo por veículo/mês", () => {
+    const a = avaliarViagem(
+      {
+        produto: "dedicada",
+        modalidade: "recorrente",
+        modeloReceita: "por_veiculo_mes",
+        veiculosDedicados: 2,
+        meses: 3,
+        freteOferecido: 22000,
+      },
+      custosBasicos([
+        { id: "custo_frota", rotulo: "Custo mensal do veículo", unidade: "por_veiculo_mes", valor: 12000 },
+      ]),
+    );
+    expect(a.volume.veiculoMes).toBe(6);
+    expect(a.economia.receitaPorVeiculoMes).toBe(22000);
+    expect(a.economia.precoAlvoPorVeiculoMes).toBeGreaterThan(0);
   });
 
   it("contrato fechado por valor global não multiplica o frete", () => {

@@ -185,6 +185,11 @@ function Ciot({ authHeaders, clients, contracts, operations, setToast }) {
       setSubmitting("");
     }
   };
+  const readiness = [
+    ["Base ANTT", Boolean(integration?.baseUrl), integration?.baseUrl || "Pendente"],
+    ["Conector direto", Boolean(integration?.connectorConfigured), integration?.connectorConfigured ? "Configurado" : "Pendente"],
+    ["Certificado ICP-Brasil", Boolean(integration?.certificateConfigured), integration?.credentialFilename || (integration?.certificateConfigured ? "Configurado" : "Pendente")],
+  ];
   return <section className="tdg-panel tdg-txn-page"><div className="tdg-section-head"><div><span className="tdg-kicker">ANTT · API DIRETA · CIOT</span><h2>Geração e controle de CIOT</h2><p>Integração direta para ETC/frota própria sem IPEF: certificado ICP-Brasil A1/A3, payload regulatório, piso mínimo e retorno do código governamental de 12 dígitos.</p></div><strong>{records.length} CIOT(s)</strong></div>
     <form className="tdg-txn-form" onSubmit={saveIntegration}>
       <label><span>Modo</span><input value="Integração direta ANTT sem IPEF" readOnly /></label>
@@ -210,12 +215,10 @@ function Ciot({ authHeaders, clients, contracts, operations, setToast }) {
       <button className="tdg-action" disabled={credentialSaving}><CheckCircle2 size={17} />{credentialSaving ? "Protegendo..." : integrationForm.certificateType === "A1" ? "Enviar certificado A1" : "Salvar conector A3"}</button>
       {integration?.credentialUploadedAt && <button type="button" onClick={testCredential}>Testar credencial</button>}
     </form>
-    <div className="tdg-txn-empty">
-      <CheckCircle2 size={16} /> Status: {integration?.configured ? "pronta para chamada direta" : "configuração estrutural pronta; falta base URL, conector e/ou certificado no ambiente"}.
-      {integration?.connectorConfigured ? " Conector encontrado." : " Configure a URL do conector no Worker."}
-      {integration?.certificateConfigured ? ` Credencial encontrada${integration?.credentialFilename ? `: ${integration.credentialFilename}` : ""}.` : " Envie o A1 ou configure o conector A3 abaixo."}
+    <div className="tdg-txn-readiness">
+      {readiness.map(([label, ok, value]) => <article className={ok ? "ready" : "pending"} key={label}><CheckCircle2 size={16} /><span><strong>{label}</strong><small>{value}</small></span></article>)}
     </div>
-    {regulatoryProfile && <div className="tdg-txn-empty">Cadastro regulatório pré-preenchido: {regulatoryProfile.legalName} · CNPJ {regulatoryProfile.document} · RNTRC {regulatoryProfile.rntrc} ({regulatoryProfile.rntrcStatus}) · {regulatoryProfile.vehicles?.length || 0} veículos ativos. Confirme os dados variáveis de cada viagem.</div>}
+    {regulatoryProfile && <div className="tdg-txn-readiness regulatory"><article className="ready"><CheckCircle2 size={16} /><span><strong>{regulatoryProfile.tradeName}</strong><small>CNPJ {regulatoryProfile.document} · RNTRC {regulatoryProfile.rntrc} · {regulatoryProfile.vehicles?.length || 0} veículos</small></span></article></div>}
     <form className="tdg-txn-form" onSubmit={save}>
       <label><span>OS vinculada</span><select value={form.serviceOrderId} onChange={(e) => { const order = orders.find((item) => item.id === e.target.value); setForm((v) => ({ ...v, serviceOrderId: e.target.value, freightAmount: order?.netAmount ? String(order.netAmount) : v.freightAmount, startsAt: order?.scheduledStartAt || v.startsAt, endsAt: order?.scheduledEndAt || v.endsAt })); }}><option value="">Sem OS</option>{orders.map((item) => <option value={item.id} key={item.id}>{item.number} · {clientName(clients, item.clientId)}</option>)}</select><small>{selectedContract ? `Contrato: ${selectedContract.titulo || selectedContract.title || selectedContract.id}` : ""}</small></label>
       <label><span>Tipo de operação</span><select value={form.operationType} onChange={(e) => change("operationType", e.target.value)}><option value="carga_lotacao">Carga lotação</option><option value="carga_fracionada">Carga fracionada</option><option value="tac_agregado">TAC agregado</option></select></label>
@@ -238,7 +241,7 @@ function Ciot({ authHeaders, clients, contracts, operations, setToast }) {
       <button className="tdg-action" disabled={saving}><ReceiptText size={17} />Preparar envio direto</button>
     </form>
     <div className="tdg-txn-list">{!records.length && <Empty>Nenhum CIOT preparado.</Empty>}{records.map((record) => <article className="tdg-txn-row" key={record.id}><span><strong>{record.ciotCode || record.number}</strong><small>{record.serviceOrderNumber || "sem OS"} · {record.operationType} · {record.originCity || "origem"} → {record.destinationCity || "destino"}{record.lastError ? ` · ${record.lastError}` : ""}</small></span><span><small>Frete / piso</small><strong>{BRL.format(record.freightAmount || 0)} / {BRL.format(record.floorAmount || 0)}</strong></span><Status value={record.status} />{record.status !== "issued" && <span className="tdg-txn-actions"><button type="button" disabled={submitting === record.id || record.status === "sending"} onClick={() => submit(record)}>Enviar ANTT</button><button type="button" onClick={() => { setIssuing(record); setIssueForm({ ciotCode: record.ciotCode || "", protocol: record.protocol || "" }); }}>Registrar retorno</button></span>}</article>)}</div>
-    <div className="tdg-txn-empty"><AlertTriangle size={16} /> O ERP chama o conector direto sem IPEF; o conector assina com A1/A3, envia para a ANTT e devolve o código oficial de 12 dígitos. A fila mantém contingência, bloqueio de piso mínimo e auditoria do retorno.</div>
+    <div className="tdg-txn-note"><AlertTriangle size={16} /><span>Envio direto sem IPEF. A emissão depende de conector ativo, certificado válido e retorno ANTT com CIOT de 12 dígitos.</span></div>
     {issuing && <form className="tdg-txn-close" onSubmit={issue}><div><strong>Registrar CIOT de {issuing.number}</strong><small>Use o código de 12 dígitos retornado pela API direta da ANTT.</small></div><label><span>Código CIOT</span><input required inputMode="numeric" pattern="\\d{12}" maxLength={12} value={issueForm.ciotCode} onChange={(e) => setIssueForm((v) => ({ ...v, ciotCode: e.target.value.replace(/\D/g, "").slice(0, 12) }))} /></label><label><span>Protocolo</span><input value={issueForm.protocol} onChange={(e) => setIssueForm((v) => ({ ...v, protocol: e.target.value }))} /></label><button className="tdg-action"><CheckCircle2 size={17} />Confirmar</button><button type="button" onClick={() => setIssuing(null)}>Cancelar</button></form>}
   </section>;
 }

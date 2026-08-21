@@ -105,10 +105,7 @@ export default function ErpRegistriesPage({ registros, criar, setToast }) {
         <div>
           <span>CADASTROS</span>
           <h2>A base do ERP</h2>
-          <p>
-            Material, depósito, parceiro, centro de custo e conta. Estoque e Compras
-            usam estas listas — sem elas, aquelas telas não têm o que oferecer.
-          </p>
+          <p>Cadastros mestres para estoque, compras, financeiro e rateio operacional.</p>
         </div>
         <div className="tdg-page-actions">
           <button className="tdg-action" type="button" onClick={() => setMostrarForm((v) => !v)}>

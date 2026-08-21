@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Plus, Trash2, XCircle } from "lucide-react";
 import {
   MODALIDADES,
+  PRODUTOS_OPERACIONAIS,
   RECOMENDACOES,
   REGUA_PADRAO,
   RUBRICAS_SUGERIDAS,
@@ -20,7 +21,9 @@ const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" 
 const NUM = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
 
 const VIAGEM_INICIAL = {
+  produto: "middle_mile",
   modalidade: "spot",
+  modeloReceita: "por_viagem",
   kmPorViagem: "",
   kmRetornoVazio: "",
   horasPorViagem: "",
@@ -28,6 +31,10 @@ const VIAGEM_INICIAL = {
   viagens: "1",
   viagensPorMes: "",
   meses: "12",
+  entregas: "",
+  entregasPorViagem: "",
+  veiculosDedicados: "",
+  diasOperacao: "",
   prazoPagamentoDias: "",
   veiculosDisponiveis: "",
 };
@@ -77,7 +84,7 @@ export default function TripViabilityPage({ authHeaders }) {
   const avaliacao = useMemo(
     () =>
       avaliarViagem(
-        { ...numeros(viagem), modalidade: viagem.modalidade },
+        { ...numeros(viagem), modalidade: viagem.modalidade, produto: viagem.produto, modeloReceita: viagem.modeloReceita },
         rubricas.map((r) => ({ ...r, valor: r.valor === "" ? 0 : Number(r.valor) })),
         reguaEmUso,
       ),
@@ -103,6 +110,7 @@ export default function TripViabilityPage({ authHeaders }) {
   const selo = SELO[avaliacao.recomendacao];
   const Icone = selo.icone;
   const recorrente = viagem.modalidade === "recorrente";
+  const produto = PRODUTOS_OPERACIONAIS[viagem.produto] || PRODUTOS_OPERACIONAIS.spot;
 
   return (
     <section className="tdg-panel tdg-page tdg-via-page">
@@ -122,7 +130,20 @@ export default function TripViabilityPage({ authHeaders }) {
       <div className="tdg-via-layout">
         <div className="tdg-via-entrada">
           <fieldset className="tdg-via-bloco">
-            <legend>A viagem</legend>
+            <legend>Produto e modelo comercial</legend>
+            <div className="tdg-via-modalidade produto" role="group" aria-label="Produto logístico">
+              {Object.values(PRODUTOS_OPERACIONAIS).map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={viagem.produto === p.id ? "ativo" : ""}
+                  onClick={() => setViagem((a) => ({ ...a, produto: p.id, modeloReceita: p.modeloReceita }))}
+                >
+                  <strong>{p.rotulo}</strong>
+                  <small>{p.descricao}</small>
+                </button>
+              ))}
+            </div>
             <div className="tdg-via-modalidade" role="group" aria-label="Modalidade">
               {Object.values(MODALIDADES).map((m) => (
                 <button
@@ -139,8 +160,18 @@ export default function TripViabilityPage({ authHeaders }) {
 
             <div className="tdg-via-campos">
               <label>
-                <span>Frete oferecido por viagem (R$)</span>
+                <span>Valor oferecido (R$)</span>
                 <input type="number" value={viagem.freteOferecido} onChange={campo("freteOferecido")} />
+              </label>
+              <label>
+                <span>Modelo de cobrança</span>
+                <select value={viagem.modeloReceita} onChange={campo("modeloReceita")}>
+                  <option value="por_viagem">Por viagem</option>
+                  <option value="por_entrega">Por entrega</option>
+                  <option value="por_veiculo_dia">Por veículo/dia</option>
+                  <option value="por_veiculo_mes">Por veículo/mês</option>
+                  <option value="global">Valor global</option>
+                </select>
               </label>
               <label>
                 <span>Km com carga (ida)</span>
@@ -178,6 +209,30 @@ export default function TripViabilityPage({ authHeaders }) {
                   <span>Quantas viagens</span>
                   <input type="number" value={viagem.viagens} onChange={campo("viagens")} />
                 </label>
+              )}
+              {(viagem.produto === "last_mile" || viagem.modeloReceita === "por_entrega") && (
+                <>
+                  <label>
+                    <span>Entregas totais</span>
+                    <input type="number" value={viagem.entregas} onChange={campo("entregas")} />
+                  </label>
+                  <label>
+                    <span>Entregas por viagem</span>
+                    <input type="number" value={viagem.entregasPorViagem} onChange={campo("entregasPorViagem")} />
+                  </label>
+                </>
+              )}
+              {(viagem.produto === "dedicada" || viagem.modeloReceita.includes("veiculo")) && (
+                <>
+                  <label>
+                    <span>Veículos dedicados</span>
+                    <input type="number" value={viagem.veiculosDedicados} onChange={campo("veiculosDedicados")} />
+                  </label>
+                  <label>
+                    <span>Dias de operação</span>
+                    <input type="number" value={viagem.diasOperacao} onChange={campo("diasOperacao")} />
+                  </label>
+                </>
               )}
               <label>
                 <span>Prazo de pagamento (dias)</span>
@@ -295,6 +350,20 @@ export default function TripViabilityPage({ authHeaders }) {
                   : "para atingir a margem alvo"}
               </span>
             </article>
+            {avaliacao.volume.veiculoMes > 0 && (
+              <article>
+                <small>Alvo por veículo/mês</small>
+                <strong>{BRL.format(avaliacao.economia.precoAlvoPorVeiculoMes)}</strong>
+                <span>para frota dedicada</span>
+              </article>
+            )}
+            {avaliacao.volume.entregas > 0 && (
+              <article>
+                <small>Receita por entrega</small>
+                <strong>{BRL.format(avaliacao.economia.receitaPorEntrega)}</strong>
+                <span>{produto.rotulo}</span>
+              </article>
+            )}
           </div>
 
           <div className="tdg-via-bloco">
