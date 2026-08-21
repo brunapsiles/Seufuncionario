@@ -1413,11 +1413,11 @@ function WorkAreaMap({ onNavigate }) {
         <div>
           <span className="tdg-kicker">MAPA DE TRABALHO</span>
           <h2 id="tdg-work-map-title">Escolha a área pelo resultado que você precisa gerar</h2>
-          <p>As ferramentas seguem a mesma jornada: Comercial, Produtos, Planejamento, Operação, Financeiro e áreas de suporte.</p>
+          <p>As ferramentas seguem a mesma jornada: Comercial, Produtos, Planejamento, Operação, Financeiro, DP/RH, Marketing, ESG e Gestão.</p>
         </div>
       </header>
       <div className="tdg-journey" aria-label="Jornada principal">
-        <span>Comercial</span><ArrowRight size={14} /><span>Produtos</span><ArrowRight size={14} /><span>Planejamento</span><ArrowRight size={14} /><span>Operação</span><ArrowRight size={14} /><span>Financeiro</span>
+        <span>Comercial</span><ArrowRight size={14} /><span>Produtos</span><ArrowRight size={14} /><span>Planejamento</span><ArrowRight size={14} /><span>Operação</span><ArrowRight size={14} /><span>Financeiro</span><ArrowRight size={14} /><span>DP/RH</span><ArrowRight size={14} /><span>Marketing</span><ArrowRight size={14} /><span>ESG</span><ArrowRight size={14} /><span>Gestão</span>
       </div>
       <div className="tdg-work-area-grid">
         {WORK_AREAS.map((area) => {

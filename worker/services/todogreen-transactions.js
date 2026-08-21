@@ -456,7 +456,9 @@ async function submitCiot(env, access, user, id, body) {
   try {
     const response = await fetch(connectorUrl, { method: "POST", headers, body: JSON.stringify(connectorPayload) });
     responseStatus = response.status;
-    responsePayload = await response.json().catch(async () => ({ text: await response.text().catch(() => "") }));
+    const responseText = await response.text().catch(() => "");
+    responsePayload = responseText ? parseJson(responseText) : {};
+    if (responseText && !Object.keys(responsePayload).length) responsePayload = { text: responseText };
     responseOk = response.ok;
   } catch (error) {
     responsePayload = { error: error?.message || "Falha ao chamar o conector direto." };
