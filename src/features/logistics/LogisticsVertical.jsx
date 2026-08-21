@@ -328,7 +328,7 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     route: "/todogreen/produtos",
     area: "produtos",
     status: "functional",
-    description: "Regras, indicadores, entradas obrigatórias e outputs de cada serviço vendável da transportadora elétrica.",
+    description: "Regras, indicadores, premissas e evidências de cada serviço contratado.",
   },
   "produtos-logisticos": {
     title: "Produtos logísticos",
@@ -581,7 +581,7 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     // Quem não gerencia acessos não vê a aba. A checagem é o papel do vínculo,
     // não a presença da palavra "admin" em algum lugar da tela.
     permission: "access:manage",
-    description: "Gestão de e-mails autorizados e papéis privados da vertical.",
+    description: "Gestão de e-mails autorizados e perfis de acesso.",
   },
   integracoes: {
     title: "Integrações de IA, busca e automação",
@@ -1213,8 +1213,8 @@ function AcessoEmVerificacao() {
       <section className="tdg-denied-card">
         <div className="tdg-denied-mark"><ShieldCheck /></div>
         <span className="tdg-kicker">ACESSO PRIVADO</span>
-        <h1 id="tdg-verificando-title">Confirmando seu acesso...</h1>
-        <p>Estamos verificando seu vínculo e suas permissões com o servidor. A área abre assim que a confirmação chegar.</p>
+        <h1 id="tdg-verificando-title">Confirmando permissão</h1>
+        <p>A área abre assim que sua autorização for confirmada.</p>
       </section>
     </main>
   );
@@ -1226,11 +1226,11 @@ function AccessDenied({ db }) {
       <section className="tdg-denied-card">
         <div className="tdg-denied-mark"><ShieldCheck /></div>
         <span className="tdg-kicker">ACESSO PRIVADO</span>
-        <h1 id="tdg-denied-title">Vertical To Do Green protegida</h1>
-        <p>Esta área só abre depois que o servidor confirma um vínculo ativo com a To Do Green ou uma autorização individual. Domínio de e-mail, nome do negócio e dados guardados neste navegador não concedem acesso — entrar pela URL, tampouco.</p>
+        <h1 id="tdg-denied-title">Acesso restrito</h1>
+        <p>Entre com uma conta autorizada para acessar as rotinas da To Do Green.</p>
         <dl>
           <div><dt>Usuário atual</dt><dd>{db?.user?.email || "sessão local"}</dd></div>
-          <div><dt>Tenant</dt><dd>{TODO_GREEN_TENANT.slug}</dd></div>
+          <div><dt>Empresa</dt><dd>To Do Green</dd></div>
         </dl>
       </section>
     </main>
@@ -1260,10 +1260,10 @@ function ModuleCard({ grupo }) {
       <span>
         <strong>{grupo.nome}</strong>
         {implemented && grupo.descricao && <small>{grupo.descricao}</small>}
-        {implemented && assuntos && <small className="tdg-module-assuntos">Aqui você resolve: {assuntos}.</small>}
-        {!implemented && <small>Planejado. Ainda não liberado.</small>}
+        {implemented && assuntos && <small className="tdg-module-assuntos">Inclui: {assuntos}.</small>}
+        {!implemented && <small>Em implantação.</small>}
       </span>
-      {!implemented && <em>Planejado</em>}
+      {!implemented && <em>Em implantação</em>}
       {implemented && <ExternalLink size={18} aria-hidden="true" />}
     </button>
   );
@@ -1279,14 +1279,14 @@ function AreaSection({ area, grupos }) {
           <span className="tdg-kicker">{area.name}</span>
           <h2 id={`area-${area.id}`}>{area.description}</h2>
         </div>
-        <span>{liberadas.length} disponíveis · {planejadas.length} planejadas</span>
+        <span>{liberadas.length} rotinas ativas · {planejadas.length} em implantação</span>
       </div>
       <div className="tdg-module-grid">
         {liberadas.map((grupo) => <ModuleCard grupo={grupo} key={grupo.rota} />)}
       </div>
       {planejadas.length > 0 && (
         <details className="tdg-backlog">
-          <summary>Ver itens planejados desta área</summary>
+          <summary>Ver próximos itens</summary>
           <div className="tdg-module-grid">
             {planejadas.map((grupo) => <ModuleCard grupo={grupo} key={grupo.rota} />)}
           </div>
@@ -1301,7 +1301,7 @@ function ProductCard({ product, active, onSelect }) {
     <button className={`tdg-product-card ${active ? "active" : ""}`} type="button" onClick={() => onSelect(product.id)}>
       <span>{product.code}</span>
       <strong>{product.name}</strong>
-      <small>{product.billingUnit} · {product.requiredFields.length} obrigatórios</small>
+      <small>{product.billingUnit} · {product.requiredFields.length} premissas</small>
     </button>
   );
 }
@@ -1344,7 +1344,7 @@ function DashboardPanel({ data, dashboard, tasks, onNavigate }) {
   const occupancy = resumoDeOcupacao({ operacoes: data.operations });
   const occupancyRisks = operacoesCriticas({ operacoes: data.operations, limite: 3 });
   const actionableAlerts = [
-    ...marginRisks.map((item) => ({ id: `margin-${item.id}`, tone: "risk", title: `${item.cliente} está ${number.format(item.distanciaDoPiso)} p.p. abaixo do piso`, detail: `Margem ${number.format(item.margemPercent)}% · piso ${number.format(item.piso)}%`, action: "Abrir pricing", route: "/todogreen/precificacao" })),
+    ...marginRisks.map((item) => ({ id: `margin-${item.id}`, tone: "risk", title: `${item.cliente} está ${number.format(item.distanciaDoPiso)} p.p. abaixo do piso`, detail: `Margem ${number.format(item.margemPercent)}% · piso ${number.format(item.piso)}%`, action: "Abrir precificação", route: "/todogreen/precificacao" })),
     ...occupancyRisks.map((item) => ({ id: `occupancy-${item.id}`, tone: "risk", title: `${item.referencia} com ${number.format(item.ocupacaoPercent)}% de ocupação`, detail: "Revise consolidação, frequência ou alocação da rota.", action: "Abrir operação", route: "/todogreen/operacoes" })),
     ...decision.alerts,
   ];
@@ -1354,7 +1354,7 @@ function DashboardPanel({ data, dashboard, tasks, onNavigate }) {
       <header className="tdg-decision-header">
         <div>
           <span className="tdg-kicker">VISÃO GERAL</span>
-          <h2 id="tdg-decision-title">Painel operacional</h2>
+          <h2 id="tdg-decision-title">Painel de Gerenciamento</h2>
           <p>Indicadores, pendências e atalhos principais da operação.</p>
         </div>
         <span className="tdg-data-status">{data.demo ? "Demonstração identificada" : "Dados reais"}</span>
@@ -1392,7 +1392,7 @@ function DashboardPanel({ data, dashboard, tasks, onNavigate }) {
           <div>
             <button type="button" onClick={() => onNavigate?.("/todogreen/clientes")}>Clientes <ArrowRight size={14} /></button>
             <button type="button" onClick={() => onNavigate?.("/todogreen/oportunidades")}>Oportunidades <ArrowRight size={14} /></button>
-            <button type="button" onClick={() => onNavigate?.("/todogreen/precificacao")}>Pricing <ArrowRight size={14} /></button>
+            <button type="button" onClick={() => onNavigate?.("/todogreen/precificacao")}>Precificação <ArrowRight size={14} /></button>
             <button type="button" onClick={() => onNavigate?.("/todogreen/propostas")}>Propostas e contratos <ArrowRight size={14} /></button>
             <button type="button" onClick={() => onNavigate?.("/todogreen/deal-desk")}>Aprovações <ArrowRight size={14} /></button>
             <button type="button" onClick={() => onNavigate?.("/todogreen/operacoes")}>Operação <ArrowRight size={14} /></button>
@@ -1410,7 +1410,7 @@ function WorkAreaMap({ onNavigate }) {
     <section className="tdg-work-map" aria-labelledby="tdg-work-map-title">
       <header>
         <div>
-          <span className="tdg-kicker">MÓDULOS</span>
+          <span className="tdg-kicker">ROTINAS</span>
           <h2 id="tdg-work-map-title">ERP To Do Green</h2>
         </div>
       </header>
@@ -1665,7 +1665,7 @@ function PricingPanel({ role, criar, db, authHeaders, setToast, opportunities = 
         <span><small>CO₂</small><strong>{hasEnvironmentalInputs ? `${number.format(decision.co2AvoidedKg / 1000)} t evitadas` : "Aguardando rota"}</strong></span>
         <span><small>Aprovação necessária</small><strong>{friendlyCommercialText(decision.approval)}</strong></span>
       </div>
-      <details className="tdg-calculation-details"><summary>Ver documentos necessários e detalhes do cálculo</summary><div className="tdg-method"><strong>Documentos necessários</strong><p>{blueprint.requiredEvidence.join(" · ")}</p><small>Relatórios disponíveis: {blueprint.executiveOutputs.join(" · ")}</small></div></details>
+      <details className="tdg-calculation-details"><summary>Ver documentos necessários e detalhes do cálculo</summary><div className="tdg-method"><strong>Documentos necessários</strong><p>{blueprint.requiredEvidence.join(" · ")}</p><small>Relatórios: {blueprint.executiveOutputs.join(" · ")}</small></div></details>
       {result.approval.required && (
         // Antes isto era só um aviso: a tela dizia que precisava de aprovação e
         // a simulação era salva do mesmo jeito. Agora o aviso vem com o caminho.
@@ -1721,7 +1721,7 @@ const rotuloDoCenario = (item, clients = []) => {
   return `${nome} · ${produto} · ${dataCriacao}`;
 };
 
-const propostaAceita = (proposal) => ["accepted", "approved", "aceita", "aprovada"].includes(String(proposal?.status || "").toLowerCase());
+const propostaAceita = (proposal) => ["accepted", "approved", "aceita", "aprovada"].includes(String(proposal?.status || proposal?.situacao || "").toLowerCase());
 const escaparHtml = (value) => String(value || "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
 
 function ProposalPanel({ data, criar, atualizar, pedidosDeAprovacao = [], setToast }) {
@@ -1888,7 +1888,7 @@ function EsgPanel({ dashboard, data }) {
   const latest = data.pricingScenarios[0]?.result?.impact;
   return (
     <section className="tdg-panel tdg-esg">
-      <div className="tdg-section-head"><div><span className="tdg-kicker">IMPACTO AMBIENTAL</span><h2>Green Score e emissões evitadas nas operações dos clientes</h2><p>Consulte os resultados ambientais em linguagem clara. Os termos técnicos permanecem disponíveis nos relatórios.</p></div><strong>{number.format(dashboard.greenScore)} / 100</strong></div>
+      <div className="tdg-section-head"><div><span className="tdg-kicker">IMPACTO AMBIENTAL</span><h2>Green Score e emissões evitadas nas operações dos clientes</h2><p>Consulte os resultados ambientais em linguagem clara. Os termos técnicos ficam nos relatórios.</p></div><strong>{number.format(dashboard.greenScore)} / 100</strong></div>
       <div className="tdg-result">
         <MetricCard label="CO2 evitado" value={`${number.format(dashboard.co2Evitado / 1000)} t`} detail="estimativa auditável" tone="good" />
         <MetricCard label="Diesel não consumido" value={`${number.format(dashboard.dieselNaoConsumido)} L`} detail="referência diesel" />
@@ -1973,11 +1973,11 @@ function AccessPanel({ role, authHeaders, setToast }) {
       setToast?.(error.message);
     }
   };
-  if (!canManage) return <section className="tdg-panel"><div className="tdg-section-head"><div><span className="tdg-kicker">ACESSOS</span><h2>Você pode usar a vertical, mas não gerenciar usuários.</h2></div><strong>{role || "sem papel"}</strong></div></section>;
+  if (!canManage) return <section className="tdg-panel"><div className="tdg-section-head"><div><span className="tdg-kicker">ACESSOS</span><h2>Você tem acesso, mas não pode gerenciar usuários.</h2></div><strong>{role || "sem papel"}</strong></div></section>;
   return (
-    <section className="tdg-panel tdg-access-panel"><div className="tdg-section-head"><div><span className="tdg-kicker">ACESSOS</span><h2>Autorize e-mails externos para entrar na vertical sem novo deploy.</h2></div><strong>{loading ? "carregando" : `${emails.length} e-mail(s)`}</strong></div>
+    <section className="tdg-panel tdg-access-panel"><div className="tdg-section-head"><div><span className="tdg-kicker">ACESSOS</span><h2>Autorize usuários para acessar a To Do Green.</h2></div><strong>{loading ? "carregando" : `${emails.length} e-mail(s)`}</strong></div>
       <form className="tdg-access-form" onSubmit={save}><label><span>E-mail autorizado</span><input value={form.email} type="email" required placeholder="nome@empresa.com.br" onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} /></label><label><span>Papel</span><select value={form.role} onChange={(event) => setForm((current) => ({ ...current, role: event.target.value }))}>{TODO_GREEN_ROLES.filter((item) => item !== "owner").map((item) => <option value={item} key={item}>{item.replace(/_/g, " ")}</option>)}</select></label><label><span>Validade</span><input type="date" value={form.expiresAt} onChange={(event) => setForm((current) => ({ ...current, expiresAt: event.target.value }))} /><small>Vazio mantém o acesso sem expiração.</small></label><label><span>Observação</span><input value={form.note} placeholder="Ex.: implantação, auditor externo" onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))} /></label><button className="tdg-action" type="submit" disabled={saving}><Plus size={17} />{saving ? "Salvando..." : "Autorizar"}</button></form>
-      <div className="tdg-access-list">{emails.length === 0 && <div className="tdg-empty-access"><ShieldCheck size={18} />Nenhum e-mail autorizado ainda. Sem autorização nesta lista ou vínculo ativo ao tenant, ninguém entra na vertical.</div>}{emails.map((item) => { const expired = item.expiresAt && loadedAt > 0 && Date.parse(item.expiresAt) <= loadedAt; const active = item.status === "active" && !item.revokedAt && !expired; return <div className="tdg-access-row" key={item.email}><span><strong>{item.email}</strong><small>{item.note || "sem observação"}{item.lastAccessAt ? ` · último acesso ${new Date(item.lastAccessAt).toLocaleString("pt-BR")}` : ""}</small></span><span>{item.role.replace(/_/g, " ")}</span><span className={active ? "good" : ""}>{active ? item.expiresAt ? `ativo até ${new Date(item.expiresAt).toLocaleDateString("pt-BR")}` : "ativo" : item.revokedAt ? "revogado" : expired ? "expirado" : "inativo"}</span>{active && <button type="button" onClick={() => remove(item.email)} aria-label={`Revogar ${item.email}`}><Trash2 size={17} /></button>}</div>; })}</div>
+      <div className="tdg-access-list">{emails.length === 0 && <div className="tdg-empty-access"><ShieldCheck size={18} />Nenhum e-mail autorizado ainda.</div>}{emails.map((item) => { const expired = item.expiresAt && loadedAt > 0 && Date.parse(item.expiresAt) <= loadedAt; const active = item.status === "active" && !item.revokedAt && !expired; return <div className="tdg-access-row" key={item.email}><span><strong>{item.email}</strong><small>{item.note || "sem observação"}{item.lastAccessAt ? ` · último acesso ${new Date(item.lastAccessAt).toLocaleString("pt-BR")}` : ""}</small></span><span>{item.role.replace(/_/g, " ")}</span><span className={active ? "good" : ""}>{active ? item.expiresAt ? `ativo até ${new Date(item.expiresAt).toLocaleDateString("pt-BR")}` : "ativo" : item.revokedAt ? "revogado" : expired ? "expirado" : "inativo"}</span>{active && <button type="button" onClick={() => remove(item.email)} aria-label={`Revogar ${item.email}`}><Trash2 size={17} /></button>}</div>; })}</div>
     </section>
   );
 }
@@ -2239,13 +2239,13 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
       {isOverview && (
         <details className="tdg-tool-catalog" open={catalogRequested || undefined}>
           <summary>
-            <span><strong>Índice completo de funcionalidades</strong><small>Use quando você já souber a função específica que procura.</small></span>
-            <span>Abrir módulos</span>
+            <span><strong>Catálogo de rotinas</strong><small>Áreas, produtos e funções do ERP.</small></span>
+            <span>Ver catálogo</span>
           </summary>
           <div className="tdg-tool-catalog-content">
-            <div className="tdg-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar função, área, produto ou especialista" aria-label="Buscar funções da vertical To Do Green" /></div>
+            <div className="tdg-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar rotina, área, produto ou responsável" aria-label="Buscar rotinas To Do Green" /></div>
           <section className="tdg-panel">
-            <div className="tdg-section-head"><div><span className="tdg-kicker">PRODUTOS LOGÍSTICOS</span><h2>Calculadoras reais disponíveis</h2></div><button className="tdg-action" type="button" onClick={openPricing}>Abrir precificação</button></div>
+            <div className="tdg-section-head"><div><span className="tdg-kicker">PORTFÓLIO</span><h2>Produtos e modelos de preço</h2></div><button className="tdg-action" type="button" onClick={openPricing}>Calcular preço</button></div>
             <div className="tdg-product-strip">{LOGISTICS_PRODUCTS.map((product) => <ProductCard product={product} active={false} onSelect={openPricing} key={product.id} />)}</div>
           </section>
 

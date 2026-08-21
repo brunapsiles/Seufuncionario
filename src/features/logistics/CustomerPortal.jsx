@@ -441,7 +441,7 @@ export default function CustomerPortal() {
         {aba === "solicitacoes" && <Solicitacoes podeAbrir={(sessao?.permissoes || []).includes("portal:request:create")} setAviso={setAviso} />}
         {aba === "assistente" && <AssistenteCliente enviar={enviar} setAviso={setAviso} />}
       </section>
-      <footer className="cp-rodape">Green Score e indicadores ambientais são estimativas próprias da To Do Green, com metodologia e memória de cálculo disponíveis nos relatórios. Não constituem certificação.</footer>
+      <footer className="cp-rodape">Green Score e indicadores ambientais são estimativas próprias da To Do Green, com metodologia e memória de cálculo nos relatórios. Não constituem certificação.</footer>
     </main>
   );
 }

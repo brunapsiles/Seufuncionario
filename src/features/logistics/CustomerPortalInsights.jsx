@@ -31,7 +31,7 @@ const rotulosComponentes = {
   evolucao_meta: "Evolução contra a meta",
   qualidadeDados: "Qualidade dos dados",
   qualidade_dados: "Qualidade dos dados",
-  evidencias: "Evidências disponíveis",
+  evidencias: "Evidências do portal",
 };
 
 const formatarComponente = (chave) =>
@@ -167,7 +167,7 @@ export function AssistenteCliente({ enviar, setAviso }) {
   const [pergunta, setPergunta] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [mensagens, setMensagens] = useState([
-    { lado: "assistente", texto: "Pergunte sobre suas operações, entregas, Green Score, emissões, relatórios ou evidências disponíveis neste portal." },
+    { lado: "assistente", texto: "Pergunte sobre operações, entregas, Green Score, emissões, relatórios ou evidências deste portal." },
   ]);
 
   const perguntar = async (evento) => {
@@ -179,7 +179,7 @@ export function AssistenteCliente({ enviar, setAviso }) {
     setEnviando(true);
     try {
       const dados = await enviar("assistente", { pergunta: texto });
-      setMensagens((lista) => [...lista, { lado: "assistente", texto: dados.resposta || "Não encontrei uma resposta com os dados disponíveis." }]);
+      setMensagens((lista) => [...lista, { lado: "assistente", texto: dados.resposta || "Não encontrei uma resposta na base do portal." }]);
     } catch (erro) {
       setAviso(erro.message);
       setMensagens((lista) => [...lista, { lado: "assistente", texto: "Não consegui responder agora. Tente novamente ou abra uma solicitação para a equipe." }]);

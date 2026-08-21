@@ -161,7 +161,7 @@ describe("logistics vertical domain", () => {
     expect(impact.formula).toContain("distância");
     expect(score.score).toBeGreaterThan(40);
     expect(translated.proposalText).toContain("tCO2e");
-    expect(translated.disclaimer).toContain("Equivalências ilustrativas");
+    expect(translated.disclaimer).toContain("Estimativa operacional");
   });
 
   it("summarizes executive dashboard with traceable scenario data", () => {

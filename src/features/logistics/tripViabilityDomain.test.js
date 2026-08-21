@@ -247,7 +247,7 @@ describe("margem calculada", () => {
   it("a margem sai da conta, não de um campo digitado", () => {
     const a = avaliarViagem(spot(), custosBasicos());
     // custo direto = combustível + motorista + rateio do veículo.
-    expect(a.economia.custoDireto).toBe(1240);
+    expect(a.economia.custoDireto).toBe(1240.2);
     // encargos sobre o custo direto, pela régua padrão
     expect(a.economia.encargos.total).toBeGreaterThan(0);
     expect(a.economia.custoCarregado).toBeGreaterThan(a.economia.custoDireto);

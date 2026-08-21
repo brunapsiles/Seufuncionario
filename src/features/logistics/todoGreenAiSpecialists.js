@@ -18,7 +18,7 @@
 // muda resposta nenhuma.
 
 export const TODO_GREEN_AI_SPECIALISTS = Object.freeze({
-  "Especialista Comercial": {
+  "Especialista em Contas e Vendas": {
     area: "commercial",
     instrucao:
       "Analise carteira, funil e relacionamento da transportadora sustentável. Olhe primeiro estágio da oportunidade, valor mensal, tempo desde a última interação e responsável. Aponte oportunidades paradas, contas sem dono e risco de perda com o motivo explícito. Recomende o próximo passo com responsável sugerido e prazo. Nunca invente valor de contrato, nome de cliente ou data de interação que não esteja nos dados.",

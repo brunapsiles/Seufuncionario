@@ -389,7 +389,7 @@ export const calculatePortfolioPotential = (account = {}) => {
         : registeredAnnual
           ? "Potencial anual informado manualmente"
           : productValues.length
-            ? "Soma parcial dos produtos com dados disponíveis"
+            ? "Soma parcial dos produtos com dados informados"
           : "Sem base suficiente para cálculo",
     calculatedProducts,
     missing: !annual,

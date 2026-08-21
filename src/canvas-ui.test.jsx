@@ -184,7 +184,7 @@ describe("Quadro visual", () => {
     );
     await abrirQuadro();
 
-    fireEvent.click(await screen.findByRole("button", { name: /Virar tarefas/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Tarefas/ }));
 
     expect(await screen.findByText(/1 tarefa criada/)).toBeInTheDocument();
     const salvo = JSON.parse(
@@ -201,7 +201,7 @@ describe("Quadro visual", () => {
     );
     await abrirQuadro();
 
-    fireEvent.click(await screen.findByRole("button", { name: /Abrir votação/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Votação/ }));
     fireEvent.click(await screen.findByLabelText("Votar em Ideia boa"));
 
     const top = document.querySelector(".cvs-top");
@@ -236,7 +236,8 @@ describe("Quadro visual", () => {
     );
     await abrirQuadro();
 
-    fireEvent.click(await screen.findByRole("button", { name: /Agrupar post-its/ }));
+    const acoes = screen.getByLabelText("Ações do quadro");
+    fireEvent.click(within(acoes).getByRole("button", { name: /^Agrupar$/ }));
 
     expect(await screen.findByText(/2 grupos organizados/)).toBeInTheDocument();
   });

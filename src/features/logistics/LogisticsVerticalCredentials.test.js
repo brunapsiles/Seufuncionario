@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // `.tdg-denied-card` é o mesmo cartão para dois estados diferentes:
-// "Confirmando seu acesso..." (checagem em andamento, todo mundo passa por
+// "Confirmando permissão" (checagem em andamento, todo mundo passa por
 // aqui) e "acesso negado" (checagem terminou e recusou). A diferença visível
 // é só o `aria-busy="true"` no <main> pai durante a checagem.
 //
@@ -23,7 +23,7 @@ describe("Login privado só aparece quando o acesso já foi mesmo negado", () =>
       <main class="tdg tdg-denied" aria-busy="true">
         <section class="tdg-denied-card">
           <span class="tdg-kicker">ACESSO PRIVADO</span>
-          <h1>Confirmando seu acesso...</h1>
+          <h1>Confirmando permissão</h1>
         </section>
       </main>
     `;
@@ -31,12 +31,12 @@ describe("Login privado só aparece quando o acesso já foi mesmo negado", () =>
     await flush();
 
     expect(document.querySelector(".tdg-login-box")).toBeNull();
-    expect(document.querySelector("h1").textContent).toBe("Confirmando seu acesso...");
+    expect(document.querySelector("h1").textContent).toBe("Confirmando permissão");
 
     // A checagem termina e nega de verdade: o React trocaria o texto e
     // removeria o `aria-busy` no mesmo passe.
     document.querySelector("main").removeAttribute("aria-busy");
-    document.querySelector("h1").textContent = "Vertical To Do Green protegida";
+    document.querySelector("h1").textContent = "Acesso restrito";
     await flush();
 
     expect(document.querySelector(".tdg-login-box")).not.toBeNull();
@@ -48,7 +48,7 @@ describe("Login privado só aparece quando o acesso já foi mesmo negado", () =>
       <main class="tdg tdg-denied">
         <section class="tdg-denied-card">
           <span class="tdg-kicker">ACESSO PRIVADO</span>
-          <h1>Vertical To Do Green protegida</h1>
+          <h1>Acesso restrito</h1>
         </section>
       </main>
     `;

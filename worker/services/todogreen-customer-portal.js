@@ -329,11 +329,11 @@ const portfolioPotentialFields = (input = {}) => {
           ? `Potencial anual informado; ${calculatedProducts} produto(s) calculado(s) por quantidade mensal × ticket médio × 12`
         : productsWithValue === 3
           ? "Soma dos potenciais cadastrados por produto"
-          : potentialManual.annual
-            ? "Potencial anual informado manualmente"
-            : productSum
-              ? "Soma parcial dos produtos com dados disponíveis"
-            : "Sem base suficiente para cálculo",
+        : potentialManual.annual
+          ? "Potencial anual informado manualmente"
+        : productSum
+          ? "Soma parcial dos produtos com dados informados"
+        : "Sem base suficiente para cálculo",
       calculatedProducts,
       calculatedAt: clean(input.potentialCalculation?.calculatedAt, 40),
     },

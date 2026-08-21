@@ -225,7 +225,7 @@ export default function EsgCenter({ authHeaders, setToast }) {
       .filter(([valido]) => !valido)
       .map(([, nome]) => nome);
     if (faltantes.length) {
-      setAviso(`Revise os dados obrigatórios: ${faltantes.join(", ")}.`);
+      setAviso(`Revise os campos pendentes: ${faltantes.join(", ")}.`);
       return;
     }
     setCalculando(true);

@@ -108,7 +108,7 @@ export const buildTodoGreenDecisionCenter = ({ data = {}, dashboard = {}, tasks 
       tone: "risk",
       title: `${countLabel(lowMarginScenarios.length, "cenário", "cenários")} abaixo da margem mínima`,
       detail: "Revise custo, capacidade e justificativa antes de avançar.",
-      action: "Revisar pricing",
+      action: "Revisar preço",
       route: "/todogreen/precificacao",
     },
     expiringContracts.length && {

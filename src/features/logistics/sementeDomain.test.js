@@ -176,8 +176,9 @@ describe("identidade do Plantû", () => {
   });
 
   it("anuncia só o que ela realmente faz", () => {
-    expect(HABILIDADES).toContain("Precificação");
+    expect(HABILIDADES).toContain("Preço");
     expect(HABILIDADES).toContain("Operação");
+    expect(HABILIDADES).toContain("Notícias/RFQs");
     expect(HABILIDADES.length).toBe(6);
   });
 });

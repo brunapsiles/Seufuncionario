@@ -39,12 +39,12 @@ export const TODO_GREEN_WORKSPACE_TOOLS = Object.freeze([
   {
     id: "ajuda",
     label: "Central de ajuda",
-    description: "Onde encontrar cada rotina e como usar os recursos da vertical.",
+    description: "Onde encontrar cada rotina e como usar os recursos da To Do Green.",
   },
   {
     id: "estrutura",
     label: "Estrutura",
-    description: "Workspaces, espaços, pastas e listas sem duplicar projetos.",
+    description: "Áreas, pastas e listas sem duplicar projetos.",
   },
   {
     id: "bases",

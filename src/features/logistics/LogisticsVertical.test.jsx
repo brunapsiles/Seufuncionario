@@ -74,12 +74,12 @@ const preencherMiddleMile = () => {
 };
 
 // Renderiza já autorizada e espera a confirmação chegar. Sem a espera, a
-// asserção cai no cartão de "Confirmando seu acesso".
+// asserção cai no cartão de "Confirmando permissão".
 async function renderarAutorizada(props = {}) {
   const resultado = render(
     <LogisticsVertical db={baseDb} update={vi.fn()} setToast={vi.fn()} authHeaders={authHeaders} {...props} />,
   );
-  await waitFor(() => expect(screen.queryByText(/Confirmando seu acesso/)).toBeNull());
+  await waitFor(() => expect(screen.queryByText(/Confirmando permissão/)).toBeNull());
   return resultado;
 }
 
@@ -102,13 +102,13 @@ describe("LogisticsVertical", () => {
 
   it("não abre enquanto o servidor não confirmou o acesso", () => {
     render(<LogisticsVertical db={baseDb} update={vi.fn()} authHeaders={authHeaders} />);
-    expect(screen.getByText(/Confirmando seu acesso/)).toBeTruthy();
+    expect(screen.getByText(/Confirmando permissão/)).toBeTruthy();
     expect(screen.queryByText("Painel de Gerenciamento")).toBeNull();
   });
 
   it("bloqueia quem conhece a URL mas não tem sessão", () => {
     render(<LogisticsVertical db={baseDb} update={vi.fn()} />);
-    expect(screen.getByText("Vertical To Do Green protegida")).toBeTruthy();
+    expect(screen.getByText("Acesso restrito")).toBeTruthy();
     expect(screen.queryByText("Painel de Gerenciamento")).toBeNull();
   });
 
@@ -121,7 +121,7 @@ describe("LogisticsVertical", () => {
         authHeaders={authHeaders}
       />,
     );
-    expect(await screen.findByText("Vertical To Do Green protegida")).toBeTruthy();
+    expect(await screen.findByText("Acesso restrito")).toBeTruthy();
   });
 
   it("negócio chamado To Do Green no espaço não abre a vertical", async () => {
@@ -133,7 +133,7 @@ describe("LogisticsVertical", () => {
         authHeaders={authHeaders}
       />,
     );
-    expect(await screen.findByText("Vertical To Do Green protegida")).toBeTruthy();
+    expect(await screen.findByText("Acesso restrito")).toBeTruthy();
   });
 
   it("permissão guardada no estado local não abre a vertical", async () => {
@@ -145,29 +145,29 @@ describe("LogisticsVertical", () => {
         authHeaders={authHeaders}
       />,
     );
-    expect(await screen.findByText("Vertical To Do Green protegida")).toBeTruthy();
+    expect(await screen.findByText("Acesso restrito")).toBeTruthy();
   });
 
   it("falha de rede fecha a vertical em vez de mantê-la aberta", async () => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("rede fora"))));
     render(<LogisticsVertical db={baseDb} update={vi.fn()} authHeaders={authHeaders} />);
-    expect(await screen.findByText("Vertical To Do Green protegida")).toBeTruthy();
+    expect(await screen.findByText("Acesso restrito")).toBeTruthy();
   });
 
   it("resposta 200 sem papel conhecido também não libera", async () => {
     vi.stubGlobal("fetch", vi.fn(() => jsonOk({ ownerId: "u1", permissions: ["*"] })));
     render(<LogisticsVertical db={baseDb} update={vi.fn()} authHeaders={authHeaders} />);
-    expect(await screen.findByText("Vertical To Do Green protegida")).toBeTruthy();
+    expect(await screen.findByText("Acesso restrito")).toBeTruthy();
   });
 
   it("renders the private hub for authorized To Do Green users", async () => {
     await renderarAutorizada();
     expect(screen.getByRole("heading", { name: "Visão Geral", level: 1 }).hidden).toBe(false);
-    expect(screen.getByRole("heading", { name: "Painel operacional" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Painel de Gerenciamento" })).toBeTruthy();
     expect(screen.getByRole("navigation", { name: "Navegação To Do Green" }).querySelectorAll("button")).toHaveLength(10);
     expect(screen.getByText("Configurações")).toBeTruthy();
     expect(screen.getByRole("heading", { name: /ERP To Do Green/ })).toBeTruthy();
-    expect(screen.getByText("Da OS concluída ao recebimento")).toBeTruthy();
+    expect(screen.getByText("Indicadores, pendências e atalhos principais da operação.")).toBeTruthy();
     expect(screen.queryByText(/Painel operacional/i)).toBeNull();
     expect(screen.queryByText(/ativas.*planejado/i)).toBeNull();
     expect(screen.queryByText(/Recursos organizados por área/i)).toBeNull();
@@ -239,8 +239,8 @@ describe("LogisticsVertical", () => {
     fireEvent.click(screen.getByRole("button", { name: "Buscar ferramenta" }));
     await waitFor(() => expect(window.location.pathname).toBe("/todogreen/dashboard"));
     expect(window.location.search).toBe("?ferramentas=1");
-    expect(screen.getByText("Calculadoras reais disponíveis").closest("details")?.open).toBe(true);
-    expect(screen.getByLabelText("Buscar funções da vertical To Do Green").closest("details")?.open).toBe(true);
+    expect(screen.getByText("Produtos e modelos de preço").closest("details")?.open).toBe(true);
+    expect(screen.getByLabelText("Buscar rotinas To Do Green").closest("details")?.open).toBe(true);
   });
 
   it("cada página mantém um título principal único e compreensível", async () => {
@@ -253,9 +253,10 @@ describe("LogisticsVertical", () => {
 
   it("does not show fake production indicators when no real data exists", async () => {
     await renderarAutorizada();
-    expect(screen.getByText("Comece conectando o primeiro dado real")).toBeTruthy();
-    expect(screen.getByText("Não medida")).toBeTruthy();
-    expect(screen.getByText("Não calculada")).toBeTruthy();
+    expect(screen.getByText("Sem dados operacionais")).toBeTruthy();
+    expect(screen.getByText("Cadastre clientes, oportunidades ou simulações para alimentar o painel.")).toBeTruthy();
+    expect(screen.getByText("Sem medição")).toBeTruthy();
+    expect(screen.getAllByText("Sem cálculo").length).toBeGreaterThan(0);
     expect(screen.queryByText("Cliente enterprise")).toBeNull();
     expect(screen.queryByText("Operação e-commerce")).toBeNull();
     expect(screen.queryByText(/demonstração ativo/i)).toBeNull();
@@ -279,7 +280,7 @@ describe("LogisticsVertical", () => {
     await renderarAutorizada();
     expect(await screen.findByText(/Rede Alfa está 12 p\.p\. abaixo do piso/)).toBeTruthy();
     expect(await screen.findByText(/Cajamar → Osasco com 35% de ocupação/)).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Abrir pricing/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Abrir precificação/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Abrir operação/ })).toBeTruthy();
   });
 
@@ -290,7 +291,7 @@ describe("LogisticsVertical", () => {
     expect(screen.getByText("Origem *")).toBeTruthy();
     expect(screen.getByText("Pedágio por viagem R$")).toBeTruthy();
     expect(container.querySelectorAll(".tdg-section")).toHaveLength(0);
-    expect(screen.queryByText("Calculadoras reais disponíveis")).toBeNull();
+    expect(screen.queryByText("Produtos e modelos de preço")).toBeNull();
     fireEvent.click(screen.getAllByText("Last Mile")[0]);
     expect(screen.getByText("Last Mile e-commerce")).toBeTruthy();
     expect(screen.getByText("Pacotes *")).toBeTruthy();
@@ -460,6 +461,7 @@ describe("LogisticsVertical", () => {
       }),
     });
     await renderarAutorizada();
+    expect(await screen.findByText("Proposta Alfa")).toBeTruthy();
     const button = await screen.findByRole("button", { name: /Gerar contrato/ });
     expect(button.disabled).toBe(false);
     fireEvent.click(button);
@@ -658,7 +660,7 @@ describe("LogisticsVertical", () => {
 
   it("filters functions while preserving real workflow navigation", async () => {
     await renderarAutorizada();
-    fireEvent.change(screen.getByLabelText("Buscar funções da vertical To Do Green"), {
+    fireEvent.change(screen.getByLabelText("Buscar rotinas To Do Green"), {
       target: { value: "Green Score" },
     });
     expect(screen.getAllByText("Green Score").length).toBeGreaterThan(0);
@@ -689,7 +691,7 @@ describe("LogisticsVertical", () => {
     });
     await renderarAutorizada();
     expect(await screen.findByText("teste@teste.com.br")).toBeTruthy();
-    expect(screen.getByText(/sem novo deploy/i)).toBeTruthy();
+    expect(screen.getByText(/Autorize usuários/i)).toBeTruthy();
   });
 
   it("o painel de acessos não promete liberação automática por domínio", async () => {

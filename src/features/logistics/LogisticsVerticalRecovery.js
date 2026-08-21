@@ -1,5 +1,5 @@
 const TODO_GREEN_PATH = /^\/todogreen(?:\/|$)/;
-const LOADING_TEXT = "Carregando vertical To Do Green";
+const LOADING_TEXTS = ["Carregando To Do Green", "Carregando vertical To Do Green"];
 const RELOAD_KEY = "tdg-recovery-reloaded";
 const TIMEOUT_MS = 6500;
 
@@ -7,7 +7,7 @@ const isTodoGreen = () => TODO_GREEN_PATH.test(window.location.pathname);
 
 const loadingNode = () =>
   [...document.querySelectorAll(".inbox-loading")].find((node) =>
-    String(node.textContent || "").includes(LOADING_TEXT),
+    LOADING_TEXTS.some((text) => String(node.textContent || "").includes(text)),
   );
 
 const clearOldRuntime = async () => {
