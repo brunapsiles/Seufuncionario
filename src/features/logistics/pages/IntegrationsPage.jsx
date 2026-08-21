@@ -103,7 +103,7 @@ export default function IntegrationsPage({ authHeaders, setToast }) {
   ];
   return (
     <div className="tdg-page">
-      <header className="tdg-page-title"><div><span>CONFIABILIDADE</span><h2>Integrações de IA, busca e automação</h2><p>A Semente usa uma cascata de provedores. As automações essenciais rodam na própria Cloudflare, sem exigir n8n ou servidores externos.</p></div><button className="tdg-action" type="button" onClick={load}><RefreshCw size={16} />Atualizar</button></header>
+      <header className="tdg-page-title"><div><span>CONFIABILIDADE</span><h2>Integrações de IA, busca e automação</h2><p>O Plantû usa a cascata de IA e as fontes de busca configuradas. As automações essenciais rodam na própria Cloudflare.</p></div><button className="tdg-action" type="button" onClick={load}><RefreshCw size={16} />Atualizar</button></header>
       <ProviderList title="Cascata de IA" icon={Zap} items={status?.ai} testing={testing} onTest={test} />
       <ProviderList title="Busca web" icon={Search} items={searchItems} testing={testing} onTest={test} />
       <ProviderList title="WhatsApp" icon={MessageCircle} items={status?.messaging} />
