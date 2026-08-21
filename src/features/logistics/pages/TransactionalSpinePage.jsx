@@ -5,7 +5,7 @@ import "./TransactionalSpinePage.css";
 const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const today = () => new Date().toISOString().slice(0, 10);
 const apiPath = "/api/todogreen/transactions";
-const statusLabel = { draft: "Rascunho", ready: "Pronto", issued: "Emitido", contingency: "Contingência", released: "Liberada", in_progress: "Em execução", completed: "Concluída", cancelled: "Cancelada", eligible: "Elegível", checked: "Conferido", blocked: "Bloqueado", billed: "Faturado", open: "Em aberto", partial: "Parcial", settled: "Liquidado", overdue: "Vencido" };
+const statusLabel = { draft: "Rascunho", ready: "Pronto", sending: "Enviando", issued: "Emitido", failed: "Falha", contingency: "Contingência", released: "Liberada", in_progress: "Em execução", completed: "Concluída", cancelled: "Cancelada", eligible: "Elegível", checked: "Conferido", blocked: "Bloqueado", billed: "Faturado", open: "Em aberto", partial: "Parcial", settled: "Liquidado", overdue: "Vencido" };
 const nextStatus = { draft: "released", released: "in_progress", in_progress: "completed" };
 const nextLabel = { draft: "Aceitar viagem", released: "Enviar à operação", in_progress: "Concluir execução" };
 
@@ -80,11 +80,14 @@ function Ciot({ authHeaders, clients, contracts, operations, setToast }) {
     certificateEnvKey: "TODOGREEN_ANTT_CIOT_CERTIFICATE_PFX",
     certificatePasswordEnvKey: "TODOGREEN_ANTT_CIOT_CERTIFICATE_PASSWORD",
     a3ConnectorEnvKey: "TODOGREEN_ANTT_CIOT_A3_CONNECTOR_URL",
+    connectorUrlEnvKey: "TODOGREEN_ANTT_CIOT_CONNECTOR_URL",
+    connectorTokenEnvKey: "TODOGREEN_ANTT_CIOT_CONNECTOR_TOKEN",
     baseUrl: "",
   });
   const [orders, setOrders] = useState([]);
   const [records, setRecords] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState("");
   const [issuing, setIssuing] = useState(null);
   const [issueForm, setIssueForm] = useState({ ciotCode: "", protocol: "" });
   const [form, setForm] = useState({
@@ -104,6 +107,8 @@ function Ciot({ authHeaders, clients, contracts, operations, setToast }) {
         certificateEnvKey: nextIntegration.certificateEnvKey || "TODOGREEN_ANTT_CIOT_CERTIFICATE_PFX",
         certificatePasswordEnvKey: nextIntegration.certificatePasswordEnvKey || "TODOGREEN_ANTT_CIOT_CERTIFICATE_PASSWORD",
         a3ConnectorEnvKey: nextIntegration.a3ConnectorEnvKey || "TODOGREEN_ANTT_CIOT_A3_CONNECTOR_URL",
+        connectorUrlEnvKey: nextIntegration.connectorUrlEnvKey || "TODOGREEN_ANTT_CIOT_CONNECTOR_URL",
+        connectorTokenEnvKey: nextIntegration.connectorTokenEnvKey || "TODOGREEN_ANTT_CIOT_CONNECTOR_TOKEN",
         baseUrl: nextIntegration.baseUrl || "",
       });
       setOrders(serviceOrders.records || []);
@@ -121,7 +126,7 @@ function Ciot({ authHeaders, clients, contracts, operations, setToast }) {
     try {
       const data = await request("ciot-integration", authHeaders, { method: "POST", body: JSON.stringify({ ...integrationForm, revision: integration?.revision }) });
       setIntegration(data.integration);
-      setToast?.(data.integration?.configured ? "Integração direta ANTT pronta" : "Configuração salva; falta certificado/base URL no ambiente");
+      setToast?.(data.integration?.configured ? "Integração direta ANTT pronta" : "Configuração salva; falta base URL, conector ou certificado no ambiente");
     } catch (error) { setToast?.(error.message); }
   };
   const save = async (event) => {
@@ -142,6 +147,19 @@ function Ciot({ authHeaders, clients, contracts, operations, setToast }) {
       setIssuing(null); setIssueForm({ ciotCode: "", protocol: "" }); await load();
     } catch (error) { setToast?.(error.message); }
   };
+  const submit = async (record) => {
+    setSubmitting(record.id);
+    try {
+      const data = await request(`ciot/${record.id}/submit`, authHeaders, { method: "POST", body: JSON.stringify({ revision: record.revision }) });
+      setToast?.(`CIOT emitido: ${data.record?.ciotCode || "retorno ANTT registrado"}`);
+      await load();
+    } catch (error) {
+      setToast?.(error.message);
+      await load();
+    } finally {
+      setSubmitting("");
+    }
+  };
   return <section className="tdg-panel tdg-txn-page"><div className="tdg-section-head"><div><span className="tdg-kicker">ANTT · API DIRETA · CIOT</span><h2>Geração e controle de CIOT</h2><p>Integração direta para ETC/frota própria sem IPEF: certificado ICP-Brasil A1/A3, payload regulatório, piso mínimo e retorno do código governamental de 12 dígitos.</p></div><strong>{records.length} CIOT(s)</strong></div>
     <form className="tdg-txn-form" onSubmit={saveIntegration}>
       <label><span>Modo</span><input value="Integração direta ANTT sem IPEF" readOnly /></label>
@@ -152,11 +170,14 @@ function Ciot({ authHeaders, clients, contracts, operations, setToast }) {
         <label><span>Env do PFX A1</span><input value={integrationForm.certificateEnvKey} onChange={(e) => changeIntegration("certificateEnvKey", e.target.value)} /></label>
         <label><span>Env da senha A1</span><input value={integrationForm.certificatePasswordEnvKey} onChange={(e) => changeIntegration("certificatePasswordEnvKey", e.target.value)} /></label>
       </> : <label><span>Env do conector A3</span><input value={integrationForm.a3ConnectorEnvKey} onChange={(e) => changeIntegration("a3ConnectorEnvKey", e.target.value)} /></label>}
+      <label><span>Env do conector direto</span><input value={integrationForm.connectorUrlEnvKey} onChange={(e) => changeIntegration("connectorUrlEnvKey", e.target.value)} /></label>
+      <label><span>Env do token do conector</span><input value={integrationForm.connectorTokenEnvKey} onChange={(e) => changeIntegration("connectorTokenEnvKey", e.target.value)} /></label>
       <button className="tdg-action"><CheckCircle2 size={17} />Salvar integração direta</button>
     </form>
     <div className="tdg-txn-empty">
-      <CheckCircle2 size={16} /> Status: {integration?.configured ? "pronta para chamada direta" : "configuração estrutural pronta; falta base URL e/ou segredo do certificado no ambiente"}.
-      {integration?.certificateConfigured ? " Certificado encontrado no ambiente." : " O certificado não é salvo no banco; cadastre o segredo no Worker."}
+      <CheckCircle2 size={16} /> Status: {integration?.configured ? "pronta para chamada direta" : "configuração estrutural pronta; falta base URL, conector e/ou certificado no ambiente"}.
+      {integration?.connectorConfigured ? " Conector encontrado." : " Configure a URL do conector no Worker."}
+      {integration?.certificateConfigured ? " Certificado encontrado." : " O certificado não é salvo no banco; cadastre o segredo no Worker."}
     </div>
     <form className="tdg-txn-form" onSubmit={save}>
       <label><span>OS vinculada</span><select value={form.serviceOrderId} onChange={(e) => { const order = orders.find((item) => item.id === e.target.value); setForm((v) => ({ ...v, serviceOrderId: e.target.value, freightAmount: order?.netAmount ? String(order.netAmount) : v.freightAmount, startsAt: order?.scheduledStartAt || v.startsAt, endsAt: order?.scheduledEndAt || v.endsAt })); }}><option value="">Sem OS</option>{orders.map((item) => <option value={item.id} key={item.id}>{item.number} · {clientName(clients, item.clientId)}</option>)}</select><small>{selectedContract ? `Contrato: ${selectedContract.titulo || selectedContract.title || selectedContract.id}` : ""}</small></label>
@@ -178,8 +199,8 @@ function Ciot({ authHeaders, clients, contracts, operations, setToast }) {
       <label><span>Contingência</span><input value={form.contingencyReason} onChange={(e) => change("contingencyReason", e.target.value)} placeholder="Preencher só se ANTT estiver indisponível" /></label>
       <button className="tdg-action" disabled={saving}><ReceiptText size={17} />Preparar envio direto</button>
     </form>
-    <div className="tdg-txn-list">{!records.length && <Empty>Nenhum CIOT preparado.</Empty>}{records.map((record) => <article className="tdg-txn-row" key={record.id}><span><strong>{record.ciotCode || record.number}</strong><small>{record.serviceOrderNumber || "sem OS"} · {record.operationType} · {record.originCity || "origem"} → {record.destinationCity || "destino"}</small></span><span><small>Frete / piso</small><strong>{BRL.format(record.freightAmount || 0)} / {BRL.format(record.floorAmount || 0)}</strong></span><Status value={record.status} />{record.status !== "issued" && <button type="button" onClick={() => { setIssuing(record); setIssueForm({ ciotCode: record.ciotCode || "", protocol: record.protocol || "" }); }}>Registrar código</button>}</article>)}</div>
-    <div className="tdg-txn-empty"><AlertTriangle size={16} /> A emissão automática depende da chamada ao serviço ANTT com certificado válido conforme DCS. Esta fila já deixa o ERP pronto para envio direto, contingência, bloqueio de piso e gravação do retorno oficial.</div>
+    <div className="tdg-txn-list">{!records.length && <Empty>Nenhum CIOT preparado.</Empty>}{records.map((record) => <article className="tdg-txn-row" key={record.id}><span><strong>{record.ciotCode || record.number}</strong><small>{record.serviceOrderNumber || "sem OS"} · {record.operationType} · {record.originCity || "origem"} → {record.destinationCity || "destino"}{record.lastError ? ` · ${record.lastError}` : ""}</small></span><span><small>Frete / piso</small><strong>{BRL.format(record.freightAmount || 0)} / {BRL.format(record.floorAmount || 0)}</strong></span><Status value={record.status} />{record.status !== "issued" && <span className="tdg-txn-actions"><button type="button" disabled={submitting === record.id || record.status === "sending"} onClick={() => submit(record)}>Enviar ANTT</button><button type="button" onClick={() => { setIssuing(record); setIssueForm({ ciotCode: record.ciotCode || "", protocol: record.protocol || "" }); }}>Registrar retorno</button></span>}</article>)}</div>
+    <div className="tdg-txn-empty"><AlertTriangle size={16} /> O ERP chama o conector direto sem IPEF; o conector assina com A1/A3, envia para a ANTT e devolve o código oficial de 12 dígitos. A fila mantém contingência, bloqueio de piso mínimo e auditoria do retorno.</div>
     {issuing && <form className="tdg-txn-close" onSubmit={issue}><div><strong>Registrar CIOT de {issuing.number}</strong><small>Use o código de 12 dígitos retornado pela API direta da ANTT.</small></div><label><span>Código CIOT</span><input required inputMode="numeric" pattern="\\d{12}" maxLength={12} value={issueForm.ciotCode} onChange={(e) => setIssueForm((v) => ({ ...v, ciotCode: e.target.value.replace(/\D/g, "").slice(0, 12) }))} /></label><label><span>Protocolo</span><input value={issueForm.protocol} onChange={(e) => setIssueForm((v) => ({ ...v, protocol: e.target.value }))} /></label><button className="tdg-action"><CheckCircle2 size={17} />Confirmar</button><button type="button" onClick={() => setIssuing(null)}>Cancelar</button></form>}
   </section>;
 }

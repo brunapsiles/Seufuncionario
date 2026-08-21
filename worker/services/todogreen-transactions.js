@@ -21,6 +21,27 @@ const canPlanOrder = (access) => allowedAny(access, ["planning:manage", "product
 const canOperateOrder = (access) => allowedAny(access, ["operations:manage", "operation:manage"]);
 const canManageCiot = (access) => allowedAny(access, ["ciot:manage", "planning:manage", "fiscal:manage", "finance:manage", "operations:manage"]);
 const ciotDirectCode = (value) => /^\d{12}$/.test(String(value || "").trim());
+const digitsOnly = (value) => String(value ?? "").replace(/\D/g, "");
+const parseJson = (value) => {
+  try { return JSON.parse(value || "{}"); } catch { return {}; }
+};
+const envValue = (env, key) => key ? env[key] : "";
+
+function ciotCodeFromResponse(payload) {
+  const source = object(payload);
+  const candidates = [
+    source.ciotCode, source.ciot, source.codigoCiot, source.codigoCIOT, source.codigo,
+    source.code, source.numeroCiot, source.numeroCIOT,
+    object(source.data).ciotCode, object(source.data).codigoCiot, object(source.data).codigo,
+    object(source.result).ciotCode, object(source.result).codigoCiot, object(source.result).codigo,
+  ];
+  return candidates.map(digitsOnly).find((value) => value.length === 12) || "";
+}
+
+function ciotProtocolFromResponse(payload) {
+  const source = object(payload);
+  return text(source.protocol || source.protocolo || object(source.data).protocol || object(source.data).protocolo || object(source.result).protocol || object(source.result).protocolo, 120);
+}
 
 async function reserveNumber(env, ownerId, docType, prefix, now) {
   await env.DB.prepare(
@@ -56,7 +77,7 @@ const ciotView = (row) => ({
   destinationState: row.destination_state, cargoDescription: row.cargo_description,
   freightAmount: row.freight_amount, floorAmount: row.floor_amount, startsAt: row.starts_at,
   endsAt: row.ends_at, contingencyReason: row.contingency_reason,
-  payload: JSON.parse(row.payload_json || "{}"), response: JSON.parse(row.response_json || "{}"),
+  payload: parseJson(row.payload_json), response: parseJson(row.response_json), lastError: row.last_error,
   revision: row.revision, issuedAt: row.issued_at, closedAt: row.closed_at,
   serviceOrderNumber: row.service_order_number, createdAt: row.created_at, updatedAt: row.updated_at,
 });
@@ -65,6 +86,8 @@ const ciotIntegrationView = (row, env = {}) => {
   if (!row) {
     const certificateEnvKey = "TODOGREEN_ANTT_CIOT_CERTIFICATE_PFX";
     const passwordEnvKey = "TODOGREEN_ANTT_CIOT_CERTIFICATE_PASSWORD";
+    const connectorUrlEnvKey = "TODOGREEN_ANTT_CIOT_CONNECTOR_URL";
+    const connectorTokenEnvKey = "TODOGREEN_ANTT_CIOT_CONNECTOR_TOKEN";
     return {
       mode: "direct_api",
       environment: "homologation",
@@ -72,19 +95,23 @@ const ciotIntegrationView = (row, env = {}) => {
       certificateEnvKey,
       certificatePasswordEnvKey: passwordEnvKey,
       a3ConnectorEnvKey: "TODOGREEN_ANTT_CIOT_A3_CONNECTOR_URL",
+      connectorUrlEnvKey,
+      connectorTokenEnvKey,
       baseUrl: "",
       status: "draft",
       configured: false,
       requiresIpef: false,
       certificateConfigured: Boolean(env[certificateEnvKey] && env[passwordEnvKey]),
+      connectorConfigured: Boolean(env[connectorUrlEnvKey]),
       a3ConnectorConfigured: false,
       revision: 0,
     };
   }
+  const connectorConfigured = Boolean(env[row.connector_url_env_key] || (row.certificate_type === "A3" && env[row.a3_connector_env_key]));
   const certificateConfigured = row.certificate_type === "A1"
     ? Boolean(env[row.certificate_env_key] && env[row.certificate_password_env_key])
     : Boolean(env[row.a3_connector_env_key]);
-  const configured = row.mode === "direct_api" && Boolean(row.base_url) && certificateConfigured;
+  const configured = row.mode === "direct_api" && Boolean(row.base_url) && connectorConfigured && certificateConfigured;
   return {
     id: row.id,
     mode: row.mode,
@@ -93,11 +120,14 @@ const ciotIntegrationView = (row, env = {}) => {
     certificateEnvKey: row.certificate_env_key,
     certificatePasswordEnvKey: row.certificate_password_env_key,
     a3ConnectorEnvKey: row.a3_connector_env_key,
+    connectorUrlEnvKey: row.connector_url_env_key,
+    connectorTokenEnvKey: row.connector_token_env_key,
     baseUrl: row.base_url,
     status: configured ? "ready" : row.status,
     configured,
     requiresIpef: false,
     certificateConfigured,
+    connectorConfigured,
     a3ConnectorConfigured: Boolean(env[row.a3_connector_env_key]),
     lastTestAt: row.last_test_at,
     lastError: row.last_error,
@@ -267,11 +297,14 @@ async function saveCiotIntegration(env, access, user, body) {
   const certificateEnvKey = text(body.certificateEnvKey, 100) || "TODOGREEN_ANTT_CIOT_CERTIFICATE_PFX";
   const certificatePasswordEnvKey = text(body.certificatePasswordEnvKey, 100) || "TODOGREEN_ANTT_CIOT_CERTIFICATE_PASSWORD";
   const a3ConnectorEnvKey = text(body.a3ConnectorEnvKey, 100) || "TODOGREEN_ANTT_CIOT_A3_CONNECTOR_URL";
+  const connectorUrlEnvKey = text(body.connectorUrlEnvKey, 100) || "TODOGREEN_ANTT_CIOT_CONNECTOR_URL";
+  const connectorTokenEnvKey = text(body.connectorTokenEnvKey, 100) || "TODOGREEN_ANTT_CIOT_CONNECTOR_TOKEN";
   const now = new Date().toISOString();
+  const connectorConfigured = Boolean(env[connectorUrlEnvKey] || (certificateType === "A3" && env[a3ConnectorEnvKey]));
   const certificateConfigured = certificateType === "A1"
     ? Boolean(env[certificateEnvKey] && env[certificatePasswordEnvKey])
     : Boolean(env[a3ConnectorEnvKey]);
-  const status = baseUrl && certificateConfigured ? "ready" : "draft";
+  const status = baseUrl && connectorConfigured && certificateConfigured ? "ready" : "draft";
   if (current) {
     const revision = Number(body.revision);
     if (Number.isFinite(revision) && revision !== current.revision)
@@ -279,22 +312,25 @@ async function saveCiotIntegration(env, access, user, body) {
     await env.DB.prepare(
       `UPDATE todogreen_ciot_integrations
         SET environment=?,certificate_type=?,certificate_env_key=?,certificate_password_env_key=?,
-            a3_connector_env_key=?,base_url=?,status=?,config_json=?,revision=revision+1,updated_by=?,updated_at=?
+            a3_connector_env_key=?,connector_url_env_key=?,connector_token_env_key=?,
+            base_url=?,status=?,config_json=?,revision=revision+1,updated_by=?,updated_at=?
         WHERE id=? AND tenant_id=? AND workspace_owner_id=?`,
     ).bind(
       environment, certificateType, certificateEnvKey, certificatePasswordEnvKey, a3ConnectorEnvKey,
-      baseUrl, status, JSON.stringify(object(body.config)), user.id, now, current.id, TENANT_ID, access.ownerId,
+      connectorUrlEnvKey, connectorTokenEnvKey, baseUrl, status, JSON.stringify(object(body.config)),
+      user.id, now, current.id, TENANT_ID, access.ownerId,
     ).run();
   } else {
     await env.DB.prepare(
       `INSERT INTO todogreen_ciot_integrations
         (id,tenant_id,workspace_owner_id,mode,environment,certificate_type,certificate_env_key,
-         certificate_password_env_key,a3_connector_env_key,base_url,status,config_json,revision,created_by,updated_by,created_at,updated_at)
-       VALUES (?,?,?,'direct_api',?,?,?,?,?,?,?,?,1,?,?,?,?)`,
+         certificate_password_env_key,a3_connector_env_key,connector_url_env_key,connector_token_env_key,
+         base_url,status,config_json,revision,created_by,updated_by,created_at,updated_at)
+       VALUES (?,?,?,'direct_api',?,?,?,?,?,?,?,?,?,?,1,?,?,?,?)`,
     ).bind(
       crypto.randomUUID(), TENANT_ID, access.ownerId, environment, certificateType, certificateEnvKey,
-      certificatePasswordEnvKey, a3ConnectorEnvKey, baseUrl, status, JSON.stringify(object(body.config)),
-      user.id, user.id, now, now,
+      certificatePasswordEnvKey, a3ConnectorEnvKey, connectorUrlEnvKey, connectorTokenEnvKey, baseUrl, status,
+      JSON.stringify(object(body.config)), user.id, user.id, now, now,
     ).run();
   }
   const saved = await env.DB.prepare(
@@ -346,18 +382,110 @@ async function createCiot(env, access, user, body) {
       (id,tenant_id,workspace_owner_id,number,service_order_id,operation_id,status,integration_mode,integration_environment,ciot_code,protocol,
        operation_type,responsible_type,contractor_document,carrier_document,driver_document,vehicle_plate,
        origin_city,origin_state,destination_city,destination_state,cargo_description,freight_amount,floor_amount,
-       starts_at,ends_at,contingency_reason,payload_json,response_json,revision,issued_at,created_by,updated_by,created_at,updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?)`,
+       starts_at,ends_at,contingency_reason,payload_json,response_json,last_error,revision,issued_at,created_by,updated_by,created_at,updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?)`,
   ).bind(
     id, TENANT_ID, access.ownerId, number, serviceOrderId, row.operationId, status, "direct_api",
     text(body.environment, 20) || "homologation", ciotCode,
     text(body.protocol, 120), row.operationType, row.responsibleType, row.contractorDocument, row.carrierDocument,
     row.driverDocument, row.vehiclePlate, row.originCity, row.originState, row.destinationCity, row.destinationState,
     row.cargoDescription, freightAmount, floorAmount, row.startsAt, row.endsAt, row.contingencyReason,
-    JSON.stringify(payload), JSON.stringify(object(body.response)), ciotCode ? now : null, user.id, user.id, now, now,
+    JSON.stringify(payload), JSON.stringify(object(body.response)), "", ciotCode ? now : null, user.id, user.id, now, now,
   ).run();
   const saved = await env.DB.prepare("SELECT * FROM todogreen_ciot_records WHERE id=?").bind(id).first();
   return json({ record: ciotView(saved) }, 201);
+}
+
+async function submitCiot(env, access, user, id, body) {
+  if (!canManageCiot(access)) return json({ error: "Sem permissão para enviar CIOT." }, 403);
+  const row = await env.DB.prepare(
+    `SELECT c.*,s.number AS service_order_number FROM todogreen_ciot_records c
+      LEFT JOIN todogreen_service_orders s ON s.id=c.service_order_id
+      WHERE c.id=? AND c.tenant_id=? AND c.workspace_owner_id=? AND c.archived_at IS NULL`,
+  ).bind(id, TENANT_ID, access.ownerId).first();
+  if (!row) return json({ error: "CIOT não encontrado." }, 404);
+  if (["issued", "cancelled"].includes(row.status)) return json({ error: "Este CIOT não pode ser reenviado." }, 409);
+  const revision = Number(body.revision);
+  if (!Number.isFinite(revision) || revision !== row.revision) return json({ error: "O CIOT mudou. Recarregue antes de enviar." }, 409);
+
+  const integrationRow = await env.DB.prepare(
+    `SELECT * FROM todogreen_ciot_integrations
+      WHERE tenant_id=? AND workspace_owner_id=? AND mode='direct_api' AND archived_at IS NULL
+      ORDER BY updated_at DESC LIMIT 1`,
+  ).bind(TENANT_ID, access.ownerId).first();
+  const integration = ciotIntegrationView(integrationRow, env);
+  if (!integrationRow || integration.mode !== "direct_api")
+    return json({ error: "Configure a integração direta ANTT antes de enviar." }, 409);
+  if (!integration.baseUrl)
+    return json({ error: "Informe a Base URL ANTT da DCS antes de enviar." }, 409);
+
+  const connectorUrl = text(envValue(env, integration.connectorUrlEnvKey), 500) ||
+    (integration.certificateType === "A3" ? text(envValue(env, integration.a3ConnectorEnvKey), 500) : "");
+  if (!connectorUrl)
+    return json({ error: `Configure ${integration.connectorUrlEnvKey || "TODOGREEN_ANTT_CIOT_CONNECTOR_URL"} no ambiente para acionar o conector direto.` }, 409);
+  if (!integration.certificateConfigured)
+    return json({ error: "Configure o certificado ICP-Brasil A1/A3 no ambiente antes de enviar." }, 409);
+
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    `UPDATE todogreen_ciot_records SET status='sending',last_error='',revision=revision+1,updated_by=?,updated_at=?
+      WHERE id=? AND tenant_id=? AND workspace_owner_id=? AND revision=?`,
+  ).bind(user.id, now, id, TENANT_ID, access.ownerId, revision).run();
+
+  const connectorPayload = {
+    mode: "direct_api",
+    requiresIpef: false,
+    environment: integration.environment,
+    baseUrl: integration.baseUrl,
+    certificate: {
+      standard: "ICP-Brasil",
+      type: integration.certificateType,
+      certificateEnvKey: integration.certificateEnvKey,
+      certificatePasswordEnvKey: integration.certificatePasswordEnvKey,
+      a3ConnectorEnvKey: integration.a3ConnectorEnvKey,
+    },
+    ciot: parseJson(row.payload_json),
+  };
+  const headers = { "content-type": "application/json" };
+  const token = text(envValue(env, integration.connectorTokenEnvKey), 500);
+  if (token) headers.authorization = `Bearer ${token}`;
+
+  let responsePayload = {};
+  let responseOk = false;
+  let responseStatus = 0;
+  try {
+    const response = await fetch(connectorUrl, { method: "POST", headers, body: JSON.stringify(connectorPayload) });
+    responseStatus = response.status;
+    responsePayload = await response.json().catch(async () => ({ text: await response.text().catch(() => "") }));
+    responseOk = response.ok;
+  } catch (error) {
+    responsePayload = { error: error?.message || "Falha ao chamar o conector direto." };
+  }
+
+  const ciotCode = ciotCodeFromResponse(responsePayload);
+  const protocol = ciotProtocolFromResponse(responsePayload);
+  const finalStatus = responseOk && ciotCode ? "issued" : "failed";
+  const error = finalStatus === "issued"
+    ? ""
+    : text(responsePayload.error || responsePayload.message || "Conector direto não retornou CIOT válido de 12 dígitos.", 500);
+  const issuedAt = finalStatus === "issued" ? new Date().toISOString() : null;
+  await env.DB.prepare(
+    `UPDATE todogreen_ciot_records
+      SET status=?,ciot_code=?,protocol=?,response_json=?,last_error=?,revision=revision+1,
+          issued_at=COALESCE(?,issued_at),updated_by=?,updated_at=?
+      WHERE id=? AND tenant_id=? AND workspace_owner_id=?`,
+  ).bind(
+    finalStatus, ciotCode || row.ciot_code, protocol || row.protocol,
+    JSON.stringify({ status: responseStatus, ...object(responsePayload) }), error,
+    issuedAt, user.id, new Date().toISOString(), id, TENANT_ID, access.ownerId,
+  ).run();
+  const updated = await env.DB.prepare(
+    `SELECT c.*,s.number AS service_order_number FROM todogreen_ciot_records c
+      LEFT JOIN todogreen_service_orders s ON s.id=c.service_order_id WHERE c.id=?`,
+  ).bind(id).first();
+  return finalStatus === "issued"
+    ? json({ record: ciotView(updated) })
+    : json({ error, record: ciotView(updated) }, 502);
 }
 
 async function issueCiot(env, access, user, id, body) {
@@ -369,7 +497,7 @@ async function issueCiot(env, access, user, id, body) {
   const now = new Date().toISOString();
   const meta = await env.DB.prepare(
     `UPDATE todogreen_ciot_records SET status='issued',ciot_code=?,protocol=?,response_json=?,
-      revision=revision+1,issued_at=?,updated_by=?,updated_at=?
+      last_error='',revision=revision+1,issued_at=?,updated_by=?,updated_at=?
       WHERE id=? AND tenant_id=? AND workspace_owner_id=? AND archived_at IS NULL AND revision=?`,
   ).bind(ciotCode, text(body.protocol, 120), JSON.stringify(object(body.response)), now, user.id, now, id, TENANT_ID, access.ownerId, revision).run();
   if (!meta?.meta?.changes) return json({ error: "CIOT não encontrado ou alterado por outra pessoa." }, 409);
@@ -522,6 +650,7 @@ export async function handleTodoGreenTransactions(request, env, access, user) {
   if (resource === "ciot-integration" && request.method === "POST" && !id) return saveCiotIntegration(env, access, user, body);
   if (resource === "ciot" && request.method === "GET" && !id) return listCiot(env, access, url);
   if (resource === "ciot" && request.method === "POST" && !id) return createCiot(env, access, user, body);
+  if (resource === "ciot" && request.method === "POST" && id && action === "submit") return submitCiot(env, access, user, id, body);
   if (resource === "ciot" && request.method === "POST" && id && action === "issue") return issueCiot(env, access, user, id, body);
   if (resource === "billing-items" && request.method === "GET") return listBilling(env, access, url);
   if (resource === "billing-items" && request.method === "POST" && id && action === "check") return checkBilling(env, access, user, id, body);

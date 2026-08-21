@@ -103,7 +103,7 @@ export default function EnterpriseAreaPage({ area, products = [], onNavigate }) 
   const config = cards[area] || cards.planning;
   const Icon = config.icon;
   return (
-    <section className="tdg-panel">
+    <section className="tdg-panel tdg-enterprise-area-page">
       <div className="tdg-section-head">
         <div>
           <span className="tdg-kicker">{config.kicker}</span>
@@ -113,18 +113,18 @@ export default function EnterpriseAreaPage({ area, products = [], onNavigate }) 
         <Icon size={28} />
       </div>
 
-      <div className="tdg-work-area-grid">
+      <div className="tdg-work-area-grid tdg-enterprise-area-grid">
         <article className="tdg-work-area">
           <div className="tdg-work-area-heading"><span><CheckCircle2 size={20} /></span><div><strong>Responsabilidades</strong><small>O que esta área decide</small></div></div>
-          <div className="tdg-work-area-links">
-            {config.responsibilities.map((item) => <span key={item}>{item}</span>)}
-          </div>
+          <ul className="tdg-work-area-list">
+            {config.responsibilities.map((item) => <li key={item}>{item}</li>)}
+          </ul>
         </article>
         <article className="tdg-work-area">
           <div className="tdg-work-area-heading"><span><FileText size={20} /></span><div><strong>Handoff</strong><small>Como fecha a cadeia</small></div></div>
-          <div className="tdg-work-area-links">
-            {config.handoff.map(([label, owner]) => <span key={label}><strong>{owner}</strong> {label}</span>)}
-          </div>
+          <ul className="tdg-work-area-list">
+            {config.handoff.map(([label, owner]) => <li key={label}><strong>{owner}</strong> {label}</li>)}
+          </ul>
         </article>
         <article className="tdg-work-area">
           <div className="tdg-work-area-heading"><span><Target size={20} /></span><div><strong>Próximas ações</strong><small>Entrar no trabalho</small></div></div>

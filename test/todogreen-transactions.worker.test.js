@@ -54,6 +54,8 @@ describe("espinha transacional", () => {
       baseUrl: "https://appservices-hml.antt.gov.br/ciot",
       certificateEnvKey: "TODOGREEN_ANTT_CIOT_CERTIFICATE_PFX",
       certificatePasswordEnvKey: "TODOGREEN_ANTT_CIOT_CERTIFICATE_PASSWORD",
+      connectorUrlEnvKey: "TODOGREEN_ANTT_CIOT_CONNECTOR_URL",
+      connectorTokenEnvKey: "TODOGREEN_ANTT_CIOT_CONNECTOR_TOKEN",
     });
     expect(setup.status).toBe(201);
     const integration = (await setup.json()).integration;
@@ -95,6 +97,12 @@ describe("espinha transacional", () => {
     expect(ciot.number).toMatch(/^CIOT-PREP-/);
     expect(ciot.status).toBe("ready");
     expect(ciot.payload).toMatchObject({ serviceOrderNumber: order.number, floorAmount: 250, integrationMode: "direct_api", requiresIpef: false });
+
+    const missingConnector = await request(`/api/todogreen/transactions/ciot/${ciot.id}/submit`, "POST", {
+      revision: ciot.revision,
+    });
+    expect(missingConnector.status).toBe(409);
+    expect((await missingConnector.json()).error).toMatch(/conector direto/i);
 
     const issued = await request(`/api/todogreen/transactions/ciot/${ciot.id}/issue`, "POST", {
       ciotCode: "123456789012",

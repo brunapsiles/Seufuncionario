@@ -108,6 +108,7 @@ export function todoGreenIntegrationStatus(env = {}, { activeWebhooks = 0 } = {}
         name: "ANTT CIOT direto sem IPEF",
         configured: Boolean(
           env.TODOGREEN_ANTT_CIOT_BASE_URL &&
+          env.TODOGREEN_ANTT_CIOT_CONNECTOR_URL &&
           ((env.TODOGREEN_ANTT_CIOT_CERTIFICATE_PFX && env.TODOGREEN_ANTT_CIOT_CERTIFICATE_PASSWORD) ||
             env.TODOGREEN_ANTT_CIOT_A3_CONNECTOR_URL)
         ),
