@@ -134,11 +134,11 @@ export const unidadeValida = (valor) =>
 export const RUBRICAS_SUGERIDAS = [
   { id: "combustivel", rotulo: "Combustível ou energia", unidade: "por_km", essencial: true },
   { id: "motorista", rotulo: "Motorista", unidade: "por_viagem", essencial: true },
+  { id: "custo_frota", rotulo: "Custo do veículo", unidade: "por_veiculo_mes", essencial: true },
   { id: "pedagio", rotulo: "Pedágio", unidade: "por_viagem", essencial: false },
   { id: "manutencao", rotulo: "Manutenção e pneus", unidade: "por_km", essencial: false },
   { id: "ajudante", rotulo: "Ajudante", unidade: "por_hora", essencial: false },
   { id: "diaria_veiculo", rotulo: "Diária do veículo", unidade: "por_veiculo_dia", essencial: false },
-  { id: "custo_frota", rotulo: "Custo mensal do veículo", unidade: "por_veiculo_mes", essencial: false },
   { id: "seguro_carga", rotulo: "Seguro da carga", unidade: "percentual_receita", essencial: false },
   { id: "descarga", rotulo: "Descarga ou movimentação", unidade: "por_viagem", essencial: false },
   { id: "diaria", rotulo: "Diária e alimentação", unidade: "por_viagem", essencial: false },
@@ -155,7 +155,11 @@ export const volumeDaOperacao = (viagem = {}) => {
   const kmPorViagem = num(viagem.kmPorViagem);
   const kmRetornoVazio = Math.max(0, num(viagem.kmRetornoVazio));
   const meses = Math.max(1, Math.round(num(viagem.meses) || 1));
-  const veiculos = Math.max(0, Math.round(num(viagem.veiculosDedicados) || num(viagem.veiculosDisponiveis) || 0));
+  const veiculos = Math.max(
+    0,
+    Math.round(num(viagem.veiculosDedicados) || num(viagem.veiculosAlocados) || num(viagem.veiculosDisponiveis) || 0),
+  );
+  const alocacaoVeiculo = texto(viagem.alocacaoVeiculo) === "dedicado" ? "dedicado" : "compartilhado";
   const diasOperacao = Math.max(
     1,
     Math.round(num(viagem.diasOperacao) || (modalidade === "recorrente" ? meses * 22 : 1)),
@@ -174,11 +178,15 @@ export const volumeDaOperacao = (viagem = {}) => {
   const kmTotal = (kmPorViagem + kmRetornoVazio) * viagens;
   const horas = num(viagem.horasPorViagem) * viagens;
   const veiculoDia = veiculos * diasOperacao;
-  const veiculoMes = veiculos * meses;
+  const veiculoMes =
+    modalidade === "recorrente"
+      ? veiculos * meses
+      : arredondar(veiculoDia / 22, 4);
 
   return {
     modalidade,
     produto,
+    alocacaoVeiculo,
     viagens,
     meses,
     veiculos,
@@ -383,6 +391,13 @@ const decidir = ({ economia, volume, regua, faltando, receitaBruta }) => {
       acao: "Peça o valor ao cliente antes de decidir.",
     };
 
+  if (volume.veiculos <= 0)
+    return {
+      recomendacao: RECOMENDACOES.semDados,
+      motivo: "Informe quantos veículos serão usados na operação.",
+      acao: "Defina se o veículo é dedicado ou compartilhado e informe a quantidade alocada.",
+    };
+
   if (economia.custoDireto <= 0)
     return {
       recomendacao: RECOMENDACOES.semDados,
@@ -468,10 +483,28 @@ const ressalvasDaViagem = (viagem, volume, economia, regua) => {
       });
   }
 
+  if (volume.veiculos <= 0)
+    lista.push({
+      gravidade: "alta",
+      texto: "Informe quantos veículos serão usados. Sem veículo alocado, o custo por frota não representa a operação.",
+    });
+
   if (volume.produto === "dedicada" && volume.veiculos <= 0)
     lista.push({
       gravidade: "alta",
       texto: "Frota dedicada exige quantidade de veículos. Sem isso o preço por veículo não representa o contrato.",
+    });
+
+  if (volume.alocacaoVeiculo === "compartilhado" && volume.entregas > 1)
+    lista.push({
+      gravidade: "baixa",
+      texto: `Veículo compartilhado com ${volume.entregas} entrega(s). A conta dilui a receita por entrega, mas mantém o custo fixo do veículo na operação.`,
+    });
+
+  if (volume.alocacaoVeiculo === "dedicado" && volume.produto !== "dedicada")
+    lista.push({
+      gravidade: "media",
+      texto: "Veículo dedicado em operação que não é frota dedicada. Confira se o cliente remunera a exclusividade.",
     });
 
   if (volume.produto === "last_mile" && volume.entregas <= 0)
