@@ -59,6 +59,42 @@ export const MODALIDADES = {
 export const modalidadeValida = (valor) =>
   Object.prototype.hasOwnProperty.call(MODALIDADES, valor) ? valor : "spot";
 
+export const PRODUTOS_OPERACIONAIS = {
+  spot: {
+    id: "spot",
+    rotulo: "Spot / viagem avulsa",
+    descricao: "Frete pontual calculado por viagem, rota e retorno vazio.",
+    modeloReceita: "por_viagem",
+  },
+  first_mile: {
+    id: "first_mile",
+    rotulo: "First mile",
+    descricao: "Coleta na origem, consolidação e janelas por embarcador.",
+    modeloReceita: "por_viagem",
+  },
+  middle_mile: {
+    id: "middle_mile",
+    rotulo: "Middle mile",
+    descricao: "Transferência entre CDs, hubs ou bases com frequência definida.",
+    modeloReceita: "por_viagem",
+  },
+  last_mile: {
+    id: "last_mile",
+    rotulo: "Last mile",
+    descricao: "Distribuição com entregas, ocupação e SLA por rota.",
+    modeloReceita: "por_entrega",
+  },
+  dedicada: {
+    id: "dedicada",
+    rotulo: "Frota dedicada",
+    descricao: "Preço mensal ou diário por veículo alocado.",
+    modeloReceita: "por_veiculo_mes",
+  },
+};
+
+export const produtoValido = (valor) =>
+  Object.prototype.hasOwnProperty.call(PRODUTOS_OPERACIONAIS, valor) ? valor : "spot";
+
 // ---- Rubricas de custo ----
 //
 // A unidade é o que impede o custo personalizado de virar campo livre sem
@@ -79,6 +115,9 @@ export const UNIDADES_CUSTO = {
   },
   por_viagem: { id: "por_viagem", rotulo: "por viagem", base: "viagens" },
   por_hora: { id: "por_hora", rotulo: "por hora", base: "horas" },
+  por_entrega: { id: "por_entrega", rotulo: "por entrega", base: "entregas" },
+  por_veiculo_dia: { id: "por_veiculo_dia", rotulo: "por veículo/dia", base: "veiculo_dia" },
+  por_veiculo_mes: { id: "por_veiculo_mes", rotulo: "por veículo/mês", base: "veiculo_mes" },
   fixo: { id: "fixo", rotulo: "valor fechado", base: "fixo" },
   percentual_receita: {
     id: "percentual_receita",
@@ -98,6 +137,8 @@ export const RUBRICAS_SUGERIDAS = [
   { id: "pedagio", rotulo: "Pedágio", unidade: "por_viagem", essencial: false },
   { id: "manutencao", rotulo: "Manutenção e pneus", unidade: "por_km", essencial: false },
   { id: "ajudante", rotulo: "Ajudante", unidade: "por_hora", essencial: false },
+  { id: "diaria_veiculo", rotulo: "Diária do veículo", unidade: "por_veiculo_dia", essencial: false },
+  { id: "custo_frota", rotulo: "Custo mensal do veículo", unidade: "por_veiculo_mes", essencial: false },
   { id: "seguro_carga", rotulo: "Seguro da carga", unidade: "percentual_receita", essencial: false },
   { id: "descarga", rotulo: "Descarga ou movimentação", unidade: "por_viagem", essencial: false },
   { id: "diaria", rotulo: "Diária e alimentação", unidade: "por_viagem", essencial: false },
@@ -110,26 +151,46 @@ export const RUBRICAS_SUGERIDAS = [
 // combustível que colocou na conta.
 export const volumeDaOperacao = (viagem = {}) => {
   const modalidade = modalidadeValida(viagem.modalidade);
+  const produto = produtoValido(viagem.produto);
   const kmPorViagem = num(viagem.kmPorViagem);
   const kmRetornoVazio = Math.max(0, num(viagem.kmRetornoVazio));
+  const meses = Math.max(1, Math.round(num(viagem.meses) || 1));
+  const veiculos = Math.max(0, Math.round(num(viagem.veiculosDedicados) || num(viagem.veiculosDisponiveis) || 0));
+  const diasOperacao = Math.max(
+    1,
+    Math.round(num(viagem.diasOperacao) || (modalidade === "recorrente" ? meses * 22 : 1)),
+  );
   const viagens =
     modalidade === "spot"
       ? Math.max(1, Math.round(num(viagem.viagens) || 1))
       : Math.max(1, Math.round(num(viagem.viagensPorMes) || 0)) *
-        Math.max(1, Math.round(num(viagem.meses) || 1));
+        meses;
+  const entregas = Math.max(
+    0,
+    Math.round(num(viagem.entregas) || num(viagem.entregasPorViagem) * viagens || 0),
+  );
 
   const kmCarregado = kmPorViagem * viagens;
   const kmTotal = (kmPorViagem + kmRetornoVazio) * viagens;
   const horas = num(viagem.horasPorViagem) * viagens;
+  const veiculoDia = veiculos * diasOperacao;
+  const veiculoMes = veiculos * meses;
 
   return {
     modalidade,
+    produto,
     viagens,
+    meses,
+    veiculos,
+    diasOperacao,
+    entregas,
     kmPorViagem,
     kmRetornoVazio,
     kmCarregado: arredondar(kmCarregado, 1),
     kmTotal: arredondar(kmTotal, 1),
     horas: arredondar(horas, 1),
+    veiculoDia,
+    veiculoMes,
     // Quanto do rodado não gera receita. É o número que ninguém calcula de
     // cabeça e que decide muita viagem spot.
     percentVazio: kmTotal > 0 ? arredondar(((kmTotal - kmCarregado) / kmTotal) * 100, 1) : 0,
@@ -155,6 +216,9 @@ export const custoDireto = (rubricas = [], volume, receitaBruta = 0) => {
     else if (base === "km_carregado") quantidade = volume.kmCarregado;
     else if (base === "viagens") quantidade = volume.viagens;
     else if (base === "horas") quantidade = volume.horas;
+    else if (base === "entregas") quantidade = volume.entregas;
+    else if (base === "veiculo_dia") quantidade = volume.veiculoDia;
+    else if (base === "veiculo_mes") quantidade = volume.veiculoMes;
     else if (base === "receita") quantidade = num(receitaBruta) / 100;
     else quantidade = 1;
 
@@ -222,11 +286,7 @@ export const RECOMENDACOES = {
 export const avaliarViagem = (viagem = {}, rubricas = [], regua = REGUA_PADRAO) => {
   const r = { ...REGUA_PADRAO, ...(regua || {}) };
   const volume = volumeDaOperacao(viagem);
-  // `freteOferecido` é por viagem por padrão — é assim que o frete é cotado na
-  // rua. Um contrato fechado por valor global passa `fretePorViagem: false`.
-  const receitaBruta = arredondar(
-    num(viagem.freteOferecido) * (viagem.fretePorViagem === false ? 1 : volume.viagens),
-  );
+  const receitaBruta = arredondar(receitaDaOperacao(viagem, volume));
 
   const custo = custoDireto(rubricas, volume, receitaBruta);
   const faltando = custosFaltando(rubricas);
@@ -272,6 +332,10 @@ export const avaliarViagem = (viagem = {}, rubricas = [], regua = REGUA_PADRAO) 
     faltaParaOPiso: arredondar(Math.max(0, precoMinimo - receitaBruta)),
     custoPorKm: volume.kmTotal > 0 ? arredondar(custoCarregado / volume.kmTotal) : 0,
     receitaPorKm: volume.kmCarregado > 0 ? arredondar(receitaBruta / volume.kmCarregado) : 0,
+    receitaPorEntrega: volume.entregas > 0 ? arredondar(receitaBruta / volume.entregas) : 0,
+    receitaPorVeiculoMes: volume.veiculoMes > 0 ? arredondar(receitaBruta / volume.veiculoMes) : 0,
+    precoMinimoPorVeiculoMes: volume.veiculoMes > 0 ? arredondar(precoMinimo / volume.veiculoMes) : 0,
+    precoAlvoPorVeiculoMes: volume.veiculoMes > 0 ? arredondar(precoAlvo / volume.veiculoMes) : 0,
     versaoRegua: r.versao || "",
   };
 
@@ -285,6 +349,7 @@ export const avaliarViagem = (viagem = {}, rubricas = [], regua = REGUA_PADRAO) 
 
   return {
     modalidade: volume.modalidade,
+    produto: volume.produto,
     volume,
     custo,
     economia,
@@ -294,6 +359,16 @@ export const avaliarViagem = (viagem = {}, rubricas = [], regua = REGUA_PADRAO) 
     acao,
     ressalvas: ressalvasDaViagem(viagem, volume, economia, r),
   };
+};
+
+export const receitaDaOperacao = (viagem = {}, volume = volumeDaOperacao(viagem)) => {
+  const modelo = texto(viagem.modeloReceita) || PRODUTOS_OPERACIONAIS[volume.produto].modeloReceita;
+  const frete = num(viagem.freteOferecido);
+  if (viagem.fretePorViagem === false || modelo === "global") return frete;
+  if (modelo === "por_entrega") return frete * Math.max(1, volume.entregas);
+  if (modelo === "por_veiculo_dia") return frete * Math.max(1, volume.veiculoDia);
+  if (modelo === "por_veiculo_mes") return frete * Math.max(1, volume.veiculoMes);
+  return frete * Math.max(1, volume.viagens);
 };
 
 // ---- A decisão ----
@@ -392,6 +467,18 @@ const ressalvasDaViagem = (viagem, volume, economia, regua) => {
         texto: `O contrato exige ${necessarios} veículo(s) e há ${num(viagem.veiculosDisponiveis)} disponível(is). Assumir sem frota confirmada custa o contrato depois.`,
       });
   }
+
+  if (volume.produto === "dedicada" && volume.veiculos <= 0)
+    lista.push({
+      gravidade: "alta",
+      texto: "Frota dedicada exige quantidade de veículos. Sem isso o preço por veículo não representa o contrato.",
+    });
+
+  if (volume.produto === "last_mile" && volume.entregas <= 0)
+    lista.push({
+      gravidade: "media",
+      texto: "Last mile sem quantidade de entregas não mostra preço por entrega nem ocupação da rota.",
+    });
 
   if (volume.modalidade === "spot" && economia.margemPercent > 0 && economia.margemPercent < num(regua.targetMarginPercent))
     lista.push({
