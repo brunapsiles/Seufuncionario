@@ -46,3 +46,9 @@ O ERP considera a emissao concluida quando o conector retorna HTTP 2xx com um do
 ## Pendencia tecnica real
 
 Baixar o DCS e o pacote DLL/EXE da ANTT, validar a assinatura final da chamada e adaptar `AnttCiotProcessClient` ao formato oficial. O ERP nao precisa mudar para essa etapa.
+
+## Instalacao Windows
+
+O repositorio inclui `connectors/antt-ciot/scripts/bootstrap-windows.ps1`.
+
+Esse script baixa o pacote oficial da ANTT, publica o microservico, gera o token e instala o Windows Service. Ele precisa ser executado no servidor Windows que tera acesso ao certificado A1/A3 e aos artefatos oficiais da ANTT.
