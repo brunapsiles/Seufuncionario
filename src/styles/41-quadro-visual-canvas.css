@@ -5,7 +5,7 @@
   justify-content: space-between;
   gap: 14px;
   flex-wrap: wrap;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 .cvs-head h2 {
   margin: 0 0 4px;
@@ -17,13 +17,46 @@
   max-width: 60ch;
 }
 .cvs-boards {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(220px, 360px) minmax(220px, 360px) auto auto;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  width: 100%;
 }
-.cvs-boards input {
-  min-width: 170px;
+.cvs-boards input,
+.cvs-boards select {
+  border: 1px solid #cfe0d8;
+  border-radius: 10px;
+  min-height: 40px;
+  min-width: 0;
+  padding: 8px 11px;
+}
+.cvs .btn,
+.cvs button {
+  align-items: center;
+  border-radius: 10px;
+  display: inline-flex;
+  font: inherit;
+  font-size: .84rem;
+  font-weight: 760;
+  gap: 6px;
+  justify-content: center;
+  min-height: 36px;
+}
+.cvs .btn.ghost,
+.cvs-toolbar > button,
+.cvs-facil > button {
+  background: #fff;
+  border: 1px solid #cfe0d8;
+  color: #16372f;
+  cursor: pointer;
+  padding: 7px 11px;
+}
+.cvs .btn.ghost:hover,
+.cvs-toolbar > button:hover,
+.cvs-facil > button:hover {
+  border-color: #17624f;
+  color: #17624f;
 }
 .cvs-empty {
   text-align: center;
@@ -71,26 +104,35 @@
 .cvs-facil {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   flex-wrap: wrap;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
+}
+.cvs-toolbar {
+  background: #fff;
+  border: 1px solid #d7e6df;
+  border-radius: 12px;
+  padding: 8px;
+}
+.cvs-facil {
+  background: transparent;
+}
+.cvs-toolbar-label {
+  color: #52645c;
+  font-size: .72rem;
+  font-weight: 850;
+  letter-spacing: .08em;
+  margin-inline: 4px 2px;
+  text-transform: uppercase;
 }
 .cvs-toolbar > button {
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: transparent;
-  border-radius: 8px;
-  padding: 5px 10px;
-  font-size: 0.79rem;
-  cursor: pointer;
-}
-.cvs-toolbar > button:hover {
-  border-color: #087a83;
+  min-width: 42px;
 }
 .cvs-sep {
   width: 1px;
-  height: 20px;
-  background: rgba(148, 163, 184, 0.4);
-  margin: 0 3px;
+  height: 24px;
+  background: #d7e6df;
+  margin: 0 4px;
 }
 .cvs-zoom {
   font-size: 0.76rem;
@@ -118,19 +160,19 @@
 }
 .cvs-area {
   position: relative;
-  height: min(66vh, 620px);
-  border: 1px solid rgba(148, 163, 184, 0.4);
-  border-radius: 14px;
+  height: min(68vh, 680px);
+  border: 1px solid #d7e6df;
+  border-radius: 12px;
   overflow: hidden;
-  background: var(--card, #fff);
+  background: #fff;
   cursor: grab;
   touch-action: none;
 }
 .cvs-bg {
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(rgba(148, 163, 184, 0.35) 1px, transparent 1px);
-  background-size: 22px 22px;
+  background-image: radial-gradient(rgba(82, 100, 92, 0.18) 1px, transparent 1px);
+  background-size: 24px 24px;
 }
 .cvs-world {
   position: absolute;
@@ -159,8 +201,8 @@
   box-sizing: border-box;
 }
 .cvs-postit {
-  border-radius: 4px;
-  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.16);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
 }
 .cvs-rect {
   border: 2px solid #476964;
@@ -202,9 +244,9 @@
   max-width: 80%;
 }
 .cvs-card {
-  border: 1px solid rgba(148, 163, 184, 0.5);
+  border: 1px solid #cfe0d8;
   border-radius: 10px;
-  background: var(--card, #fff);
+  background: #fff;
   box-shadow: 0 1px 4px rgba(15, 23, 42, 0.1);
 }
 .cvs-text textarea {
@@ -232,6 +274,10 @@
   margin-top: 9px;
   flex-wrap: wrap;
   font-size: 0.8rem;
+  background: #fff;
+  border: 1px solid #d7e6df;
+  border-radius: 12px;
+  padding: 8px 10px;
 }
 .cvs-colors {
   display: flex;
