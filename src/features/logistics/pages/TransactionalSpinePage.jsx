@@ -90,6 +90,10 @@ function Ciot({ authHeaders, clients, contracts, operations, setToast }) {
   const [submitting, setSubmitting] = useState("");
   const [issuing, setIssuing] = useState(null);
   const [issueForm, setIssueForm] = useState({ ciotCode: "", protocol: "" });
+  const [certificateFile, setCertificateFile] = useState(null);
+  const [certificatePassword, setCertificatePassword] = useState("");
+  const [connectorForm, setConnectorForm] = useState({ connectorUrl: "", connectorToken: "" });
+  const [credentialSaving, setCredentialSaving] = useState(false);
   const [form, setForm] = useState({
     serviceOrderId: "", operationType: "carga_lotacao", responsibleType: "etc",
     contractorDocument: "", carrierDocument: "", driverDocument: "", vehiclePlate: "",
@@ -129,6 +133,20 @@ function Ciot({ authHeaders, clients, contracts, operations, setToast }) {
       setToast?.(data.integration?.configured ? "Integração direta ANTT pronta" : "Configuração salva; falta base URL, conector ou certificado no ambiente");
     } catch (error) { setToast?.(error.message); }
   };
+  const saveCredential = async (event) => {
+    event.preventDefault(); setCredentialSaving(true);
+    try {
+      let body;
+      if (integrationForm.certificateType === "A1") {
+        if (!certificateFile) throw new Error("Selecione o arquivo .pfx ou .p12.");
+        const pfxBase64 = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(",")[1] || ""); reader.onerror = () => reject(new Error("Não foi possível ler o certificado.")); reader.readAsDataURL(certificateFile); });
+        body = { certificateType: "A1", filename: certificateFile.name, pfxBase64, password: certificatePassword, ...connectorForm };
+      } else body = { certificateType: "A3", ...connectorForm };
+      const data = await request("ciot-certificate", authHeaders, { method: "POST", body: JSON.stringify(body) });
+      setIntegration(data.integration); setCertificatePassword(""); setToast?.(integrationForm.certificateType === "A1" ? "Certificado A1 protegido no cofre CIOT" : "Conector A3 protegido e configurado");
+    } catch (error) { setToast?.(error.message); } finally { setCredentialSaving(false); }
+  };
+  const testCredential = async () => { try { const data = await request("ciot-certificate/test", authHeaders, { method: "POST", body: "{}" }); setToast?.(data.message); } catch (error) { setToast?.(error.message); } };
   const save = async (event) => {
     event.preventDefault(); setSaving(true);
     try {
@@ -174,10 +192,21 @@ function Ciot({ authHeaders, clients, contracts, operations, setToast }) {
       <label><span>Env do token do conector</span><input value={integrationForm.connectorTokenEnvKey} onChange={(e) => changeIntegration("connectorTokenEnvKey", e.target.value)} /></label>
       <button className="tdg-action"><CheckCircle2 size={17} />Salvar integração direta</button>
     </form>
+    <form className="tdg-txn-form" onSubmit={saveCredential}>
+      <div className="tdg-txn-form-intro"><strong>{integrationForm.certificateType === "A1" ? "Certificado A1" : "Dispositivo A3"}</strong><small>{integrationForm.certificateType === "A1" ? "O arquivo e a senha são criptografados antes de serem gravados. A senha não volta para a tela." : "Informe o endereço HTTPS do conector instalado no computador ligado ao token/cartão e à leitora."}</small></div>
+      {integrationForm.certificateType === "A1" ? <>
+        <label><span>Arquivo .pfx ou .p12</span><input required type="file" accept=".pfx,.p12,application/x-pkcs12" onChange={(e) => setCertificateFile(e.target.files?.[0] || null)} /></label>
+        <label><span>Senha do certificado</span><input required type="password" autoComplete="new-password" value={certificatePassword} onChange={(e) => setCertificatePassword(e.target.value)} /></label>
+      </> : null}
+      <label><span>URL HTTPS do conector {integrationForm.certificateType}</span><input required type="url" value={connectorForm.connectorUrl} onChange={(e) => setConnectorForm((v) => ({ ...v, connectorUrl: e.target.value }))} placeholder="https://conector.todogreen.com.br/ciot" /></label>
+      <label><span>Token do conector</span><input type="password" autoComplete="new-password" value={connectorForm.connectorToken} onChange={(e) => setConnectorForm((v) => ({ ...v, connectorToken: e.target.value }))} /></label>
+      <button className="tdg-action" disabled={credentialSaving}><CheckCircle2 size={17} />{credentialSaving ? "Protegendo..." : integrationForm.certificateType === "A1" ? "Enviar certificado A1" : "Salvar conector A3"}</button>
+      {integration?.credentialUploadedAt && <button type="button" onClick={testCredential}>Testar credencial</button>}
+    </form>
     <div className="tdg-txn-empty">
       <CheckCircle2 size={16} /> Status: {integration?.configured ? "pronta para chamada direta" : "configuração estrutural pronta; falta base URL, conector e/ou certificado no ambiente"}.
       {integration?.connectorConfigured ? " Conector encontrado." : " Configure a URL do conector no Worker."}
-      {integration?.certificateConfigured ? " Certificado encontrado." : " O certificado não é salvo no banco; cadastre o segredo no Worker."}
+      {integration?.certificateConfigured ? ` Credencial encontrada${integration?.credentialFilename ? `: ${integration.credentialFilename}` : ""}.` : " Envie o A1 ou configure o conector A3 abaixo."}
     </div>
     <form className="tdg-txn-form" onSubmit={save}>
       <label><span>OS vinculada</span><select value={form.serviceOrderId} onChange={(e) => { const order = orders.find((item) => item.id === e.target.value); setForm((v) => ({ ...v, serviceOrderId: e.target.value, freightAmount: order?.netAmount ? String(order.netAmount) : v.freightAmount, startsAt: order?.scheduledStartAt || v.startsAt, endsAt: order?.scheduledEndAt || v.endsAt })); }}><option value="">Sem OS</option>{orders.map((item) => <option value={item.id} key={item.id}>{item.number} · {clientName(clients, item.clientId)}</option>)}</select><small>{selectedContract ? `Contrato: ${selectedContract.titulo || selectedContract.title || selectedContract.id}` : ""}</small></label>

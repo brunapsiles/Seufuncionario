@@ -26,6 +26,24 @@ const parseJson = (value) => {
   try { return JSON.parse(value || "{}"); } catch { return {}; }
 };
 const envValue = (env, key) => key ? env[key] : "";
+const bytesToBase64 = (bytes) => { let value = ""; for (let i = 0; i < bytes.length; i += 0x8000) value += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(value); };
+const base64ToBytes = (value) => Uint8Array.from(atob(String(value || "")), (char) => char.charCodeAt(0));
+async function ciotVaultKey(env) {
+  const secret = String(env.TODOGREEN_CIOT_VAULT_KEY || env.SESSION_SECRET || "");
+  if (secret.length < 32) throw new Error("Cofre CIOT indisponível: configure TODOGREEN_CIOT_VAULT_KEY.");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(secret));
+  return crypto.subtle.importKey("raw", digest, "AES-GCM", false, ["encrypt", "decrypt"]);
+}
+async function encryptCiotCredential(env, value) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await ciotVaultKey(env), new TextEncoder().encode(JSON.stringify(value)));
+  return { ciphertext: bytesToBase64(new Uint8Array(encrypted)), iv: bytesToBase64(iv) };
+}
+async function decryptCiotCredential(env, row) {
+  if (!row?.credential_ciphertext || !row?.credential_iv) return null;
+  const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv: base64ToBytes(row.credential_iv) }, await ciotVaultKey(env), base64ToBytes(row.credential_ciphertext));
+  return JSON.parse(new TextDecoder().decode(decrypted));
+}
 
 function ciotCodeFromResponse(payload) {
   const source = object(payload);
@@ -107,10 +125,12 @@ const ciotIntegrationView = (row, env = {}) => {
       revision: 0,
     };
   }
-  const connectorConfigured = Boolean(env[row.connector_url_env_key] || (row.certificate_type === "A3" && env[row.a3_connector_env_key]));
-  const certificateConfigured = row.certificate_type === "A1"
+  const storedCredential = Boolean(row.credential_ciphertext && row.credential_iv);
+  const config = parseJson(row.config_json);
+  const connectorConfigured = Boolean(storedCredential || env[row.connector_url_env_key] || config.connectorUrl || (row.certificate_type === "A3" && (env[row.a3_connector_env_key] || config.a3ConnectorUrl)));
+  const certificateConfigured = storedCredential || (row.certificate_type === "A1"
     ? Boolean(env[row.certificate_env_key] && env[row.certificate_password_env_key])
-    : Boolean(env[row.a3_connector_env_key]);
+    : Boolean(env[row.a3_connector_env_key]));
   const configured = row.mode === "direct_api" && Boolean(row.base_url) && connectorConfigured && certificateConfigured;
   return {
     id: row.id,
@@ -128,7 +148,9 @@ const ciotIntegrationView = (row, env = {}) => {
     requiresIpef: false,
     certificateConfigured,
     connectorConfigured,
-    a3ConnectorConfigured: Boolean(env[row.a3_connector_env_key]),
+    a3ConnectorConfigured: row.certificate_type === "A3" && Boolean(storedCredential || env[row.a3_connector_env_key]),
+    credentialFilename: row.credential_filename || "",
+    credentialUploadedAt: row.credential_uploaded_at || "",
     lastTestAt: row.last_test_at,
     lastError: row.last_error,
     revision: row.revision,
@@ -341,6 +363,41 @@ async function saveCiotIntegration(env, access, user, body) {
   return json({ integration: ciotIntegrationView(saved, env) }, current ? 200 : 201);
 }
 
+async function saveCiotCredential(env, access, user, body) {
+  if (!canManageCiot(access)) return json({ error: "Sem permissão para configurar certificado CIOT." }, 403);
+  const row = await env.DB.prepare(`SELECT * FROM todogreen_ciot_integrations WHERE tenant_id=? AND workspace_owner_id=? AND mode='direct_api' AND archived_at IS NULL ORDER BY updated_at DESC LIMIT 1`).bind(TENANT_ID, access.ownerId).first();
+  if (!row) return json({ error: "Salve primeiro a configuração da integração CIOT." }, 409);
+  const certificateType = text(body.certificateType, 2).toUpperCase();
+  const connectorUrl = text(body.connectorUrl, 500);
+  if (!/^https:\/\//i.test(connectorUrl)) return json({ error: "Informe a URL HTTPS do conector CIOT." }, 400);
+  let credential;
+  let filename = "";
+  if (certificateType === "A1") {
+    const pfxBase64 = String(body.pfxBase64 || "").replace(/^data:.*;base64,/, "");
+    if (!pfxBase64 || !body.password) return json({ error: "Selecione o arquivo A1 e informe a senha." }, 400);
+    if (pfxBase64.length > 2_800_000) return json({ error: "O certificado excede o limite de 2 MB." }, 413);
+    filename = text(body.filename, 180);
+    if (!/\.(pfx|p12)$/i.test(filename)) return json({ error: "Envie um certificado .pfx ou .p12." }, 400);
+    credential = { type: "A1", pfxBase64, password: String(body.password), connectorUrl, connectorToken: String(body.connectorToken || "") };
+  } else if (certificateType === "A3") {
+    credential = { type: "A3", connectorUrl, connectorToken: String(body.connectorToken || "") };
+    filename = "Dispositivo A3";
+  } else return json({ error: "Tipo de certificado inválido." }, 400);
+  const encrypted = await encryptCiotCredential(env, credential);
+  const now = new Date().toISOString();
+  await env.DB.prepare(`UPDATE todogreen_ciot_integrations SET certificate_type=?,credential_ciphertext=?,credential_iv=?,credential_filename=?,credential_uploaded_at=?,status='ready',revision=revision+1,updated_by=?,updated_at=? WHERE id=?`).bind(certificateType, encrypted.ciphertext, encrypted.iv, filename, now, user.id, now, row.id).run();
+  const saved = await env.DB.prepare("SELECT * FROM todogreen_ciot_integrations WHERE id=?").bind(row.id).first();
+  return json({ integration: ciotIntegrationView(saved, env) });
+}
+
+async function testCiotCredential(env, access) {
+  if (!canManageCiot(access)) return json({ error: "Sem permissão para testar certificado CIOT." }, 403);
+  const row = await env.DB.prepare(`SELECT * FROM todogreen_ciot_integrations WHERE tenant_id=? AND workspace_owner_id=? AND mode='direct_api' AND archived_at IS NULL ORDER BY updated_at DESC LIMIT 1`).bind(TENANT_ID, access.ownerId).first();
+  const credential = await decryptCiotCredential(env, row).catch(() => null);
+  if (!credential) return json({ error: "Credencial não encontrada ou não pôde ser aberta." }, 409);
+  return json({ ok: true, certificateType: credential.type, filename: row.credential_filename, message: credential.type === "A1" ? "Certificado A1 armazenado e legível pelo cofre." : "Conector A3 configurado; a disponibilidade será validada na emissão." });
+}
+
 async function createCiot(env, access, user, body) {
   if (!canManageCiot(access)) return json({ error: "Sem permissão para preparar CIOT." }, 403);
   const serviceOrderId = text(body.serviceOrderId, 120);
@@ -419,7 +476,8 @@ async function submitCiot(env, access, user, id, body) {
   if (!integration.baseUrl)
     return json({ error: "Informe a Base URL ANTT da DCS antes de enviar." }, 409);
 
-  const connectorUrl = text(envValue(env, integration.connectorUrlEnvKey), 500) ||
+  const credential = await decryptCiotCredential(env, integrationRow).catch(() => null);
+  const connectorUrl = text(credential?.connectorUrl || envValue(env, integration.connectorUrlEnvKey), 500) ||
     (integration.certificateType === "A3" ? text(envValue(env, integration.a3ConnectorEnvKey), 500) : "");
   if (!connectorUrl)
     return json({ error: `Configure ${integration.connectorUrlEnvKey || "TODOGREEN_ANTT_CIOT_CONNECTOR_URL"} no ambiente para acionar o conector direto.` }, 409);
@@ -443,11 +501,12 @@ async function submitCiot(env, access, user, id, body) {
       certificateEnvKey: integration.certificateEnvKey,
       certificatePasswordEnvKey: integration.certificatePasswordEnvKey,
       a3ConnectorEnvKey: integration.a3ConnectorEnvKey,
+      ...(credential?.type === "A1" ? { pfxBase64: credential.pfxBase64, password: credential.password } : {}),
     },
     ciot: parseJson(row.payload_json),
   };
   const headers = { "content-type": "application/json" };
-  const token = text(envValue(env, integration.connectorTokenEnvKey), 500);
+  const token = text(credential?.connectorToken || envValue(env, integration.connectorTokenEnvKey), 500);
   if (token) headers.authorization = `Bearer ${token}`;
 
   let responsePayload = {};
@@ -652,6 +711,8 @@ export async function handleTodoGreenTransactions(request, env, access, user) {
   if (resource === "service-orders" && request.method === "POST" && id && action === "transition") return transitionOrder(env, access, user, id, body);
   if (resource === "ciot-integration" && request.method === "GET" && !id) return getCiotIntegration(env, access);
   if (resource === "ciot-integration" && request.method === "POST" && !id) return saveCiotIntegration(env, access, user, body);
+  if (resource === "ciot-certificate" && request.method === "POST" && !id) return saveCiotCredential(env, access, user, body);
+  if (resource === "ciot-certificate" && request.method === "POST" && id === "test") return testCiotCredential(env, access);
   if (resource === "ciot" && request.method === "GET" && !id) return listCiot(env, access, url);
   if (resource === "ciot" && request.method === "POST" && !id) return createCiot(env, access, user, body);
   if (resource === "ciot" && request.method === "POST" && id && action === "submit") return submitCiot(env, access, user, id, body);
