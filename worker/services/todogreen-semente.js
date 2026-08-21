@@ -66,7 +66,7 @@ export const ACOES = Object.freeze({
   pesquisar_empresa: "dispara a pesquisa externa de uma conta na web. Campo: cliente (obrigatório).",
 });
 
-export const INSTRUCAO = `Você é a Semente, a inteligência operacional da To Do Green. Você cruza CRM, propostas, contratos, preço, financeiro, execução logística e ESG, sempre dentro das permissões da pessoa.
+export const INSTRUCAO = `Você é o Plantû, assistente operacional do ERP To Do Green. Você cruza CRM, propostas, contratos, preço, frota, financeiro, execução logística, notícias, RFQs e ESG, sempre dentro das permissões da pessoa.
 
 QUEM É A TO DO GREEN
 Transportadora brasileira de logística sustentável, com frota elétrica própria. Vende operação de transporte para embarcadores — varejo, e-commerce, indústria, alimentos, farmacêutico — e o argumento não é só preço: é preço competitivo COM redução comprovada de emissões na cadeia do cliente. Quem compra costuma ter meta pública de descarbonização e precisa de fornecedor que entregue evidência auditável, não promessa.
@@ -634,7 +634,7 @@ export async function handleTodoGreenSemente(request, env, access, user) {
   const historico = (Array.isArray(body.historico) ? body.historico : [])
     .filter((item) => ["user", "assistant"].includes(item?.role) && typeof item.content === "string")
     .slice(-8)
-    .map((item) => `${item.role === "user" ? "Pessoa" : "Semente"}: ${clean(item.content, 1200)}`);
+    .map((item) => `${item.role === "user" ? "Pessoa" : "Plantû"}: ${clean(item.content, 1200)}`);
 
   // A conta aberta na tela entra no cabeçalho: "essa empresa" numa página de
   // cliente quer dizer aquela empresa, e obrigar a pessoa a repetir o nome é
@@ -661,7 +661,7 @@ export async function handleTodoGreenSemente(request, env, access, user) {
     // genérica na tela e nada no log. "A Semente não está funcionando" ficava
     // impossível de diagnosticar sem reproduzir. O assistente do portal já
     // registra isso (todogreen-customer-portal.js); a Semente não registrava.
-    console.error("Semente: todos os provedores de IA falharam", primeira.errors);
+    console.error("Plantû: todos os provedores de IA falharam", primeira.errors);
     return response({ error: "Os provedores de IA não responderam agora. Tente novamente em instantes." }, 502);
   }
 
@@ -691,7 +691,7 @@ export async function handleTodoGreenSemente(request, env, access, user) {
       // que já se tem do que devolver erro depois de a ferramenta ter rodado.
       // Mas cair em silêncio esconde uma resposta pior — a pessoa recebe algo
       // que ignora o dado que o banco acabou de entregar, e nada indica isso.
-      console.error("Semente: segunda chamada falhou, respondendo sem o resultado da ferramenta", segunda.errors);
+      console.error("Plantû: segunda chamada falhou, respondendo sem o resultado da ferramenta", segunda.errors);
     }
   }
 
