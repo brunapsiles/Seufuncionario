@@ -1,32 +1,32 @@
-// ===== Semente — a inteligência comercial da To Do Green =====
+// ===== Plantû — assistente operacional da To Do Green =====
 //
-// "Planta oportunidades. Colhe resultados."
+// Assistente operacional da vertical To Do Green.
 //
-// A parte pura: qual especialista atende cada tela, o que a Semente sabe
+// A parte pura: qual especialista atende cada tela, o que o Plantû sabe
 // fazer, como ela se apresenta, e o corpo que vai para o servidor. Fica
 // separada do componente porque é isso que dá para testar sem montar tela.
 //
-// A Semente fala com /api/todogreen/semente — o endpoint da vertical que
+// O Plantû fala com /api/todogreen/semente — o endpoint da vertical que
 // carrega a carteira real, as ferramentas de consulta ao CRM e as ações que
 // ela pode propor. O rótulo de especialista continua vindo da tela, porque é
 // assim que ela se apresenta; quem monta o contexto de verdade é o servidor.
 
 export const SEMENTE = Object.freeze({
-  nome: "Semente",
-  assinatura: "A inteligência comercial da To Do Green",
-  lema: "Planta oportunidades. Colhe resultados.",
+  nome: "Plantû",
+  assinatura: "Assistente do ERP",
+  lema: "Consultas, análises e ações do ERP.",
   saudacao:
-    "Olá! Eu sou a Semente. Conheço a sua carteira: posso analisar contas, achar contatos de compras, ler a pesquisa externa e propor a próxima ação — e você confirma antes de qualquer coisa ser gravada.",
+    "Assistente do ERP To Do Green. Consulte qualquer área, pesquise dados, analise riscos, precificação, operação, financeiro, ESG e próximas ações. Nada é gravado sem confirmação.",
 });
 
 // O que ela faz, na ordem em que a marca apresenta.
 export const HABILIDADES = Object.freeze([
-  "Analisa empresas",
-  "Identifica oportunidades",
-  "Avalia riscos ESG",
-  "Sugere abordagens",
-  "Acompanha sua carteira",
-  "Recomenda próximas ações",
+  "Contas",
+  "Contatos",
+  "Precificação",
+  "Operação",
+  "Financeiro",
+  "ESG",
 ]);
 
 // Cada tela tem um especialista que responde melhor por ela. O nome à direita
@@ -66,13 +66,13 @@ export const ESPECIALISTA_POR_TELA = Object.freeze({
   metas: "Especialista em Projetos",
 });
 
-// Sem tela conhecida, quem atende é o comercial: é a porta de entrada da
-// vertical e o assunto mais provável de quem abre a Semente sem contexto.
+// Sem tela conhecida, quem atende é o especialista operacional: é a porta de
+// entrada do ERP quando o contexto ainda não aponta uma área.
 export const especialistaDaTela = (pagina) =>
-  ESPECIALISTA_POR_TELA[String(pagina || "").trim()] || "Especialista Comercial";
+  ESPECIALISTA_POR_TELA[String(pagina || "").trim()] || "Especialista em Operações Logísticas";
 
 // O que a pessoa provavelmente quer perguntar naquela tela. Existe para a
-// Semente não abrir com uma caixa de texto vazia — campo vazio é a forma mais
+// Plantû não abrir com uma caixa de texto vazia — campo vazio é a forma mais
 // rápida de alguém fechar e não voltar.
 const ATALHOS_POR_ESPECIALISTA = Object.freeze({
   "Especialista Comercial": [
@@ -91,9 +91,9 @@ const ATALHOS_POR_ESPECIALISTA = Object.freeze({
     "Quais contas têm sinal ESG na pesquisa externa?",
   ],
   "Especialista em Operações Logísticas": [
+    "O que exige ação no ERP agora?",
     "Que rota está com ocupação abaixo do previsto?",
     "Onde há atraso ou ocorrência se repetindo?",
-    "Qual operação precisa de ação hoje?",
   ],
   "Especialista Financeiro": [
     "Qual contrato está abaixo da margem mínima?",
@@ -114,12 +114,12 @@ const ATALHOS_POR_ESPECIALISTA = Object.freeze({
 
 export const atalhosDaTela = (pagina) =>
   ATALHOS_POR_ESPECIALISTA[especialistaDaTela(pagina)] ||
-  ATALHOS_POR_ESPECIALISTA["Especialista Comercial"];
+  ATALHOS_POR_ESPECIALISTA["Especialista em Operações Logísticas"];
 
 // ===== O corpo que vai para /api/todogreen/semente =====
 //
 // O servidor monta o contexto sozinho — carteira, ferramentas, permissões.
-// Daqui vão só a pergunta, a tela (para a Semente saber onde a pessoa está),
+// Daqui vão só a pergunta, a tela (para o Plantû saber onde a pessoa está),
 // o cliente em foco quando há um, e a conversa até aqui.
 
 export const HISTORICO_MAXIMO = 8;
