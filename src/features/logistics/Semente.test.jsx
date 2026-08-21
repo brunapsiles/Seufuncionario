@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Semente from "./Semente.jsx";
 
-// A regra que originou esta tela: a Semente não pode atrapalhar. E a regra que
+// A regra que originou esta tela: o Plantû não pode atrapalhar. E a regra que
 // originou esta versão: ela fala com /api/todogreen/semente — a carteira real,
 // as ferramentas do CRM e as ações propostas — e nada é executado sem clique.
 
@@ -14,7 +14,7 @@ const authHeaders = () => ({ authorization: "Bearer t" });
 
 const corpoEnviado = (indice = -1) => JSON.parse(global.fetch.mock.calls.at(indice)[1].body);
 
-// A Semente busca a pauta do dia ao abrir. Essas chamadas não são perguntas
+// O Plantû busca a pauta do dia ao abrir. Essas chamadas não são perguntas
 // e não entram na contagem — senão todo teste de conversa vira teste de pauta.
 const chamadasDePergunta = () =>
   global.fetch.mock.calls.filter((chamada) => {
@@ -35,10 +35,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const abrir = () => fireEvent.click(screen.getByRole("button", { name: /Abrir Semente/i }));
+const abrir = () => fireEvent.click(screen.getByRole("button", { name: /Abrir Plantû/i }));
 
 const perguntarPor = async (texto) => {
-  fireEvent.change(await screen.findByPlaceholderText(/Pergunte sobre a sua carteira/i), {
+  fireEvent.change(await screen.findByPlaceholderText(/Pergunte sobre o ERP/i), {
     target: { value: texto },
   });
   fireEvent.click(screen.getByRole("button", { name: /Enviar pergunta/i }));
@@ -47,7 +47,7 @@ const perguntarPor = async (texto) => {
 describe("ela não ocupa a tela sem ser chamada", () => {
   it("começa recolhida, num botão só", () => {
     render(<Semente pagina="clientes" authHeaders={authHeaders} />);
-    expect(screen.getByRole("button", { name: /Abrir Semente/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Abrir Plantû/i })).toBeTruthy();
     expect(screen.queryByRole("complementary")).toBeNull();
   });
 
@@ -60,13 +60,13 @@ describe("ela não ocupa a tela sem ser chamada", () => {
     const { unmount } = render(<Semente pagina="clientes" authHeaders={authHeaders} />);
     abrir();
     await screen.findByRole("complementary");
-    fireEvent.click(screen.getByRole("button", { name: /Fechar a Semente/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Fechar o Plantû/i }));
     await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
     unmount();
 
     render(<Semente pagina="esg" authHeaders={authHeaders} />);
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Abrir Semente/i })).toBeTruthy(),
+      expect(screen.getByRole("button", { name: /Abrir Plantû/i })).toBeTruthy(),
     );
     expect(screen.queryByRole("complementary")).toBeNull();
   });
@@ -161,11 +161,11 @@ describe("a pergunta vai para a vertical, com o contexto da tela", () => {
   it("não envia pergunta curta demais", async () => {
     render(<Semente pagina="clientes" authHeaders={authHeaders} />);
     abrir();
-    fireEvent.change(await screen.findByPlaceholderText(/Pergunte sobre a sua carteira/i), {
+    fireEvent.change(await screen.findByPlaceholderText(/Pergunte sobre o ERP/i), {
       target: { value: "oi" },
     });
     expect(screen.getByRole("button", { name: /Enviar pergunta/i }).disabled).toBe(true);
-    fireEvent.submit(screen.getByPlaceholderText(/Pergunte sobre a sua carteira/i).closest("form"));
+    fireEvent.submit(screen.getByPlaceholderText(/Pergunte sobre o ERP/i).closest("form"));
     expect(chamadasDePergunta()).toHaveLength(0);
   });
 });
@@ -212,7 +212,7 @@ describe("a pauta do dia", () => {
     expect(screen.getByText("O que está parado na minha carteira?")).toBeTruthy();
   });
 
-  it("pauta que falha não impede de usar a Semente", async () => {
+  it("pauta que falha não impede de usar o Plantû", async () => {
     global.fetch = vi.fn((url, opcoes) =>
       JSON.parse(opcoes.body).briefing
         ? Promise.reject(new Error("rede"))
