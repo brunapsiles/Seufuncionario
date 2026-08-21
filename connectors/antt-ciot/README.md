@@ -82,20 +82,42 @@ No servidor Windows que ficara com a DLL/EXE da ANTT:
 ```powershell
 cd connectors\antt-ciot\scripts
 .\bootstrap-windows.ps1 `
-  -AnttPackageUrl "https://url-oficial-da-antt/pacote-ciot.zip" `
-  -DcsUrl "https://url-oficial-da-antt/dcs-ciot.pdf"
+  -AnttExeUrl "https://url-oficial-da-antt/executavel-ciot-producao.exe" `
+  -AnttDllUrl "https://url-oficial-da-antt/biblioteca-ciot-producao.dll" `
+  -DcsUrl "https://url-oficial-da-antt/dcs-ciot.pdf" `
+  -PublicConnectorUrl "https://ciot.todogreen.com.br"
 ```
+
+Se a ANTT publicar ZIP unico, use `-AnttPackageUrl`. Se os arquivos ja estiverem baixados, use `-AnttExePath`, `-AnttDllPath` e `-DcsPath`.
 
 O script:
 
-- baixa o pacote oficial da ANTT;
-- baixa o DCS, se a URL for informada;
+- baixa o pacote, DLL, EXE e DCS oficiais da ANTT, conforme os parametros informados;
 - publica o microservico .NET;
 - gera token forte;
 - grava `appsettings.Production.json`;
+- grava `secrets\connector-token.txt`;
+- grava `ops\erp-ciot-connector.env` com as variaveis do ERP;
+- grava `ops\antt-ciot-install-manifest.json` com a evidencia da instalacao;
 - instala e inicia o Windows Service.
 
 Depois disso, exponha `http://127.0.0.1:8088` por HTTPS usando IIS, Caddy, Nginx ou Cloudflare Tunnel e configure a URL publica no ERP.
+
+Templates prontos:
+
+- `deploy\cloudflared-config.example.yml`
+- `deploy\Caddyfile.example`
+
+Verificacao:
+
+```powershell
+.\verify-connector.ps1 `
+  -HealthUrl "https://ciot.todogreen.com.br/health" `
+  -ConnectorUrl "https://ciot.todogreen.com.br/ciot" `
+  -Token "<TOKEN_DO_CONNECTOR>"
+```
+
+O teste de token nao emite CIOT. Ele espera HTTP 400 por modo invalido; isso confirma que a autenticacao passou. HTTP 401 indica token errado.
 
 ## Ponto que ainda depende da ANTT
 
