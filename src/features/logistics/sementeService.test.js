@@ -11,7 +11,7 @@ import {
   respostaPareceEmIngles,
 } from "../../../worker/services/todogreen-semente.js";
 
-// O lado do servidor da Semente, na parte que é pura: ler a decisão do
+// O lado do servidor do Plantû, na parte que é pura: ler a decisão do
 // modelo, montar o índice da carteira, achar a conta certa pelo nome e
 // executar as ferramentas que não tocam banco.
 
@@ -184,7 +184,7 @@ describe("o contrato com o modelo", () => {
   });
 
   it("a instrução proíbe inventar e exige confirmação humana", () => {
-    // São as duas frases que seguram o produto: sem elas a Semente vira
+    // São as duas frases que seguram o produto: sem elas o Plantû vira
     // gerador de dado plausível com botão de gravar.
     expect(INSTRUCAO).toContain("Nunca estime");
     expect(INSTRUCAO).toContain("quem confirma é a pessoa");
@@ -194,6 +194,8 @@ describe("o contrato com o modelo", () => {
   it("a instrução carrega o negócio, não só as regras", () => {
     // Uma assistente comercial de transportadora elétrica que não conhece
     // ocupação, backhaul, Escopo 3 e procurement responde como buscador.
+    expect(INSTRUCAO).toContain("Plantû");
+    expect(INSTRUCAO).toContain("ERP To Do Green");
     for (const termo of [
       "frota elétrica", "Middle Mile", "Last Mile", "backhaul", "payload",
       "ocupação", "piso mínimo", "Escopo 3", "GHG Protocol", "procurement",
@@ -208,7 +210,7 @@ describe("o contrato com o modelo", () => {
   });
 
   it("a instrução proíbe recomendar ferramenta externa", () => {
-    // Aconteceu em produção: a Semente recomendou Google Sheets e HubSpot
+    // Aconteceu em produção: o Plantû recomendou Google Sheets e HubSpot
     // dentro do próprio CRM, porque recebia só o resumo do painel e o
     // contexto do negócio errado. O dado certo resolve a causa; esta linha
     // resolve a recaída.
