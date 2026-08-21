@@ -328,7 +328,8 @@ export default function CanvasBoard({ db, update, business, setToast }) {
         </div>
       </header>
 
-      <div className="cvs-toolbar">
+      <div className="cvs-toolbar" aria-label="Ferramentas do quadro">
+        <span className="cvs-toolbar-label">Inserir</span>
         {CANVAS_ELEMENT_TYPES.map((t) => (
           <button key={t.id} onClick={() => adicionar(t.id)}>
             {t.label}
@@ -347,16 +348,16 @@ export default function CanvasBoard({ db, update, business, setToast }) {
         <small className="cvs-zoom">{Math.round((view.zoom || 1) * 100)}%</small>
       </div>
 
-      <div className="cvs-facil">
+      <div className="cvs-facil" aria-label="Ações do quadro">
         <button className="btn ghost sm" onClick={agruparPostits}>
-          Agrupar post-its
+          Agrupar
         </button>
         <button
           className="btn ghost sm"
           onClick={() => patch({ votingOpen: !quadro.votingOpen })}
         >
           <ThumbsUp size={14} />
-          {quadro.votingOpen ? "Encerrar votação" : "Abrir votação"}
+          {quadro.votingOpen ? "Encerrar votação" : "Votação"}
         </button>
         {cronometro.running ? (
           <button className="btn ghost sm" onClick={pararCronometro}>
@@ -377,7 +378,7 @@ export default function CanvasBoard({ db, update, business, setToast }) {
         )}
         <span className="cvs-sep" />
         <button className="btn ghost sm" onClick={criarTarefas}>
-          <CheckSquare size={14} /> Virar tarefas
+          <CheckSquare size={14} /> Tarefas
         </button>
         {BOARD_AI_MODES.map((m) => (
           <button
