@@ -108,11 +108,11 @@ export default function TripViabilityPage({ authHeaders }) {
     <section className="tdg-panel tdg-page tdg-via-page">
       <header className="tdg-page-title">
         <div>
-          <span>CUSTO, MARGEM E DECISÃO</span>
+          <span>PLANEJAMENTO E PRODUTOS</span>
           <h2>Aceito esta viagem?</h2>
           <p>
-            Lance os custos da sua operação — o sistema calcula a margem que sobra e
-            recomenda aceitar ou não, usando a régua comercial em vigor. Enquanto faltar
+            Planejamento lança capacidade e custos; o sistema calcula a margem que sobra e
+            recomenda aceitar ou não, usando a régua comercial em vigor. A decisão pertence a Planejamento/Produtos. Enquanto faltar
             custo essencial, a recomendação fica suspensa: margem calculada sem combustível
             e sem motorista fica alta demais e não representa a viagem.
           </p>

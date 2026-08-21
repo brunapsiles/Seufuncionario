@@ -167,7 +167,7 @@ describe("LogisticsVertical", () => {
     expect(screen.getByRole("navigation", { name: "Navegação To Do Green" }).querySelectorAll("button")).toHaveLength(10);
     expect(screen.getByText("Configurações")).toBeTruthy();
     expect(screen.getByRole("heading", { name: /Escolha a área pelo resultado/ })).toBeTruthy();
-    expect(screen.getByText("Da execução ao recebimento")).toBeTruthy();
+    expect(screen.getByText("Da OS concluída ao recebimento")).toBeTruthy();
     expect(screen.queryByText(/Painel operacional/i)).toBeNull();
     expect(screen.queryByText(/ativas.*planejado/i)).toBeNull();
     expect(screen.queryByText(/Recursos organizados por área/i)).toBeNull();
@@ -649,7 +649,6 @@ describe("LogisticsVertical", () => {
     window.history.pushState({}, "", "/todogreen/ordens-servico");
     await renderarAutorizada();
     expect(await screen.findByRole("heading", { name: "Aceite e ordens de serviço", level: 2 })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Planejamento" }));
     expect(screen.getByRole("navigation", { name: /Seções de Planejamento/ }).textContent).toContain("CIOT");
     fireEvent.click(screen.getByRole("button", { name: "Financeiro" }));
     expect(await screen.findByRole("heading", { name: "Fila de faturamento", level: 2 })).toBeTruthy();
