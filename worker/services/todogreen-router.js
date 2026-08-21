@@ -17,6 +17,9 @@ import { handleTodoGreenVerticalRecords } from "./todogreen-vertical-records.js"
 import { handleTodoGreenStock } from "./todogreen-stock.js";
 import { handleTodoGreenPurchasing } from "./todogreen-purchasing.js";
 import { handleTodoGreenTransactions } from "./todogreen-transactions.js";
+import { handleTodoGreenTreasury } from "./todogreen-treasury.js";
+import { handleTodoGreenFiscal } from "./todogreen-fiscal.js";
+import { handleTodoGreenTms } from "./todogreen-tms.js";
 import { handleTodoGreenDealDesk } from "./todogreen-deal-desk.js";
 import { entregarArquivo, handleTodoGreenEvidences } from "./todogreen-evidences.js";
 import { handleTodoGreenClientIntelligence } from "./todogreen-client-intelligence.js";
@@ -161,6 +164,39 @@ export async function routeTodoGreenApi(request, env, ctx) {
       const resolved = await internalAccess(request, env);
       if (resolved.response) return resolved.response;
       return handleTodoGreenTransactions(request, env, resolved.access, resolved.user);
+    });
+  }
+
+  // Tesouraria: importar extrato (em lote, com dedup), conciliar (duas tabelas
+  // numa gravação) e fechar período (trava que vale para outro handler).
+  if (path.startsWith("/api/todogreen/treasury")) {
+    return guarded("To Do Green treasury error", "Não foi possível processar a tesouraria.", async () => {
+      const resolved = await internalAccess(request, env);
+      if (resolved.response) return resolved.response;
+      return handleTodoGreenTreasury(request, env, resolved.access, resolved.user);
+    });
+  }
+
+  // TMS TRACK3R. Não confundir com `/tracker`, que é a Sistemas Tracker — outro
+  // fornecedor, outro assunto: o TRACK3R traz o DOCUMENTO (o que foi coletado e
+  // entregue), a Sistemas Tracker traz a POSIÇÃO (onde o veículo está).
+  if (path.startsWith("/api/todogreen/tms")) {
+    return guarded("To Do Green TMS error", "Não foi possível falar com a integração do TMS.", async () => {
+      const resolved = await internalAccess(request, env);
+      if (resolved.response) return resolved.response;
+      return handleTodoGreenTms(request, env, resolved.access, resolved.user);
+    });
+  }
+
+  // Fiscal da transportadora: CT-e (modelo 57), MDF-e (modelo 58) e NFS-e — não
+  // NF-e, que é de quem vende mercadoria. O documento tem ciclo de vida, os
+  // impostos são calculados no servidor e o XML é gerado localmente; a
+  // transmissão à SEFAZ fica desligada por ausência de certificado digital.
+  if (path.startsWith("/api/todogreen/fiscal")) {
+    return guarded("To Do Green fiscal error", "Não foi possível processar o documento fiscal.", async () => {
+      const resolved = await internalAccess(request, env);
+      if (resolved.response) return resolved.response;
+      return handleTodoGreenFiscal(request, env, resolved.access, resolved.user);
     });
   }
 
