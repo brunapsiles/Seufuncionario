@@ -248,7 +248,7 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     route: "/todogreen/dashboard",
     area: "gestao",
     status: "functional",
-    description: "O que exige atenção agora, com acesso direto à próxima ação.",
+    description: "Indicadores, pendências e atalhos do ERP.",
   },
   dashboards: {
     title: "Painéis personalizados",
@@ -424,7 +424,7 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     route: "/todogreen/cadastros",
     area: "operacional",
     status: "functional",
-    description: "Materiais, depósitos, fornecedores, centros de custo e plano de contas — a base que Estoque e Compras consultam.",
+    description: "Materiais, depósitos, fornecedores, centros de custo e plano de contas.",
   },
   estoque: {
     title: "Estoque",
@@ -432,7 +432,7 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     route: "/todogreen/estoque",
     area: "operacional",
     status: "functional",
-    description: "Saldos por material e depósito, entradas, saídas, transferências e contagens — com o saldo derivado dos movimentos.",
+    description: "Saldos, entradas, saídas, transferências e contagens.",
   },
   compras: {
     title: "Compras",
@@ -440,7 +440,7 @@ const MODULE_IMPLEMENTATION = Object.freeze({
     route: "/todogreen/compras",
     area: "operacional",
     status: "functional",
-    description: "Requisição, aprovação, pedido ao fornecedor e recebimento, com o que chegou dando entrada no estoque.",
+    description: "Requisições, aprovações, pedidos e recebimentos.",
   },
   receita: {
     title: "Receita, forecast e faturamento",
@@ -608,15 +608,15 @@ const PRIMARY_NAVIGATION = Object.freeze([
 ]);
 
 const WORK_AREAS = Object.freeze([
-  { id: "commercial", label: "Comercial", outcome: "Da conta ao contrato", icon: BriefcaseBusiness, links: [["Clientes", "/todogreen/clientes"], ["Oportunidades", "/todogreen/oportunidades"], ["Precificação", "/todogreen/precificacao"], ["Propostas e contratos", "/todogreen/propostas"]] },
-  { id: "products", label: "Produtos", outcome: "Do serviço ao SLA", icon: Boxes, links: [["Produtos logísticos", "/todogreen/produtos"], ["Catálogo", "/todogreen/produtos"], ["Precificação", "/todogreen/precificacao"], ["Régua comercial", "/todogreen/regua"]] },
-  { id: "planning", label: "Planejamento", outcome: "Do contrato ao aceite", icon: Route, links: [["Planejamento", "/todogreen/planejamento"], ["OS e aceite", "/todogreen/ordens-servico"], ["CIOT", "/todogreen/ciot"], ["Solicitações", "/todogreen/solicitacoes"]] },
-  { id: "operations", label: "Operação", outcome: "Do aceite à entrega", icon: Truck, links: [["Operações", "/todogreen/operacoes"], ["Rastreamento", "/todogreen/rastreamento"], ["Cadastros", "/todogreen/cadastros"], ["Estoque e compras", "/todogreen/estoque"]] },
-  { id: "finance", label: "Financeiro", outcome: "Da OS concluída ao recebimento", icon: WalletCards, links: [["Faturamento e CT-e", "/todogreen/faturamento"], ["CIOT", "/todogreen/ciot"], ["Títulos e baixas", "/todogreen/titulos"], ["Rateio de custos", "/todogreen/rateios"]] },
-  { id: "hr", label: "DP/RH", outcome: "Da escala à pessoa", icon: Users, links: [["DP/RH", "/todogreen/rh"], ["Motoristas", "/todogreen/rh"], ["Escalas", "/todogreen/rh"], ["Metas", "/todogreen/metas"]] },
-  { id: "marketing", label: "Marketing", outcome: "Da prova à demanda", icon: TrendingUp, links: [["Marketing", "/todogreen/marketing"], ["Campanhas", "/todogreen/marketing"], ["Materiais ESG", "/todogreen/documentos"], ["Relatórios", "/todogreen/relatorios"]] },
-  { id: "esg", label: "ESG", outcome: "Do dado à evidência", icon: Leaf, links: [["Central ESG", "/todogreen/central-esg"], ["Indicadores", "/todogreen/esg"], ["Documentos", "/todogreen/documentos"], ["Metodologia", "/todogreen/metodologia"]] },
-  { id: "management", label: "Gestão", outcome: "Do plano ao acompanhamento", icon: Settings, links: [["Espaço de trabalho", "/todogreen/espaco"], ["Projetos", "/todogreen/central-trabalho"], ["Dashboards", "/todogreen/dashboards"], ["Relatórios", "/todogreen/relatorios"]] },
+  { id: "commercial", label: "Comercial", outcome: "Clientes, pipeline e contratos", icon: BriefcaseBusiness, links: [["Clientes", "/todogreen/clientes"], ["Oportunidades", "/todogreen/oportunidades"], ["Precificação", "/todogreen/precificacao"], ["Propostas e contratos", "/todogreen/propostas"]] },
+  { id: "products", label: "Produtos", outcome: "Serviços, SLA e tabela", icon: Boxes, links: [["Produtos logísticos", "/todogreen/produtos"], ["Catálogo", "/todogreen/produtos"], ["Precificação", "/todogreen/precificacao"], ["Régua comercial", "/todogreen/regua"]] },
+  { id: "planning", label: "Planejamento", outcome: "OS, aceite e CIOT", icon: Route, links: [["Planejamento", "/todogreen/planejamento"], ["OS e aceite", "/todogreen/ordens-servico"], ["CIOT", "/todogreen/ciot"], ["Solicitações", "/todogreen/solicitacoes"]] },
+  { id: "operations", label: "Operação", outcome: "Execução, tracking e estoque", icon: Truck, links: [["Operações", "/todogreen/operacoes"], ["Rastreamento", "/todogreen/rastreamento"], ["Cadastros", "/todogreen/cadastros"], ["Estoque e compras", "/todogreen/estoque"]] },
+  { id: "finance", label: "Financeiro", outcome: "Faturamento, títulos e custos", icon: WalletCards, links: [["Faturamento e CT-e", "/todogreen/faturamento"], ["CIOT", "/todogreen/ciot"], ["Títulos e baixas", "/todogreen/titulos"], ["Rateio de custos", "/todogreen/rateios"]] },
+  { id: "hr", label: "DP/RH", outcome: "Motoristas, escalas e metas", icon: Users, links: [["DP/RH", "/todogreen/rh"], ["Motoristas", "/todogreen/rh"], ["Escalas", "/todogreen/rh"], ["Metas", "/todogreen/metas"]] },
+  { id: "marketing", label: "Marketing", outcome: "Campanhas e materiais", icon: TrendingUp, links: [["Marketing", "/todogreen/marketing"], ["Campanhas", "/todogreen/marketing"], ["Materiais ESG", "/todogreen/documentos"], ["Relatórios", "/todogreen/relatorios"]] },
+  { id: "esg", label: "ESG", outcome: "Indicadores e evidências", icon: Leaf, links: [["Central ESG", "/todogreen/central-esg"], ["Indicadores", "/todogreen/esg"], ["Documentos", "/todogreen/documentos"], ["Metodologia", "/todogreen/metodologia"]] },
+  { id: "management", label: "Gestão", outcome: "Projetos, dashboards e acessos", icon: Settings, links: [["Espaço de trabalho", "/todogreen/espaco"], ["Projetos", "/todogreen/central-trabalho"], ["Dashboards", "/todogreen/dashboards"], ["Relatórios", "/todogreen/relatorios"]] },
 ]);
 
 const MANAGEMENT_TOOLS = Object.freeze([
@@ -1354,29 +1354,29 @@ function DashboardPanel({ data, dashboard, tasks, onNavigate }) {
       <header className="tdg-decision-header">
         <div>
           <span className="tdg-kicker">VISÃO GERAL</span>
-          <h2 id="tdg-decision-title">O que precisa da sua atenção</h2>
-          <p>Prioridades reais da operação, do comercial e dos clientes. Cada aviso abre o local onde a ação acontece.</p>
+          <h2 id="tdg-decision-title">Painel operacional</h2>
+          <p>Indicadores, pendências e atalhos principais da operação.</p>
         </div>
         <span className="tdg-data-status">{data.demo ? "Demonstração identificada" : "Dados reais"}</span>
       </header>
 
       <div className="tdg-decision-metrics" aria-label="Resultados principais">
-        <MetricCard label="Receita" value={decision.hasRevenueData ? BRL.format(dashboard.receitaRealizada || dashboard.receitaPrevista) : "Não informada"} detail={decision.hasRevenueData ? "realizada e contratada" : "sem lançamento financeiro"} />
-        <MetricCard label="Margem das simulações" value={margin.margemPercent === null ? "Não calculada" : `${number.format(margin.margemPercent)}%`} detail={margin.leitura} tone={margin.abaixoDoPiso ? "risk" : margin.margemPercent === null ? "neutral" : "good"} />
+        <MetricCard label="Receita" value={decision.hasRevenueData ? BRL.format(dashboard.receitaRealizada || dashboard.receitaPrevista) : "R$ 0"} detail={decision.hasRevenueData ? "realizada e contratada" : "sem lançamento"} />
+        <MetricCard label="Margem" value={margin.margemPercent === null ? "Sem cálculo" : `${number.format(margin.margemPercent)}%`} detail={margin.leitura} tone={margin.abaixoDoPiso ? "risk" : margin.margemPercent === null ? "neutral" : "good"} />
         <MetricCard label="Forecast" value={BRL.format(decision.forecast)} detail={countLabel(decision.counts.openOpportunities, "oportunidade aberta", "oportunidades abertas")} />
-        <MetricCard label="Pipeline" value={BRL.format(decision.pipeline)} detail="valor total em negociação" />
-        <MetricCard label="Ocupação" value={occupancy.ocupacaoMedia === null ? "Não medida" : `${number.format(occupancy.ocupacaoMedia)}%`} detail={occupancy.leitura} tone={occupancy.criticas ? "risk" : occupancy.ocupacaoMedia === null ? "neutral" : "good"} />
-        <MetricCard label="CO2 evitado" value={decision.hasImpactData ? `${number.format(dashboard.co2Evitado / 1000)} t` : "Não calculado"} detail={decision.hasImpactData ? "estimativa com memória de cálculo" : "sem operação vinculada"} tone={decision.hasImpactData ? "good" : "neutral"} />
+        <MetricCard label="Pipeline" value={BRL.format(decision.pipeline)} detail="em negociação" />
+        <MetricCard label="Ocupação" value={occupancy.ocupacaoMedia === null ? "Sem medição" : `${number.format(occupancy.ocupacaoMedia)}%`} detail={occupancy.leitura} tone={occupancy.criticas ? "risk" : occupancy.ocupacaoMedia === null ? "neutral" : "good"} />
+        <MetricCard label="CO2 evitado" value={decision.hasImpactData ? `${number.format(dashboard.co2Evitado / 1000)} t` : "Sem cálculo"} detail={decision.hasImpactData ? "operação vinculada" : "sem operação"} tone={decision.hasImpactData ? "good" : "neutral"} />
       </div>
 
       <div className="tdg-decision-body">
         <section className="tdg-attention-list" aria-labelledby="tdg-attention-title">
           <div className="tdg-decision-section-title">
-            <div><span>AGORA</span><h2 id="tdg-attention-title">Prioridades e alertas</h2></div>
+            <div><span>FILA</span><h2 id="tdg-attention-title">Pendências</h2></div>
             <small>{actionableAlerts.length ? countLabel(actionableAlerts.length, "item para decidir", "itens para decidir") : "Nenhuma pendência crítica encontrada"}</small>
           </div>
           {actionableAlerts.length === 0 ? (
-            <div className="tdg-decision-clear"><CheckCircle2 size={20} /><div><strong>{decision.hasData ? "Nada crítico neste momento" : "Comece conectando o primeiro dado real"}</strong><span>{decision.hasData ? "A Semente continua acompanhando mudanças na carteira, no pricing e na operação." : "Cadastre um cliente, uma oportunidade ou uma simulação para o painel orientar suas decisões."}</span></div>{!decision.hasData && <button type="button" onClick={() => onNavigate?.("/todogreen/clientes")}>Cadastrar cliente</button>}</div>
+            <div className="tdg-decision-clear"><CheckCircle2 size={20} /><div><strong>{decision.hasData ? "Sem alertas críticos" : "Sem dados operacionais"}</strong><span>{decision.hasData ? "Nenhuma pendência registrada no momento." : "Cadastre clientes, oportunidades ou simulações para alimentar o painel."}</span></div>{!decision.hasData && <button type="button" onClick={() => onNavigate?.("/todogreen/clientes")}>Cadastrar cliente</button>}</div>
           ) : actionableAlerts.slice(0, 6).map((alert) => (
             <button className={`tdg-decision-alert ${alert.tone}`} type="button" onClick={() => onNavigate?.(alert.route)} key={alert.id}>
               <span className="tdg-decision-alert-icon">{alert.tone === "risk" ? <AlertTriangle size={18} /> : <Bell size={18} />}</span>
@@ -1387,9 +1387,8 @@ function DashboardPanel({ data, dashboard, tasks, onNavigate }) {
         </section>
 
         <aside className="tdg-decision-next" aria-label="Atalhos para continuar o trabalho">
-          <span>CONTINUE O FLUXO</span>
-          <h2>Da conta ao resultado</h2>
-          <p>Abra o ponto da jornada que você precisa avançar. Os dados já cadastrados seguem com você.</p>
+          <span>ATALHOS</span>
+          <h2>Fluxo operacional</h2>
           <div>
             <button type="button" onClick={() => onNavigate?.("/todogreen/clientes")}>Clientes <ArrowRight size={14} /></button>
             <button type="button" onClick={() => onNavigate?.("/todogreen/oportunidades")}>Oportunidades <ArrowRight size={14} /></button>
@@ -1411,14 +1410,10 @@ function WorkAreaMap({ onNavigate }) {
     <section className="tdg-work-map" aria-labelledby="tdg-work-map-title">
       <header>
         <div>
-          <span className="tdg-kicker">MAPA DE TRABALHO</span>
-          <h2 id="tdg-work-map-title">Escolha a área pelo resultado que você precisa gerar</h2>
-          <p>As ferramentas seguem a mesma jornada: Comercial, Produtos, Planejamento, Operação, Financeiro, DP/RH, Marketing, ESG e Gestão.</p>
+          <span className="tdg-kicker">MÓDULOS</span>
+          <h2 id="tdg-work-map-title">ERP To Do Green</h2>
         </div>
       </header>
-      <div className="tdg-journey" aria-label="Jornada principal">
-        <span>Comercial</span><ArrowRight size={14} /><span>Produtos</span><ArrowRight size={14} /><span>Planejamento</span><ArrowRight size={14} /><span>Operação</span><ArrowRight size={14} /><span>Financeiro</span><ArrowRight size={14} /><span>DP/RH</span><ArrowRight size={14} /><span>Marketing</span><ArrowRight size={14} /><span>ESG</span><ArrowRight size={14} /><span>Gestão</span>
-      </div>
       <div className="tdg-work-area-grid">
         {WORK_AREAS.map((area) => {
           const Icon = area.icon;
@@ -1753,8 +1748,8 @@ function ProposalPanel({ data, criar, atualizar, pedidosDeAprovacao = [], setToa
   const proposalText = latest
     ? `Proposta ${latest.result.productName}: preço recomendado ${BRL.format(latest.result.recommendedPrice)}, margem estimada ${number.format(latest.result.marginPercent)}%, CO2 evitado estimado de ${number.format(latest.result.impact.co2AvoidedKg / 1000)} tCO2e. ${translated.proposalText}`
     : existemNaoConfirmadas
-      ? "As simulações existentes ainda estão como hipótese. Abra Precificação, confirme as premissas e salve — só então o preço e o ESG podem virar proposta."
-      : "Crie uma simulação de precificação antes de gerar uma proposta com preço e ESG.";
+      ? "As simulações existentes ainda estão como hipótese. Abra Precificação, confirme as premissas e salve. Só então o preço e o ESG podem virar proposta."
+      : "Nenhuma simulação confirmada disponível para proposta.";
   const [salvando, setSalvando] = useState(false);
   const propostasAceitas = (data.proposals || []).filter(propostaAceita);
   const [propostaContratoId, setPropostaContratoId] = useState("");
@@ -1857,7 +1852,7 @@ function ProposalPanel({ data, criar, atualizar, pedidosDeAprovacao = [], setToa
       {latest && liberacao.liberada && liberacao.pedido && (
         <p className="tdg-esg-nota">{liberacao.motivo}</p>
       )}
-      <div className="tdg-method"><strong>Texto gerado</strong><p>{proposalText}</p><small>{translated.disclaimer}</small></div>
+      <div className="tdg-method"><strong>Prévia da proposta</strong><p>{proposalText}</p><small>Valide preço, escopo, evidências ESG e aprovações antes do envio.</small></div>
       <div className="tdg-access-list">{data.proposals.map((item) => <div className="tdg-access-row" key={item.id}><span><strong>{item.title}</strong><small>{item.client || "cliente não informado"}</small></span><span>{propostaAceita(item) ? "aceita" : item.scenarioId ? "com simulação" : "rascunho"}</span><button type="button" onClick={() => baixarProposta(item)}>Baixar documento</button>{!propostaAceita(item) && <button type="button" onClick={() => aceitarProposta(item)}>Registrar aceite</button>}</div>)}</div>
       <div className="tdg-section-head"><div><span className="tdg-kicker">CONTRATOS</span><h2>Gerar contrato a partir de proposta aceita</h2></div><strong>{data.contracts.length} contrato(s)</strong></div>
       <form className="tdg-access-form" onSubmit={salvarContrato}>
@@ -2177,8 +2172,8 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
         </div>
       )}
 
-      {page === "dashboard" && <WorkAreaMap onNavigate={navigate} />}
       {page === "dashboard" && <DashboardPanel data={verticalData} dashboard={dashboard} tasks={db?.tasks || []} onNavigate={navigate} />}
+      {page === "dashboard" && <WorkAreaMap onNavigate={navigate} />}
       {page === "espaco" && (
         <Suspense fallback={<section className="tdg-panel">Abrindo o espaço de trabalho...</section>}>
           <TodoGreenWorkspace db={db} update={update} verticalData={verticalData} setToast={setToast} onNavigate={navigate} />
@@ -2245,7 +2240,7 @@ export default function LogisticsVertical({ db, update, setToast, access = {}, a
         <details className="tdg-tool-catalog" open={catalogRequested || undefined}>
           <summary>
             <span><strong>Índice completo de funcionalidades</strong><small>Use quando você já souber a função específica que procura.</small></span>
-            <span>Abrir índice</span>
+            <span>Abrir módulos</span>
           </summary>
           <div className="tdg-tool-catalog-content">
             <div className="tdg-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar função, área, produto ou especialista" aria-label="Buscar funções da vertical To Do Green" /></div>
