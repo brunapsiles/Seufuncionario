@@ -47,7 +47,7 @@ describe("aceito esta viagem?", () => {
   it("com frete mas sem custo, não arrisca uma recomendação", () => {
     comRegua();
     abrir();
-    preencher("Frete oferecido por viagem (R$)", 2200);
+    preencher("Valor oferecido (R$)", 2200);
     preencher("Km com carga (ida)", 400);
     expect(screen.getByText("Faltam dados")).toBeInTheDocument();
     expect(screen.getByText(/Nenhum custo informado/i)).toBeInTheDocument();
@@ -56,7 +56,7 @@ describe("aceito esta viagem?", () => {
   it("custo essencial faltando aparece nomeado, não como erro genérico", () => {
     comRegua();
     abrir();
-    preencher("Frete oferecido por viagem (R$)", 2200);
+    preencher("Valor oferecido (R$)", 2200);
     preencher("Km com carga (ida)", 400);
     preencher("Valor de Pedágio", 90);
 
@@ -68,7 +68,7 @@ describe("aceito esta viagem?", () => {
   it("com custo e frete, recomenda e mostra a margem calculada", () => {
     comRegua();
     abrir();
-    preencher("Frete oferecido por viagem (R$)", 2200);
+    preencher("Valor oferecido (R$)", 2200);
     preencher("Km com carga (ida)", 400);
     lancarCustosEssenciais();
 
@@ -81,7 +81,7 @@ describe("aceito esta viagem?", () => {
     comRegua();
     abrir();
     // Cobre o custo carregado (~1.276) mas fica abaixo do piso (~1.604).
-    preencher("Frete oferecido por viagem (R$)", 1450);
+    preencher("Valor oferecido (R$)", 1450);
     preencher("Km com carga (ida)", 400);
     lancarCustosEssenciais();
 
@@ -93,7 +93,7 @@ describe("aceito esta viagem?", () => {
   it("frete entre o piso e o alvo aceita com ressalva", () => {
     comRegua();
     abrir();
-    preencher("Frete oferecido por viagem (R$)", 1700);
+    preencher("Valor oferecido (R$)", 1700);
     preencher("Km com carga (ida)", 400);
     lancarCustosEssenciais();
 
@@ -103,7 +103,7 @@ describe("aceito esta viagem?", () => {
   it("prejuízo é dito com todas as letras", () => {
     comRegua();
     abrir();
-    preencher("Frete oferecido por viagem (R$)", 500);
+    preencher("Valor oferecido (R$)", 500);
     preencher("Km com carga (ida)", 400);
     lancarCustosEssenciais();
 
@@ -114,7 +114,7 @@ describe("aceito esta viagem?", () => {
   it("a conta fica aberta na tela, não escondida", () => {
     comRegua();
     abrir();
-    preencher("Frete oferecido por viagem (R$)", 2200);
+    preencher("Valor oferecido (R$)", 2200);
     preencher("Km com carga (ida)", 400);
     lancarCustosEssenciais();
 
@@ -128,7 +128,7 @@ describe("aceito esta viagem?", () => {
   it("retorno vazio alto vira alerta de buscar carga de volta", () => {
     comRegua();
     abrir();
-    preencher("Frete oferecido por viagem (R$)", 4000);
+    preencher("Valor oferecido (R$)", 4000);
     preencher("Km com carga (ida)", 400);
     preencher("Km de retorno vazio", 400);
     lancarCustosEssenciais();
@@ -148,11 +148,31 @@ describe("aceito esta viagem?", () => {
     expect(screen.queryByLabelText("Quantas viagens")).not.toBeInTheDocument();
   });
 
+  it("produto dedicado abre cobrança por veículo", () => {
+    comRegua();
+    abrir();
+    fireEvent.click(screen.getByRole("button", { name: /Frota dedicada/ }));
+
+    expect(screen.getByLabelText("Modelo de cobrança")).toHaveValue("por_veiculo_mes");
+    expect(screen.getByLabelText("Veículos dedicados")).toBeInTheDocument();
+    expect(screen.getByLabelText("Dias de operação")).toBeInTheDocument();
+  });
+
+  it("last mile abre campos de entrega", () => {
+    comRegua();
+    abrir();
+    fireEvent.click(screen.getByRole("button", { name: /Last mile/ }));
+
+    expect(screen.getByLabelText("Modelo de cobrança")).toHaveValue("por_entrega");
+    expect(screen.getByLabelText("Entregas totais")).toBeInTheDocument();
+    expect(screen.getByLabelText("Entregas por viagem")).toBeInTheDocument();
+  });
+
   it("no contrato, o preço aparece também por viagem", () => {
     comRegua();
     abrir();
     fireEvent.click(screen.getByRole("button", { name: /Contrato recorrente/ }));
-    preencher("Frete oferecido por viagem (R$)", 500);
+    preencher("Valor oferecido (R$)", 500);
     preencher("Km com carga (ida)", 100);
     preencher("Viagens por mês", 20);
     preencher("Meses de contrato", 6);
@@ -175,7 +195,7 @@ describe("aceito esta viagem?", () => {
       commissionPercent: 2.5,
     });
     abrir();
-    preencher("Frete oferecido por viagem (R$)", 2200);
+    preencher("Valor oferecido (R$)", 2200);
     preencher("Km com carga (ida)", 400);
     lancarCustosEssenciais();
 
@@ -205,7 +225,7 @@ describe("aceito esta viagem?", () => {
   it("a régua indisponível não trava a tela: cai no padrão e segue calculando", async () => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("rede caiu"))));
     abrir();
-    preencher("Frete oferecido por viagem (R$)", 2200);
+    preencher("Valor oferecido (R$)", 2200);
     preencher("Km com carga (ida)", 400);
     lancarCustosEssenciais();
 
